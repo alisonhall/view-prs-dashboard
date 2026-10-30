@@ -4,6 +4,10 @@ const { render, screen } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { AuthorCreatedPrsSection } = require('./AuthorCreatedPrsSection');
 const { PrDataProvider } = require('../state/PrDataProvider');
+const { createPrDataProbe } = require('../test-fixtures/pr-data-probe');
+// Test-only bridge removal (see WINDOW_BRIDGE_ELIMINATION_PLAN.md): reads and
+// writes PrDataProvider through this probe, not window.* bridges.
+const prDataProbe = createPrDataProbe();
 
 const buildEntry = (overrides = {}) => ({
   prNumber: '1',
@@ -29,15 +33,13 @@ const renderSection = (rows, selectedAuthorLogin) => {
   });
   return render(
     <PrDataProvider initialPayload={{ byPrNumber }} initialSelectedAuthorLogin={selectedAuthorLogin}>
+      <prDataProbe.PrDataProbe />
       <AuthorCreatedPrsSection />
     </PrDataProvider>,
   );
 };
 
 describe('AuthorCreatedPrsSection', () => {
-  afterEach(() => {
-    delete window.navigateToPrInTableFromAuthorInsights;
-  });
 
   test('given no PRs by the selected author, when rendering, then the empty message is shown', () => {
     renderSection([buildEntry()], 'someone-else');
@@ -51,15 +53,23 @@ describe('AuthorCreatedPrsSection', () => {
     expect(screen.getByText(/Status: NO_CHANGE/)).toBeInTheDocument();
   });
 
-  test('given "View in table", when clicked, then the navigation bridge fires with the PR number and repo', () => {
-    const navigate = jest.fn();
-    window.navigateToPrInTableFromAuthorInsights = navigate;
+  // Phase H.16 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+  // cluster 2): window.navigateToPrInTableFromAuthorInsights is deleted -
+  // AuthorInsightsPrLink.tsx's button now calls useNavigateToPrInTable()
+  // directly, which dispatches 'pr-navigate-to-insights' (PrTableApp.tsx's
+  // own listener) instead of a window.* bridge.
+  test('given "View in table", when clicked, then pr-navigate-to-insights fires with the PR number and repo', () => {
+    const events = [];
+    const handler = (event) => events.push(event.detail);
+    window.addEventListener('pr-navigate-to-insights', handler);
     renderSection([buildEntry()], 'octocat');
 
     screen.getByRole('button', { name: 'View in table' }).click();
     // repo disambiguates PR numbers that collide across repos - see
     // AuthorInsightsPrLink/PrTableApp's buildExpandedInsightsKey.
-    expect(navigate).toHaveBeenCalledWith('1', 'owner/repo');
+    expect(events).toEqual([{ prNumber: '1', repo: 'owner/repo', focusUnsaved: false }]);
+
+    window.removeEventListener('pr-navigate-to-insights', handler);
   });
 
   test('given a change to the selected author in Context, when it updates, then the list reflects the new author (no key remount needed)', () => {
@@ -69,6 +79,7 @@ describe('AuthorCreatedPrsSection', () => {
     };
     render(
       <PrDataProvider initialPayload={{ byPrNumber }} initialSelectedAuthorLogin="octocat">
+        <prDataProbe.PrDataProbe />
         <AuthorCreatedPrsSection />
       </PrDataProvider>,
     );
@@ -77,7 +88,7 @@ describe('AuthorCreatedPrsSection', () => {
 
     const { act } = require('@testing-library/react');
     act(() => {
-      window.updateReactSelectedAuthorLogin('other');
+      prDataProbe.setSelectedAuthorLogin('other');
     });
 
     expect(screen.queryByText('#1 Fix the thing')).not.toBeInTheDocument();

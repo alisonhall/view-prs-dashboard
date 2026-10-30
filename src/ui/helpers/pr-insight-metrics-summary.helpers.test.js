@@ -1,6 +1,6 @@
 const {
   createPrInsightMetricsSummaryHelpers,
-} = require("./pr-insight-metrics-summary.helpers.js");
+} = require("./pr-insight-metrics-summary.helpers.ts");
 
 describe("pr insight metrics summary helpers", () => {
   test("given metrics counts, when formatting review footprint, then comments reviews and approvals are rendered", () => {

@@ -1,4 +1,4 @@
-const { createPrFormattingHelpers } = require("./pr-formatting.helpers.js");
+const { createPrFormattingHelpers } = require("./pr-formatting.helpers.ts");
 
 describe("pr formatting helpers", () => {
   const { escapeHtml, stripAnsi, formatIsoDatetime, toCount } =

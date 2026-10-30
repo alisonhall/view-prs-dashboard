@@ -5,10 +5,6 @@ require('@testing-library/jest-dom');
 const { ActivityTimelineSummary } = require('./ActivityTimelineSummary');
 
 describe('ActivityTimelineSummary', () => {
-  afterEach(() => {
-    delete window.asArray;
-  });
-
   test('given no timeline data, when rendering, then falls back to the summary string', () => {
     render(<ActivityTimelineSummary activityTimelineRaw={[]} fallbackSummary="3 comments" isOpen pr={{}} actorsMap={{}} />);
     expect(screen.getByText('3 comments')).toBeInTheDocument();
@@ -20,8 +16,6 @@ describe('ActivityTimelineSummary', () => {
   });
 
   test('given timeline entries, when rendering, then renders a table with one row per date', () => {
-    window.asArray = (v) => (Array.isArray(v) ? v : []);
-
     const activityTimelineRaw = [
       { date: '2026-01-05', actor: 'alice', type: 'comment', count: 2 },
       { date: '2026-01-04', actor: 'bob', type: 'commit', count: 1 },
@@ -35,11 +29,17 @@ describe('ActivityTimelineSummary', () => {
     expect(screen.getByText(/comments \(2\)/)).toBeInTheDocument();
   });
 
-  describe('consolidating no-activity weekday runs', () => {
-    beforeEach(() => {
-      window.asArray = (v) => (Array.isArray(v) ? v : []);
-    });
+  test("given a 'closed' timeline entry, when rendering, then shows 'closed PR', not generic pluralization", () => {
+    const activityTimelineRaw = [
+      { date: '2026-01-06', actor: 'unknown', type: 'closed', count: 1 },
+    ];
+    render(<ActivityTimelineSummary activityTimelineRaw={activityTimelineRaw} fallbackSummary="" isOpen={false} pr={{}} actorsMap={{}} />);
 
+    expect(screen.getByText('2026-01-06')).toBeInTheDocument();
+    expect(screen.getByText(/closed PR/)).toBeInTheDocument();
+  });
+
+  describe('consolidating no-activity weekday runs', () => {
     // 2026-01-05/06 are a Monday/Tuesday; 2026-01-12 is the following
     // Monday - a closed PR (isOpen=false) never extends past `newest`
     // (2026-01-12), so the walk covers exactly Mon 01-05 through Mon

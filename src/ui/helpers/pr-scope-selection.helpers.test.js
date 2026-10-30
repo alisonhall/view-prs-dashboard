@@ -2,7 +2,7 @@
 
 const {
   createPrScopeSelectionHelpers,
-} = require("./pr-scope-selection.helpers.js");
+} = require("./pr-scope-selection.helpers.ts");
 
 describe("pr scope selection helpers", () => {
   test("given invalid scope value, when normalizing selected scope, then all scope is returned", () => {

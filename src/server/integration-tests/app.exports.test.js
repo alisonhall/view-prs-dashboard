@@ -196,54 +196,86 @@ describe("pure helper behavior", () => {
         comments: [{ id: "1", author: "a", note: "n" }],
         otherNotes: "x",
         prDifficulty: "3",
-        rallyStories: ["US1001", "DE1002"],
-        rallyLinks: [
-          "https://rally.example/US1001",
-          "https://rally.example/DE1002",
+        stories: [
+          { name: "US1001", url: "https://stories.example/US1001" },
+          { name: "DE1002", url: "" },
         ],
         analysisOfPr: "Moderate complexity",
       }),
-    ).toMatchObject({
-      comments: [{ id: "1", author: "a", note: "n" }],
+    ).toEqual({
+      comments: [expect.objectContaining({ id: "1", author: "a", note: "n" })],
       otherNotes: "x",
       prDifficulty: "3",
-      rallyStories: ["US1001", "DE1002"],
-      rallyLinks: [
-        "https://rally.example/US1001",
-        "https://rally.example/DE1002",
+      stories: [
+        { name: "US1001", url: "https://stories.example/US1001" },
+        { name: "DE1002", url: "" },
       ],
       analysisOfPr: "Moderate complexity",
     });
   });
-  test("converts legacy rally string fields to arrays when normalizeNotes receives single values", () => {
+  test("trims story names and URLs and drops empty rows when normalizeNotes receives stories", () => {
     expect(
       app.normalizeNotes({
         comments: [],
-        otherNotes: "",
-        prDifficulty: "",
-        rallyStories: "US1001",
-        rallyLinks: "https://rally.example/US1001",
-        analysisOfPr: "",
-      }),
-    ).toMatchObject({
-      rallyStories: ["US1001"],
-      rallyLinks: ["https://rally.example/US1001"],
-    });
+        stories: [
+          { name: "  US1001  ", url: " https://stories.example/US1001 " },
+          { name: "", url: "   " },
+          { url: "https://stories.example/DE1002" },
+          "US1003",
+          null,
+        ],
+      }).stories,
+    ).toEqual([
+      { name: "US1001", url: "https://stories.example/US1001" },
+      { name: "", url: "https://stories.example/DE1002" },
+      { name: "US1003", url: "" },
+    ]);
   });
-  test("trims and filters empty rally entries when normalizeNotes receives array values", () => {
+  test("pairs legacy rally stories and links by position when normalizeNotes receives notes saved before stories", () => {
+    const notes = app.normalizeNotes({
+      comments: [],
+      rallyStories: ["US1001", "DE1002"],
+      rallyLinks: [
+        "https://stories.example/US1001",
+        "https://stories.example/DE1002",
+        "https://stories.example/extra",
+      ],
+    });
+    expect(notes.stories).toEqual([
+      { name: "US1001", url: "https://stories.example/US1001" },
+      { name: "DE1002", url: "https://stories.example/DE1002" },
+      { name: "", url: "https://stories.example/extra" },
+    ]);
+    expect(notes).not.toHaveProperty("rallyStories");
+    expect(notes).not.toHaveProperty("rallyLinks");
+  });
+  test("converts legacy single-string rally fields to one story when normalizeNotes receives single values", () => {
     expect(
       app.normalizeNotes({
         comments: [],
-        otherNotes: "",
-        prDifficulty: "",
+        rallyStories: "US1001",
+        rallyLinks: "https://stories.example/US1001",
+      }).stories,
+    ).toEqual([{ name: "US1001", url: "https://stories.example/US1001" }]);
+  });
+  test("trims and drops empty legacy rally entries when normalizeNotes receives array values", () => {
+    expect(
+      app.normalizeNotes({
+        comments: [],
         rallyStories: ["  US1001  ", "", "   "],
-        rallyLinks: [" https://rally.example/US1001 ", ""],
-        analysisOfPr: "",
-      }),
-    ).toMatchObject({
-      rallyStories: ["US1001"],
-      rallyLinks: ["https://rally.example/US1001"],
-    });
+        rallyLinks: [" https://stories.example/US1001 ", ""],
+      }).stories,
+    ).toEqual([{ name: "US1001", url: "https://stories.example/US1001" }]);
+  });
+  test("prefers stories over legacy rally fields when normalizeNotes receives both", () => {
+    expect(
+      app.normalizeNotes({
+        comments: [],
+        stories: [{ name: "US1", url: "" }],
+        rallyStories: ["OLD"],
+        rallyLinks: ["https://stories.example/OLD"],
+      }).stories,
+    ).toEqual([{ name: "US1", url: "" }]);
   });
   test("clears prDifficulty when normalizeNotes receives an unsupported value", () => {
     expect(

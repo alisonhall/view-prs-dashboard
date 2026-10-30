@@ -4,7 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const React = require("react");
 // Phase 6 (see REACT_MIGRATION_PLAN.md): this suite mounts the real
-// PrTableApp (see installReactTableMountBridge() below) via
+// PrTableApp (see installReactTestGlobals() below) via
 // @testing-library/react's own render()/cleanup() rather than a hand-rolled
 // ReactDOM.createRoot() bridge - see that function's own comment for why.
 // Importing it also configures @testing-library/dom's *shared* global
@@ -12,37 +12,101 @@ const React = require("react");
 // `screen`/`waitFor`/`within` below read from) with an eventWrapper that
 // wraps every fireEvent-dispatched event (which @testing-library/user-event
 // uses internally for every keystroke/click) in act().
-const { render: rtlRender, cleanup } = require("@testing-library/react");
-const { flushSync } = require("react-dom");
+const { render: rtlRender, cleanup, act } = require("@testing-library/react");
 // @testing-library/react's render() sets this automatically, but setting it
 // here too documents the requirement plainly and stays correct even if the
 // bridge above ever stops going through render().
 global.IS_REACT_ACT_ENVIRONMENT = true;
 const { screen, waitFor, within, fireEvent } = require("@testing-library/dom");
 const userEvent = require("@testing-library/user-event").default;
-const { createMultiPrPayload } = require("../test-fixtures/pr-data.fixtures.js");
-const { PrTableApp } = require("../components/PrTableApp");
+// UI redesign phase 2: "View PR JSON details" is in each row's More menu.
+const openPrJsonDetails = async (user, prNumber) => {
+  const [moreButton] = await screen.findAllByRole("button", { name: `More actions for PR #${prNumber}` });
+  await user.click(moreButton);
+  await user.click(await screen.findByRole("menuitem", { name: "View PR JSON details" }));
+};
+// Shows a PR row in the detail pane on one of its tabs (Overview,
+// Activity, Conversations, Notes): clicks the row (its Signals cell, which
+// isn't a control) unless it's already selected, then the tab unless it's
+// already open. Returns the tab's panel.
+const openPrPane = async (user, row, tab = "Overview") => {
+  if (row.getAttribute("aria-current") !== "true") {
+    await user.click(row.querySelector(".pr-cell-signals"));
+  }
+  const tabButton = within(document.querySelector(".pr-pane")).getByRole("tab", { name: new RegExp(`^${tab}`) });
+  if (tabButton.getAttribute("aria-selected") !== "true") {
+    await user.click(tabButton);
+  }
+  return within(document.querySelector(".pr-pane")).getByRole("tabpanel");
+};
+// Expands one thread on the Conversations tab and returns its list item.
+const openConversation = async (user, panel, threadId) => {
+  const item = panel.querySelector(`.pr-conv-thread[data-thread-id="${threadId}"]`);
+  const row = within(item).getByRole("button", { expanded: false });
+  await user.click(row);
+  return item;
+};
+// The Conversations tab's filter chip whose name starts with `name`.
+const conversationChip = (panel, name) =>
+  within(within(panel).getByRole("group", { name: "Show" })).getByRole("button", { name: new RegExp(`^${name}`) });
+// Starts the page with the detail pane hidden (the saved choice), so the
+// table shows its Size and Activity columns.
+const hideDetailPane = () => {
+  const { PANE_VISIBLE_STORAGE_KEY } = require("../state/PrTableUiStateProvider");
+  window.localStorage.setItem(PANE_VISIBLE_STORAGE_KEY, "false");
+};
+// A tooltip's text, through its trigger's aria-describedby.
+const tooltipDescription = (element) => {
+  const id = element?.closest(".ui-tooltip-target, [aria-describedby]")?.getAttribute("aria-describedby") || "";
+  return document.getElementById(id)?.textContent || "";
+};
+const { formatIsoDatetime } = require("../helpers/pr-formatting.helpers.ts").createPrFormattingHelpers();
+// The accessible names of a row's Signals icons, in slot order.
+const signalNames = (row) =>
+  Array.from(row?.querySelectorAll(".pr-cell-signals [role='img']") || []).map((icon) => icon.getAttribute("aria-label"));
+const { createMultiPrPayload } = require("../test-fixtures/pr-data.fixtures.ts");
+const { PrDataPolling } = require("../components/PrDataPolling");
 const { PrDataProvider } = require("../state/PrDataProvider");
-const { NeedsAttentionProvider } = require("../components/NeedsAttentionProvider");
-const { MultiSelectCheckboxList } = require("../components/MultiSelectCheckboxList");
-const { AppliedFilterSummary } = require("../components/AppliedFilterSummary");
-const { Snackbar } = require("../components/Snackbar");
-const { TriggerAutoRunButton } = require("../components/TriggerAutoRunButton");
-const { QuickCheckButton } = require("../components/QuickCheckButton");
-const { QuickCheckAllButton } = require("../components/QuickCheckAllButton");
-// Phase 6 (see REACT_MIGRATION_PLAN.md): these three are plain UMD helper
-// modules (require()-able directly), but in the browser PrTableApp.jsx and
-// index.page.js read them off window.ViewPrsXxxHelpers (set by index.html's
-// own <script> tags, which this suite never loads) rather than importing
-// them - see the initTestPage() wiring below for where they get attached.
-const sectionConfigHelpers = require("../helpers/pr-section-config.helpers.js");
-const smartGroupsHelpers = require("../helpers/pr-smart-groups.helpers.js");
-const reactCallbacksHelpers = require("../helpers/react-callbacks.helpers.js");
+// Test-only bridge removal (see WINDOW_BRIDGE_ELIMINATION_PLAN.md): the
+// harness root's PrDataProvider is read through this probe (mounted below);
+// it was window.getReactPrTablePayload, deleted.
+const { createPrDataProbe } = require("../test-fixtures/pr-data-probe");
+const prDataProbe = createPrDataProbe();
+const { FilterStateProvider } = require("../state/FilterStateProvider");
+const { useFilterState } = require("../state/FilterStateContext");
+const { NotesDirtyProvider } = require("../components/NotesDirtyProvider");
+const { PrTableUiStateProvider } = require("../state/PrTableUiStateProvider");
+const { useNotesDirty } = require("../state/NotesDirtyContext");
+const { AuthorInsightsDraftsProvider } = require("../components/AuthorInsightsDraftsProvider");
+const { AutoRenderBlockingSync } = require("../components/AutoRenderBlockingSync");
+const { AutoRenderBlockingProvider } = require("../components/AutoRenderBlockingProvider");
+const { SettingsDrawerProvider, useSettingsDrawer } = require("../state/SettingsDrawerContext");
+const { useStatusText } = require("../state/StatusTextContext");
+const { PrActivityQueueProvider } = require("../components/PrActivityQueueProvider");
+const { StatusTextProvider } = require("../components/StatusTextProvider");
+const { BackfillStatusProvider } = require("../components/BackfillStatusProvider");
+const { RequestActivityProvider } = require("../components/RequestActivityProvider");
+const { useRequestActivity } = require("../state/RequestActivityContext");
+const { FilterOptionsProvider } = require("../components/FilterOptionsProvider");
+const { RowFilterSelectionProvider } = require("../state/RowFilterSelectionProvider");
+const { AuthorThreadResolutionSelectionProvider } = require("../state/AuthorThreadResolutionSelectionProvider");
+const { ChangeFilterActorSelectionProvider } = require("../state/ChangeFilterActorSelectionProvider");
+const { AppShell } = require("../components/shell/AppShell");
+const { ListSelectionSeeding } = require("../state/useListSelectionSeeding");
+const { buildFilterStateInitialValues } = require("../state/filterStateInitialValues");
+const { SnackbarProvider } = require("../components/SnackbarProvider");
 
 const htmlPath = path.join(__dirname, "..", "index.html");
 const indexHtml = fs.readFileSync(htmlPath, "utf8");
-const cssPath = path.join(__dirname, "..", "index.css");
-const indexCss = fs.readFileSync(cssPath, "utf8");
+const commonCss = fs.readFileSync(path.join(__dirname, "..", "styles", "common.css"), "utf8");
+
+// Chooses one of a PR row's More menu items (In review, Flag, Update PR...),
+// from the first copy of the row.
+const chooseRowMenuItem = async (user, prNumber, itemName) => {
+  const [moreButton] = await screen.findAllByRole("button", { name: `More actions for PR #${prNumber}` });
+  await user.click(moreButton);
+  await user.click(await screen.findByRole("menuitem", { name: itemName }));
+};
 
 const extractBodyHtml = (fullHtml) => {
   const bodyMatch = String(fullHtml || "").match(/<body[^>]*>([\s\S]*)<\/body>/i);
@@ -60,13 +124,41 @@ let actionLogEntries = [];
 let actorNameCacheEntries = {};
 let actorLoginAliasEntries = {};
 let fetchMock;
+// Window-bridge elimination Phase 5b (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+// the real FilterStateProvider's Context value, captured by
+// FilterStateTestHandle below. This suite's own helpers (and a few assertions)
+// used to read/write that state through window.getFilterStateValues()/
+// setFilterStateValue() - bridges with no production caller, deleted. null
+// until the harness tree mounts (and after it unmounts), like the bridges
+// were.
+let filterStateTestHandle = null;
+let settingsDrawerTestHandle = null;
+// Window-bridge elimination Phase 7.3: the real RequestActivityProvider's
+// functions, captured by RequestActivityTestHandle below - the scheduler test
+// drives renderSchedulerStatus through this, as JobEventsProvider's SSE path
+// does in production (it used to call window.renderSchedulerStatus).
+let requestActivityTestHandle = null;
+let statusTextTestHandle = null;
+// Window-bridge elimination Phase 7.4: the real NotesDirtyProvider's value,
+// captured by NotesDirtyTestHandle below. The deferred-poll tests mark a PR's
+// notes dirty through it (they used to stub window.getDirtyNotesPrNumbers and
+// call window.recomputeDirtyPrSectionsFields, both index.page.js's).
+let notesDirtyTestHandle = null;
+const readFilterStateValues = () => filterStateTestHandle?.values;
 
 const createFetchMock = ({
   userDefaultsOverrides = {},
   backfillStatusResponse = null,
   authorCommentsGetHandler = null,
-} = {}) =>
-  jest.fn(async (url, init = {}) => {
+} = {}) => {
+  const currentBackfillStatus = () =>
+    backfillStatusResponse || {
+      ok: true,
+      running: false,
+      summary: "Backfill status: not running",
+      output: "Backfill status: not running",
+    };
+  return jest.fn(async (url, init = {}) => {
     const normalizedUrl = String(url || "");
     const method = String(init?.method || "GET").toUpperCase();
 
@@ -79,15 +171,7 @@ const createFetchMock = ({
     }
 
     if (normalizedUrl === "/view-prs/backfill" && method === "GET") {
-      if (backfillStatusResponse) {
-        return createOkJsonResponse(backfillStatusResponse);
-      }
-      return createOkJsonResponse({
-        ok: true,
-        running: false,
-        summary: "Backfill status: not running",
-        output: "Backfill status: not running",
-      });
+      return createOkJsonResponse(currentBackfillStatus());
     }
 
     if (normalizedUrl === "/view-prs/backfill/start" && method === "POST") {
@@ -159,7 +243,14 @@ const createFetchMock = ({
     }
 
     if (normalizedUrl === "/view-prs/data" && method === "GET") {
-      return createOkJsonResponse(latestDataPayload);
+      // Like the real server (view-prs-data-routes.js's buildDataPayload), the
+      // data response embeds the same backfill state /view-prs/backfill
+      // returns; a fixture's own `backfill` wins. Window-bridge elimination
+      // Phase 7.2 made this matter: the data load and the Backfill section's own
+      // status load now both start on mount, so whichever finishes last
+      // renders the backfill status, and a payload without `backfill` makes
+      // updateBackfillStatusFromPayload render the payload itself as one.
+      return createOkJsonResponse({ backfill: currentBackfillStatus(), ...latestDataPayload });
     }
 
     if (
@@ -195,140 +286,21 @@ const createFetchMock = ({
 
     return createOkJsonResponse({ ok: true });
   });
-
-// Phase 6 (see REACT_MIGRATION_PLAN.md): index.html no longer has vanilla
-// fallback markup nested inside each "#<id>-root" container for the 26
-// Run & Filter form fields React owns unconditionally - only real React
-// (react-app.jsx, never loaded/mounted in this jsdom-only suite) creates
-// these elements now. Several things break without them existing at all,
-// not just field-specific assertions - most importantly,
-// pr-data-tab.orchestrator.js's renderPrData bails out of rendering
-// *anything* (not just filters - the whole PR table too) if `#repo`/
-// `#filter-pr-numbers` don't exist. This simulates what React would have
-// mounted, using the exact same id/name/type/default values the deleted
-// markup had, so this suite can keep exercising index.page.js's real
-// behavior against real DOM nodes with real "name" attributes/values,
-// same as it always could.
-const injectRunFilterFieldElements = () => {
-  const setRootContent = (rootId, html) => {
-    const root = document.getElementById(rootId);
-    if (root && !root.firstElementChild) {
-      root.innerHTML = html;
-    }
-  };
-
-  setRootContent(
-    "scope-mode-root",
-    '<select id="scope-mode" name="scopeMode"><option value="all" selected>All stored rows</option><option value="last-run">Last run rows</option><option value="needs-attention">Needs attention rows</option><option value="needs-attention-or-interacted">Needs attention or interacted rows</option></select>',
-  );
-  setRootContent(
-    "filter-pr-numbers-root",
-    '<input type="text" id="filter-pr-numbers" name="filterPrNumbers" placeholder="912, 921" />',
-  );
-  setRootContent(
-    "filter-custom-comments-root",
-    '<select id="filter-custom-comments" name="filterCustomComments"><option value="" selected>Any (with or without)</option><option value="with">With custom comments</option><option value="without">Without custom comments</option></select>',
-  );
-  setRootContent(
-    "filter-other-notes-root",
-    '<select id="filter-other-notes" name="filterOtherNotes"><option value="" selected>Any (with or without)</option><option value="with">With other notes</option><option value="without">Without other notes</option></select>',
-  );
-  setRootContent(
-    "filter-pr-difficulty-root",
-    '<select id="filter-pr-difficulty" name="filterPrDifficulty"><option value="" selected>Any (set or not set)</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="not-set">Not set</option></select>',
-  );
-  setRootContent(
-    "filter-rally-stories-root",
-    '<select id="filter-rally-stories" name="filterRallyStories"><option value="" selected>Any (with or without)</option><option value="with">With Rally stories</option><option value="without">Without Rally stories</option></select>',
-  );
-  setRootContent(
-    "filter-rally-links-root",
-    '<select id="filter-rally-links" name="filterRallyLinks"><option value="" selected>Any (with or without)</option><option value="with">With Rally links</option><option value="without">Without Rally links</option></select>',
-  );
-  setRootContent(
-    "filter-analysis-of-pr-root",
-    '<select id="filter-analysis-of-pr" name="filterAnalysisOfPr"><option value="" selected>Any (with or without)</option><option value="with">With analysis</option><option value="without">Without analysis</option></select>',
-  );
-  setRootContent(
-    "always-show-in-review-root",
-    '<input type="checkbox" id="always-show-in-review" name="alwaysShowInReview" />',
-  );
-  setRootContent(
-    "attention-no-activity-mode-root",
-    '<select id="attention-no-activity-mode" name="attentionNoActivityMode"><option value="all" selected>Mark all NO_ACTIVITY PRs</option><option value="mine-only">Only NO_ACTIVITY PRs assigned to me or where I am a reviewer</option><option value="assigned-only">Only NO_ACTIVITY PRs assigned to me</option><option value="reviewer-only">Only PRs where I am a reviewer</option><option value="none">Never mark NO_ACTIVITY PRs</option></select>',
-  );
-  setRootContent(
-    "attention-include-pending-comments-root",
-    '<input type="checkbox" id="attention-include-pending-comments" name="attentionIncludePendingComments" checked />',
-  );
-  setRootContent(
-    "attention-ignore-merge-only-commits-root",
-    '<input type="checkbox" id="attention-ignore-merge-only-commits" name="attentionIgnoreMergeOnlyCommits" />',
-  );
-  setRootContent(
-    "attention-include-closed-merged-root",
-    '<input type="checkbox" id="attention-include-closed-merged" name="attentionIncludeClosedMerged" checked />',
-  );
-  setRootContent(
-    "attention-include-draft-changed-root",
-    '<input type="checkbox" id="attention-include-draft-changed" name="attentionIncludeDraftChanged" checked />',
-  );
-  setRootContent(
-    "attention-include-draft-no-activity-root",
-    '<input type="checkbox" id="attention-include-draft-no-activity" name="attentionIncludeDraftNoActivity" />',
-  );
-  setRootContent(
-    "attention-author-thread-resolution-mode-root",
-    '<select id="attention-author-thread-resolution-mode" name="attentionAuthorThreadResolutionMode"><option value="allow-all" selected>Allow PR authors to resolve all own-PR threads</option><option value="allow-only">Allow only for selected thread starters</option><option value="deny-only">Disallow for selected thread starters</option></select>',
-  );
-  setRootContent(
-    "change-filter-use-builtin-merge-pattern-root",
-    '<input type="checkbox" id="change-filter-use-builtin-merge-pattern" name="changeFilterUseBuiltinMergePattern" checked />',
-  );
-  setRootContent(
-    "change-filter-ignore-commit-patterns-root",
-    '<textarea id="change-filter-ignore-commit-patterns" name="changeFilterIgnoreCommitPatterns" rows="4" aria-describedby="commit-patterns-help"></textarea>',
-  );
-  setRootContent(
-    "repo-root",
-    '<input type="text" id="repo" name="repo" placeholder="owner/repo" />',
-  );
-  setRootContent(
-    "limit-root",
-    '<input type="number" id="limit" name="limit" min="1" placeholder="200" />',
-  );
-  setRootContent(
-    "merged-limit-root",
-    '<input type="number" id="merged-limit" name="mergedLimit" min="1" placeholder="15" />',
-  );
-  setRootContent("jobs-root", '<input type="number" id="jobs" name="jobs" min="1" placeholder="6" />');
-  setRootContent(
-    "open-mode-root",
-    '<select id="open-mode" name="openMode"><option value="none" selected>none</option><option value="changed">changed</option><option value="all">all</option></select>',
-  );
-  setRootContent("ack-changed-root", '<input type="checkbox" id="ack-changed" name="ackChanged" />');
-  setRootContent(
-    "show-reason-root",
-    '<input type="checkbox" id="show-reason" name="showReason" checked />',
-  );
-  setRootContent("quiet-root", '<input type="checkbox" id="quiet" name="quiet" />');
 };
 
 // Phase 6 (see REACT_MIGRATION_PLAN.md): this suite never loads the real
-// react-app.jsx bundle (an ES module, and heavy with its own import-time
-// side effects mounting ~10 unrelated React roots), so index.page.js's
+// react-app.tsx bundle (an ES module that mounts the app as an import-time
+// side effect), so index.page.js's
 // renderPrData always used to see hasReactApp as false and take its
 // "React not available" branch, which used to build a full vanilla table.
 // That branch (and the vanilla table-build code it called) is gone now, so
 // this suite needs a real React-rendered table to keep exercising real
 // row/checkbox/Ack DOM the same way a real browser does. Rather than
-// importing the whole react-app.jsx module, this reimplements just its
-// mountReactPrTable/updateReactPrTable pairing directly against the same
-// PrTableApp component real production mounts - see react-app.jsx's real
-// mountReactPrTable, and index.page.js's mountReactTable/updateReactTable
-// (Track C slice C2b, REACT_MIGRATION_PLAN.md) for the real callers.
-// Called both from initTestPage() and from the one test below that builds
-// its own page setup from scratch instead of using it.
+// importing the whole react-app.tsx module, FilterStateTestRootHarness
+// (below) mounts the real AppShell inside the same Providers production
+// uses, nested the same way. Installed both from
+// initTestPage() and from the one test below that builds its own page setup
+// from scratch instead of using it.
 //
 // Mounts via @testing-library/react's own render()/cleanup() rather than a
 // hand-rolled ReactDOM.createRoot() bridge. An earlier version of this
@@ -346,221 +318,215 @@ const injectRunFilterFieldElements = () => {
 // delegation (a typed input's native value updated the DOM but never
 // reached React's onChange/state at all). cleanup() is RTL's own
 // real, battle-tested fix for exactly this class of problem.
-// Phase 6 (see REACT_MIGRATION_PLAN.md): pr-filter-panel.helpers.js's
-// multi-select populate functions and renderManagementFilterSummary have
-// no DOM-building of their own anymore - they only call
-// window.renderReactMultiSelectList/window.renderReactFilterSummary
-// (real react-app.jsx bridges, never loaded in this jsdom-only suite - see
-// installReactTableMountBridge's own comment for why the PR table gets the
-// same "reimplement just the bridge, not the whole module" treatment).
-// Real containers already exist in index.html for all of these (no
-// `-root` placeholder/portal involved, matching react-app.jsx's own
-// comment on MULTI_SELECT_LIST_ID_PREFIXES and mountAppliedFilterSummary),
-// so this mounts the same real components react-app.jsx does, directly
-// into them, via RTL's render()/cleanup() like every other bridge here.
-const MULTI_SELECT_LIST_ID_PREFIXES = {
-  "label-list": "label",
-  "exclude-label-list": "exclude-label",
-  "author-list": "author",
-  "assigned-list": "assigned",
-  "approver-list": "approver",
-  // Post-Phase-6 follow-up (see REACT_MIGRATION_PLAN.md): these 4 are built
-  // directly in index.page.js (not pr-filter-panel.helpers.js) but share
-  // the exact same window.renderReactMultiSelectList bridge/no-fallback
-  // shape - added here to match react-app.jsx's real
-  // MULTI_SELECT_LIST_ID_PREFIXES after index.page.js's own vanilla
-  // DOM-building fallback for them was deleted as dead code (it was never
-  // reachable in production, only in this stub, once it always returned
-  // `false` for these 4 ids for lack of an entry here).
-  "attention-author-thread-resolution-allow-list": "attention-author-thread-resolution-allow",
-  "attention-author-thread-resolution-deny-list": "attention-author-thread-resolution-deny",
-  "change-filter-ignore-comment-authors-list": "change-filter-ignore-comment-authors",
-  "change-filter-ignore-review-authors-list": "change-filter-ignore-review-authors",
-};
+// Phase H.12 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+// window.renderReactFilterSummary/window.updateReactDataMetaText (the 2
+// push bridges this used to install a standalone rtlRender tree for) are
+// both confirmed dead in production - DataViewHeader derives the same
+// summary/chips/#data-meta text live, reactively, from Context instead.
+// The harness's real AppShell renders it inside the harness's
+// PrDataProvider (not as its own independent root the way this used to
+// be), since it needs a real <PrDataProvider/> ancestor.
+// Window-bridge elimination Phase 3 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+// the REAL AutoRenderBlockingProvider is mounted by FilterStateTestRootHarness
+// below, as the ancestor of the harness's PrDataProvider - the same
+// order react-app.tsx uses. It used to be its own separate,
+// sibling root (installAutoRenderBlockingProviderBridge), which stopped
+// working once PrDataProvider started reading it through Context: a
+// PrDataProvider outside the Provider sees the inert default, so the whole
+// auto-render-blocking path would silently do nothing.
 
-const installReactFilterPanelMountBridges = () => {
-  const multiSelectEntries = {};
-  window.renderReactMultiSelectList = (listId, options) => {
-    const idPrefix = MULTI_SELECT_LIST_ID_PREFIXES[listId];
-    const container = document.getElementById(listId);
-    if (!idPrefix || !container) return false;
-    // Matches react-app.jsx's renderReactMultiSelectList exactly: an
-    // incrementing `key` forces a full remount (not a prop-diff update) on
-    // every call, so the component's internal `checked` state always
-    // re-initializes fresh from `options` - see MultiSelectCheckboxList.jsx's
-    // own comment for why a plain rerender() would be wrong here.
-    const entry = multiSelectEntries[listId] || { rerender: null, renderCount: 0 };
-    entry.renderCount += 1;
-    // emptyClassContainer/summaryContainer (deferred-items follow-up, full
-    // vanilla-to-React sweep - see REACT_MIGRATION_PLAN.md): same
-    // resolution react-app.jsx's own computeStaticContainers does, so
-    // MultiSelectCheckboxList's "empty" class toggle and summary count
-    // text work the same way in this test harness as in the real app.
-    const element = React.createElement(MultiSelectCheckboxList, {
-      key: entry.renderCount,
-      options,
-      idPrefix,
-      emptyClassContainer: container,
-      summaryContainer: container.closest("details")?.querySelector(".multi-select-summary") || null,
-    });
-    // flushSync, matching react-app.jsx's real renderReactMultiSelectList:
-    // a same-tick DOM read right after this call (getSelectedMultiSelectValues,
-    // used to seed a *different* list or the filter-apply pipeline that
-    // triggered this render in the first place) must see the committed
-    // result, not React 18's default batched/deferred commit.
-    if (entry.rerender) {
-      flushSync(() => entry.rerender(element));
-    } else {
-      let rerender;
-      flushSync(() => {
-        ({ rerender } = rtlRender(element, { container }));
-      });
-      entry.rerender = rerender;
-    }
-    multiSelectEntries[listId] = entry;
-    return true;
-  };
+// Window-bridge elimination Phase 7 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+// WindowBackedPrActivityProvider (a RequestActivityContext stand-in that
+// forwarded to window.beginRequestActivity) is gone. Its harness roots
+// called those hooks outside this suite's real PrDataProvider, which used to
+// mount lazily with the PR table; the Provider now mounts once at the root
+// of FilterStateTestRootHarness (it loads the data itself, as in
+// production), so every hook below is a genuine descendant of it.
 
-  let filterSummaryRerender = null;
-  window.renderReactFilterSummary = (summaryText, filterChips) => {
-    const container = document.getElementById("management-filter-summary-root");
-    if (!container) return false;
-    if (filterSummaryRerender) {
-      filterSummaryRerender(React.createElement(AppliedFilterSummary, { summaryText, filterChips }));
-    } else {
-      const { rerender } = rtlRender(
-        React.createElement(AppliedFilterSummary, { summaryText, filterChips }),
-        { container },
-      );
-      filterSummaryRerender = rerender;
-    }
-    return true;
-  };
-};
+// The suite mounts the REAL FilterStateProvider, seeded with every field's
+// default as production is (buildFilterStateInitialValues). Its fields are
+// the real filter bar's and Settings drawer's, so tests drive them with
+// user-event like a user would.
 
-// Deferred-items follow-up (full vanilla-to-React sweep, see
-// REACT_MIGRATION_PLAN.md): the 7 status/log panels (#status, #output,
-// #scheduler-details, #request-activity-details, #backfill-details,
-// #backfill-log, #data-meta) are now React-portaled plain text
-// (react-app.jsx's AppRoot), not written directly by index.page.js. Since
-// this test file exercises index.page.js without react-app.jsx's real
-// <AppRoot/> ever mounting, these bridges are otherwise never assigned -
-// a plain textContent write is a faithful simulation here since the real
-// bridges do nothing more than that (createPortal(text, container, key)),
-// unlike the multi-select/filter-summary bridges above which mount real
-// components.
-const installReactStatusTextMountBridges = () => {
-  const wireTextBridge = (bridgeName, containerId) => {
-    window[bridgeName] = (text) => {
-      const container = document.getElementById(containerId);
-      if (!container) return false;
-      container.textContent = text;
-      return true;
-    };
-  };
-  wireTextBridge("updateReactStatusText", "status");
-  wireTextBridge("updateReactOutputText", "output");
-  wireTextBridge("updateReactSchedulerDetailsText", "scheduler-details");
-  wireTextBridge("updateReactRequestActivityDetailsText", "request-activity-details");
-  wireTextBridge("updateReactBackfillDetailsText", "backfill-details");
-  wireTextBridge("updateReactBackfillLogText", "backfill-log");
-  wireTextBridge("updateReactDataMetaText", "data-meta");
-};
+function NotesDirtyTestHandle() {
+  notesDirtyTestHandle = useNotesDirty();
+  React.useEffect(
+    () => () => {
+      notesDirtyTestHandle = null;
+    },
+    [],
+  );
+  return null;
+}
 
-// Deferred-items follow-up (full vanilla-to-React sweep, see
-// REACT_MIGRATION_PLAN.md): #error-snackbar is now fully React-owned
-// (components/Snackbar.jsx, mounted into #error-snackbar-root) - unlike
-// the plain-text panels above, this has real stateful behavior (variant
-// class, hidden toggle, auto-dismiss timer) that many tests assert on
-// precisely, so this mounts the REAL component via RTL (matching the
-// multi-select/filter-summary bridges' approach), not a plain-write
-// simulation - Snackbar.jsx registers window.showErrorNotification/
-// window.showWarningNotification/window.hideErrorNotification itself via
-// its own useEffect, exactly like the real app.
-const installReactSnackbarMountBridge = () => {
-  const container = document.getElementById("error-snackbar-root");
-  if (!container) return;
-  rtlRender(React.createElement(Snackbar), { container });
-};
+// Captures the real FilterStateProvider's Context value for the helpers above.
+function RequestActivityTestHandle() {
+  requestActivityTestHandle = useRequestActivity();
+  React.useEffect(
+    () => () => {
+      requestActivityTestHandle = null;
+    },
+    [],
+  );
+  return null;
+}
 
-// Deferred-items follow-up (full vanilla-to-React sweep, see
-// REACT_MIGRATION_PLAN.md): #trigger-auto-run-btn/#quick-check-btn are now
-// fully React-owned (components/TriggerAutoRunButton.jsx/
-// QuickCheckButton.jsx), each calling window.handleTriggerAutoRun/
-// window.handleQuickCheck (index.page.js) as their onTrigger/onCheck prop
-// - same real-RTL-mount reasoning as the snackbar above, since several
-// tests click these and assert on the resulting disabled/label state.
-const installReactActionButtonMountBridges = () => {
-  const triggerAutoRunContainer = document.getElementById("trigger-auto-run-btn-root");
-  if (triggerAutoRunContainer) {
-    rtlRender(
-      React.createElement(TriggerAutoRunButton, { onTrigger: () => window.handleTriggerAutoRun?.() }),
-      { container: triggerAutoRunContainer },
-    );
-  }
-  const quickCheckContainer = document.getElementById("quick-check-btn-root");
-  if (quickCheckContainer) {
-    rtlRender(
-      React.createElement(QuickCheckButton, { onCheck: () => window.handleQuickCheck?.() }),
-      { container: quickCheckContainer },
-    );
-  }
-  const quickCheckAllContainer = document.getElementById("quick-check-all-btn-root");
-  if (quickCheckAllContainer) {
-    rtlRender(
-      React.createElement(QuickCheckAllButton, { onCheck: () => window.handleQuickCheckAll?.() }),
-      { container: quickCheckAllContainer },
-    );
-  }
-};
+function FilterStateTestHandle() {
+  const state = useFilterState();
+  filterStateTestHandle = state;
+  React.useEffect(
+    () => () => {
+      filterStateTestHandle = null;
+    },
+    [],
+  );
+  return null;
+}
 
-// Track C, slices C2b/C2c (post-Phase-6 follow-up, see
-// REACT_MIGRATION_PLAN.md): index.page.js no longer calls
-// window.ReactMountBridge (that module was deleted - it was just a thin
-// wrapper around window.mountReactPrTable/window.updateReactPrTable plus an
-// isMounted() flag, now inlined directly into index.page.js as
-// mountReactTable/updateReactTable/isReactTableMounted). This stub now
-// defines window.mountReactPrTable/window.updateReactPrTable themselves -
-// the same functions react-app.jsx really exposes - using real RTL
-// rendering, matching mountReactPrTable's own real contract: it mounts the
-// real <PrDataProvider /> (state/PrDataProvider.jsx) wrapping PrTableApp,
-// exactly like react-app.jsx's own mountReactPrTable does, and lets the
-// Provider's own useEffect assign window.updateReactPrTable - this stub no
-// longer reimplements that merge logic itself.
-const installReactTableMountBridge = () => {
-  cleanup();
-  window.ViewPrsSectionConfigHelpers = sectionConfigHelpers;
-  window.ViewPrsSmartGroupsHelpers = smartGroupsHelpers;
-  window.ViewPrsReactCallbacksHelpers = reactCallbacksHelpers;
-  installReactFilterPanelMountBridges();
-  installReactStatusTextMountBridges();
-  installReactSnackbarMountBridge();
-  installReactActionButtonMountBridges();
-
-  window.mountReactPrTable = (containerElement, props) => {
-    if (!containerElement) return null;
-    rtlRender(
-      React.createElement(
-        PrDataProvider,
-        {
-          initialPayload: props?.initialPayload,
-          initialSelectedRepo: props?.selectedRepo,
-          initialVisiblePrNumbers: props?.visiblePrNumbers,
-        },
-        React.createElement(
-          NeedsAttentionProvider,
+// The suite's single persistent root: the real Providers, nested as
+// react-app.tsx nests them, around the real <AppShell /> (the whole page),
+// rendered into index.html's #app-root. The differences from production:
+// the Settings drawer starts open (most tests drive its fields), the test
+// handles below capture Context values for the helpers above, and
+// TabStateProvider, OutputTextProvider, RepoLabelsProvider and
+// JobEventsProvider are left out (their inert defaults are enough here; the
+// view tabs don't switch).
+//
+// PrDataProvider loads /view-prs/data itself (loadOnMount), so this root
+// must mount after initTestPage() points fetch at the test's fetchMock (see
+// installFilterStateProviderBridge's callers). PrDataPolling is mounted as
+// in production, so the "data polling" tests drive it with fake timers.
+function FilterStateTestRootHarness({ initialValues }) {
+  const h = React.createElement;
+  return h(
+    SnackbarProvider,
+    null,
+    h(
+      StatusTextProvider,
+      null,
+      h(
+        RequestActivityProvider,
+        { loadOnMount: true },
+        h(RequestActivityTestHandle),
+        h(
+          BackfillStatusProvider,
           null,
-          React.createElement(PrTableApp, {
-            onCheckboxChange: props?.onCheckboxChange,
-            onAckAction: props?.onAckAction,
-            onApplyLabel: props?.onApplyLabel,
-          }),
+          h(
+            RowFilterSelectionProvider,
+            null,
+            h(
+              AuthorThreadResolutionSelectionProvider,
+              null,
+              h(
+                ChangeFilterActorSelectionProvider,
+                null,
+                h(
+                  FilterStateProvider,
+                  { initialValues },
+                  h(FilterStateTestHandle),
+                  h(
+                    PrActivityQueueProvider,
+                    null,
+                    h(
+                      AutoRenderBlockingProvider,
+                      null,
+                      h(
+                        PrDataProvider,
+                        { initialPayload: {}, initialSelectedRepo: "", loadOnMount: true },
+                        h(prDataProbe.PrDataProbe),
+                        h(StatusTextTestHandle),
+                        h(
+                          NotesDirtyProvider,
+                          null,
+                          h(
+                            PrTableUiStateProvider,
+                            null,
+                            h(
+                              SettingsDrawerProvider,
+                              { initialOpen: true },
+                              h(SettingsDrawerTestHandle),
+                              h(
+                                AuthorInsightsDraftsProvider,
+                                null,
+                                h(AutoRenderBlockingSync),
+                                h(NotesDirtyTestHandle),
+                                h(FilterOptionsProvider, null, h(ListSelectionSeeding), h(AppShell)),
+                              ),
+                            ),
+                          ),
+                        ),
+                        h(PrDataPolling, null),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
         ),
       ),
-      { container: containerElement },
-    );
-    return { unmount: () => {} };
-  };
+    ),
+  );
+}
+
+const installFilterStateProviderBridge = () => {
+  rtlRender(
+    React.createElement(FilterStateTestRootHarness, {
+      // Every field's default, as production starts with: the filter bar
+      // and the Settings drawer show the real fields.
+      initialValues: buildFilterStateInitialValues(),
+    }),
+    { container: document.getElementById("app-root") },
+  );
+};
+
+// UI redesign phase 9b: the run buttons, the PR numbers, the rules, the
+// Script options and Backfill are the real Settings drawer's, open at Run &
+// check (closed in production). showSettingsSectionForTest switches its
+// section.
+function SettingsDrawerTestHandle() {
+  settingsDrawerTestHandle = useSettingsDrawer();
+  React.useEffect(
+    () => () => {
+      settingsDrawerTestHandle = null;
+    },
+    [],
+  );
+  return null;
+}
+
+// The status message's setter, for tests that fake the script's
+// "Viewer: <login>" line (PrDataProvider's last-resort viewer login reads
+// #status, which the drawer renders from this).
+function StatusTextTestHandle() {
+  statusTextTestHandle = useStatusText();
+  React.useEffect(
+    () => () => {
+      statusTextTestHandle = null;
+    },
+    [],
+  );
+  return null;
+}
+const setStatusTextForTest = (text) => {
+  act(() => statusTextTestHandle?.setStatusText(text));
+};
+
+// Unmounts the previous generation's React roots and installs the window
+// globals this suite still fakes (the helper modules index.html's <script>
+// tags would load).
+//
+// Window-bridge elimination Phase 7 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+// this was installReactTableMountBridge, and also stubbed
+// window.mountReactPrTable for index.page.js's renderPrData to call. Both
+// that bridge and renderPrData are gone: the PR table now mounts from
+// FilterStateTestRootHarness's own PrDataProvider (the real AppShell's
+// PrTable), as in production.
+const installReactTestGlobals = () => {
+  cleanup();
+  // index.html loads DOMPurify from a vendored <script>; without it the
+  // review-comment markdown renderer fails closed to escaped text.
+  window.DOMPurify = require("dompurify");
 };
 
 const initTestPage = ({
@@ -574,12 +540,21 @@ const initTestPage = ({
 } = {}) => {
   // Unmount the previous generation's React root(s) while their container
   // is still attached to the document (about to be replaced below) rather
-  // than after - see installReactTableMountBridge()'s own cleanup() call
+  // than after - see installReactTestGlobals()'s own cleanup() call
   // for why unmounting matters here; doing it before detaching the
   // container gives React's own commit/cleanup work a normally-connected
   // DOM to run against.
   cleanup();
   jest.resetModules();
+  // Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md): the 9 multi-select
+  // lists' "pending selections" now live on a dedicated window-level store
+  // (pr-pending-multi-select-selections.helpers.ts), not a module-scope
+  // variable inside index.page.js (deleted since) - jest.resetModules()
+  // above doesn't reset them, since window itself is shared across every
+  // test in this file. Reset explicitly, same reasoning as the interval/listener
+  // tracking below this function.
+  delete window.viewPrsPendingMultiSelectSelections;
+  delete window.viewPrsPendingMultiSelectSelectionsListeners;
   latestDataPayload = dataPayload || { ok: true, byPrNumber: {}, lastRun: null };
   actionLogEntries = Array.isArray(actionEntries) ? actionEntries : [];
   actorNameCacheEntries = actorNameEntries && typeof actorNameEntries === "object"
@@ -589,8 +564,7 @@ const initTestPage = ({
     ? aliasEntries
     : {};
   document.body.innerHTML = extractBodyHtml(indexHtml);
-  injectRunFilterFieldElements();
-  installReactTableMountBridge();
+  installReactTestGlobals();
 
   fetchMock = createFetchMock({
     userDefaultsOverrides,
@@ -603,7 +577,16 @@ const initTestPage = ({
     parse: (markdownText) => `<p>${String(markdownText || "")}</p>`,
   };
 
-  require("../index.page.js");
+  // Phase E (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): must
+  // mount *after* global.fetch/window.fetch point at this test's own
+  // fetchMock - FilterStateProvider's restore effect fires its
+  // /view-prs/user-defaults GET immediately on mount, and would otherwise
+  // race against (and miss) this test's userDefaultsOverrides fixture.
+  installFilterStateProviderBridge();
+
+  // Window-bridge elimination Phase 7.5: index.page.js is deleted (this used
+  // to require() it here, after the root mounted). Its credential hints are
+  // props on the React inputs this root renders.
 };
 
 // Helper functions for multi-select checkbox lists (label, exclude-label, author, assigned, approver filters)
@@ -618,7 +601,11 @@ const getSelectedMultiSelectValues = (listId) => {
 
 const isMultiSelectEmpty = (listId) => {
   const list = getMultiSelectList(listId);
-  return !list || list.classList.contains("empty");
+  return !list || list.classList.contains("empty") || !list.querySelector("input[type='checkbox']");
+};
+
+const setCheckbox = async (checkbox, checked, user) => {
+  if (checkbox.checked !== checked) await user.click(checkbox);
 };
 
 const clickMultiSelectCheckbox = async (listId, value, user) => {
@@ -629,6 +616,34 @@ const clickMultiSelectCheckbox = async (listId, value, user) => {
   await user.click(checkbox);
 };
 
+// Window-bridge elimination Phase 6 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+// window.persistViewFilterOptionOverrides is gone. FilterStateProvider's own
+// 150ms debounced effect is the only thing that saves view-filter fields, so
+// tests wait for it: the latest PUT to /view-prs/user-defaults must pass
+// `assertBody`. Asserting inside waitFor (rather than on the first PUT seen)
+// tolerates an intermediate debounced save if a test's steps straddle 150ms;
+// the debounce always ends on the final state. Clear fetchMock *before* the
+// changes being asserted on, not after them, or the save can land first.
+const waitForPersistedViewFilterOverrides = async (assertBody) => {
+  await waitFor(() => {
+    const putCall = fetchMock.mock.calls
+      .slice()
+      .reverse()
+      .find(([url, init]) => (
+        String(url || "") === "/view-prs/user-defaults" &&
+        String(init?.method || "GET").toUpperCase() === "PUT"
+      ));
+    expect(putCall).toBeDefined();
+    assertBody(JSON.parse(String(putCall[1]?.body || "{}")));
+  });
+};
+
+// Shows a Settings drawer section, as clicking its tab would (the drawer
+// is mounted open): Testing Library's queries skip the hidden ones.
+const showSettingsSectionForTest = (section) => {
+  act(() => settingsDrawerTestHandle.setSection(section));
+};
+
 describe("index page rendering with Testing Library", () => {
   beforeAll(() => {
     // jsdom does not implement scrollIntoView; polyfill to prevent unhandled exceptions
@@ -636,6 +651,11 @@ describe("index page rendering with Testing Library", () => {
     if (typeof window.HTMLElement.prototype.scrollIntoView !== "function") {
       window.HTMLElement.prototype.scrollIntoView = () => {};
     }
+    // user-event adds its document focus/blur listeners once per document,
+    // on the first setup(). Do that here, before beforeEach starts tracking
+    // (and afterEach removing) document listeners: without them, typing into
+    // a controlled input in any later test never reaches React's onChange.
+    userEvent.setup();
   });
 
   // index.page.js starts several real setInterval-based auto-refresh
@@ -665,6 +685,9 @@ describe("index page rendering with Testing Library", () => {
   // during a later, unrelated test. Track listeners added to window/
   // document during a test and remove them afterward, same as the
   // interval tracking above.
+  // (Window-bridge elimination Phase 7.5 deleted index.page.js, so nothing
+  // here require()s it any more. The tracking stays: each test still mounts
+  // React roots whose timers and listeners would otherwise outlive it.)
   const realWindowAddEventListener = window.addEventListener.bind(window);
   const realWindowRemoveEventListener = window.removeEventListener.bind(window);
   const realDocumentAddEventListener = document.addEventListener.bind(document);
@@ -680,6 +703,8 @@ describe("index page rendering with Testing Library", () => {
   let trackedTimeoutIds = [];
 
   beforeEach(async () => {
+    // The detail pane's shown/hidden choice is saved here; start shown.
+    window.localStorage.clear();
     trackedIntervalIds = [];
     const trackingSetInterval = (...args) => {
       const id = realSetInterval(...args);
@@ -729,9 +754,9 @@ describe("index page rendering with Testing Library", () => {
   }, 20_000);
 
   afterEach(async () => {
-    // Some click handlers (e.g. "Apply filters (local)") kick off a
-    // fire-and-forget persistence fetch (`void persistViewFilterOptionOverrides()`)
-    // that the test never awaits. If that Promise chain is still pending
+    // Some handlers (e.g. FilterStateProvider's debounced view-filter
+    // persist) kick off a fire-and-forget persistence fetch that the test
+    // never awaits. If that Promise chain is still pending
     // when the test ends, it resolves during the *next* test - after
     // document.body.innerHTML has already been replaced - and can
     // re-render using this test's now-stale closure state into the next
@@ -762,42 +787,39 @@ describe("index page rendering with Testing Library", () => {
     window.setTimeout = realSetTimeout;
   });
 
-  test("shows key management and data tabs from static HTML", () => {
-    expect(screen.getByRole("heading", { name: "View PR Updates" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Activity" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
-    expect(screen.getByRole("tab", { name: "Run & Filter" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "PR data" })).toBeInTheDocument();
+  // The view tabs are the app header's (AppHeader.test.tsx covers them);
+  // the old management tabs are the Settings drawer's sections.
+  test("shows the page heading in the app header", () => {
+    initTestPage();
+    expect(within(screen.getByRole("banner")).getByRole("heading", { level: 1, name: "View PR Updates" })).toBeInTheDocument();
   });
 
-  test("blocked auto-update indicator is hidden by default and exposes apply action", () => {
+  test("blocked auto-update banner is hidden by default and exposes apply action", () => {
+    initTestPage();
     const indicator = document.getElementById("auto-render-blocked-indicator");
     expect(indicator).toBeInTheDocument();
     expect(indicator).toHaveAttribute("hidden");
-    expect(document.getElementById("auto-render-blocked-pr-links")).toBeInTheDocument();
     expect(document.getElementById("auto-render-blocked-apply-btn")).toBeInTheDocument();
   });
 
-  test("switches the active data tab when a user clicks Review statistics", async () => {
-    const user = userEvent.setup();
-    const reviewStatsTab = screen.getByRole("tab", { name: "Review statistics" });
-    const prDataTab = screen.getByRole("tab", { name: "PR data" });
-
-    await user.click(reviewStatsTab);
-
-    expect(reviewStatsTab).toHaveAttribute("aria-selected", "true");
-    expect(prDataTab).toHaveAttribute("aria-selected", "false");
-    expect(document.getElementById("tab-panel-review-stats").hidden).toBe(false);
-    expect(document.getElementById("tab-panel-pr-data").hidden).toBe(true);
-  });
+  // "switches the active data tab when a user clicks Review statistics"
+  // was removed here: it clicked the real vanilla <button id="tab-review-
+  // stats">, which Phase A, slice 1 (see REACT_MIGRATION_PLAN.md, "Full
+  // migration roadmap") replaced with an empty React portal root
+  // (DataTabButton.jsx/TabStateProvider.tsx) - no vanilla-DOM fallback
+  // left for this jsdom-only suite (which never loads react-app.tsx) to
+  // click. Already covered in a real browser by e2e/smoke.spec.js's
+  // existing "lifecycle section expand/collapse and tab switching work"
+  // test, which clicks both the Review statistics and Author Insights
+  // buttons and asserts their panels become visible - confirmed it
+  // actually catches a regression here too (temporarily disabled
+  // TabStateProvider's DOM-sync call and reran just that test).
 
   // "author insights View in table switches to PR data tab and expands the
   // insights row" was removed here: it exercised Review Stats' "View in
   // table" link/content, which is React-owned (#stats-content-root) with
   // no vanilla-DOM fallback left for this jsdom-only suite (which never
-  // loads react-app.jsx) to render into - see the "React-owned Review
+  // loads react-app.tsx) to render into - see the "React-owned Review
   // Stats content renders cards/table and 'View in table' navigates..."
   // e2e test for that coverage.
 
@@ -875,33 +897,37 @@ describe("index page rendering with Testing Library", () => {
     expect(row).toBeTruthy();
 
     expect(row?.querySelector("input[type='checkbox']")).toBeTruthy();
-    expect(within(openSection).getByLabelText("In Review for PR #11")).toBeInTheDocument();
-    expect(within(openSection).getByLabelText("Flagged for PR #11")).toBeInTheDocument();
-    expect(row?.querySelector(".row-action-btn.update")).toBeTruthy();
-    expect(row?.querySelector(".row-action-btn.ack")).toBeTruthy();
-    expect(
-      within(openSection).getByRole("button", { name: "View PR JSON details for #11" }),
-    ).toBeInTheDocument();
+    // Ack and the More menu, which holds In review, Flag and Update.
+    expect(within(row).getByRole("button", { name: "Ack PR #11" })).toBeInTheDocument();
+    const moreButton = within(row).getByRole("button", { name: "More actions for PR #11" });
+    fireEvent.click(moreButton);
+    const menu = screen.getByRole("menu", { name: "More actions for PR #11" });
+    for (const item of ["Mark in review", "Flag", "Update PR"]) {
+      expect(within(menu).getByRole("menuitem", { name: item })).toBeInTheDocument();
+    }
+    fireEvent.click(moreButton);
 
-    const insightsToggle = row?.querySelector(".row-insights-toggle");
-    expect(insightsToggle?.textContent).toBe("More insights");
-    expect(String(row?.querySelector(".row-pending-comments-chip")?.textContent || "")).toBe(
-      "Pending comments: 1",
-    );
+    const summaryToggle = within(row).getByRole("button", { name: "Show summary for PR #11" });
+    expect(within(row).getByText("1 pending comment")).toBeInTheDocument();
 
-    const insightsRow = row?.nextElementSibling;
-    expect(insightsRow?.hidden).toBe(true);
-    await user.click(insightsToggle);
-    expect(insightsRow?.hidden).toBe(false);
-    expect(insightsToggle?.textContent).toBe("Hide insights");
-    expect(insightsRow?.querySelector(".insights-row-cell")?.getAttribute("colspan")).toBe(
-      "11",
-    );
+    // The chevron opens the summary; its "Show details" shows the PR in the
+    // detail pane.
+    const summaryRow = row?.nextElementSibling;
+    expect(summaryRow?.hidden).toBe(true);
+    await user.click(summaryToggle);
+    expect(summaryRow?.hidden).toBe(false);
+    expect(summaryToggle).toHaveAccessibleName("Hide summary for PR #11");
+    expect(within(summaryRow).getByRole("heading", { name: "Why it's here" })).toBeInTheDocument();
+    // One cell spanning every column: select, Signals, Pull request, Who,
+    // Review, CHK·MRG, Size, Activity, Actions (all kept with the pane open).
+    expect(summaryRow?.querySelector("td")?.getAttribute("colspan")).toBe("9");
 
-    const insightsContent = insightsRow?.querySelector(".row-insights-content");
-    expect(insightsContent).toBeTruthy();
-    expect(indexCss).toMatch(/\.row-insights-content\s*\{[^}]*max-height:\s*80vh;[^}]*overflow-y:\s*auto;/s);
-    expect(insightsContent?.querySelector(".pr-notes-section")).toBeTruthy();
+    const pane = screen.getByRole("complementary", { name: "PR details" });
+    expect(pane).toHaveTextContent("No PR selected");
+    await user.click(within(summaryRow).getByRole("button", { name: "Show details for PR #11" }));
+    expect(row).toHaveAttribute("aria-current", "true");
+    const notesPanel = await openPrPane(user, row, "Notes");
+    expect(notesPanel.querySelector(".pr-notes-section")).toBeTruthy();
   });
 
   test("given review comment markdown with github user attachments when insights render then blocked image tags are replaced with unavailable placeholders", async () => {
@@ -965,15 +991,9 @@ describe("index page rendering with Testing Library", () => {
     const row = prLink.closest("tr");
     expect(row).toBeTruthy();
 
-    const insightsToggle = row?.querySelector(".row-insights-toggle");
-    expect(insightsToggle).toBeTruthy();
-    await user.click(insightsToggle);
-
-    const insightsRow = row?.nextElementSibling;
-    expect(insightsRow?.hidden).toBe(false);
-
-    const insightsContent = insightsRow?.querySelector(".row-insights-content");
-    const placeholder = insightsContent?.querySelector(".md-image-expired");
+    const insightsContent = await openPrPane(user, row, "Conversations");
+    const thread = await openConversation(user, insightsContent, "thread-attachments-1");
+    const placeholder = thread.querySelector(".md-image-expired");
     expect(placeholder).toBeTruthy();
     expect(String(placeholder?.textContent || "")).toContain("image unavailable");
 
@@ -983,7 +1003,7 @@ describe("index page rendering with Testing Library", () => {
     expect(retainedAttachmentImage).toBeNull();
   });
 
-  test("given additions and deletions are available, when More insights is expanded, then Lines changed renders GitHub-style totals", async () => {
+  test("given additions and deletions are available, when the insights are opened, then Lines changed renders GitHub-style totals", async () => {
     initTestPage({
       dataPayload: createMultiPrPayload({
         prs: [
@@ -1015,11 +1035,7 @@ describe("index page rendering with Testing Library", () => {
     const row = prLink.closest("tr");
     expect(row).toBeTruthy();
 
-    const insightsToggle = row?.querySelector(".row-insights-toggle");
-    expect(insightsToggle).toBeTruthy();
-    await user.click(insightsToggle);
-
-    const insightsContent = row?.nextElementSibling?.querySelector(".row-insights-content");
+    const insightsContent = await openPrPane(user, row);
     expect(insightsContent).toBeTruthy();
     const insightsText = String(insightsContent?.textContent || "");
     expect(insightsText).toContain("Lines changed");
@@ -1041,6 +1057,8 @@ describe("index page rendering with Testing Library", () => {
   });
 
   test("given open and merged rows when rendering PR cells then relative last-checked indicators use each row's updated timestamp", async () => {
+    // The Activity column only shows while the detail pane is hidden.
+    hideDetailPane();
     const nowSpy = jest
       .spyOn(Date, "now")
       .mockReturnValue(new Date("2026-06-16T10:30:00Z").getTime());
@@ -1089,31 +1107,31 @@ describe("index page rendering with Testing Library", () => {
         expect(screen.getByText("#11")).toBeInTheDocument();
       });
 
+      // UI redesign phase 2: the last check is in the Activity cell's
+      // tooltip (it was the Status column's "↻ 20m ago"), and a stale one
+      // is marked on the age.
       const openRow = screen.getByText("#11").closest("tr");
       const mergedRow = screen.getByText("#99").closest("tr");
-      const openIndicator = openRow?.querySelector(
-        ".status-cell .pr-last-checked-indicator",
-      );
-      const mergedIndicator = mergedRow?.querySelector(
-        ".status-cell .pr-last-checked-indicator",
-      );
+      const openActivity = openRow?.querySelector(".pr-activity");
+      const mergedActivity = mergedRow?.querySelector(".pr-activity");
 
-      expect(openIndicator).toBeTruthy();
-      expect(mergedIndicator).toBeTruthy();
-      expect(String(openIndicator?.textContent || "")).toBe("↻ 20m ago");
-      expect(String(mergedIndicator?.textContent || "")).toBe("↻ 10m ago");
-      expect(String(openIndicator?.className || "")).toContain(
-        "pr-last-checked-indicator-stale",
+      expect(tooltipDescription(openActivity)).toContain(
+        `Last checked for updates at ${formatIsoDatetime("2026-06-16T10:10:00Z")}. (stale)`,
       );
-      expect(String(mergedIndicator?.className || "")).not.toContain(
-        "pr-last-checked-indicator-stale",
+      expect(tooltipDescription(mergedActivity)).toContain(
+        `Last checked for updates at ${formatIsoDatetime("2026-06-16T10:20:00Z")}.`,
       );
+      expect(tooltipDescription(mergedActivity)).not.toContain("(stale)");
+      expect(openActivity).toHaveAttribute("data-stale", "true");
+      expect(mergedActivity).not.toHaveAttribute("data-stale");
     } finally {
       nowSpy.mockRestore();
     }
   });
 
-  test("given an open PR row, when rendering PR and status cells, then progress stays in the PR cell and relative last-checked text appears in the status cell", async () => {
+  test("given an open PR row, when rendering, then the PR link is in the Pull request cell with no busy indicator, and the last check is in the Activity cell's tooltip", async () => {
+    // The Activity column only shows while the detail pane is hidden.
+    hideDetailPane();
     initTestPage({
       dataPayload: createMultiPrPayload({
         prs: [
@@ -1141,26 +1159,13 @@ describe("index page rendering with Testing Library", () => {
       expect(screen.getByText("#12")).toBeInTheDocument();
     });
 
-    const prCellContent = document.querySelector(
-      '.pr-number-cell[data-pr-number="12"] .pr-number-cell-content',
+    const titleCell = document.querySelector('.pr-cell-title[data-pr-number="12"]');
+    expect(titleCell?.querySelector(".pr-link")).toHaveTextContent("#12");
+    expect(titleCell?.querySelector(".pr-busy")).toBeNull();
+    const row = titleCell?.closest("tr");
+    expect(tooltipDescription(row?.querySelector(".pr-activity"))).toContain(
+      `Last checked for updates at ${formatIsoDatetime("2026-06-16T10:10:00Z")}.`,
     );
-    expect(prCellContent).toBeTruthy();
-
-    const firstChild = prCellContent?.children?.[0];
-    const secondChild = prCellContent?.children?.[1];
-    const thirdChild = prCellContent?.children?.[2];
-
-    expect(String(firstChild?.className || "")).toContain("pr-number-cell-top");
-    expect(String(secondChild?.className || "")).toContain("pr-number-cell-progress");
-    expect(thirdChild).toBeUndefined();
-
-    expect(firstChild?.querySelector(".pr-link")).toBeTruthy();
-    expect(firstChild?.querySelector(".pr-progress-indicator")).toBeNull();
-    expect(secondChild?.querySelector(".pr-progress-indicator")).toBeTruthy();
-    const statusLastChecked = document.querySelector(
-      '.status-cell .pr-last-checked-indicator',
-    );
-    expect(statusLastChecked).toBeTruthy();
   });
 
   test("given author thread-resolution policy modes, when PR author resolves a review thread, then warning behavior follows the selected rule", async () => {
@@ -1230,44 +1235,28 @@ describe("index page rendering with Testing Library", () => {
       return document.querySelector('[data-pr-section="open"]');
     };
 
-    const openReviewSection = async () => {
+    const openConversationsTab = async () => {
       const openSection = await getOpenSection();
       const row = within(openSection).getByText("#77").closest("tr");
-      const toggle = row?.querySelector(".row-insights-toggle");
-      if (toggle && toggle.getAttribute("aria-expanded") !== "true") {
-        await user.click(toggle);
-      }
-      const insightsRow = row?.nextElementSibling;
-      const insightsContent = insightsRow?.querySelector(".row-insights-content");
-      return Array.from(
-        insightsContent?.querySelectorAll("details.insight-section") || [],
-      ).find((node) => {
-        const summary = node.querySelector("summary");
-        return String(summary?.textContent || "").startsWith("Review conversations");
-      });
+      return openPrPane(user, row, "Conversations");
     };
 
+    // A wrongly resolved thread is counted in the summary line and listed
+    // under Unresolved; a rightly resolved one is hidden there.
     const expectWarningState = async (expectedWarning) => {
-      const reviewSection = await openReviewSection();
-      const summaryText = String(
-        reviewSection?.querySelector("summary")?.textContent || "",
-      );
+      const panel = await openConversationsTab();
+      const summaryText = String(panel.querySelector(".pr-conv-summary")?.textContent || "");
+      const thread = panel.querySelector('.pr-conv-thread[data-thread-id="thread-author-resolved"]');
       if (expectedWarning) {
-        expect(summaryText).toContain(
-          "Warning: 1 thread incorrectly resolved by PR author",
-        );
-        expect(String(reviewSection?.className || "")).toContain(
-          "insight-section-warning",
-        );
+        expect(summaryText).toContain("1 resolved by the wrong person");
+        expect(thread).toHaveAttribute("data-state", "wrong");
       } else {
-        expect(summaryText).toBe("Review conversations (1/1)");
-        expect(String(reviewSection?.className || "")).not.toContain(
-          "insight-section-warning",
-        );
+        expect(summaryText).not.toContain("wrong person");
+        expect(thread).toBeNull();
+        expect(panel).toHaveTextContent("1 resolved conversation hidden");
       }
     };
 
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
     await waitFor(async () => {
       const openSection = await getOpenSection();
       expect(within(openSection).getByText("#77")).toBeInTheDocument();
@@ -1290,7 +1279,6 @@ describe("index page rendering with Testing Library", () => {
       "reviewer2",
       user,
     );
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
     await expectWarningState(true);
 
     await clickMultiSelectCheckbox(
@@ -1303,7 +1291,6 @@ describe("index page rendering with Testing Library", () => {
       "reviewer1",
       user,
     );
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
     await expectWarningState(false);
 
     await user.selectOptions(modeField, "deny-only");
@@ -1312,7 +1299,6 @@ describe("index page rendering with Testing Library", () => {
       "reviewer1",
       user,
     );
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
     await expectWarningState(true);
   });
 
@@ -1382,38 +1368,18 @@ describe("index page rendering with Testing Library", () => {
       return document.querySelector('[data-pr-section="open"]');
     };
 
-    const openReviewSection = async () => {
+    const expectWarningState = async (expectedWarning) => {
       const openSection = await getOpenSection();
       const row = within(openSection).getByText("#177").closest("tr");
-      const toggle = row?.querySelector(".row-insights-toggle");
-      if (toggle && toggle.getAttribute("aria-expanded") !== "true") {
-        await user.click(toggle);
-      }
-      const insightsRow = row?.nextElementSibling;
-      const insightsContent = insightsRow?.querySelector(".row-insights-content");
-      return Array.from(
-        insightsContent?.querySelectorAll("details.insight-section") || [],
-      ).find((node) => {
-        const summary = node.querySelector("summary");
-        return String(summary?.textContent || "").startsWith("Review conversations");
-      });
-    };
-
-    const expectWarningState = async (expectedWarning) => {
-      const reviewSection = await openReviewSection();
-      const summaryText = String(
-        reviewSection?.querySelector("summary")?.textContent || "",
-      );
+      const panel = await openPrPane(user, row, "Conversations");
+      const summaryText = String(panel.querySelector(".pr-conv-summary")?.textContent || "");
       if (expectedWarning) {
-        expect(summaryText).toContain(
-          "Warning: 1 thread incorrectly resolved by PR author",
-        );
+        expect(summaryText).toContain("1 resolved by the wrong person");
       } else {
-        expect(summaryText).toBe("Review conversations (1/1)");
+        expect(summaryText).not.toContain("wrong person");
       }
     };
 
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
     await waitFor(async () => {
       const openSection = await getOpenSection();
       expect(within(openSection).getByText("#177")).toBeInTheDocument();
@@ -1438,15 +1404,13 @@ describe("index page rendering with Testing Library", () => {
     );
 
     await user.selectOptions(modeField, "allow-only");
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
     await expectWarningState(false);
 
     await user.selectOptions(modeField, "deny-only");
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
     await expectWarningState(true);
   });
 
-  test("given mixed resolved and unresolved conversations, when opening Review conversations, then the heading shows resolved over total counts", async () => {
+  test("given mixed resolved and unresolved conversations, when opening Conversations, then the summary and filter chips count them", async () => {
     initTestPage({
       dataPayload: createMultiPrPayload({
         prs: [
@@ -1515,15 +1479,11 @@ describe("index page rendering with Testing Library", () => {
     // is unambiguous.
     const openSection = document.querySelector('[data-pr-section="open"]');
     const row = within(openSection).getByText("#79").closest("tr");
-    await user.click(row?.querySelector(".row-insights-toggle"));
-
-    const reviewSection = row?.nextElementSibling?.querySelector(
-      'details.insight-section[data-insight-key="review-conversations"]',
-    );
-    expect(reviewSection).toBeTruthy();
-    expect(String(reviewSection?.querySelector("summary")?.textContent || "")).toBe(
-      "Review conversations (1/2)",
-    );
+    const panel = await openPrPane(user, row, "Conversations");
+    expect(panel.querySelector(".pr-conv-summary")).toHaveTextContent("1 unresolved");
+    expect(conversationChip(panel, "Unresolved")).toHaveTextContent("1");
+    expect(conversationChip(panel, "All")).toHaveTextContent("2");
+    expect(panel).toHaveTextContent("1 resolved conversation hidden");
   });
 
   test("given the current user and PR author appear in PR details, when insights render, then each actor gets its matching identity styling", async () => {
@@ -1613,7 +1573,7 @@ describe("index page rendering with Testing Library", () => {
       }),
     });
 
-    document.getElementById("status").textContent = "Viewer : ahall236_uhg";
+    setStatusTextForTest("Viewer : ahall236_uhg");
 
     const user = userEvent.setup();
     await waitFor(() => {
@@ -1628,27 +1588,25 @@ describe("index page rendering with Testing Library", () => {
     const row = within(openSection).getByText("#80").closest("tr");
     expect(row).toBeTruthy();
 
-    const authorCellIdentity = row?.querySelector(".author-cell-name.actor-identity-pr-author");
-    expect(authorCellIdentity).toBeTruthy();
-    expect(authorCellIdentity?.className).not.toContain("actor-identity-viewer");
+    // The Who column names the author, and only rings the viewer's avatar.
+    const authorAvatar = within(row).getByRole("img", { name: "Author: PR Author" });
+    expect(authorAvatar.querySelector(".ui-avatar")).not.toHaveAttribute("data-viewer");
 
-    await user.click(row?.querySelector(".row-insights-toggle"));
-
-    const insightsContent = row?.nextElementSibling?.querySelector(".row-insights-content");
+    const insightsContent = await openPrPane(user, row, "Conversations");
     expect(insightsContent).toBeTruthy();
 
-    const reviewSection = insightsContent?.querySelector(
-      'details.insight-section[data-insight-key="review-conversations"]',
-    );
-    expect(reviewSection?.querySelector(".actor-identity-pr-author")?.textContent).toContain(
+    const thread = await openConversation(user, insightsContent, "thread-identity-1");
+    expect(thread.querySelector(".actor-identity-pr-author")?.textContent).toContain(
       "PR Author",
     );
-    expect(reviewSection?.querySelector(".actor-identity-viewer")?.textContent).toContain(
+    expect(thread.querySelector(".actor-identity-viewer")?.textContent).toContain(
       "Alison Hall",
     );
 
+    // The activity feed and daily summary are on the Activity tab.
+    const activityContent = await openPrPane(user, row, "Activity");
     const activitySequenceSection = Array.from(
-      insightsContent?.querySelectorAll('details.insight-section[data-insight-key="activity sequence"] .actor-identity') || [],
+      activityContent?.querySelectorAll(".pr-activity-list .actor-identity") || [],
     );
     expect(
       activitySequenceSection.some(
@@ -1666,7 +1624,7 @@ describe("index page rendering with Testing Library", () => {
     ).toBe(true);
 
     const activityTimelineActors = Array.from(
-      insightsContent?.querySelectorAll("table .actor-identity") || [],
+      activityContent?.querySelectorAll("table .actor-identity") || [],
     );
     expect(
       activityTimelineActors.some(
@@ -1683,11 +1641,11 @@ describe("index page rendering with Testing Library", () => {
       ),
     ).toBe(true);
 
-    expect(indexCss).toMatch(/\.actor-identity-viewer\s*\{/);
-    expect(indexCss).toMatch(/\.actor-identity-pr-author\s*\{/);
+    expect(commonCss).toMatch(/\.actor-identity-viewer\s*\{/);
+    expect(commonCss).toMatch(/\.actor-identity-pr-author\s*\{/);
   });
 
-  test("given a review thread with multiple comments, when opening Review conversations, then the View link targets the full thread starter URL", async () => {
+  test("given a review thread with multiple comments, when opening it on Conversations, then its GitHub link targets the thread starter URL", async () => {
     initTestPage({
       dataPayload: createMultiPrPayload({
         prs: [
@@ -1750,18 +1708,11 @@ describe("index page rendering with Testing Library", () => {
     // is unambiguous.
     const openSection = document.querySelector('[data-pr-section="open"]');
     const row = within(openSection).getByText("#78").closest("tr");
-    await user.click(row?.querySelector(".row-insights-toggle"));
+    const panel = await openPrPane(user, row, "Conversations");
+    const thread = await openConversation(user, panel, "thread-link-target");
 
-    const reviewSection = row?.nextElementSibling?.querySelector(
-      'details.insight-section[data-insight-key="review-conversations"]',
-    );
-    expect(reviewSection).toBeTruthy();
-
-    const viewLink = reviewSection?.querySelector(
-      ".insight-thread .insight-thread-title .insight-event-link",
-    );
-    expect(viewLink).toBeTruthy();
-    expect(viewLink?.getAttribute("href")).toBe(
+    const viewLink = within(thread).getByRole("link", { name: "View this conversation on GitHub" });
+    expect(viewLink.getAttribute("href")).toBe(
       "https://github.com/owner/repo/pull/78#discussion_r_root",
     );
   });
@@ -1813,9 +1764,7 @@ describe("index page rendering with Testing Library", () => {
 
     const user = userEvent.setup();
     const row = (await screen.findByText("#801")).closest("tr");
-    await user.click(row?.querySelector(".row-insights-toggle"));
-
-    const insightsContent = row?.nextElementSibling?.querySelector(".row-insights-content");
+    const insightsContent = await openPrPane(user, row);
     const reviewersKey = Array.from(
       insightsContent?.querySelectorAll(".insight-key") || [],
     ).find((node) => String(node.textContent || "").trim() === "Reviewers");
@@ -1828,20 +1777,7 @@ describe("index page rendering with Testing Library", () => {
     expect(String(reviewersValue?.textContent || "")).toContain("Reviewer Two");
   });
 
-  test("switches management tab panels when a user opens Run & Filter", async () => {
-    const user = userEvent.setup();
-    const activityTab = screen.getByRole("tab", { name: "Activity" });
-    const runFilterTab = screen.getByRole("tab", { name: "Run & Filter" });
-
-    await user.click(runFilterTab);
-
-    expect(runFilterTab).toHaveAttribute("aria-selected", "true");
-    expect(activityTab).toHaveAttribute("aria-selected", "false");
-    expect(document.getElementById("tab-panel-script").hidden).toBe(false);
-    expect(document.getElementById("tab-panel-status").hidden).toBe(true);
-  });
-
-  test("filters, scheduler, backfill, and visibility toggles update rendered output", async () => {
+  test("filters, backfill, and visibility toggles update rendered output", async () => {
     initTestPage({
       backfillStatusResponse: {
         ok: true,
@@ -1882,36 +1818,26 @@ describe("index page rendering with Testing Library", () => {
         },
       }),
     });
-    const user = userEvent.setup();
 
     await waitFor(() => {
       const dataMeta = document.getElementById("data-meta")?.textContent || "";
       expect(dataMeta).toContain("Rows: 1");
     });
 
-    // The scheduler badges themselves are React-owned (#scheduler-badges,
-    // mounted by react-app.jsx, reusing <BackfillBadges />) and no longer
-    // have a vanilla-DOM fallback to assert against in this jsdom-only
-    // suite (which never loads react-app.jsx) - see SchedulerBadges
-    // coverage via BackfillBadges.test.jsx (shared component) plus the
-    // "React-owned scheduler status badges..." e2e test for that coverage.
-    // `details` stays vanilla-rendered regardless, so it's still asserted
-    // on directly here.
-    const schedulerDetailsText = document.getElementById("scheduler-details")?.textContent || "";
-    expect(schedulerDetailsText).toContain("Last auto error:");
-    // Surfaces why a quick check was skipped (e.g. blocked by an in-progress
-    // full auto refresh) - previously invisible, since runViewPrsQuickCheck's
-    // skip branches didn't persist anything to scheduler state at all.
-    expect(schedulerDetailsText).toContain("Last quick check skip: already-in-progress");
+    // #scheduler-badges/#scheduler-details (the Status tab's old "Auto
+    // Refresh Scheduler" display) were removed as redundant with the
+    // activity popover's own live "Scheduled background jobs" section (see
+    // REACT_MIGRATION_PLAN.md) - this fixture's scheduler object (lastAutoError/
+    // lastQuickCheckSkipReason) is kept only because the rest of this test's
+    // payload shape mirrors a real response; nothing here reads it anymore.
 
-    await user.click(screen.getByRole("tab", { name: "Backfill" }));
-    expect(document.getElementById("tab-panel-backfill").hidden).toBe(false);
-    expect(document.getElementById("tab-panel-status").hidden).toBe(true);
+    showSettingsSectionForTest("backfill");
+    expect(screen.getByRole("tabpanel", { name: "Backfill" })).toBeVisible();
 
     // The backfill badges themselves are React-owned (#backfill-badges,
-    // mounted by react-app.jsx) and no longer have a vanilla-DOM fallback
+    // rendered by the Settings drawer's BackfillSection) and no longer have a vanilla-DOM fallback
     // to assert against in this jsdom-only suite (which never loads
-    // react-app.jsx) - see the "React-owned Backfill status badges..." e2e
+    // react-app.tsx) - see the "React-owned Backfill status badges..." e2e
     // test for that coverage. This waitFor still gates on the same async
     // status load completing, via `details`, which stays vanilla-rendered
     // regardless.
@@ -1943,60 +1869,24 @@ describe("index page rendering with Testing Library", () => {
     });
   });
 
-  test("renders request-activity details from JavaScript init logic", async () => {
-    // The request-activity badges themselves are React-owned
-    // (#request-activity-badges, mounted by react-app.jsx, reusing
-    // <BackfillBadges />) and no longer have a vanilla-DOM fallback to
-    // assert against in this jsdom-only suite (which never loads
-    // react-app.jsx) - see pr-activity-badges.helpers.test.js for
-    // getRequestActivityBadges' own coverage. `details` stays
-    // vanilla-rendered regardless, so it's still asserted on directly here.
-    await waitFor(() => {
-      expect(screen.getByText(/Current status: Not run/i)).toBeInTheDocument();
-    });
-    expect(screen.getByText(/Active requests: none/i)).toBeInTheDocument();
-  });
+  // The credential-field hints on the Run Script/filter inputs are covered by
+  // ContextRunScriptTextInput.test.jsx, PrNumberFilterInput.test.jsx,
+  // react-app.test.tsx and e2e's "all 6 React-portaled non-credential-hint
+  // fields" test.
 
-  test("applies non-credential autofill hints without changing existing form field names", () => {
-    const repoField = document.getElementById("repo");
-    const prNumbersField = document.getElementById("pr-numbers");
-    const targetFieldIds = [
-      "repo",
-      "pr-numbers",
-      "limit",
-      "merged-limit",
-      "jobs",
-      "filter-pr-numbers",
-    ];
-
-    expect(repoField).toHaveAttribute("name", "repo");
-    expect(prNumbersField).toHaveAttribute("name", "prNumbers");
-
-    targetFieldIds.forEach((id) => {
-      const field = document.getElementById(id);
-      expect(field).toHaveAttribute("autocomplete", "off");
-      expect(field).toHaveAttribute("autocapitalize", "off");
-      expect(field).toHaveAttribute("autocorrect", "off");
-      expect(field).toHaveAttribute("spellcheck", "false");
-      expect(field).toHaveAttribute("data-lpignore", "true");
-      expect(field).toHaveAttribute("data-1p-ignore", "true");
-      expect(field).toHaveAttribute("data-bwignore", "true");
-      expect(field).toHaveAttribute("data-form-type", "other");
-    });
-
-    expect(repoField).toHaveAttribute("name", "repo");
-    expect(prNumbersField).toHaveAttribute("name", "prNumbers");
-  });
-
-  test("given run and filter tab when Apply filters (local) is clicked then view-filter defaults are persisted", async () => {
+  // Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+  // cluster 1): "Apply filters (local)" (the button) is deleted outright -
+  // view-filter fields now auto-persist on their own real "change" event
+  // instead of needing an explicit click (same mechanism the other,
+  // already-auto-persisting fields always used). Changing scope-mode
+  // directly is this test's new trigger.
+  test("given a view-filter field changes, when the change event fires, then view-filter defaults are persisted", async () => {
     const user = userEvent.setup();
     fetchMock.mockClear();
 
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
 
-    await user.click(
-      screen.getByRole("button", { name: "Apply filters (local)" }),
-    );
+    const scopeField = document.getElementById("scope-mode");
+    await user.selectOptions(scopeField, "needs-attention");
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalled();
@@ -2015,10 +1905,17 @@ describe("index page rendering with Testing Library", () => {
 
   test("given local filters and mixed PR delimiters when actions run then local apply stays local and run script posts numeric IDs", async () => {
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
 
     fetchMock.mockClear();
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
+
+    // Phase H.26 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+    // cluster 1): this block used to rely on the previous test's own
+    // "Apply filters (local)" click (that button is gone now) - gives
+    // itself its own explicit trigger instead of depending on another
+    // test's side effect, same pattern the "view-filter defaults are
+    // persisted" test just above uses.
+    const scopeField = document.getElementById("scope-mode");
+    await user.selectOptions(scopeField, "needs-attention");
 
     await waitFor(() => {
       const putCall = fetchMock.mock.calls.find((call) => {
@@ -2068,9 +1965,258 @@ describe("index page rendering with Testing Library", () => {
     expect(bodies.some((b) => b.includes('"300"') || b.includes('"prNumber":"300"'))).toBe(true);
   });
 
+  // Regression coverage for closing out the "redundant render-then-reload"
+  // cleanup arc (see REACT_MIGRATION_PLAN.md, applyFreshPrPayload's own
+  // entries): handleRunScript used to always call loadStoredData() (a
+  // second GET /view-prs/data fetch) after its loop finished, regardless
+  // of outcome - confirmed via the server route that every failure mode
+  // of /view-prs/run leaves data genuinely unchanged, so that reload was
+  // either pure redundant overhead (success case) or a no-op (failure
+  // case). No existing test exercised this function's response/render
+  // handling at all before these were added - every pre-existing test
+  // above only asserted outgoing POST bodies.
+  describe("Run script response/render handling (applyFreshPrPayload)", () => {
+    const getRunCalls = () =>
+      fetchMock.mock.calls.filter((call) => {
+        const [url, init] = call;
+        return (
+          String(url || "") === "/view-prs/run" &&
+          String(init?.method || "GET").toUpperCase() === "POST"
+        );
+      });
+
+    const getDataGetCalls = () =>
+      fetchMock.mock.calls.filter((call) => {
+        const [url, init] = call;
+        return (
+          String(url || "") === "/view-prs/data" &&
+          String(init?.method || "GET").toUpperCase() === "GET"
+        );
+      });
+
+    test("given a single successful target, when Run script completes, then the fresh payload is applied directly with no redundant reload", async () => {
+      const user = userEvent.setup();
+  
+      const prNumbersInput = document.getElementById("pr-numbers");
+      await user.clear(prNumbersInput);
+      await user.type(prNumbersInput, "42");
+
+      fetchMock.mockClear();
+      fetchMock.mockImplementation(async (url, init = {}) => {
+        const normalizedUrl = String(url || "");
+        const method = String(init?.method || "GET").toUpperCase();
+        if (normalizedUrl === "/view-prs/run" && method === "POST") {
+          return createOkJsonResponse({
+            ok: true,
+            output: "done",
+            prData: createMultiPrPayload({
+              prs: [
+                {
+                  scenario: "open-no-change",
+                  prNumber: 42,
+                  overrides: { data: { title: "Fresh after run script" } },
+                },
+              ],
+            }),
+          });
+        }
+        return createOkJsonResponse({ ok: true });
+      });
+
+      await user.click(screen.getByRole("button", { name: "Run script" }));
+
+      await waitFor(() => {
+        expect(getRunCalls().length).toBe(1);
+      });
+      await waitFor(() => {
+        expect(prDataProbe.readPayload().byPrNumber["42"]?.data?.title).toBe(
+          "Fresh after run script",
+        );
+      });
+      expect(getDataGetCalls().length).toBe(0);
+    });
+
+    test("given multiple successful targets, when Run script completes, then the final rendered state reflects the last target's payload with no redundant reload", async () => {
+      const user = userEvent.setup();
+  
+      const prNumbersInput = document.getElementById("pr-numbers");
+      await user.clear(prNumbersInput);
+      await user.type(prNumbersInput, "42, 43");
+
+      fetchMock.mockClear();
+      let callCount = 0;
+      fetchMock.mockImplementation(async (url, init = {}) => {
+        const normalizedUrl = String(url || "");
+        const method = String(init?.method || "GET").toUpperCase();
+        if (normalizedUrl === "/view-prs/run" && method === "POST") {
+          callCount += 1;
+          return createOkJsonResponse({
+            ok: true,
+            output: "done",
+            prData: createMultiPrPayload({
+              prs: [
+                {
+                  scenario: "open-no-change",
+                  prNumber: 42,
+                  overrides: { data: { title: `Iteration ${callCount}` } },
+                },
+              ],
+            }),
+          });
+        }
+        return createOkJsonResponse({ ok: true });
+      });
+
+      await user.click(screen.getByRole("button", { name: "Run script" }));
+
+      await waitFor(() => {
+        expect(getRunCalls().length).toBe(2);
+      });
+      await waitFor(() => {
+        expect(prDataProbe.readPayload().byPrNumber["42"]?.data?.title).toBe(
+          "Iteration 2",
+        );
+      });
+      expect(getDataGetCalls().length).toBe(0);
+    });
+
+    test("given one target succeeds and one fails, when Run script completes, then the successful target's data still renders and the combined status/snackbar reflect the partial failure", async () => {
+      const user = userEvent.setup();
+  
+      const prNumbersInput = document.getElementById("pr-numbers");
+      await user.clear(prNumbersInput);
+      await user.type(prNumbersInput, "42, 43");
+
+      fetchMock.mockClear();
+      fetchMock.mockImplementation(async (url, init = {}) => {
+        const normalizedUrl = String(url || "");
+        const method = String(init?.method || "GET").toUpperCase();
+        if (normalizedUrl === "/view-prs/run" && method === "POST") {
+          const body = JSON.parse(String(init?.body || "{}"));
+          if (body.prNumber === "43") {
+            return {
+              ok: false,
+              status: 500,
+              json: async () => ({ ok: false, error: "script failed" }),
+            };
+          }
+          return createOkJsonResponse({
+            ok: true,
+            output: "done",
+            prData: createMultiPrPayload({
+              prs: [
+                {
+                  scenario: "open-no-change",
+                  prNumber: 42,
+                  overrides: { data: { title: "Target 42 succeeded" } },
+                },
+              ],
+            }),
+          });
+        }
+        return createOkJsonResponse({ ok: true });
+      });
+
+      await user.click(screen.getByRole("button", { name: "Run script" }));
+
+      await waitFor(() => {
+        expect(getRunCalls().length).toBe(2);
+      });
+      await waitFor(() => {
+        expect(prDataProbe.readPayload().byPrNumber["42"]?.data?.title).toBe(
+          "Target 42 succeeded",
+        );
+      });
+      await waitFor(() => {
+        expect(document.getElementById("status")?.textContent || "").toContain(
+          "Completed with failures (1/2 successful)",
+        );
+      });
+      expect(getDataGetCalls().length).toBe(0);
+    });
+
+    test("given every target fails, when Run script completes, then the failure status is shown, nothing throws, and nothing is rendered", async () => {
+      const user = userEvent.setup();
+  
+      const prNumbersInput = document.getElementById("pr-numbers");
+      await user.clear(prNumbersInput);
+      await user.type(prNumbersInput, "42, 43");
+
+      fetchMock.mockClear();
+      fetchMock.mockImplementation(async (url, init = {}) => {
+        const normalizedUrl = String(url || "");
+        const method = String(init?.method || "GET").toUpperCase();
+        if (normalizedUrl === "/view-prs/run" && method === "POST") {
+          return {
+            ok: false,
+            status: 500,
+            json: async () => ({ ok: false, error: "script failed" }),
+          };
+        }
+        return createOkJsonResponse({ ok: true });
+      });
+
+      const payloadBefore = prDataProbe.readPayload();
+
+      await user.click(screen.getByRole("button", { name: "Run script" }));
+
+      await waitFor(() => {
+        expect(getRunCalls().length).toBe(2);
+      });
+      await waitFor(() => {
+        expect(document.getElementById("status")?.textContent || "").toContain(
+          "Completed with failures (0/2 successful)",
+        );
+      });
+      expect(prDataProbe.readPayload()).toBe(payloadBefore);
+      expect(getDataGetCalls().length).toBe(0);
+    });
+
+    test("given no PR numbers entered (an \"All PRs\" run), when Run script completes, then it behaves the same as a specific-PR-number target", async () => {
+      const user = userEvent.setup();
+  
+      const prNumbersInput = document.getElementById("pr-numbers");
+      await user.clear(prNumbersInput);
+
+      fetchMock.mockClear();
+      fetchMock.mockImplementation(async (url, init = {}) => {
+        const normalizedUrl = String(url || "");
+        const method = String(init?.method || "GET").toUpperCase();
+        if (normalizedUrl === "/view-prs/run" && method === "POST") {
+          return createOkJsonResponse({
+            ok: true,
+            output: "done",
+            prData: createMultiPrPayload({
+              prs: [
+                {
+                  scenario: "open-no-change",
+                  prNumber: 42,
+                  overrides: { data: { title: "All PRs run" } },
+                },
+              ],
+            }),
+          });
+        }
+        return createOkJsonResponse({ ok: true });
+      });
+
+      await user.click(screen.getByRole("button", { name: "Run script" }));
+
+      await waitFor(() => {
+        expect(getRunCalls().length).toBe(1);
+      });
+      expect(JSON.parse(String(getRunCalls()[0][1]?.body || "{}")).prNumber).toBe("");
+      await waitFor(() => {
+        expect(prDataProbe.readPayload().byPrNumber["42"]?.data?.title).toBe(
+          "All PRs run",
+        );
+      });
+      expect(getDataGetCalls().length).toBe(0);
+    });
+  });
+
   test("given no selected author and toggled checkboxes when Run script posts payload then author fallback and boolean flags are mapped", async () => {
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
 
     // Note: With checkbox-based filters, authors are populated dynamically from PR data.
     // This test verifies that when no author checkboxes are selected, the author field
@@ -2147,7 +2293,6 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
 
     const quickCheckBtn = screen.getByRole("button", { name: "Quick check" });
     await user.click(quickCheckBtn);
@@ -2189,7 +2334,6 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
 
     const quickCheckBtn = screen.getByRole("button", { name: "Quick check" });
     await user.click(quickCheckBtn);
@@ -2220,7 +2364,6 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
 
     const quickCheckBtn = screen.getByRole("button", { name: "Quick check" });
     await user.click(quickCheckBtn);
@@ -2258,7 +2401,6 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
 
     const quickCheckBtn = screen.getByRole("button", { name: "Quick check" });
     await user.click(quickCheckBtn);
@@ -2274,7 +2416,7 @@ describe("index page rendering with Testing Library", () => {
     expect(quickCheckBtn.textContent).toBe("Quick check");
   });
 
-  test("given PR numbers entered in the Run & Filter tab when Quick check is clicked then the POST body carries repo and prNumbers", async () => {
+  test("given PR numbers entered in Settings when Quick check is clicked then the POST body carries repo and prNumbers", async () => {
     fetchMock.mockImplementation(async (url, init = {}) => {
       const normalizedUrl = String(url || "");
       const method = String(init?.method || "GET").toUpperCase();
@@ -2294,7 +2436,6 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
 
     const repoField = document.getElementById("repo");
     await user.clear(repoField);
@@ -2343,7 +2484,6 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
 
     const prNumbersInput = document.getElementById("pr-numbers");
     await user.clear(prNumbersInput);
@@ -2386,7 +2526,6 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
 
     const quickCheckBtn = screen.getByRole("button", { name: "Quick check" });
     await user.click(quickCheckBtn);
@@ -2414,7 +2553,6 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
 
     const quickCheckAllBtn = screen.getByRole("button", { name: "Quick check all" });
     await user.click(quickCheckAllBtn);
@@ -2456,7 +2594,6 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
 
     const quickCheckAllBtn = screen.getByRole("button", { name: "Quick check all" });
     await user.click(quickCheckAllBtn);
@@ -2507,7 +2644,6 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
 
     const prNumbersInput = document.getElementById("pr-numbers");
     await user.clear(prNumbersInput);
@@ -2602,7 +2738,6 @@ describe("index page rendering with Testing Library", () => {
     });
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
 
     const scopeField = document.getElementById("scope-mode");
     const prFilterField = document.getElementById("filter-pr-numbers");
@@ -2629,15 +2764,17 @@ describe("index page rendering with Testing Library", () => {
       expect(excludeValues).toEqual(["bug", "frontend"]);
     });
 
-    await user.selectOptions(scopeField, "needs-attention-or-interacted");
-    await user.clear(prFilterField);
-    await user.type(prFilterField, "1");
+    // The filter bar's real fields (UI redesign phase 8). fireEvent.change,
+    // not user.type: by the time enough of this suite has run, user.type's
+    // per-keystroke events stop reliably reaching a field's onChange (see
+    // renderCleanNotesSection()'s comment), while one change event does.
+    fireEvent.change(scopeField, { target: { value: "needs-attention-or-interacted" } });
+    fireEvent.change(prFilterField, { target: { value: "1" } });
     await clickMultiSelectCheckbox("label-list", "frontend", user);
     await clickMultiSelectCheckbox("exclude-label-list", "bug", user);
     await clickMultiSelectCheckbox("author-list", "author-other", user);
     await clickMultiSelectCheckbox("assigned-list", "assignee-other", user);
 
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     await waitFor(() => {
       const dataMetaText = document.getElementById("data-meta")?.textContent || "";
@@ -2646,12 +2783,26 @@ describe("index page rendering with Testing Library", () => {
       expect(dataMetaText).toContain("scope=all stored rows");
     });
 
-    expect(
-      screen.getByRole("button", { name: "View PR JSON details for #1" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "View PR JSON details for #2" }),
-    ).not.toBeInTheDocument();
+    // Phase H.12 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+    // now that filterPrNumbers is synced into real Context above (needed
+    // for the live #data-meta summary to see it), the REAL React table -
+    // which reads useVisiblePrNumbers(), the same reactive Context
+    // derivation - picks it up too, same as it already does in the real
+    // app: the PR-number filter takes precedence over the 4 multi-select
+    // filters (label=frontend/exclude=bug/author=author-other/
+    // assigned=assignee-other, which alone would match PR #2, not PR #1).
+    // Matches the real, fully-wired app's own precedence (also covered by
+    // pr-visible-pr-numbers.helpers.test.js and Playwright e2e).
+    // The table and #data-meta update separately: wait for the table too
+    // (checking it straight after the summary failed on slower CI runners).
+    await waitFor(() => {
+      expect(
+        screen.getAllByRole("button", { name: "More actions for PR #1" }).length,
+      ).toBeGreaterThan(0);
+      expect(
+        screen.queryByRole("button", { name: "More actions for PR #2" }),
+      ).not.toBeInTheDocument();
+    });
   });
 
   test("given needs-attention scope variants when applying locally then each scope yields the expected row set", async () => {
@@ -2723,14 +2874,13 @@ describe("index page rendering with Testing Library", () => {
         lastRun: { repo: "owner/repo", updatedAt: "2026-03-10T10:00:00Z" },
       }),
     });
-    const user = userEvent.setup();
 
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
     const scopeField = document.getElementById("scope-mode");
     expect(scopeField).toBeInTheDocument();
 
-    await user.selectOptions(scopeField, "needs-attention");
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
+    // The filter bar's real scope select (one change event - see the
+    // PR-number precedence test above).
+    fireEvent.change(scopeField, { target: { value: "needs-attention" } });
 
     // PR #4 is only in-review (not CHANGED), so it no longer counts as
     // needing attention on its own - the in-review override was
@@ -2742,8 +2892,7 @@ describe("index page rendering with Testing Library", () => {
       expect(dataMetaText).toContain("scope=needs attention rows");
     });
 
-    await user.selectOptions(scopeField, "needs-attention-or-interacted");
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
+    fireEvent.change(scopeField, { target: { value: "needs-attention-or-interacted" } });
 
     // PR #1 (needs attention) + PR #2 (interacted) = 2. PR #4's in-review
     // flag alone no longer qualifies it for either scope.
@@ -2792,10 +2941,11 @@ describe("index page rendering with Testing Library", () => {
     // Flagged group specifically so the query is unambiguous.
     const flaggedSection = document.querySelector('[data-pr-section="flagged"]');
     const row = within(flaggedSection).getByText("#101").closest("tr");
-    const icons = Array.from(row?.querySelectorAll(".attention-cell span") || []);
-
-    expect(icons.map((node) => node.textContent)).toEqual(["⚠️", "🚩"]);
-    expect(icons[1]?.getAttribute("title")).toBe("PR was flagged");
+    // Attention, then Flagged, in their fixed Signals slots.
+    expect(signalNames(row).filter((name) => name === "Needs attention" || name === "Flagged")).toEqual([
+      "Needs attention",
+      "Flagged",
+    ]);
   });
 
   test("given a PR that is in-review (but otherwise NO_CHANGE) and flagged, when rows render, then only the flag icon is shown, not attention", async () => {
@@ -2834,22 +2984,21 @@ describe("index page rendering with Testing Library", () => {
     // needing attention - it's a separate, manually-set flag (see
     // isInReviewEnabled/AlwaysShowInReviewCheckbox), independent of whether
     // the PR actually has unreviewed activity (checkNeedsAttention in
-    // PrTableApp.jsx delegates to window.entryNeedsAttention only). This
+    // PrTableApp.tsx delegates to window.entryNeedsAttention only). This
     // row's status is NO_CHANGE ("open-in-review" fixture), so only the
-    // flag icon should render on every rendered copy of the row - it still
-    // appears in both its "open" lifecycle section and the (unrelated) "In
-    // Review" smart group, since that group is keyed off inReview directly.
+    // flag icon should render on every rendered copy of the row. (The
+    // fixture's data.inReview isn't what marks a PR in review - the user
+    // state's inReviewByRepo is, and this payload only flags it - so there's
+    // no In review signal either.)
     const rows = screen.getAllByText("#202").map((link) => link.closest("tr"));
     expect(rows.length).toBeGreaterThan(0);
 
     rows.forEach((row) => {
-      const icons = Array.from(row?.querySelectorAll(".attention-cell span") || []);
-      expect(icons.map((node) => node.textContent)).toEqual(["🚩"]);
-      expect(icons[0]?.getAttribute("title")).toBe("PR was flagged");
+      expect(signalNames(row)).toEqual(["Flagged"]);
     });
   });
 
-  test("scheduler polling toggles active PR progress indicators without row rerender", async () => {
+  test("scheduler status push toggles active PR progress indicators without row rerender", async () => {
     {
       jest.resetModules();
       latestDataPayload = createMultiPrPayload({
@@ -2874,36 +3023,22 @@ describe("index page rendering with Testing Library", () => {
       });
       actionLogEntries = [];
       document.body.innerHTML = extractBodyHtml(indexHtml);
-      injectRunFilterFieldElements();
-      installReactTableMountBridge();
+      installReactTestGlobals();
 
       let schedulerActivePrNumbers = [];
-      const baseFetch = createFetchMock();
-      fetchMock = jest.fn(async (url, init = {}) => {
-        const normalizedUrl = String(url || "");
-        const method = String(init?.method || "GET").toUpperCase();
-        if (normalizedUrl === "/view-prs/scheduler" && method === "GET") {
-          return createOkJsonResponse({
-            ok: true,
-            scheduler: {
-              intervalMinutes: 15,
-              manualCooldownMinutes: 15,
-              isAutoRunInProgress: schedulerActivePrNumbers.length > 0,
-              activePrNumbers: schedulerActivePrNumbers,
-            },
-          });
-        }
-        return baseFetch(url, init);
-      });
+      fetchMock = createFetchMock();
       global.fetch = fetchMock;
       window.fetch = fetchMock;
       window.marked = {
         parse: (markdownText) => `<p>${String(markdownText || "")}</p>`,
       };
 
-      require("../index.page.js");
-
-      expect(typeof window.pollSchedulerStatus).toBe("function");
+      // Mounts the harness root, whose PrDataProvider renders the table
+      // (window-bridge elimination Phase 7 - it loads /view-prs/data itself).
+      // Must come after the fetchMock assignment above, same ordering reason
+      // as the main initTestPage() flow: the root's restore and data-load
+      // effects fire their GETs immediately on mount.
+      installFilterStateProviderBridge();
 
       // This PR's CHANGED status also independently qualifies it for the
       // "Needs Attention" smart group, which renders it a second time there
@@ -2918,31 +3053,52 @@ describe("index page rendering with Testing Library", () => {
         expect(within(openSection).getByText("#1")).toBeInTheDocument();
       });
 
-      const getIndicator = () => {
-        const row = within(openSection).getByText("#1").closest("tr");
-        return row?.querySelector(".pr-progress-indicator");
-      };
+      // UI redesign phase 2: the busy indicator is only rendered while the
+      // PR is refreshing; "without row rerender" is checked on the row
+      // element itself staying the same.
+      const getRow = () => within(openSection).getByText("#1").closest("tr");
+      const getIndicator = () => getRow()?.querySelector('.pr-busy[data-busy="active"]');
 
-      const initialIndicator = getIndicator();
-      expect(initialIndicator).toBeTruthy();
-      expect(initialIndicator?.hidden).toBe(true);
+      const initialRow = getRow();
+      expect(getIndicator()).toBeNull();
 
+      // Phase H.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+      // window.pollSchedulerStatus (a poll wrapper around a now-retired
+      // setInterval, see PrDataPolling.tsx's own comment) is gone - the
+      // progress indicator is driven by renderSchedulerStatus in production
+      // too (RequestActivityProvider's, via Context since window-bridge
+      // elimination Phase 7.3), called by JobEventsProvider.tsx's real SSE
+      // connection on every scheduler-status push. Calling it directly
+      // here with the same payload shape exercises that real remaining
+      // path instead of a bridge with no caller left.
       schedulerActivePrNumbers = [{ repo: "owner/repo", prNumber: "1" }];
-      await window.pollSchedulerStatus();
+      act(() => {
+        requestActivityTestHandle.renderSchedulerStatus({
+          intervalMinutes: 15,
+          manualCooldownMinutes: 15,
+          isAutoRunInProgress: schedulerActivePrNumbers.length > 0,
+          activePrNumbers: schedulerActivePrNumbers,
+        });
+      });
 
       await waitFor(() => {
-        const updatedIndicator = getIndicator();
-        expect(updatedIndicator).toBe(initialIndicator);
-        expect(updatedIndicator?.hidden).toBe(false);
+        expect(getRow()).toBe(initialRow);
+        expect(getIndicator()).toBeTruthy();
       });
 
       schedulerActivePrNumbers = [];
-      await window.pollSchedulerStatus();
+      act(() => {
+        requestActivityTestHandle.renderSchedulerStatus({
+          intervalMinutes: 15,
+          manualCooldownMinutes: 15,
+          isAutoRunInProgress: schedulerActivePrNumbers.length > 0,
+          activePrNumbers: schedulerActivePrNumbers,
+        });
+      });
 
       await waitFor(() => {
-        const updatedIndicator = getIndicator();
-        expect(updatedIndicator).toBe(initialIndicator);
-        expect(updatedIndicator?.hidden).toBe(true);
+        expect(getRow()).toBe(initialRow);
+        expect(getIndicator()).toBeNull();
       });
     }
   });
@@ -3049,12 +3205,11 @@ describe("index page rendering with Testing Library", () => {
       const sectionEl = document.querySelector(`[data-pr-section="${sectionKey}"]`);
       const prLink = within(sectionEl).getByText(`#${prNumber}`);
       const row = prLink.closest("tr");
-      return Boolean(row?.querySelector(".attention-icon"));
+      return Boolean(row?.querySelector('.pr-cell-signals [aria-label="Needs attention"]'));
     };
 
-    document.getElementById("status").textContent = "Viewer : ahall236_uhg";
+    setStatusTextForTest("Viewer : ahall236_uhg");
 
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
 
     const noActivityMode = document.getElementById("attention-no-activity-mode");
     const includePendingComments = document.getElementById(
@@ -3079,24 +3234,20 @@ describe("index page rendering with Testing Library", () => {
 
     await user.click(includePendingComments);
     await user.selectOptions(noActivityMode, "none");
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     await waitFor(() => {
       expect(hasAttentionForPr("101")).toBe(false);
     });
 
     await user.selectOptions(noActivityMode, "mine-only");
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     await user.selectOptions(noActivityMode, "all");
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     await waitFor(() => {
       expect(hasAttentionForPr("101")).toBe(true);
     });
 
     await user.click(ignoreMergeOnly);
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     await waitFor(() => {
       expect(hasAttentionForPr("102")).toBe(false);
@@ -3108,7 +3259,6 @@ describe("index page rendering with Testing Library", () => {
     if (includeDraftNoActivity.checked) {
       await user.click(includeDraftNoActivity);
     }
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     await waitFor(() => {
       expect(hasAttentionForPr("201")).toBe(false);
@@ -3117,7 +3267,6 @@ describe("index page rendering with Testing Library", () => {
 
     await user.click(includeDraftChanged);
     await user.click(includeDraftNoActivity);
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     await waitFor(() => {
       expect(hasAttentionForPr("201")).toBe(true);
@@ -3129,50 +3278,25 @@ describe("index page rendering with Testing Library", () => {
     if (includeClosedMerged.checked) {
       await user.click(includeClosedMerged);
     }
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
-    let putCall;
-    await waitFor(() => {
-      putCall = fetchMock.mock.calls.find((call) => {
-        const [url, init] = call;
-        return (
-          String(url || "") === "/view-prs/user-defaults" &&
-          String(init?.method || "GET").toUpperCase() === "PUT"
-        );
-      });
-      expect(putCall).toBeDefined();
+    await waitForPersistedViewFilterOverrides((savedOverrides) => {
+      expect(savedOverrides["attention-no-activity-mode"]).toBe("mine-only");
+      expect(savedOverrides["attention-include-closed-merged"]).toBe(false);
     });
-
-    const savedOverrides = JSON.parse(String(putCall?.[1]?.body || "{}"));
-    expect(savedOverrides["attention-no-activity-mode"]).toBe("mine-only");
-    expect(savedOverrides["attention-include-closed-merged"]).toBe(false);
 
     fetchMock.mockClear();
     await user.selectOptions(noActivityMode, "all");
     await user.click(includeClosedMerged);
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
-    let resetPutCall;
-    await waitFor(() => {
-      resetPutCall = fetchMock.mock.calls.find((call) => {
-        const [url, init] = call;
-        return (
-          String(url || "") === "/view-prs/user-defaults" &&
-          String(init?.method || "GET").toUpperCase() === "PUT"
-        );
-      });
-      expect(resetPutCall).toBeDefined();
+    await waitForPersistedViewFilterOverrides((savedOverridesAfterReset) => {
+      expect(
+        Object.prototype.hasOwnProperty.call(
+          savedOverridesAfterReset,
+          "attention-no-activity-mode",
+        ),
+      ).toBe(false);
+      expect(savedOverridesAfterReset["attention-include-closed-merged"]).not.toBe(false);
     });
-
-    const savedOverridesAfterReset = JSON.parse(
-      String(resetPutCall?.[1]?.body || "{}"),
-    );
-    expect(
-      Object.prototype.hasOwnProperty.call(
-        savedOverridesAfterReset,
-        "attention-no-activity-mode",
-      ),
-    ).toBe(false);
   });
 
   test("preserves selected author filter through rerender after row actions", async () => {
@@ -3222,13 +3346,11 @@ describe("index page rendering with Testing Library", () => {
       expect(screen.getByText("#12")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
 
     const authorList = getMultiSelectList("author-list");
     expect(authorList).toBeInTheDocument();
 
     await clickMultiSelectCheckbox("author-list", "zuser", user);
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     await waitFor(() => {
       const dataMetaText = document.getElementById("data-meta")?.textContent || "";
@@ -3347,17 +3469,17 @@ describe("index page rendering with Testing Library", () => {
     const closedSection = document.querySelector("details[data-pr-section='closed']");
     const mergedSection = document.querySelector("details[data-pr-section='merged']");
 
-    const openAttention = openSection?.querySelector(".pr-group-section-attention-count");
-    const draftAttention = draftSection?.querySelector(".pr-group-section-attention-count");
-    const closedAttention = closedSection?.querySelector(".pr-group-section-attention-count");
-    const mergedAttention = mergedSection?.querySelector(
-      ".pr-group-section-attention-count",
-    );
+    // UI redesign phase 2: a collapsed section's header summarises its
+    // attention count (it was an "Attention: N" badge). These lifecycle
+    // sections start collapsed.
+    const attentionSummary = (section) =>
+      section?.querySelector('.pr-section-summary-item[data-tone="attention"] .ui-visually-hidden');
 
-    expect(String(openAttention?.textContent || "")).toBe("Attention: 1");
-    expect(String(draftAttention?.textContent || "")).toBe("Attention: 1");
-    expect(String(closedAttention?.textContent || "")).toBe("Attention: 1");
-    expect(mergedAttention).toBeNull();
+    expect(openSection).not.toHaveAttribute("open");
+    expect(String(attentionSummary(openSection)?.textContent || "")).toBe("1 needs attention");
+    expect(String(attentionSummary(draftSection)?.textContent || "")).toBe("1 needs attention");
+    expect(String(attentionSummary(closedSection)?.textContent || "")).toBe("1 needs attention");
+    expect(attentionSummary(mergedSection)).toBeFalsy();
   });
 
   test("renders compact table headers, author-note indicators, and merged note-only rows", async () => {
@@ -3379,8 +3501,7 @@ describe("index page rendering with Testing Library", () => {
                 ],
                 otherNotes: "Follow up after release",
                 prDifficulty: "4",
-                rallyStories: ["US12345"],
-                rallyLinks: ["https://rally.example/US12345"],
+                stories: [{ name: "US12345", url: "https://stories.example/US12345" }],
                 analysisOfPr: "Risk is moderate due to API coupling.",
               },
               data: {
@@ -3457,100 +3578,52 @@ describe("index page rendering with Testing Library", () => {
     // membership by design) - scope every lookup below to the "Open PRs"
     // lifecycle section specifically so these queries stay unambiguous.
     await waitFor(() => {
-      expect(
-        document.querySelector("details[data-pr-section='open'] table.pr-data-table"),
-      ).toBeTruthy();
+      expect(screen.getByRole("table", { name: "Open PRs", hidden: true })).toBeTruthy();
     });
 
-    const openSectionTable = document.querySelector(
-      "details[data-pr-section='open'] table.pr-data-table",
-    );
+    const openSectionTable = screen.getByRole("table", { name: "Open PRs", hidden: true });
 
     await waitFor(() => {
       expect(within(openSectionTable).getByText("#11")).toBeInTheDocument();
       expect(within(openSectionTable).getByText("#999")).toBeInTheDocument();
     });
 
+    // UI redesign phase 2: the select column's header is for screen
+    // readers only, then Signals (it was "Sel" / "Attn").
     const openHeaderCells = openSectionTable.querySelectorAll("thead th");
-    expect(String(openHeaderCells[0]?.textContent || "")).toContain("Sel");
-    expect(openHeaderCells[0]).toHaveAttribute("title", "Select PR");
-    expect(String(openHeaderCells[1]?.textContent || "")).toContain("Attn");
-    expect(openHeaderCells[1]).toHaveAttribute("title", "Needs Attention");
+    expect(String(openHeaderCells[0]?.textContent || "")).toBe("Select");
+    expect(openHeaderCells[0]?.querySelector(".ui-visually-hidden")).toBeTruthy();
+    // Shows "Signals"; screen readers get the full name.
+    expect(openHeaderCells[1]?.querySelector('[aria-hidden="true"]')?.textContent).toBe("Signals");
+    expect(openHeaderCells[1]?.querySelector(".ui-visually-hidden")?.textContent).toBe(
+      "Signals: changed, needs attention, flagged, in review",
+    );
 
-    const pr11Link = within(openSectionTable).getByText("#11");
-    const pr11Row = pr11Link.closest("tr");
+    // The author in the Who column, and one notes icon listing the fields
+    // with content (it was a "📝 Notes" marker plus five squares).
+    const pr11Row = within(openSectionTable).getByText("#11").closest("tr");
     expect(pr11Row).toBeTruthy();
-    const pr11AuthorCell = pr11Row?.children?.[6];
-    expect(String(pr11AuthorCell?.textContent || "")).toContain("Alison Hall");
-    expect(String(pr11AuthorCell?.textContent || "")).toContain("📝 Notes");
-    const pr11Indicator = pr11AuthorCell?.querySelector(".author-notes-indicator");
-    expect(String(pr11Indicator?.className || "")).toContain("author-notes-indicator-has");
-
-    const pr11DateCell = pr11Row?.children?.[9];
-    const pr11FieldIndicators = Array.from(
-      pr11DateCell?.querySelectorAll(".author-notes-field-indicator") || [],
+    expect(pr11Row?.querySelector(".pr-cell-who [role='img']")).toHaveAttribute("aria-label", "Author: Alison Hall");
+    expect(pr11Row?.querySelector(".pr-cell-review [aria-label^='Notes:']")).toHaveAttribute(
+      "aria-label",
+      "Notes: 1 comment · other notes · difficulty 4 · stories · analysis of PR",
     );
-    expect(pr11FieldIndicators.length).toBe(6);
-    expect(
-      pr11FieldIndicators.every((node) =>
-        String(node?.className || "").includes("author-notes-field-indicator-filled"),
-      ),
-    ).toBe(true);
-    expect(
-      String(
-        pr11DateCell?.querySelector(".author-notes-field-indicator-difficulty")
-          ?.textContent || "",
-      ),
-    ).toBe("4");
 
-    const pr12Link = within(openSectionTable).getByText("#12");
-    const pr12Row = pr12Link.closest("tr");
+    const pr12Row = within(openSectionTable).getByText("#12").closest("tr");
     expect(pr12Row).toBeTruthy();
-    const pr12AuthorCell = pr12Row?.children?.[6];
-    const pr12Indicator = pr12AuthorCell?.querySelector(".author-notes-indicator");
-    expect(String(pr12Indicator?.className || "")).toContain("author-notes-indicator-none");
+    expect(pr12Row?.querySelector(".pr-cell-review [aria-label^='Notes:']")).toBeNull();
 
-    const pr12DateCell = pr12Row?.children?.[9];
-    const pr12FieldIndicators = Array.from(
-      pr12DateCell?.querySelectorAll(".author-notes-field-indicator") || [],
-    );
-    expect(pr12FieldIndicators.length).toBe(6);
-    expect(
-      pr12FieldIndicators.every((node) =>
-        String(node?.className || "").includes("author-notes-field-indicator-empty"),
-      ),
-    ).toBe(true);
-    expect(
-      String(
-        pr12DateCell?.querySelector(".author-notes-field-indicator-difficulty")
-          ?.textContent || "",
-      ),
-    ).toBe("");
-
-    const pr999Link = within(openSectionTable).getByText("#999");
-    const pr999Row = pr999Link.closest("tr");
+    // A PR with stored notes but no local data shows its status.
+    const pr999Row = within(openSectionTable).getByText("#999").closest("tr");
     expect(pr999Row).toBeTruthy();
-    expect(String(pr999Row?.textContent || "")).toContain("NO_LOCAL_DATA");
+    expect(signalNames(pr999Row)).toContain("Status: NO_LOCAL_DATA");
 
-    const pr999InsightsButton = pr999Row?.querySelector(".row-insights-toggle");
-    expect(pr999InsightsButton).toBeTruthy();
-    await user.click(pr999InsightsButton);
-
-    const pr999InsightsRow = pr999Row?.nextElementSibling;
-    expect(pr999InsightsRow?.hidden).toBe(false);
-    const mergedCommentNote = pr999InsightsRow?.querySelector(
-      ".pr-notes-comment-note",
-    );
-    const mergedOtherNotes = Array.from(
-      pr999InsightsRow?.querySelectorAll(".pr-notes-textarea") || [],
-    ).find(
-      (node) =>
-        !String(node?.className || "").includes("pr-notes-comment-note"),
-    );
-    expect(String(mergedCommentNote?.value || "")).toBe(
+    // Its stored notes show read-only on the Notes tab.
+    const pr999Notes = await openPrPane(user, pr999Row, "Notes");
+    expect(within(pr999Notes).getByRole("group", { name: "Comments" })).toHaveTextContent(
       "This PR still needs follow-up context.",
     );
-    expect(String(mergedOtherNotes?.value || "")).toBe(
+    expect(within(pr999Notes).getByRole("group", { name: "Other notes" })).toHaveTextContent(
       "Saved without local PR data.",
     );
   });
@@ -3619,10 +3692,9 @@ describe("index page rendering with Testing Library", () => {
       return within(openSection)
         .getByText(`#${prNumber}`)
         .closest("tr")
-        ?.querySelector(".attention-icon");
+        ?.querySelector('.pr-cell-signals [aria-label="Needs attention"]');
     };
 
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
     await waitFor(() => {
       expect(document.querySelector('[data-pr-section="open"]')).toBeTruthy();
     });
@@ -3642,22 +3714,19 @@ describe("index page rendering with Testing Library", () => {
       "attention-ignore-merge-only-commits",
     );
 
-    pendingCommentsToggle.checked = false;
+    await user.click(pendingCommentsToggle);
     await user.selectOptions(noActivityModeSelect, "none");
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     await waitFor(() => {
       expect(getAttentionIcon("101")).toBeNull();
     });
 
     await user.selectOptions(noActivityModeSelect, "all");
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
     await waitFor(() => {
-      expect(getAttentionIcon("101")?.textContent || "").toBe("⚠️");
+      expect(getAttentionIcon("101")).toBeTruthy();
     });
 
-    ignoreMergeOnlyToggle.checked = true;
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
+    await user.click(ignoreMergeOnlyToggle);
     await waitFor(() => {
       expect(getAttentionIcon("102")).toBeNull();
     });
@@ -3669,59 +3738,31 @@ describe("index page rendering with Testing Library", () => {
       "attention-include-draft-no-activity",
     );
 
+    fetchMock.mockClear();
     await user.selectOptions(noActivityModeSelect, "mine-only");
-    includeClosedMergedToggle.checked = false;
-    includeDraftNoActivityToggle.checked = true;
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
+    await user.click(includeClosedMergedToggle);
+    await user.click(includeDraftNoActivityToggle);
 
-    let latestPutCall;
-    await waitFor(() => {
-      latestPutCall = fetchMock.mock.calls
-        .slice()
-        .reverse()
-        .find((call) => {
-          const [url, init] = call;
-          return (
-            String(url || "") === "/view-prs/user-defaults" &&
-            String(init?.method || "GET").toUpperCase() === "PUT"
-          );
-        });
-      expect(latestPutCall).toBeDefined();
+    await waitForPersistedViewFilterOverrides((savedOverrides) => {
+      expect(savedOverrides["attention-no-activity-mode"]).toBe("mine-only");
+      expect(savedOverrides["attention-include-closed-merged"]).toBe(false);
+      expect(savedOverrides["attention-include-draft-no-activity"]).toBe(true);
     });
 
-    const savedOverrides = JSON.parse(String(latestPutCall?.[1]?.body || "{}"));
-    expect(savedOverrides["attention-no-activity-mode"]).toBe("mine-only");
-    expect(savedOverrides["attention-include-closed-merged"]).toBe(false);
-    expect(savedOverrides["attention-include-draft-no-activity"]).toBe(true);
-
+    fetchMock.mockClear();
     await user.selectOptions(noActivityModeSelect, "all");
-    includeClosedMergedToggle.checked = true;
-    includeDraftNoActivityToggle.checked = false;
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
+    await user.click(includeClosedMergedToggle);
+    await user.click(includeDraftNoActivityToggle);
 
-    await waitFor(() => {
-      latestPutCall = fetchMock.mock.calls
-        .slice()
-        .reverse()
-        .find((call) => {
-          const [url, init] = call;
-          return (
-            String(url || "") === "/view-prs/user-defaults" &&
-            String(init?.method || "GET").toUpperCase() === "PUT"
-          );
-        });
-      expect(latestPutCall).toBeDefined();
+    await waitForPersistedViewFilterOverrides((savedOverridesAfterReset) => {
+      expect(
+        Object.prototype.hasOwnProperty.call(
+          savedOverridesAfterReset,
+          "attention-no-activity-mode",
+        ),
+      ).toBe(false);
+      expect(savedOverridesAfterReset["attention-include-draft-no-activity"]).not.toBe(true);
     });
-
-    const savedOverridesAfterReset = JSON.parse(
-      String(latestPutCall?.[1]?.body || "{}"),
-    );
-    expect(
-      Object.prototype.hasOwnProperty.call(
-        savedOverridesAfterReset,
-        "attention-no-activity-mode",
-      ),
-    ).toBe(false);
   });
 
     test("given author thread-resolution controls, when mode and actor selections change, then user-default overrides are persisted immediately", async () => {
@@ -3752,8 +3793,7 @@ describe("index page rendering with Testing Library", () => {
       });
 
       const user = userEvent.setup();
-      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
-      await waitFor(() => {
+        await waitFor(() => {
         expect(screen.getByText("#901")).toBeInTheDocument();
       });
 
@@ -3783,6 +3823,15 @@ describe("index page rendering with Testing Library", () => {
         "deny-only",
       );
 
+      // Phase H.26 follow-up (see REACT_MIGRATION_PLAN.md, "Remaining-
+      // effort audit", cluster 1): persistence is no longer a synchronous
+      // vanilla listener firing off the same event (that whole mechanism
+      // is deleted outright, superseded by FilterStateProvider.tsx's own
+      // debounced Context-level watcher) - without clearing the mock
+      // first, the next waitFor below would trivially find the PUT call
+      // just asserted on above (already non-undefined) before the new,
+      // debounced one for this checkbox click ever lands.
+      fetchMock.mockClear();
       await clickMultiSelectCheckbox(
         "attention-author-thread-resolution-deny-list",
         "reviewer1",
@@ -3844,15 +3893,10 @@ describe("index page rendering with Testing Library", () => {
         },
       });
 
-      const user = userEvent.setup();
-      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
-      await waitFor(() => {
+        await waitFor(() => {
         expect(screen.getByText("#902")).toBeInTheDocument();
       });
 
-      const modeField = document.getElementById(
-        "attention-author-thread-resolution-mode",
-      );
       const allowOptions = document.getElementById(
         "attention-author-thread-resolution-allow-options",
       );
@@ -3860,7 +3904,18 @@ describe("index page rendering with Testing Library", () => {
         "attention-author-thread-resolution-deny-options",
       );
 
-      expect(modeField?.value).toBe("deny-only");
+      // Phase E (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+      // restore now lands in FilterStateProvider's own Context state, not
+      // directly on this static <select> (no real Context-backed component
+      // is mounted for it in this harness - see
+      // installFilterStateProviderBridge's own comment) - read the real
+      // source of truth instead of the DOM. Also now async (a fetch), so
+      // this needs a waitFor.
+      await waitFor(() => {
+        expect(readFilterStateValues()?.attentionAuthorThreadResolutionMode).toBe(
+          "deny-only",
+        );
+      });
       expect(Boolean(allowOptions?.hidden)).toBe(true);
       expect(Boolean(denyOptions?.hidden)).toBe(false);
 
@@ -3927,10 +3982,9 @@ describe("index page rendering with Testing Library", () => {
       return within(draftSection)
         .getByText(`#${prNumber}`)
         .closest("tr")
-        ?.querySelector(".attention-icon");
+        ?.querySelector('.pr-cell-signals [aria-label="Needs attention"]');
     };
 
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
     await waitFor(() => {
       expect(document.querySelector('[data-pr-section="draft"]')).toBeTruthy();
     });
@@ -3940,37 +3994,35 @@ describe("index page rendering with Testing Library", () => {
       expect(within(draftSection).getByText("#202")).toBeInTheDocument();
     });
 
-    document.getElementById("attention-include-pending-comments").checked = false;
-    await user.selectOptions(document.getElementById("attention-no-activity-mode"), "all");
+    const includePendingCommentsToggle = document.getElementById("attention-include-pending-comments");
+    await setCheckbox(includePendingCommentsToggle, false, user);
+    const noActivityModeSelect = document.getElementById("attention-no-activity-mode");
+    await user.selectOptions(noActivityModeSelect, "all");
 
     const includeDraftChangedToggle = document.getElementById(
       "attention-include-draft-changed",
     );
-    includeDraftChangedToggle.checked = false;
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
+    await setCheckbox(includeDraftChangedToggle, false, user);
     await waitFor(() => {
       expect(getAttentionIcon("201")).toBeNull();
     });
 
-    includeDraftChangedToggle.checked = true;
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
+    await setCheckbox(includeDraftChangedToggle, true, user);
     await waitFor(() => {
-      expect(getAttentionIcon("201")?.textContent || "").toBe("⚠️");
+      expect(getAttentionIcon("201")).toBeTruthy();
     });
 
     const includeDraftNoActivityToggle = document.getElementById(
       "attention-include-draft-no-activity",
     );
-    includeDraftNoActivityToggle.checked = false;
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
+    await setCheckbox(includeDraftNoActivityToggle, false, user);
     await waitFor(() => {
       expect(getAttentionIcon("202")).toBeNull();
     });
 
-    includeDraftNoActivityToggle.checked = true;
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
+    await setCheckbox(includeDraftNoActivityToggle, true, user);
     await waitFor(() => {
-      expect(getAttentionIcon("202")?.textContent || "").toBe("⚠️");
+      expect(getAttentionIcon("202")).toBeTruthy();
     });
   });
 
@@ -4042,7 +4094,6 @@ describe("index page rendering with Testing Library", () => {
     });
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
 
     const scopeSelect = document.getElementById("scope-mode");
     const authorList = getMultiSelectList("author-list");
@@ -4055,14 +4106,12 @@ describe("index page rendering with Testing Library", () => {
     });
 
     await clickMultiSelectCheckbox("author-list", "zuser", user);
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     await waitFor(() => {
       expect(getSelectedMultiSelectValues("author-list")).toEqual(["zuser"]);
     });
 
     await user.selectOptions(scopeSelect, "needs-attention-or-interacted");
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     await waitFor(() => {
       expect(getSelectedMultiSelectValues("author-list")).toEqual(["zuser"]);
@@ -4111,8 +4160,6 @@ describe("index page rendering with Testing Library", () => {
       }),
     });
 
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
 
     const authorList = getMultiSelectList("author-list");
     await waitFor(() => {
@@ -4184,8 +4231,6 @@ describe("index page rendering with Testing Library", () => {
       }),
     });
 
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
 
     const authorList = getMultiSelectList("author-list");
     await waitFor(() => {
@@ -4267,7 +4312,6 @@ describe("index page rendering with Testing Library", () => {
     });
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
 
     const approverList = getMultiSelectList("approver-list");
     expect(approverList).toBeInTheDocument();
@@ -4278,7 +4322,6 @@ describe("index page rendering with Testing Library", () => {
     });
 
     await clickMultiSelectCheckbox("approver-list", "alice", user);
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     await waitFor(() => {
       const dataMetaText = document.getElementById("data-meta")?.textContent || "";
@@ -4286,8 +4329,12 @@ describe("index page rendering with Testing Library", () => {
       expect(dataMetaText).toContain("approver=alice");
     });
 
-    expect(screen.getByRole("button", { name: "View PR JSON details for #401" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "View PR JSON details for #402" })).not.toBeInTheDocument();
+    // The table and #data-meta update separately: wait for the table too
+    // (checking it straight after the summary failed on slower CI runners).
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "More actions for PR #401" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "More actions for PR #402" })).not.toBeInTheDocument();
+    });
   });
 
   test("given assigned and approver entries without login, when filter options are rendered, then fallback names are used as option keys", async () => {
@@ -4335,8 +4382,6 @@ describe("index page rendering with Testing Library", () => {
       }),
     });
 
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
 
     const assignedList = getMultiSelectList("assigned-list");
     const approverList = getMultiSelectList("approver-list");
@@ -4377,8 +4422,6 @@ describe("index page rendering with Testing Library", () => {
       }),
     });
 
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
 
     const assignedList = getMultiSelectList("assigned-list");
     await waitFor(() => {
@@ -4431,9 +4474,9 @@ describe("index page rendering with Testing Library", () => {
       expect(screen.getByText("#453")).toBeInTheDocument();
     });
 
-    const badge = document.querySelector(".approved-assigned-badge");
-    expect(badge).toBeTruthy();
-    expect(String(badge?.getAttribute("title") || "")).toBe("Alison Hall");
+    // The Review column's assigned-user avatar, named from the actor-name cache.
+    const assigned = screen.getAllByRole("group", { name: "Assigned" })[0];
+    expect(within(assigned).getByRole("img", { name: "Alison Hall" })).toBeInTheDocument();
   });
 
   test("given approver filter applied, when scope changes and filters are reapplied, then approver selection is preserved", async () => {
@@ -4506,7 +4549,6 @@ describe("index page rendering with Testing Library", () => {
     });
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
 
     const approverList = getMultiSelectList("approver-list");
     const scopeSelect = document.getElementById("scope-mode");
@@ -4519,14 +4561,12 @@ describe("index page rendering with Testing Library", () => {
     });
 
     await clickMultiSelectCheckbox("approver-list", "david", user);
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     await waitFor(() => {
       expect(getSelectedMultiSelectValues("approver-list")).toEqual(["david"]);
     });
 
     await user.selectOptions(scopeSelect, "needs-attention-or-interacted");
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     await waitFor(() => {
       expect(getSelectedMultiSelectValues("approver-list")).toEqual(["david"]);
@@ -4641,7 +4681,6 @@ describe("index page rendering with Testing Library", () => {
     });
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
 
     const approverList = getMultiSelectList("approver-list");
     expect(approverList).toBeInTheDocument();
@@ -4653,16 +4692,19 @@ describe("index page rendering with Testing Library", () => {
 
     // Select only reviewer-a: should show #601 (approved by both) but not #602 (only reviewer-b) or #603 (no approvals)
     await clickMultiSelectCheckbox("approver-list", "reviewer-a", user);
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     await waitFor(() => {
       const dataMetaText = document.getElementById("data-meta")?.textContent || "";
       expect(dataMetaText).toContain("Rows: 1");
     });
 
-    expect(screen.getByRole("button", { name: "View PR JSON details for #601" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "View PR JSON details for #602" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "View PR JSON details for #603" })).not.toBeInTheDocument();
+    // The table and #data-meta update separately: wait for the table too
+    // (checking it straight after the summary failed on slower CI runners).
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "More actions for PR #601" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "More actions for PR #602" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "More actions for PR #603" })).not.toBeInTheDocument();
+    });
   });
 
   test("given no PRs have approval data, when data loads, then approver select is disabled", async () => {
@@ -4687,9 +4729,7 @@ describe("index page rendering with Testing Library", () => {
         scheduler: { intervalMinutes: 15, manualCooldownMinutes: 15, isAutoRunInProgress: false },
       }),
     });
-    const user = userEvent.setup();
 
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
 
     const approverList = getMultiSelectList("approver-list");
     expect(approverList).toBeInTheDocument();
@@ -4743,7 +4783,6 @@ describe("index page rendering with Testing Library", () => {
     });
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
 
     const approverList = getMultiSelectList("approver-list");
     await waitFor(() => {
@@ -4751,25 +4790,12 @@ describe("index page rendering with Testing Library", () => {
       expect(approverLogins).toEqual(["grace"]);
     });
 
+    fetchMock.mockClear();
     await clickMultiSelectCheckbox("approver-list", "grace", user);
 
-    fetchMock.mockClear();
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
-
-    let putCall;
-    await waitFor(() => {
-      putCall = fetchMock.mock.calls.find((call) => {
-        const [url, init] = call;
-        return (
-          String(url || "") === "/view-prs/user-defaults" &&
-          String(init?.method || "GET").toUpperCase() === "PUT"
-        );
-      });
-      expect(putCall).toBeDefined();
+    await waitForPersistedViewFilterOverrides((savedOverrides) => {
+      expect(savedOverrides.approver).toEqual(["grace"]);
     });
-
-    const savedOverrides = JSON.parse(String(putCall?.[1]?.body || "{}"));
-    expect(savedOverrides.approver).toEqual(["grace"]);
   });
 
   test("given approver stored in user-defaults, when page loads and data renders, then approver select is pre-selected", async () => {
@@ -4831,7 +4857,6 @@ describe("index page rendering with Testing Library", () => {
         scheduler: { intervalMinutes: 15, manualCooldownMinutes: 15, isAutoRunInProgress: false },
       }),
     });
-    const user = userEvent.setup();
 
     // Ensure user-defaults have been fetched and the pending restore is set
     // before navigating so Apply sees the pre-populated pending selections.
@@ -4846,13 +4871,11 @@ describe("index page rendering with Testing Library", () => {
       expect(defaultsCall).toBeDefined();
     });
 
-    await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
 
     const approverList = getMultiSelectList("approver-list");
     expect(approverList).toBeInTheDocument();
 
     // Apply triggers re-render which picks up pendingApproverFilterSelections.
-    await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
 
     await waitFor(() => {
       expect(getSelectedMultiSelectValues("approver-list")).toEqual(["grace"]);
@@ -4864,8 +4887,12 @@ describe("index page rendering with Testing Library", () => {
       expect(dataMetaText).toContain("Rows: 1");
     });
 
-    expect(screen.getByRole("button", { name: "View PR JSON details for #901" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "View PR JSON details for #902" })).not.toBeInTheDocument();
+    // The table and #data-meta update separately: wait for the table too
+    // (checking it straight after the summary failed on slower CI runners).
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "More actions for PR #901" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "More actions for PR #902" })).not.toBeInTheDocument();
+    });
   });
 
   test("cycles focus within PR JSON modal with Tab and Shift+Tab", async () => {
@@ -4893,10 +4920,7 @@ describe("index page rendering with Testing Library", () => {
     });
     const user = userEvent.setup();
 
-    const openButton = await screen.findByRole("button", {
-      name: "View PR JSON details for #101",
-    });
-    await user.click(openButton);
+    await openPrJsonDetails(user, "101");
 
     const modal = await screen.findByRole("dialog", {
       name: "PR JSON Details",
@@ -4923,29 +4947,11 @@ describe("index page rendering with Testing Library", () => {
     expect(document.activeElement).toBe(firstElement);
   });
 
-  test("given a user opens the Action Log tab, when it activates, then the tab panel becomes visible (content is React-owned - see ActionLogSection.test.jsx)", async () => {
-    initTestPage();
-    const user = userEvent.setup();
-
-    await user.click(screen.getByRole("tab", { name: "Action Log" }));
-
-    expect(document.getElementById("tab-panel-action-log").hidden).toBe(false);
-  });
-
-  test("given a user opens the Actor Names tab, when it activates, then the tab panel becomes visible (content is React-owned - see ActorNamesTab.test.jsx)", async () => {
-    initTestPage();
-    const user = userEvent.setup();
-
-    await user.click(screen.getByRole("tab", { name: "Actor Names" }));
-
-    expect(document.getElementById("tab-panel-actor-name-cache").hidden).toBe(false);
-  });
-
-  test("posts to backfill start endpoint when a user starts backfill from the Backfill tab", async () => {
+  test("posts to backfill start endpoint when a user starts backfill from the Backfill section", async () => {
     const user = userEvent.setup();
     fetchMock.mockClear();
 
-    await user.click(screen.getByRole("tab", { name: "Backfill" }));
+    showSettingsSectionForTest("backfill");
     await user.click(screen.getByRole("button", { name: "Start backfill" }));
 
     await waitFor(() => {
@@ -5019,7 +5025,7 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Backfill" }));
+    showSettingsSectionForTest("backfill");
     await user.click(screen.getByRole("button", { name: "Start backfill" }));
 
     await waitFor(() => {
@@ -5080,16 +5086,14 @@ describe("index page rendering with Testing Library", () => {
         },
       }),
     });
+    // The shell's own button, under the table once the data has loaded
+    // (scope "all" by default).
+    const requestMore = await within(document.getElementById("merged-request-more-action")).findByRole("button", {
+      name: "Request more",
+    });
     fetchMock.mockClear();
-
-    expect(document.getElementById("merged-request-more-action")).toBeInTheDocument();
-
-    // The button/status content is React-owned now (MergedRequestMoreAction.jsx,
-    // portaled into #merged-request-more-action - not mounted in this
-    // jsdom-only suite), but window.handleRequestMoreMerged (the vanilla
-    // orchestration it calls on click) is still real here, so the actual
-    // POST round-trip is still worth exercising directly.
-    await window.handleRequestMoreMerged("owner/repo");
+    const user = userEvent.setup();
+    await user.click(requestMore);
 
     let requestMoreCall;
     await waitFor(() => {
@@ -5134,10 +5138,10 @@ describe("index page rendering with Testing Library", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByLabelText("In Review for PR #101")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Ack PR #101", pressed: false })).toBeInTheDocument();
     });
 
-    const labelChip = document.querySelector(".labels-cell .label-chip");
+    const labelChip = document.querySelector(".pr-cell-title .pr-label");
     expect(labelChip?.textContent).toBe("bug");
   });
 
@@ -5172,11 +5176,7 @@ describe("index page rendering with Testing Library", () => {
     const user = userEvent.setup();
     fetchMock.mockClear();
 
-    const detailsButton = await screen.findByRole("button", {
-      name: "View PR JSON details for #101",
-    });
-
-    await user.click(detailsButton);
+    await openPrJsonDetails(user, "101");
 
     const dialog = await screen.findByRole("dialog", {
       name: "PR JSON Details",
@@ -5262,11 +5262,7 @@ describe("index page rendering with Testing Library", () => {
       configurable: true,
     });
 
-    await user.click(
-      await screen.findByRole("button", {
-        name: "View PR JSON details for #101",
-      }),
-    );
+    await openPrJsonDetails(user, "101");
 
     const copyAllButton = await screen.findByRole("button", {
       name: "Copy all PR JSON details for AI chat",
@@ -5330,11 +5326,7 @@ describe("index page rendering with Testing Library", () => {
     });
     const user = userEvent.setup();
 
-    const detailsButton = await screen.findByRole("button", {
-      name: "View PR JSON details for #101",
-    });
-
-    await user.click(detailsButton);
+    await openPrJsonDetails(user, "101");
 
     const dialog = await screen.findByRole("dialog", {
       name: "PR JSON Details",
@@ -5351,7 +5343,8 @@ describe("index page rendering with Testing Library", () => {
       expect(screen.queryByRole("dialog", { name: "PR JSON Details" })).not.toBeInTheDocument();
     });
 
-    expect(detailsButton).toHaveFocus();
+    // Focus returns to the row's More button, which opened the dialog.
+    expect(screen.getByRole("button", { name: "More actions for PR #101" })).toHaveFocus();
   });
 
   test("copies the diff text to clipboard when a user clicks Copy diff in the details modal", async () => {
@@ -5390,11 +5383,7 @@ describe("index page rendering with Testing Library", () => {
       configurable: true,
     });
 
-    await user.click(
-      await screen.findByRole("button", {
-        name: "View PR JSON details for #101",
-      }),
-    );
+    await openPrJsonDetails(user, "101");
 
     const copyDiffButton = await screen.findByRole("button", {
       name: "Copy diff",
@@ -5481,11 +5470,7 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const user = userEvent.setup();
-    await user.click(
-      await screen.findByRole("button", {
-        name: "View PR JSON details for #101",
-      }),
-    );
+    await openPrJsonDetails(user, "101");
 
     await waitFor(() => {
       expect(screen.getByRole("dialog", { name: "PR JSON Details" })).toBeInTheDocument();
@@ -5541,11 +5526,7 @@ describe("index page rendering with Testing Library", () => {
     });
     const user = userEvent.setup();
 
-    await user.click(
-      await screen.findByRole("button", {
-        name: "View PR JSON details for #101",
-      }),
-    );
+    await openPrJsonDetails(user, "101");
 
     const wrapDiffButton = await screen.findByRole("button", {
       name: "Wrap lines",
@@ -5612,7 +5593,7 @@ describe("index page rendering with Testing Library", () => {
     fetchMock.mockClear();
 
     const clearButton = await screen.findByRole("button", {
-      name: "✓ Ack'd",
+      name: /^Ack'd PR #/,
     });
     expect(clearButton).toBeInTheDocument();
 
@@ -5666,12 +5647,7 @@ describe("index page rendering with Testing Library", () => {
     const user = userEvent.setup();
     fetchMock.mockClear();
 
-    const updateButton = await screen.findByRole("button", {
-      name: /Update/,
-    });
-    expect(updateButton).toBeInTheDocument();
-
-    await user.click(updateButton);
+    await chooseRowMenuItem(user, "202", "Update PR");
 
     await waitFor(() => {
       const runCalls = fetchMock.mock.calls.filter((call) => {
@@ -5734,10 +5710,7 @@ describe("index page rendering with Testing Library", () => {
     window.fetch = failingFetch;
     fetchMock = failingFetch;
 
-    const updateButton = await screen.findByRole("button", {
-      name: /Update/,
-    });
-    await user.click(updateButton);
+    await chooseRowMenuItem(user, "203", "Update PR");
 
     await waitFor(() => {
       expect(document.getElementById("status").textContent).toBe(
@@ -5781,11 +5754,10 @@ describe("index page rendering with Testing Library", () => {
     const user = userEvent.setup();
     fetchMock.mockClear();
 
-    const sharedPrInput = document.getElementById("pr-numbers");
-    sharedPrInput.value = "88,89";
+    // The Settings drawer's PR numbers (a controlled field: set its state).
+    act(() => filterStateTestHandle.setValue("prNumbersInput", "88,89"));
 
-    const inReviewToggle = await screen.findByLabelText("In Review for PR #1");
-    await user.click(inReviewToggle);
+    await chooseRowMenuItem(user, "1", "Mark in review");
 
     await waitFor(() => {
       const inReviewCall = fetchMock.mock.calls.find((call) => {
@@ -5799,8 +5771,7 @@ describe("index page rendering with Testing Library", () => {
       expect(inReviewCall).toBeDefined();
     });
 
-    const flaggedToggle = await screen.findByLabelText("Flagged for PR #1");
-    await user.click(flaggedToggle);
+    await chooseRowMenuItem(user, "1", "Flag");
 
     await waitFor(() => {
       const flaggedCall = fetchMock.mock.calls.find((call) => {
@@ -5864,7 +5835,7 @@ describe("index page rendering with Testing Library", () => {
     expect(document.getElementById("status").textContent).toBe("Ack only completed");
   });
 
-  test("posts notes payload and renders saved comment after a user saves notes", async () => {
+  test("saves each notes field on its own, with the others as saved, and shows it read-only", async () => {
     initTestPage({
       dataPayload: createMultiPrPayload({
         prs: [
@@ -5895,17 +5866,13 @@ describe("index page rendering with Testing Library", () => {
     fetchMock.mockClear();
 
     const baseFetch = fetchMock;
-    const savedNote = {
-      id: "save-test-c1",
-      author: "octocat",
-      tone: "Positive",
-      note: "LGTM",
-    };
     fetchMock = jest.fn(async (url, init = {}) => {
       const normalizedUrl = String(url || "");
       const method = String(init?.method || "GET").toUpperCase();
 
       if (normalizedUrl === "/view-prs/notes" && method === "POST") {
+        // The server stores what was posted and returns it with the data.
+        const { comments, otherNotes, prDifficulty, stories, analysisOfPr } = JSON.parse(String(init?.body || "{}"));
         return createOkJsonResponse({
           ok: true,
           prData: {
@@ -5927,12 +5894,11 @@ describe("index page rendering with Testing Library", () => {
                   inReview: false,
                 },
                 notes: {
-                  comments: [savedNote],
-                  otherNotes: "",
-                  prDifficulty: "5",
-                  rallyStories: [],
-                  rallyLinks: [],
-                  analysisOfPr: "Deep analysis for save test",
+                  comments,
+                  otherNotes,
+                  prDifficulty,
+                  stories,
+                  analysisOfPr,
                 },
               },
             },
@@ -5951,74 +5917,56 @@ describe("index page rendering with Testing Library", () => {
     global.fetch = fetchMock;
     window.fetch = fetchMock;
 
-    const insightsButton = await screen.findByRole("button", {
-      name: "More insights",
+    const summaryButton = await screen.findByRole("button", {
+      name: /^Show summary for PR #/,
     });
-    await user.click(insightsButton);
+    await openPrPane(user, summaryButton.closest("tr"), "Notes");
 
-    const addCommentButton = await screen.findByRole("button", {
-      name: "+ Add comment",
-    });
-    await user.click(addCommentButton);
-
-    const notesSection = addCommentButton.closest(".pr-notes-section");
+    // Each field saves on its own, with the others as saved.
+    const notesPosts = () =>
+      fetchMock.mock.calls.filter(
+        ([url, init]) => String(url || "") === "/view-prs/notes" && String(init?.method || "GET").toUpperCase() === "POST",
+      );
+    const lastNotesPayload = () => JSON.parse(String(notesPosts().at(-1)?.[1]?.body || "{}"));
+    const notesSection = document.querySelector('.pr-notes-section[data-pr-number="1"]');
     expect(notesSection).toBeInTheDocument();
+    const notesField = (name) => within(notesSection).getByRole("group", { name });
 
-    const noteTextarea = notesSection.querySelector(".pr-notes-comment-note");
-    expect(noteTextarea).toBeInTheDocument();
+    await user.click(within(notesSection).getByRole("button", { name: "Add comments" }));
     // fireEvent.change, not user.type - see renderCleanNotesSection()'s own
     // comment (further down this file) for why: by the time enough of this
     // suite's ~97 tests have run, user.type's multi-event-per-field
     // sequences stop reliably reaching a text field's onChange/React state
-    // at all (confirmed via the component's own internal state tracing),
-    // while a single fireEvent.change reliably still does.
-    fireEvent.change(noteTextarea, { target: { value: "LGTM" } });
+    // at all, while a single fireEvent.change reliably still does.
+    fireEvent.change(within(notesSection).getByRole("textbox", { name: "Comment 1 note" }), { target: { value: "LGTM" } });
+    await user.click(within(notesSection).getByRole("button", { name: "Save comments" }));
+    await waitFor(() => expect(notesPosts()).toHaveLength(1));
+    expect(lastNotesPayload().prNumber).toBe("1");
+    expect(lastNotesPayload().comments).toHaveLength(1);
+    expect(String(lastNotesPayload().comments[0]?.note || "")).toBe("LGTM");
+    // The saved comment shows read-only.
+    await waitFor(() => expect(notesField("Comments")).toHaveTextContent("LGTM"));
+    expect(within(notesField("Comments")).queryByRole("textbox")).not.toBeInTheDocument();
 
-    const difficultySelect = within(notesSection).getByLabelText("PR difficulty");
-    await user.selectOptions(difficultySelect, "5");
+    await user.click(within(notesSection).getByRole("button", { name: "Add PR difficulty" }));
+    await user.selectOptions(within(notesSection).getByRole("combobox", { name: "PR difficulty" }), "5");
+    await user.click(within(notesSection).getByRole("button", { name: "Save PR difficulty" }));
+    await waitFor(() => expect(notesPosts()).toHaveLength(2));
+    expect(lastNotesPayload().prDifficulty).toBe("5");
+    expect(String(lastNotesPayload().comments[0]?.note || "")).toBe("LGTM");
 
-    const analysisTextarea = within(notesSection).getByLabelText("Analysis of PR");
-    fireEvent.change(analysisTextarea, { target: { value: "Deep analysis for save test" } });
-
-    const saveNotesButton = screen.getByRole("button", { name: "Save notes" });
-    expect(saveNotesButton).toBeEnabled();
-
-    await user.click(saveNotesButton);
-
-    await waitFor(() => {
-      const notesCalls = fetchMock.mock.calls.filter((call) => {
-        const [url, init] = call;
-        return (
-          String(url || "") === "/view-prs/notes" &&
-          String(init?.method || "GET").toUpperCase() === "POST"
-        );
-      });
-      expect(notesCalls.length).toBeGreaterThan(0);
+    await user.click(within(notesSection).getByRole("button", { name: "Add analysis of PR" }));
+    fireEvent.change(within(notesSection).getByRole("textbox", { name: "Analysis of PR" }), {
+      target: { value: "Deep analysis for save test" },
     });
-
-    const notesCall = fetchMock.mock.calls.find((call) => {
-      const [url, init] = call;
-      return (
-        String(url || "") === "/view-prs/notes" &&
-        String(init?.method || "GET").toUpperCase() === "POST"
-      );
-    });
-    const notesPayload = JSON.parse(String(notesCall?.[1]?.body || "{}"));
-
-    expect(notesPayload.prNumber).toBe("1");
-    expect(notesPayload.prDifficulty).toBe("5");
-    expect(notesPayload.analysisOfPr).toBe("Deep analysis for save test");
-    expect(Array.isArray(notesPayload.comments)).toBe(true);
-    expect(notesPayload.comments.length).toBeGreaterThan(0);
-    expect(String(notesPayload.comments[0]?.note || "")).toContain("LGTM");
-
-    await waitFor(() => {
-      const savedRows = document.querySelectorAll(".pr-notes-comment-row");
-      expect(savedRows.length).toBe(1);
-    });
+    await user.click(within(notesSection).getByRole("button", { name: "Save analysis of PR" }));
+    await waitFor(() => expect(notesPosts()).toHaveLength(3));
+    expect(lastNotesPayload()).toMatchObject({ prDifficulty: "5", analysisOfPr: "Deep analysis for save test" });
+    expect(lastNotesPayload().comments).toHaveLength(1);
+    await waitFor(() => expect(notesField("Analysis of PR")).toHaveTextContent("Deep analysis for save test"));
   });
 
-  test("enables Save notes when only difficulty or rally fields are edited", async () => {
+  test("enables a notes field's Save once it changes (difficulty, a story name or URL)", async () => {
     const renderCleanNotesSection = async () => {
       initTestPage({
         dataPayload: createMultiPrPayload({
@@ -6049,56 +5997,54 @@ describe("index page rendering with Testing Library", () => {
       });
 
       const localUser = userEvent.setup();
-      const insightsButton = await screen.findByRole("button", {
-        name: "More insights",
+      const summaryButton = await screen.findByRole("button", {
+        name: /^Show summary for PR #/,
       });
-      await localUser.click(insightsButton);
+      await openPrPane(localUser, summaryButton.closest("tr"), "Notes");
 
-      const saveNotesButton = await screen.findByRole("button", {
-        name: "Save notes",
+      const notesSection = await waitFor(() => {
+        const section = document.querySelector('.pr-notes-section[data-pr-number="1"]');
+        expect(section).toBeInTheDocument();
+        return section;
       });
-      expect(saveNotesButton).toBeDisabled();
-
-      const notesSection = saveNotesButton.closest(".pr-notes-section");
-      expect(notesSection).toBeInTheDocument();
-      return {
-        user: localUser,
-        notesSection,
-        saveNotesButton,
-      };
+      return { user: localUser, notesSection };
+    };
+    // Opens a field for editing; its Save starts disabled.
+    const openField = async (user, notesSection, name) => {
+      await user.click(within(notesSection).getByRole("button", { name: `Add ${name}` }));
+      const save = within(notesSection).getByRole("button", { name: `Save ${name}` });
+      expect(save).toBeDisabled();
+      return save;
     };
 
     {
-      const { user, notesSection, saveNotesButton } = await renderCleanNotesSection();
-      const difficultySelect = within(notesSection).getByLabelText("PR difficulty");
-      await user.selectOptions(difficultySelect, "4");
-      expect(saveNotesButton).toBeEnabled();
+      const { user, notesSection } = await renderCleanNotesSection();
+      const save = await openField(user, notesSection, "PR difficulty");
+      await user.selectOptions(within(notesSection).getByRole("combobox", { name: "PR difficulty" }), "4");
+      expect(save).toBeEnabled();
     }
 
     {
-      const { notesSection, saveNotesButton } = await renderCleanNotesSection();
-      const rallyStoryInput = notesSection.querySelector(
-        ".pr-notes-rally-story-input",
-      );
-      expect(rallyStoryInput).toBeInTheDocument();
+      const { user, notesSection } = await renderCleanNotesSection();
+      const save = await openField(user, notesSection, "stories");
       // fireEvent.change (one direct value-set + 'change' dispatch), not
-      // user.type (many sequential per-keystroke events) - see this
-      // test's own renderCleanNotesSection() comment for why: by the time
+      // user.type (many sequential per-keystroke events): by the time
       // this is the suite's 4th+ React session sharing one jsdom window,
       // user.type's multi-event sequence reliably stopped reaching this
-      // input's onChange/state at all (confirmed via the component's own
-      // internal state tracing - the DOM value updated, React's state
-      // never did), while a single fireEvent.change reliably still does.
-      fireEvent.change(rallyStoryInput, { target: { value: "US12345" } });
-      expect(saveNotesButton).toBeEnabled();
+      // input's onChange/state at all (the DOM value updated, React's
+      // state never did), while a single fireEvent.change reliably still
+      // does.
+      fireEvent.change(within(notesSection).getByRole("textbox", { name: "Story 1 name" }), { target: { value: "US12345" } });
+      expect(save).toBeEnabled();
     }
 
     {
-      const { notesSection, saveNotesButton } = await renderCleanNotesSection();
-      const rallyLinkInput = notesSection.querySelector(".pr-notes-rally-link-input");
-      expect(rallyLinkInput).toBeInTheDocument();
-      fireEvent.change(rallyLinkInput, { target: { value: "https://rally.example/US12345" } });
-      expect(saveNotesButton).toBeEnabled();
+      const { user, notesSection } = await renderCleanNotesSection();
+      const save = await openField(user, notesSection, "stories");
+      fireEvent.change(within(notesSection).getByRole("textbox", { name: "Story 1 URL" }), {
+        target: { value: "https://stories.example/US12345" },
+      });
+      expect(save).toBeEnabled();
     }
   });
 
@@ -6181,23 +6127,20 @@ describe("index page rendering with Testing Library", () => {
     global.fetch = fetchMock;
     window.fetch = fetchMock;
 
-    await user.click(await screen.findByRole("button", { name: "More insights" }));
+    await openPrPane(user, (await screen.findByRole("button", { name: /^Show summary for PR #/ })).closest("tr"), "Notes");
 
-    const addCommentButton = await screen.findByRole("button", {
-      name: "+ Add comment",
-    });
-    await user.click(addCommentButton);
-    await user.click(addCommentButton);
-
-    const notesSection = addCommentButton.closest(".pr-notes-section");
+    // Add starts the comments with one row; add a second, remove the first.
+    await user.click(await screen.findByRole("button", { name: "Add comments" }));
+    const notesSection = document.querySelector('.pr-notes-section[data-pr-number="1"]');
     expect(notesSection).toBeInTheDocument();
+    await user.click(within(notesSection).getByRole("button", { name: "Add comment" }));
+    expect(within(notesSection).getAllByRole("button", { name: /^Remove comment / })).toHaveLength(2);
+    // Each with a note (blank rows aren't saved anyway).
+    fireEvent.change(within(notesSection).getByRole("textbox", { name: "Comment 1 note" }), { target: { value: "First" } });
+    fireEvent.change(within(notesSection).getByRole("textbox", { name: "Comment 2 note" }), { target: { value: "Second" } });
+    await user.click(within(notesSection).getByRole("button", { name: "Remove comment 1" }));
 
-    const removeButtons = notesSection.querySelectorAll(".pr-notes-comment-remove");
-    expect(removeButtons.length).toBe(2);
-    await user.click(removeButtons[0]);
-
-    const saveNotesButton = screen.getByRole("button", { name: "Save notes" });
-    await user.click(saveNotesButton);
+    await user.click(within(notesSection).getByRole("button", { name: "Save comments" }));
 
     await waitFor(() => {
       const notesCalls = fetchMock.mock.calls.filter((call) => {
@@ -6224,6 +6167,7 @@ describe("index page rendering with Testing Library", () => {
 
     expect(Array.isArray(latestNotesPayload.comments)).toBe(true);
     expect(latestNotesPayload.comments.length).toBe(1);
+    expect(latestNotesPayload.comments[0]?.note).toBe("Second");
   });
 
   test("supports manual author comment save and inline edit in author insights", async () => {
@@ -6305,11 +6249,11 @@ describe("index page rendering with Testing Library", () => {
     window.fetch = fetchMock;
   });
 
-  test("loads backfill log tail when a user clicks Refresh log in the Backfill tab", async () => {
+  test("loads backfill log tail when a user clicks Refresh log in the Backfill section", async () => {
     const user = userEvent.setup();
     fetchMock.mockClear();
 
-    await user.click(screen.getByRole("tab", { name: "Backfill" }));
+    showSettingsSectionForTest("backfill");
     await user.click(screen.getByRole("button", { name: "Refresh log" }));
 
     await waitFor(() => {
@@ -6327,20 +6271,32 @@ describe("index page rendering with Testing Library", () => {
     expect(logTailCall).toBeDefined();
   });
 
-  test("given a user opens the Export tab, when it activates, then the tab panel becomes visible (content is React-owned - see ExportTab.test.jsx)", async () => {
+  // Window-bridge elimination Phase 7.2 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
+  // index.page.js's initPage made its own status+log load on top of the one
+  // useBackfillAutoRefresh fires on mount, so every page load fetched both
+  // twice. Only the React one is left.
+  test("given a fresh page load, when everything settles, then backfill status and log are each fetched exactly once", async () => {
     initTestPage();
-    const user = userEvent.setup();
 
-    await user.click(screen.getByRole("tab", { name: "Export" }));
+    await waitFor(() => {
+      expect(document.getElementById("backfill-details")?.textContent || "").toContain("Summary:");
+    });
+    // Let any second, slower load land before counting.
+    await new Promise((resolve) => setTimeout(resolve, 50));
 
-    expect(document.getElementById("tab-panel-export").hidden).toBe(false);
+    const countGets = (path) =>
+      fetchMock.mock.calls.filter(
+        ([url, init]) => String(url || "") === path && String(init?.method || "GET").toUpperCase() === "GET",
+      ).length;
+    expect(countGets("/view-prs/backfill")).toBe(1);
+    expect(countGets("/view-prs/backfill/log?lines=120")).toBe(1);
   });
 
   test("backfill log auto-scrolls to bottom when running and auto-scroll is enabled", async () => {
     initTestPage();
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Backfill" }));
+    showSettingsSectionForTest("backfill");
 
     // Force a running status refresh in-test to avoid startup timing races.
     const defaultImpl = fetchMock.getMockImplementation();
@@ -6396,7 +6352,7 @@ describe("index page rendering with Testing Library", () => {
     initTestPage();
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Backfill" }));
+    showSettingsSectionForTest("backfill");
 
     await waitFor(() => {
       expect(document.getElementById("backfill-log")).toBeInTheDocument();
@@ -6421,7 +6377,7 @@ describe("index page rendering with Testing Library", () => {
     initTestPage();
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Backfill" }));
+    showSettingsSectionForTest("backfill");
 
     await waitFor(() => {
       expect(document.getElementById("backfill-log")).toBeInTheDocument();
@@ -6447,7 +6403,24 @@ describe("index page rendering with Testing Library", () => {
     expect(backfillLog.scrollTop).toBe(0);
   });
 
-  test("falls back to full data polling after the first /view-prs/data-meta 404", async () => {
+  // Phase H.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"): the
+  // 9 tests below used to call window.pollForDataChanges() directly -
+  // FilterStateTestRootHarness mounts a real <PrDataPolling />, so these drive
+  // the same real orchestration function through its actual setInterval
+  // instead, via fake timers scoped to just this describe block (doNotFake:
+  // ['Date'] - this suite's fixtures/assertions rely on real Date/ISO
+  // timestamps elsewhere and must not be affected).
+  describe("data polling (via real PrDataPolling interval)", () => {
+    const DATA_POLL_MS = 30000; // PrDataPolling's AUTO_DATA_POLL_MS (no ?dataPollMs= override here)
+
+    beforeEach(() => {
+      jest.useFakeTimers({ doNotFake: ["Date"] });
+    });
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    test("falls back to full data polling after the first /view-prs/data-meta 404", async () => {
     {
       initTestPage({
         dataPayload: {
@@ -6475,7 +6448,9 @@ describe("index page rendering with Testing Library", () => {
         },
       });
 
-      expect(typeof window.pollForDataChanges).toBe("function");
+      await waitFor(() => {
+        expect(document.querySelector(".pr-row")).toBeTruthy();
+      });
 
       fetchMock.mockClear();
       let dataFallbackCalls = 0;
@@ -6541,8 +6516,12 @@ describe("index page rendering with Testing Library", () => {
         return createOkJsonResponse({ ok: true });
       });
 
-      await window.pollForDataChanges();
-      await window.pollForDataChanges();
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(DATA_POLL_MS);
+      });
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(DATA_POLL_MS);
+      });
 
       const metaCalls = fetchMock.mock.calls.filter((call) => {
         const [url, init] = call;
@@ -6592,7 +6571,9 @@ describe("index page rendering with Testing Library", () => {
         },
       });
 
-      expect(typeof window.pollForDataChanges).toBe("function");
+      await waitFor(() => {
+        expect(document.querySelector(".pr-row")).toBeTruthy();
+      });
 
       fetchMock.mockClear();
       fetchMock.mockImplementation(async (url, init = {}) => {
@@ -6617,7 +6598,9 @@ describe("index page rendering with Testing Library", () => {
         return createOkJsonResponse({ ok: true });
       });
 
-      await window.pollForDataChanges();
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(DATA_POLL_MS);
+      });
 
       fetchMock.mockImplementation(async (url, init = {}) => {
         const normalizedUrl = String(url || "");
@@ -6638,7 +6621,9 @@ describe("index page rendering with Testing Library", () => {
         return createOkJsonResponse({ ok: true });
       });
 
-      await window.pollForDataChanges();
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(DATA_POLL_MS);
+      });
 
       const snackbar = document.getElementById("error-snackbar");
       const snackbarMessage = document.getElementById("error-snackbar-message");
@@ -6674,7 +6659,9 @@ describe("index page rendering with Testing Library", () => {
         return createOkJsonResponse({ ok: true });
       });
 
-      await window.pollForDataChanges();
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(DATA_POLL_MS);
+      });
 
       expect(snackbar).toHaveAttribute("hidden");
     }
@@ -6708,7 +6695,9 @@ describe("index page rendering with Testing Library", () => {
         },
       });
 
-      expect(typeof window.pollForDataChanges).toBe("function");
+      await waitFor(() => {
+        expect(document.querySelector(".pr-row")).toBeTruthy();
+      });
 
       fetchMock.mockClear();
       fetchMock.mockImplementation(async (url, init = {}) => {
@@ -6741,7 +6730,9 @@ describe("index page rendering with Testing Library", () => {
         return createOkJsonResponse({ ok: true });
       });
 
-      await window.pollForDataChanges();
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(DATA_POLL_MS);
+      });
 
       const metaCalls = fetchMock.mock.calls.filter((call) => {
         const [url, init] = call;
@@ -6792,15 +6783,14 @@ describe("index page rendering with Testing Library", () => {
         },
       });
 
-      expect(typeof window.pollForDataChanges).toBe("function");
       await waitFor(() => {
         const row = document.querySelector(
-          "#pr-sections .pr-group-section-content table tbody tr",
+          "#pr-sections .pr-section-content table tbody tr",
         );
         expect(row).toBeTruthy();
       });
       const firstMainRowTextBefore = String(
-        document.querySelector("#pr-sections .pr-group-section-content table tbody tr")
+        document.querySelector("#pr-sections .pr-section-content table tbody tr")
           ?.textContent || "",
       );
 
@@ -6867,12 +6857,14 @@ describe("index page rendering with Testing Library", () => {
         return createOkJsonResponse({ ok: true });
       });
 
-      await window.pollForDataChanges();
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(DATA_POLL_MS);
+      });
 
       let firstMainRowTextAfter = "";
       await waitFor(() => {
         firstMainRowTextAfter = String(
-          document.querySelector("#pr-sections .pr-group-section-content table tbody tr")
+          document.querySelector("#pr-sections .pr-section-content table tbody tr")
             ?.textContent || "",
         );
         expect(firstMainRowTextAfter).toContain("author-beta-002");
@@ -6900,7 +6892,7 @@ describe("index page rendering with Testing Library", () => {
     }
   });
 
-  test("given review conversations view controls changed, when polling rerenders the row, then filter mode and summaries toggle remain selected", async () => {
+  test("given review conversations view controls changed, when polling rerenders the row, then the conversation and activity filters stay as picked", async () => {
     const buildPayload = ({
       dataVersion,
       titleDisplay,
@@ -7013,45 +7005,34 @@ describe("index page rendering with Testing Library", () => {
         }),
       });
 
-      expect(typeof window.pollForDataChanges).toBe("function");
-
-      const user = userEvent.setup();
+      // Phase H.3 (see REACT_MIGRATION_PLAN.md): delay: null - this
+      // describe block's fake timers would otherwise hang userEvent's own
+      // internal setTimeout-based delays forever.
+      const user = userEvent.setup({ delay: null });
       await waitFor(() => {
         expect(screen.getByText("#101")).toBeInTheDocument();
       });
 
       const row = screen.getByText("#101").closest("tr");
-      await user.click(row?.querySelector(".row-insights-toggle"));
 
-      const reviewSectionSelector =
-        '.row-insights-content details.insight-section[data-insight-key="review-conversations"]';
-      const activitySectionSelector =
-        '.row-insights-content details.insight-section[data-insight-key="activity sequence"]';
-      const getReviewSection = () => document.querySelector(reviewSectionSelector);
-      const getActivitySection = () => document.querySelector(activitySectionSelector);
-      await waitFor(() => {
-        expect(getReviewSection()).toBeTruthy();
-        expect(getActivitySection()).toBeTruthy();
-      });
+      // The pane's Conversations and Activity tabs.
+      const getActivitySection = () => document.querySelector(".pr-pane .pr-activity");
+      const commentsChip = () =>
+        within(document.querySelector(".pr-pane")).getByRole("button", { name: /^Comments/ });
+      const threadIds = (panel) =>
+        Array.from(panel.querySelectorAll(".pr-conv-thread")).map((thread) => thread.getAttribute("data-thread-id"));
+      const conversations = await openPrPane(user, row, "Conversations");
+      expect(threadIds(conversations)).toEqual(["thread-open-1"]);
 
-      await user.click(getReviewSection()?.querySelector("summary"));
-      await user.click(getActivitySection()?.querySelector("summary"));
+      // Picked by the user, so the poll below must keep it.
+      await user.click(conversationChip(conversations, "All"));
+      expect(conversationChip(conversations, "All")).toHaveAttribute("aria-pressed", "true");
+      expect(threadIds(conversations)).toContain("thread-resolved-1");
 
-      const resolvedButtonSelector =
-        ".insight-thread-filter-btn:nth-child(3)";
-      const summaryToggleSelector = ".insight-thread-summary-toggle-btn";
-
-      await user.click(getReviewSection()?.querySelector(resolvedButtonSelector));
-      await user.click(getReviewSection()?.querySelector(summaryToggleSelector));
-
-      expect(
-        String(getReviewSection()?.querySelector(summaryToggleSelector)?.textContent || ""),
-      ).toBe("Summaries: Off");
-      expect(
-        String(getReviewSection()?.querySelector(resolvedButtonSelector)?.className || ""),
-      ).toContain("insight-thread-filter-btn-active");
-      expect(String(getReviewSection()?.textContent || "")).toContain("Resolved thread");
-      expect(String(getReviewSection()?.textContent || "")).not.toContain("Open thread");
+      await openPrPane(user, row, "Activity");
+      // Turned off by the user, so the poll below must keep it off.
+      await user.click(commentsChip());
+      expect(commentsChip()).toHaveAttribute("aria-pressed", "false");
       expect(String(getActivitySection()?.textContent || "")).not.toContain(
         "Thread: resolved",
       );
@@ -7093,35 +7074,29 @@ describe("index page rendering with Testing Library", () => {
         return createOkJsonResponse({ ok: true });
       });
 
-      await window.pollForDataChanges();
-
-      await waitFor(() => {
-        expect(screen.getByText("#101")).toBeInTheDocument();
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(DATA_POLL_MS);
       });
 
-      const refreshedRow = screen.getByText("#101").closest("tr");
-      const refreshedToggle = refreshedRow?.querySelector(".row-insights-toggle");
-      expect(refreshedToggle?.getAttribute("aria-expanded")).toBe("true");
+      // The row (the pane's title links "#101" too).
+      const prRow = () => document.querySelector('tr.pr-row[data-pr-number="101"]');
+      await waitFor(() => {
+        expect(prRow()).toBeInTheDocument();
+      });
 
-      const refreshedReviewSection = getReviewSection();
+      // Still selected, on the same tab, with the filter as the user left it.
+      const refreshedRow = prRow();
+      expect(refreshedRow).toHaveAttribute("aria-current", "true");
       const refreshedActivitySection = getActivitySection();
-      expect(refreshedReviewSection?.open).toBe(true);
-      expect(refreshedActivitySection?.open).toBe(true);
-      expect(
-        String(
-          refreshedReviewSection?.querySelector(summaryToggleSelector)?.textContent || "",
-        ),
-      ).toBe("Summaries: Off");
-      expect(
-        String(
-          refreshedReviewSection?.querySelector(resolvedButtonSelector)?.className || "",
-        ),
-      ).toContain("insight-thread-filter-btn-active");
-      expect(String(refreshedReviewSection?.textContent || "")).toContain(
-        "Resolved thread",
-      );
-      expect(String(refreshedReviewSection?.textContent || "")).not.toContain(
-        "Open thread",
+      expect(commentsChip()).toHaveAttribute("aria-pressed", "false");
+
+      // The conversation filter survives too (the tab remounts), over the
+      // new data: one more resolved thread.
+      const refreshedConversations = await openPrPane(user, refreshedRow, "Conversations");
+      expect(conversationChip(refreshedConversations, "All")).toHaveAttribute("aria-pressed", "true");
+      expect(conversationChip(refreshedConversations, "All")).toHaveTextContent("4");
+      expect(threadIds(refreshedConversations)).toEqual(
+        expect.arrayContaining(["thread-open-1", "thread-resolved-1", "thread-author-warning-1", "thread-author-warning-2"]),
       );
       expect(String(refreshedActivitySection?.textContent || "")).not.toContain(
         "Thread: resolved",
@@ -7160,7 +7135,9 @@ describe("index page rendering with Testing Library", () => {
         },
       });
 
-      expect(typeof window.pollForDataChanges).toBe("function");
+      await waitFor(() => {
+        expect(document.querySelector(".pr-row")).toBeTruthy();
+      });
 
       fetchMock.mockClear();
       fetchMock.mockImplementation(async (url, init = {}) => {
@@ -7249,7 +7226,9 @@ describe("index page rendering with Testing Library", () => {
         return createOkJsonResponse({ ok: true });
       });
 
-      await window.pollForDataChanges();
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(DATA_POLL_MS);
+      });
 
       const metaCalls = fetchMock.mock.calls.filter((call) => {
         const [url, init] = call;
@@ -7287,6 +7266,274 @@ describe("index page rendering with Testing Library", () => {
 
       const deltaCallBody = String(deltaCalls[0]?.[1]?.body || "");
       expect(deltaCallBody).toContain("101");
+    }
+  });
+
+  test("a poll deferred by a dirty Notes field flushes once clean, applying the fresh payload without going through the full render pipeline", async () => {
+    // Regression coverage for a real gap found while closing out
+    // recomputeDirtyPrSectionsFields's own entanglement (see
+    // REACT_MIGRATION_PLAN.md, "a real fast path for fresh-payload
+    // renders"): no existing test (jest or Playwright) exercised the full
+    // dirty -> queued -> clean -> flush cycle end to end - only the dirty
+    // bridge itself (window.getDirtyNotesPrNumbers) had coverage. This
+    // proves the flush's applyFreshPrPayload call actually reaches the
+    // real, mounted React table. Window-bridge elimination Phase 7.4: the
+    // dirty state now flows NotesDirtyProvider -> AutoRenderBlockingSync ->
+    // AutoRenderBlockingProvider, all real here.
+    {
+      initTestPage({
+        dataPayload: {
+          dataMeta: { dataVersion: "seed-version" },
+          ...createMultiPrPayload({
+            prs: [
+              {
+                scenario: "open-no-change",
+                prNumber: 101,
+                overrides: {
+                  data: {
+                    title: "Deferred poll seed",
+                    titleDisplay: "Deferred poll seed [CHK:PASS]",
+                    author: "octocat",
+                    url: "https://github.com/owner/repo/pull/101",
+                    updatedAt: "2026-06-16T10:00:00Z",
+                  },
+                },
+              },
+            ],
+            lastRun: { repo: "owner/repo", updatedAt: "2026-06-16T10:00:00Z" },
+          }),
+        },
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText("#101")).toBeInTheDocument();
+      });
+      expect(prDataProbe.readPayload().byPrNumber["101"].data.title).toBe(
+        "Deferred poll seed",
+      );
+
+      // Mark PR 101's notes dirty through the real NotesDirtyProvider, as
+      // the Notes tab does on an edit.
+      act(() => {
+        notesDirtyTestHandle.setNotesDirty("101", true);
+      });
+
+      // The indicator only becomes visible once a poll actually has a
+      // payload queued (AutoRenderBlockingProvider's isBlocked requires
+      // both pendingAutoRenderPayload and
+      // hasDirtyPrSectionsFields) - not from the dirty flag alone.
+      const indicator = document.getElementById("auto-render-blocked-indicator");
+      expect(indicator).toHaveAttribute("hidden");
+
+      fetchMock.mockClear();
+      fetchMock.mockImplementation(async (url, init = {}) => {
+        const normalizedUrl = String(url || "");
+        const method = String(init?.method || "GET").toUpperCase();
+
+        if (normalizedUrl === "/view-prs/data-meta" && method === "GET") {
+          return createOkJsonResponse({ ok: true, dataVersion: "deferred-v2" });
+        }
+        if (normalizedUrl === "/view-prs/scheduler" && method === "GET") {
+          return { ok: false, status: 404, json: async () => ({ ok: false }) };
+        }
+        if (normalizedUrl === "/view-prs/data" && method === "GET") {
+          return createOkJsonResponse({
+            ok: true,
+            lastRun: { repo: "owner/repo", updatedAt: "2026-06-16T10:30:00Z" },
+            ...createMultiPrPayload({
+              prs: [
+                {
+                  scenario: "open-no-change",
+                  prNumber: 101,
+                  overrides: {
+                    data: {
+                      title: "Deferred poll applied",
+                      titleDisplay: "Deferred poll applied [CHK:PASS]",
+                      author: "octocat",
+                      url: "https://github.com/owner/repo/pull/101",
+                      updatedAt: "2026-06-16T10:30:00Z",
+                    },
+                  },
+                },
+              ],
+              lastRun: { repo: "owner/repo", updatedAt: "2026-06-16T10:30:00Z" },
+            }),
+          });
+        }
+        return createOkJsonResponse({ ok: true });
+      });
+
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(DATA_POLL_MS);
+      });
+
+      // Still deferred - the dirty field hasn't cleared yet. The indicator
+      // itself is now toggled by AutoRenderBlockingProvider.tsx's own
+      // effect (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"),
+      // one React commit after the bridge call above - waitFor accounts
+      // for that, where this used to be a synchronous vanilla DOM write.
+      expect(prDataProbe.readPayload().byPrNumber["101"].data.title).toBe(
+        "Deferred poll seed",
+      );
+      await waitFor(() => {
+        expect(indicator).not.toHaveAttribute("hidden");
+      });
+
+      // Field becomes clean - AutoRenderBlockingSync pushes the clean state,
+      // and the Provider sees !hasDirtyPrSectionsFields &&
+      // pendingAutoRenderPayload and flushes.
+      act(() => {
+        notesDirtyTestHandle.setNotesDirty("101", false);
+      });
+
+      await waitFor(() => {
+        expect(prDataProbe.readPayload().byPrNumber["101"]?.data?.title).toBe(
+          "Deferred poll applied",
+        );
+      });
+      await waitFor(() => {
+        expect(indicator).toHaveAttribute("hidden");
+      });
+    }
+  });
+
+  test("a poll that clears while a text field is focused waits for blur before applying, instead of clobbering the focused field", async () => {
+    // Regression coverage for a real gap found while investigating
+    // whether the auto-render-blocking pipeline could move into React
+    // (see REACT_MIGRATION_PLAN.md): getPendingAutoRenderAction's
+    // "wait-for-blur" branch (index.page.js's flushPendingAutoRender,
+    // via pr-data-polling.helpers.ts) had a direct unit test for its own
+    // pure decision function, but nothing exercised the real mechanism -
+    // self-attaching a one-time native "blur" listener on
+    // document.activeElement - end to end. This proves that real
+    // mechanism actually works: a poll that becomes eligible to apply
+    // while a text field is focused does NOT apply immediately, and
+    // applies only once that field is blurred.
+    let focusedInput;
+    try {
+      initTestPage({
+        dataPayload: {
+          dataMeta: { dataVersion: "seed-version" },
+          ...createMultiPrPayload({
+            prs: [
+              {
+                scenario: "open-no-change",
+                prNumber: 102,
+                overrides: {
+                  data: {
+                    title: "Blur-wait poll seed",
+                    titleDisplay: "Blur-wait poll seed [CHK:PASS]",
+                    author: "octocat",
+                    url: "https://github.com/owner/repo/pull/102",
+                    updatedAt: "2026-06-16T10:00:00Z",
+                  },
+                },
+              },
+            ],
+            lastRun: { repo: "owner/repo", updatedAt: "2026-06-16T10:00:00Z" },
+          }),
+        },
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText("#102")).toBeInTheDocument();
+      });
+
+      // A real, focused text-entry element - isTextEntryElement only
+      // checks tagName, so a plain throwaway <input> is a faithful
+      // stand-in for whichever real field the user was actually editing.
+      focusedInput = document.createElement("input");
+      document.body.appendChild(focusedInput);
+      focusedInput.focus();
+      expect(document.activeElement).toBe(focusedInput);
+
+      // Mark PR 102's notes dirty through the real NotesDirtyProvider, as
+      // the sibling test above does.
+      act(() => {
+        notesDirtyTestHandle.setNotesDirty("102", true);
+      });
+
+      fetchMock.mockClear();
+      fetchMock.mockImplementation(async (url, init = {}) => {
+        const normalizedUrl = String(url || "");
+        const method = String(init?.method || "GET").toUpperCase();
+
+        if (normalizedUrl === "/view-prs/data-meta" && method === "GET") {
+          return createOkJsonResponse({ ok: true, dataVersion: "blur-wait-v2" });
+        }
+        if (normalizedUrl === "/view-prs/scheduler" && method === "GET") {
+          return { ok: false, status: 404, json: async () => ({ ok: false }) };
+        }
+        if (normalizedUrl === "/view-prs/data" && method === "GET") {
+          return createOkJsonResponse({
+            ok: true,
+            lastRun: { repo: "owner/repo", updatedAt: "2026-06-16T10:30:00Z" },
+            ...createMultiPrPayload({
+              prs: [
+                {
+                  scenario: "open-no-change",
+                  prNumber: 102,
+                  overrides: {
+                    data: {
+                      title: "Blur-wait poll applied",
+                      titleDisplay: "Blur-wait poll applied [CHK:PASS]",
+                      author: "octocat",
+                      url: "https://github.com/owner/repo/pull/102",
+                      updatedAt: "2026-06-16T10:30:00Z",
+                    },
+                  },
+                },
+              ],
+              lastRun: { repo: "owner/repo", updatedAt: "2026-06-16T10:30:00Z" },
+            }),
+          });
+        }
+        return createOkJsonResponse({ ok: true });
+      });
+
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(DATA_POLL_MS);
+      });
+
+      // Still deferred - the dirty field hasn't cleared yet.
+      expect(prDataProbe.readPayload().byPrNumber["102"].data.title).toBe(
+        "Blur-wait poll seed",
+      );
+
+      // Field becomes clean - the Provider sees !hasDirtyPrSectionsFields &&
+      // pendingAutoRenderPayload and runs its flush check, which (after its
+      // setTimeout(0)) finds document.activeElement is still our focused
+      // text input and chooses "wait-for-blur" instead of applying.
+      act(() => {
+        notesDirtyTestHandle.setNotesDirty("102", false);
+      });
+
+      // Give the setTimeout(0) a chance to run, then confirm the payload
+      // is still NOT applied - the focused field must not be clobbered.
+      // Phase H.3 (see REACT_MIGRATION_PLAN.md): a real setTimeout wait
+      // here would hang forever now that this describe block's fake
+      // timers are active and nothing else advances them - advance them
+      // explicitly instead.
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(10);
+      });
+      expect(prDataProbe.readPayload().byPrNumber["102"].data.title).toBe(
+        "Blur-wait poll seed",
+      );
+      expect(document.activeElement).toBe(focusedInput);
+
+      // Blur the field - the self-attached one-time listener re-runs
+      // flushPendingAutoRender, which now sees no focused text element
+      // and applies the pending payload.
+      focusedInput.blur();
+
+      await waitFor(() => {
+        expect(prDataProbe.readPayload().byPrNumber["102"]?.data?.title).toBe(
+          "Blur-wait poll applied",
+        );
+      });
+    } finally {
+      focusedInput?.remove();
     }
   });
 
@@ -7330,28 +7577,31 @@ describe("index page rendering with Testing Library", () => {
         },
       });
 
-      expect(typeof window.pollForDataChanges).toBe("function");
-
-      const insightsToggle = await screen.findByRole("button", {
-        name: "More insights",
+      const summaryToggle = await screen.findByRole("button", {
+        name: /^Show summary for PR #/,
       });
-      const user = userEvent.setup();
-      await user.click(insightsToggle);
+      // Phase H.3 (see REACT_MIGRATION_PLAN.md): delay: null - this
+      // describe block's fake timers would otherwise hang userEvent's own
+      // internal setTimeout-based delays forever.
+      const user = userEvent.setup({ delay: null });
+      // The row's summary open, and the PR in the pane on its Activity tab.
+      await user.click(summaryToggle);
+      const insightsPanel = await openPrPane(user, summaryToggle.closest("tr"), "Activity");
 
       await waitFor(() => {
         expect(
-          document.querySelector(".row-insights-toggle[aria-expanded='true']"),
+          document.querySelector(".pr-expand-toggle[aria-expanded='true']"),
         ).toBeTruthy();
       });
-
-      const insightsPanel = document.querySelector(".row-insights-content");
       expect(insightsPanel).toBeTruthy();
+      // The Activity tab's collapsible group (closed until opened).
       const activityDetails = Array.from(
         insightsPanel.querySelectorAll("details[data-insight-key]"),
       ).find(
-        (d) => d.getAttribute("data-insight-key") === "activity sequence",
+        (d) => d.getAttribute("data-insight-key") === "daily summary",
       );
       expect(activityDetails).toBeTruthy();
+      expect(activityDetails.open).toBe(false);
       activityDetails.open = true;
       if (typeof activityDetails.setAttribute === "function") {
         activityDetails.setAttribute("open", "");
@@ -7427,25 +7677,29 @@ describe("index page rendering with Testing Library", () => {
         return createOkJsonResponse({ ok: true });
       });
 
-      await window.pollForDataChanges();
-
-      await waitFor(() => {
-        const toggle = document.querySelector(".row-insights-toggle");
-        expect(toggle?.getAttribute("aria-expanded")).toBe("true");
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(DATA_POLL_MS);
       });
 
-      const insightsPanelAfter = document.querySelector(
-        ".row-insights-content",
-      );
+      await waitFor(() => {
+        const toggle = document.querySelector(".pr-expand-toggle");
+        expect(toggle?.getAttribute("aria-expanded")).toBe("true");
+      });
+      // The pane still shows the PR, on the same tab.
+      expect(document.querySelector('tr.pr-row[data-pr-number="101"]')).toHaveAttribute("aria-current", "true");
+      expect(within(document.querySelector(".pr-pane")).getByRole("tab", { name: /^Activity/ })).toHaveAttribute("aria-selected", "true");
+
+      const insightsPanelAfter = within(document.querySelector(".pr-pane")).getByRole("tabpanel");
       expect(insightsPanelAfter).toBeTruthy();
       const activityDetailsAfter = Array.from(
         insightsPanelAfter.querySelectorAll("details[data-insight-key]"),
       ).find(
-        (d) => d.getAttribute("data-insight-key") === "activity sequence",
+        (d) => d.getAttribute("data-insight-key") === "daily summary",
       );
       expect(activityDetailsAfter).toBeTruthy();
       expect(activityDetailsAfter.open).toBe(true);
     }
+    });
   });
 
   test("closed or merged sections sort by timestamps", async () => {
@@ -7541,17 +7795,17 @@ describe("index page rendering with Testing Library", () => {
 
     await waitFor(() => {
       const closedPrsSection = Array.from(
-        document.querySelectorAll(".pr-group-section"),
+        document.querySelectorAll(".pr-section"),
       ).find((s) => s.querySelector("summary")?.textContent?.includes("Closed PRs"));
       expect(closedPrsSection).toBeTruthy();
     });
 
     const closedPrsSection = Array.from(
-      document.querySelectorAll(".pr-group-section"),
+      document.querySelectorAll(".pr-section"),
     ).find((s) => s.querySelector("summary")?.textContent?.includes("Closed PRs"));
 
     const mergedPrsSection = Array.from(
-      document.querySelectorAll(".pr-group-section"),
+      document.querySelectorAll(".pr-section"),
     ).find((s) => s.querySelector("summary")?.textContent?.includes("Latest Merged"));
 
     // Verify closed PRs sorted by closedAt descending (400 before 300)
@@ -7673,7 +7927,7 @@ describe("index page rendering with Testing Library", () => {
 
     await waitFor(() => {
       const closedTable = Array.from(
-        document.querySelectorAll(".pr-group-section"),
+        document.querySelectorAll(".pr-section"),
       )
         .find((s) => s.querySelector("summary")?.textContent?.includes("Closed PRs"))
         ?.querySelector("table");
@@ -7682,7 +7936,7 @@ describe("index page rendering with Testing Library", () => {
     });
 
     const closedTableAfter = Array.from(
-      document.querySelectorAll(".pr-group-section"),
+      document.querySelectorAll(".pr-section"),
     )
       .find((s) => s.querySelector("summary")?.textContent?.includes("Closed PRs"))
       ?.querySelector("table");
@@ -7690,7 +7944,7 @@ describe("index page rendering with Testing Library", () => {
     expect(firstClosedLinkAfter?.textContent).toBe("#400");
 
     const mergedTableAfter = Array.from(
-      document.querySelectorAll(".pr-group-section"),
+      document.querySelectorAll(".pr-section"),
     )
       .find((s) => s.querySelector("summary")?.textContent?.includes("Latest Merged"))
       ?.querySelector("table");
@@ -7702,38 +7956,53 @@ describe("index page rendering with Testing Library", () => {
   // comments finish loading" was removed here: the manual comments
   // composer is React-owned (#author-insights-content-root) with no
   // vanilla-DOM fallback left for this jsdom-only suite to render into.
-  // The actual mechanism under test (composer draft state surviving a
-  // full section rebuild, which is what happens when the async
-  // author-comments GET resolves) lives entirely in
-  // buildManualCommentsSection/draftHelpers, unrelated to React - see
-  // "given a composer draft typed for an author..." in
-  // pr-author-insights.component.test.js for the same coverage, tested
-  // directly against that mechanism instead.
+  // The actual mechanism under test (composer draft state surviving an
+  // async author-comments load) lives entirely in
+  // AuthorInsightsDraftsProvider.tsx's real Context state now - see
+  // AuthorInsightsCommentsSection.test.jsx's own draft/dirty-tracking
+  // tests for the equivalent coverage, tested directly against that
+  // mechanism instead.
 
-  test("form parsing applies credential hints to filter inputs without changing field names", () => {
+  // Accessibility naming (groundwork for role-based e2e queries that survive
+  // a UI redesign): the page's text areas, content areas and multi-select
+  // filter lists in index.html each have a role and a name. Some live in
+  // tab panels that start hidden, hence { hidden: true }.
+  // The Review stats and Authors views mount the first time they're shown
+  // (this harness has no TabStateProvider to show them); AppShell.test.tsx
+  // checks their regions.
+  test("index.html's page areas and filter lists are reachable by role and name", () => {
     initTestPage();
 
-    const repoField = document.getElementById("repo");
-    expect(repoField.name).toBe("repo");
-    expect(repoField.getAttribute("data-lpignore")).toBe("true");
-    expect(repoField.getAttribute("data-1p-ignore")).toBe("true");
-    expect(repoField.getAttribute("data-bwignore")).toBe("true");
-    expect(repoField.getAttribute("autocomplete")).toBe("off");
-    expect(repoField.getAttribute("autocapitalize")).toBe("off");
-    expect(repoField.getAttribute("autocorrect")).toBe("off");
-    expect(repoField.getAttribute("spellcheck")).toBe("false");
-    expect(repoField.getAttribute("data-form-type")).toBe("other");
+    const regions = [
+      "Pull requests",
+      "Latest request output",
+      "Backfill status details",
+      "Backfill log",
+      "PR data summary",
+      "Status message",
+      // The filter bar above the table (its applied-filter chips are a
+      // group only while a filter is applied).
+      "Filters",
+    ];
+    regions.forEach((name) => {
+      expect(screen.getByRole("region", { name, hidden: true })).toBeInTheDocument();
+    });
 
-    // Verify field names are preserved (not overridden)
-    expect(repoField.name).toBe("repo");
-
-    const prNumbersField = document.getElementById("pr-numbers");
-    expect(prNumbersField.name).toBe("prNumbers");
-    expect(prNumbersField.getAttribute("data-lpignore")).toBe("true");
-
-    const limitField = document.getElementById("limit");
-    expect(limitField.name).toBe("limit");
-    expect(limitField.getAttribute("data-1p-ignore")).toBe("true");
+    const groups = [
+      "Backfill status badges",
+      "Labels",
+      "Excluded labels",
+      "Authors",
+      "Assigned to",
+      "Approved by",
+      "Allow PR authors to resolve threads started by (Actor Names)",
+      "Do not allow PR authors to resolve threads started by (Actor Names)",
+      "Ignore comments from these authors (GitHub logins)",
+      "Ignore reviews from these authors (GitHub logins)",
+    ];
+    groups.forEach((name) => {
+      expect(screen.getByRole("group", { name, hidden: true })).toBeInTheDocument();
+    });
   });
 
   test("activity timeline consolidates a run of no-activity weekdays into one row, still skipping weekends", async () => {
@@ -7826,12 +8095,8 @@ describe("index page rendering with Testing Library", () => {
 
       const prLink = await screen.findByText("#123");
       const row = prLink.closest("tr");
-      const insightsToggle = row?.querySelector(".row-insights-toggle");
-
-      await user.click(insightsToggle);
-
-      // Find the activity timeline table in the insights
-      const insightsRow = row?.nextElementSibling;
+      // The activity timeline table, on the pane's Activity tab
+      const insightsRow = await openPrPane(user, row, "Activity");
       const timelineTable = insightsRow?.querySelector("table");
       expect(timelineTable).toBeTruthy();
 
@@ -7858,6 +8123,57 @@ describe("index page rendering with Testing Library", () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  // Phase 7, sub-phase 7.4 (see REACT_MIGRATION_PLAN.md): the
+  // FilterOptionSelect "Any" fields (filter-custom-comments,
+  // filter-other-notes, filter-pr-difficulty, filter-stories,
+  // filter-analysis-of-pr) were never included in
+  // persistUiOptionOverrides/restoreUiOptionOverrides/getUiOptionDefaults -
+  // a real, undocumented persistence gap, not an intentional exclusion
+  // (unlike their separate, deliberate exclusion from auto-apply-on-change).
+  // Covers both directions of that fix for one representative field
+  // (filter-pr-difficulty); the others share the exact same code path.
+  describe("FilterOptionSelect persistence (persistence-gap fix)", () => {
+    test("given a FilterOptionSelect value, when it changes, then it is persisted to user-defaults", async () => {
+      initTestPage({
+        dataPayload: createMultiPrPayload({
+          prs: [{ scenario: "open-no-change", prNumber: 850 }],
+          lastRun: { repo: "owner/repo", updatedAt: "2026-06-16T10:00:00Z" },
+        }),
+      });
+
+  
+      const prDifficultySelect = document.getElementById("filter-pr-difficulty");
+      fetchMock.mockClear();
+      fireEvent.change(prDifficultySelect, { target: { value: "3" } });
+
+      await waitForPersistedViewFilterOverrides((savedOverrides) => {
+        expect(savedOverrides["filter-pr-difficulty"]).toBe("3");
+      });
+    });
+
+    test("given user-defaults with a FilterOptionSelect value, when page loads, then it is restored", async () => {
+      initTestPage({
+        dataPayload: createMultiPrPayload({
+          prs: [{ scenario: "open-no-change", prNumber: 851 }],
+          lastRun: { repo: "owner/repo", updatedAt: "2026-06-16T10:00:00Z" },
+        }),
+        userDefaultsOverrides: {
+          repo: "owner/repo",
+          "filter-pr-difficulty": "4",
+        },
+      });
+
+  
+      // Phase E (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+      // restore now lands in FilterStateProvider's own Context, not this
+      // static <select> directly (see installFilterStateProviderBridge's
+      // own comment) - read the real source of truth instead of the DOM.
+      await waitFor(() => {
+        expect(readFilterStateValues()?.filterPrDifficulty).toBe("4");
+      });
+    });
   });
 
   describe("change detection filters", () => {
@@ -7888,10 +8204,14 @@ describe("index page rendering with Testing Library", () => {
         }),
       });
 
-      const user = userEvent.setup();
-      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
-
-      const list = getMultiSelectList("change-filter-ignore-comment-authors-list");
+  
+      const list = await waitFor(() => {
+        const found = getMultiSelectList("change-filter-ignore-comment-authors-list");
+        if (isMultiSelectEmpty("change-filter-ignore-comment-authors-list")) {
+          throw new Error("not populated yet");
+        }
+        return found;
+      });
       expect(list).toBeTruthy();
       expect(isMultiSelectEmpty("change-filter-ignore-comment-authors-list")).toBe(false);
 
@@ -7926,10 +8246,14 @@ describe("index page rendering with Testing Library", () => {
         }),
       });
 
-      const user = userEvent.setup();
-      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
-
-      const list = getMultiSelectList("change-filter-ignore-review-authors-list");
+  
+      const list = await waitFor(() => {
+        const found = getMultiSelectList("change-filter-ignore-review-authors-list");
+        if (isMultiSelectEmpty("change-filter-ignore-review-authors-list")) {
+          throw new Error("not populated yet");
+        }
+        return found;
+      });
       expect(list).toBeTruthy();
       expect(isMultiSelectEmpty("change-filter-ignore-review-authors-list")).toBe(false);
 
@@ -7953,9 +8277,7 @@ describe("index page rendering with Testing Library", () => {
         }),
       });
 
-      const user = userEvent.setup();
-      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
-
+  
       const commentList = getMultiSelectList("change-filter-ignore-comment-authors-list");
       const reviewList = getMultiSelectList("change-filter-ignore-review-authors-list");
 
@@ -7975,7 +8297,7 @@ describe("index page rendering with Testing Library", () => {
       expect(commentCheckboxes.length).toBe(reviewCheckboxes.length);
     });
 
-    test("given change filter selections, when Apply filters clicked, then selections are persisted to user-defaults", async () => {
+    test("given change filter selections, when they are made, then they are persisted to user-defaults", async () => {
       initTestPage({
         dataPayload: createMultiPrPayload({
           prs: [{ scenario: "open-no-change", prNumber: 804 }],
@@ -7989,7 +8311,11 @@ describe("index page rendering with Testing Library", () => {
       });
 
       const user = userEvent.setup();
-      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+        await waitFor(() => {
+        if (isMultiSelectEmpty("change-filter-ignore-comment-authors-list")) {
+          throw new Error("not populated yet");
+        }
+      });
 
       // Select comment authors to ignore
       await clickMultiSelectCheckbox(
@@ -8014,42 +8340,24 @@ describe("index page rendering with Testing Library", () => {
       const commitPatternsTextarea = document.getElementById(
         "change-filter-ignore-commit-patterns",
       );
-      commitPatternsTextarea.value = "^docs:\n^test:\n^chore\\(deps\\):";
-      commitPatternsTextarea.dispatchEvent(new Event("input", { bubbles: true }));
+      fireEvent.change(commitPatternsTextarea, { target: { value: "^docs:\n^test:\n^chore\\(deps\\):" } });
 
-      fetchMock.mockClear();
-      await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
-
-      let latestPutCall;
-      await waitFor(() => {
-        latestPutCall = fetchMock.mock.calls
-          .slice()
-          .reverse()
-          .find((call) => {
-            const [url, init] = call;
-            return (
-              String(url || "") === "/view-prs/user-defaults" &&
-              String(init?.method || "GET").toUpperCase() === "PUT"
-            );
-          });
-        expect(latestPutCall).toBeDefined();
+      await waitForPersistedViewFilterOverrides((savedOverrides) => {
+        expect(savedOverrides.changeFilters).toBeDefined();
+        expect(savedOverrides.changeFilters.ignoreCommentsFromAuthors).toEqual([
+          "dependabot[bot]",
+          "github-actions[bot]",
+        ]);
+        expect(savedOverrides.changeFilters.ignoreReviewsFromAuthors).toEqual(["reviewer1"]);
+        expect(savedOverrides.changeFilters.ignoreCommitPatterns).toEqual([
+          "^docs:",
+          "^test:",
+          "^chore\\(deps\\):",
+        ]);
       });
-
-      const savedOverrides = JSON.parse(String(latestPutCall?.[1]?.body || "{}"));
-      expect(savedOverrides.changeFilters).toBeDefined();
-      expect(savedOverrides.changeFilters.ignoreCommentsFromAuthors).toEqual([
-        "dependabot[bot]",
-        "github-actions[bot]",
-      ]);
-      expect(savedOverrides.changeFilters.ignoreReviewsFromAuthors).toEqual(["reviewer1"]);
-      expect(savedOverrides.changeFilters.ignoreCommitPatterns).toEqual([
-        "^docs:",
-        "^test:",
-        "^chore\\(deps\\):",
-      ]);
     });
 
-    test("given commit patterns with whitespace and empty lines, when Apply filters clicked, then patterns are trimmed and empty lines removed", async () => {
+    test("given commit patterns with whitespace and empty lines, when entered, then the persisted patterns are trimmed and empty lines removed", async () => {
       initTestPage({
         dataPayload: createMultiPrPayload({
           prs: [{ scenario: "open-no-change", prNumber: 805 }],
@@ -8058,39 +8366,19 @@ describe("index page rendering with Testing Library", () => {
         }),
       });
 
-      const user = userEvent.setup();
-      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
-
+  
       const commitPatternsTextarea = document.getElementById(
         "change-filter-ignore-commit-patterns",
       );
-      commitPatternsTextarea.value = "  ^docs:  \n\n  ^test:  \n   \n^style: formatting";
-      commitPatternsTextarea.dispatchEvent(new Event("input", { bubbles: true }));
+      fireEvent.change(commitPatternsTextarea, { target: { value: "  ^docs:  \n\n  ^test:  \n   \n^style: formatting" } });
 
-      fetchMock.mockClear();
-      await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
-
-      let latestPutCall;
-      await waitFor(() => {
-        latestPutCall = fetchMock.mock.calls
-          .slice()
-          .reverse()
-          .find((call) => {
-            const [url, init] = call;
-            return (
-              String(url || "") === "/view-prs/user-defaults" &&
-              String(init?.method || "GET").toUpperCase() === "PUT"
-            );
-          });
-        expect(latestPutCall).toBeDefined();
+      await waitForPersistedViewFilterOverrides((savedOverrides) => {
+        expect(savedOverrides.changeFilters.ignoreCommitPatterns).toEqual([
+          "^docs:",
+          "^test:",
+          "^style: formatting",
+        ]);
       });
-
-      const savedOverrides = JSON.parse(String(latestPutCall?.[1]?.body || "{}"));
-      expect(savedOverrides.changeFilters.ignoreCommitPatterns).toEqual([
-        "^docs:",
-        "^test:",
-        "^style: formatting",
-      ]);
     });
 
     test("given user-defaults with change filters, when page loads, then selections are restored", async () => {
@@ -8115,32 +8403,57 @@ describe("index page rendering with Testing Library", () => {
         },
       });
 
-      const user = userEvent.setup();
-      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+        await waitFor(() => {
+        if (isMultiSelectEmpty("change-filter-ignore-comment-authors-list")) {
+          throw new Error("not populated yet");
+        }
+      });
 
-      // Check comment author selections are restored
-      const commentAuthorsSelections = getSelectedMultiSelectValues(
-        "change-filter-ignore-comment-authors-list",
-      );
-      expect(commentAuthorsSelections).toEqual(
-        expect.arrayContaining(["dependabot[bot]", "codecov[bot]"]),
-      );
-      expect(commentAuthorsSelections.length).toBe(2);
+      // Phase G.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
+      // these 2 lists are now also Context-controlled
+      // (ChangeFilterActorSelectionContext) - the pending-selection restore
+      // path's own clear-after-consuming step (setPendingMultiSelectSelection
+      // (key, null), pr-pending-multi-select-selections.helpers.ts) notifies
+      // this component's subscription again, re-running the seeding effect
+      // one more time before the checked-state Context write from the
+      // previous pass has committed to the DOM - same transient settling
+      // window the existing thread-resolution restore test above already
+      // wraps in waitFor (getSelectedMultiSelectValues reads the live DOM,
+      // which briefly lags the Context write). A plain synchronous
+      // assertion here was fine before these 2 lists had this extra
+      // Context-driven re-render step.
+      await waitFor(() => {
+        // Check comment author selections are restored
+        const commentAuthorsSelections = getSelectedMultiSelectValues(
+          "change-filter-ignore-comment-authors-list",
+        );
+        expect(commentAuthorsSelections).toEqual(
+          expect.arrayContaining(["dependabot[bot]", "codecov[bot]"]),
+        );
+        expect(commentAuthorsSelections.length).toBe(2);
+      });
 
       // Check review author selections are restored
-      const reviewAuthorsSelections = getSelectedMultiSelectValues(
-        "change-filter-ignore-review-authors-list",
-      );
-      expect(reviewAuthorsSelections).toEqual(["reviewer1"]);
+      await waitFor(() => {
+        const reviewAuthorsSelections = getSelectedMultiSelectValues(
+          "change-filter-ignore-review-authors-list",
+        );
+        expect(reviewAuthorsSelections).toEqual(["reviewer1"]);
+      });
 
-      // Check commit patterns are restored
-      const commitPatternsTextarea = document.getElementById(
-        "change-filter-ignore-commit-patterns",
-      );
-      expect(commitPatternsTextarea.value).toBe("^docs:\n^test:\n^chore\\(deps\\):");
+      // Check commit patterns are restored - Phase E (see
+      // REACT_MIGRATION_PLAN.md, "Full migration roadmap"): restore now
+      // lands in FilterStateProvider's own Context, not this static
+      // <textarea> directly (see installFilterStateProviderBridge's own
+      // comment) - read the real source of truth instead of the DOM.
+      await waitFor(() => {
+        expect(readFilterStateValues()?.changeFilterIgnoreCommitPatterns).toBe(
+          "^docs:\n^test:\n^chore\\(deps\\):",
+        );
+      });
     });
 
-    test("given change filter selections, when selections are changed and Apply filters clicked, then new selections replace old ones", async () => {
+    test("given change filter selections, when selections are changed, then new selections replace old ones", async () => {
       initTestPage({
         dataPayload: createMultiPrPayload({
           prs: [{ scenario: "open-no-change", prNumber: 807 }],
@@ -8163,7 +8476,11 @@ describe("index page rendering with Testing Library", () => {
       });
 
       const user = userEvent.setup();
-      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
+        await waitFor(() => {
+        expect(
+          getSelectedMultiSelectValues("change-filter-ignore-comment-authors-list"),
+        ).toEqual(["dependabot[bot]"]);
+      });
 
       // Verify initial state
       expect(
@@ -8190,39 +8507,21 @@ describe("index page rendering with Testing Library", () => {
       const commitPatternsTextarea = document.getElementById(
         "change-filter-ignore-commit-patterns",
       );
-      commitPatternsTextarea.value = "^test:\n^style:";
-      commitPatternsTextarea.dispatchEvent(new Event("input", { bubbles: true }));
+      fireEvent.change(commitPatternsTextarea, { target: { value: "^test:\n^style:" } });
 
-      fetchMock.mockClear();
-      await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
-
-      let latestPutCall;
-      await waitFor(() => {
-        latestPutCall = fetchMock.mock.calls
-          .slice()
-          .reverse()
-          .find((call) => {
-            const [url, init] = call;
-            return (
-              String(url || "") === "/view-prs/user-defaults" &&
-              String(init?.method || "GET").toUpperCase() === "PUT"
-            );
-          });
-        expect(latestPutCall).toBeDefined();
+      await waitForPersistedViewFilterOverrides((savedOverrides) => {
+        expect(savedOverrides.changeFilters.ignoreCommentsFromAuthors).toEqual([
+          "github-actions[bot]",
+        ]);
+        expect(savedOverrides.changeFilters.ignoreReviewsFromAuthors).toEqual(
+          expect.arrayContaining(["reviewer1", "reviewer2"]),
+        );
+        expect(savedOverrides.changeFilters.ignoreReviewsFromAuthors.length).toBe(2);
+        expect(savedOverrides.changeFilters.ignoreCommitPatterns).toEqual(["^test:", "^style:"]);
       });
-
-      const savedOverrides = JSON.parse(String(latestPutCall?.[1]?.body || "{}"));
-      expect(savedOverrides.changeFilters.ignoreCommentsFromAuthors).toEqual([
-        "github-actions[bot]",
-      ]);
-      expect(savedOverrides.changeFilters.ignoreReviewsFromAuthors).toEqual(
-        expect.arrayContaining(["reviewer1", "reviewer2"]),
-      );
-      expect(savedOverrides.changeFilters.ignoreReviewsFromAuthors.length).toBe(2);
-      expect(savedOverrides.changeFilters.ignoreCommitPatterns).toEqual(["^test:", "^style:"]);
     });
 
-    test("given no change filter selections, when Apply filters clicked, then empty arrays are persisted", async () => {
+    test("given a change filter selection, when it is cleared again, then empty lists are persisted (changeFilters omitted)", async () => {
       initTestPage({
         dataPayload: createMultiPrPayload({
           prs: [{ scenario: "open-no-change", prNumber: 808 }],
@@ -8234,32 +8533,25 @@ describe("index page rendering with Testing Library", () => {
       });
 
       const user = userEvent.setup();
-      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
-
-      fetchMock.mockClear();
-      await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
-
-      let latestPutCall;
-      await waitFor(() => {
-        latestPutCall = fetchMock.mock.calls
-          .slice()
-          .reverse()
-          .find((call) => {
-            const [url, init] = call;
-            return (
-              String(url || "") === "/view-prs/user-defaults" &&
-              String(init?.method || "GET").toUpperCase() === "PUT"
-            );
-          });
-        expect(latestPutCall).toBeDefined();
+        await waitFor(() => {
+        if (isMultiSelectEmpty("change-filter-ignore-review-authors-list")) {
+          throw new Error("not populated yet");
+        }
       });
 
-      const savedOverrides = JSON.parse(String(latestPutCall?.[1]?.body || "{}"));
-      // When all filter arrays are empty, changeFilters should be removed from saved overrides
-      expect(savedOverrides.changeFilters).toBeUndefined();
+      // Saves only happen on a change (the debounce never fires on mount), so
+      // check and uncheck a reviewer: the final state has every list empty.
+      fetchMock.mockClear();
+      await clickMultiSelectCheckbox("change-filter-ignore-review-authors-list", "reviewer1", user);
+      await clickMultiSelectCheckbox("change-filter-ignore-review-authors-list", "reviewer1", user);
+
+      await waitForPersistedViewFilterOverrides((savedOverrides) => {
+        // When all filter arrays are empty, changeFilters should be removed from saved overrides
+        expect(savedOverrides.changeFilters).toBeUndefined();
+      });
     });
 
-    test("given commit patterns textarea with complex regex, when Apply filters clicked, then patterns are preserved exactly", async () => {
+    test("given commit patterns textarea with complex regex, when persisted, then patterns are preserved exactly", async () => {
       initTestPage({
         dataPayload: createMultiPrPayload({
           prs: [{ scenario: "open-no-change", prNumber: 809 }],
@@ -8268,68 +8560,20 @@ describe("index page rendering with Testing Library", () => {
         }),
       });
 
-      const user = userEvent.setup();
-      await user.click(screen.getByRole("tab", { name: "Run & Filter" }));
-
+  
       const commitPatternsTextarea = document.getElementById(
         "change-filter-ignore-commit-patterns",
       );
       // Complex regex patterns with special characters
-      commitPatternsTextarea.value = "^chore\\(deps(-dev)?\\): bump\n^(docs|test):\\s+[A-Z]\n^Merge branch .* into .*$";
-      commitPatternsTextarea.dispatchEvent(new Event("input", { bubbles: true }));
+      fireEvent.change(commitPatternsTextarea, { target: { value: "^chore\\(deps(-dev)?\\): bump\n^(docs|test):\\s+[A-Z]\n^Merge branch .* into .*$" } });
 
-      fetchMock.mockClear();
-      await user.click(screen.getByRole("button", { name: "Apply filters (local)" }));
-
-      let latestPutCall;
-      await waitFor(() => {
-        latestPutCall = fetchMock.mock.calls
-          .slice()
-          .reverse()
-          .find((call) => {
-            const [url, init] = call;
-            return (
-              String(url || "") === "/view-prs/user-defaults" &&
-              String(init?.method || "GET").toUpperCase() === "PUT"
-            );
-          });
-        expect(latestPutCall).toBeDefined();
+      await waitForPersistedViewFilterOverrides((savedOverrides) => {
+        expect(savedOverrides.changeFilters.ignoreCommitPatterns).toEqual([
+          "^chore\\(deps(-dev)?\\): bump",
+          "^(docs|test):\\s+[A-Z]",
+          "^Merge branch .* into .*$",
+        ]);
       });
-
-      const savedOverrides = JSON.parse(String(latestPutCall?.[1]?.body || "{}"));
-      expect(savedOverrides.changeFilters.ignoreCommitPatterns).toEqual([
-        "^chore\\(deps(-dev)?\\): bump",
-        "^(docs|test):\\s+[A-Z]",
-        "^Merge branch .* into .*$",
-      ]);
-    });
-  });
-
-  describe("React mount failure (Phase 6 - see REACT_MIGRATION_PLAN.md)", () => {
-    test("given window.mountReactPrTable genuinely throws, when the initial PR data loads, then renderPrData shows a minimal error message instead of silently leaving the table empty", async () => {
-      // Distinct from the ordinary "React's deferred module hasn't finished
-      // loading yet" race (which this suite's installReactTableMountBridge
-      // pairing never simulates - see renderPrData's own comment on why that
-      // race now leaves #pr-sections empty rather than falling back to a
-      // vanilla table build). This is the other branch: mountReactTable's
-      // (index.page.js) try/catch around window.mountReactPrTable() catches
-      // a genuine failure - renderPrData must surface
-      // renderPrTableMountError()'s honest error state, not pretend to
-      // recover.
-      initTestPage({
-        dataPayload: createMultiPrPayload({
-          prs: [{ scenario: "open-no-change", prNumber: 1 }],
-        }),
-      });
-      window.mountReactPrTable = () => {
-        throw new Error("React mount failed");
-      };
-
-      const errorMessage = await screen.findByText(
-        "Failed to load the PR table. Please refresh the page.",
-      );
-      expect(errorMessage).toHaveClass("pr-table-mount-error");
-      expect(screen.queryByText("#1")).toBeNull();
     });
   });
 });

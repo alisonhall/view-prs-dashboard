@@ -2,7 +2,7 @@
 
 const {
   createPrReviewStatsDateBucketingHelpers,
-} = require("./pr-review-stats-date-bucketing.helpers.js");
+} = require("./pr-review-stats-date-bucketing.helpers.ts");
 
 describe("review stats date bucketing helpers", () => {
   const createHelpers = (overrides = {}) =>

@@ -1,6 +1,6 @@
 const {
   createPrActorIdentityRenderHelpers,
-} = require("./pr-actor-identity-render.helpers.js");
+} = require("./pr-actor-identity-render.helpers.ts");
 
 describe("pr actor identity render helpers", () => {
   const createHelpers = (overrides = {}) =>

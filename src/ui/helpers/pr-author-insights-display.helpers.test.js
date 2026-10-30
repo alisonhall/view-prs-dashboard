@@ -8,14 +8,14 @@
 
 const {
   createPrAuthorInsightsDisplayHelpers,
-} = require("./pr-author-insights-display.helpers.js");
-const { createPrRowEntry } = require("../test-fixtures/pr-row.fixtures.js");
+  resolveValidAuthorLogin,
+} = require("./pr-author-insights-display.helpers.ts");
+const { createPrRowEntry } = require("../test-fixtures/pr-row.fixtures.ts");
 
 describe("pr author insights display helpers", () => {
   const createDependencies = (overrides = {}) => ({
     resolveActorDisplayName: (login, map, fallback) => map[login] || fallback || login,
     getPreferredActorKey: (login, name) => login || name,
-    normalizeActorLogin: (login) => String(login || "").toLowerCase().trim(),
     normalizeAuthorInsightsSentiment: (value) => {
       const sentiment = String(value || "").toLowerCase().trim();
       if (sentiment === "positive") return "positive";
@@ -82,47 +82,6 @@ describe("pr author insights display helpers", () => {
       const entries = helpers.buildAuthorInsightsEntries(rows, {});
 
       expect(entries).toHaveLength(1);
-    });
-  });
-
-  describe("noteAuthorMatchesSelection", () => {
-    test("given matching login, when checking match, then returns true", () => {
-      const helpers = createPrAuthorInsightsDisplayHelpers(createDependencies());
-      const selectedAuthor = { login: "user1", name: "User One" };
-
-      const matches = helpers.noteAuthorMatchesSelection(
-        "user1",
-        selectedAuthor,
-        {},
-      );
-
-      expect(matches).toBe(true);
-    });
-
-    test("given matching name, when checking match, then returns true", () => {
-      const helpers = createPrAuthorInsightsDisplayHelpers(createDependencies());
-      const selectedAuthor = { login: "user1", name: "User One" };
-
-      const matches = helpers.noteAuthorMatchesSelection(
-        "User One",
-        selectedAuthor,
-        {},
-      );
-
-      expect(matches).toBe(true);
-    });
-
-    test("given non-matching author, when checking match, then returns false", () => {
-      const helpers = createPrAuthorInsightsDisplayHelpers(createDependencies());
-      const selectedAuthor = { login: "user1", name: "User One" };
-
-      const matches = helpers.noteAuthorMatchesSelection(
-        "user2",
-        selectedAuthor,
-        {},
-      );
-
-      expect(matches).toBe(false);
     });
   });
 
@@ -255,6 +214,28 @@ describe("pr author insights display helpers", () => {
       expect(sorted[0].prNumber).toBe("2");
       expect(sorted[1].prNumber).toBe("3");
       expect(sorted[2].prNumber).toBe("1");
+    });
+  });
+
+  describe("resolveValidAuthorLogin", () => {
+    // Shared by useNavigateToAuthorInsights.tsx (state/) and
+    // AuthorInsightsSelector.tsx (components/, Phase H.17 - see
+    // REACT_MIGRATION_PLAN.md, "Remaining-effort audit", cluster 2).
+    const authorOptions = [
+      { login: "alice", name: "Alice" },
+      { login: "bob", name: "Bob" },
+    ];
+
+    test("given no author options, when resolving, then an empty login is returned", () => {
+      expect(resolveValidAuthorLogin([], "alice")).toBe("");
+    });
+
+    test("given a requested login that is still a valid option, when resolving, then it is kept unchanged", () => {
+      expect(resolveValidAuthorLogin(authorOptions, "bob")).toBe("bob");
+    });
+
+    test("given a requested login that is no longer a valid option, when resolving, then the first option's login is returned", () => {
+      expect(resolveValidAuthorLogin(authorOptions, "carol")).toBe("alice");
     });
   });
 });

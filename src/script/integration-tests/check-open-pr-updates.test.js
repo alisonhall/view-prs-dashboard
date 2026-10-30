@@ -824,6 +824,55 @@ describe("check-open-pr-updates shell helper behavior", () => {
     });
   });
 
+  // Feature: the Activity Timeline showed when a PR was opened but never
+  // when it was closed (without merging) - closed_at was already threaded
+  // through to the PR row's own `closedAt` field, but never into
+  // build_activity_events_json, so no "closed" entry was ever synthesized.
+  describe("Given a PR's closed_at/merged_at, when build_activity_events_json builds the 'closed' system event", () => {
+    const runBuildActivityEvents = (closedAt, mergedAt) =>
+      JSON.parse(
+        runScriptFn(
+          `build_activity_events_json '[]' '[]' '[]' "" "" "${mergedAt}" "" "${closedAt}"`,
+        ),
+      );
+
+    test("given closed_at set and merged_at empty, when built, then includes a 'closed' entry with actor 'unknown'", () => {
+      const events = runBuildActivityEvents("2026-06-10T00:00:00Z", "");
+      const closedEvents = events.filter((e) => e.type === "closed");
+
+      expect(closedEvents).toHaveLength(1);
+      expect(closedEvents[0]).toMatchObject({
+        type: "closed",
+        actor: "unknown",
+        date: "2026-06-10",
+        occurredAt: "2026-06-10T00:00:00Z",
+        channel: "system",
+      });
+    });
+
+    test("given both closed_at and merged_at set (a merged PR), when built, then no 'closed' entry is added - only 'merged'", () => {
+      const events = runBuildActivityEvents("2026-06-10T00:00:00Z", "2026-06-10T00:00:00Z");
+
+      expect(events.filter((e) => e.type === "closed")).toHaveLength(0);
+      expect(events.filter((e) => e.type === "merged")).toHaveLength(1);
+    });
+
+    test("given closed_at empty, when built, then no 'closed' entry is added", () => {
+      const events = runBuildActivityEvents("", "");
+      expect(events.filter((e) => e.type === "closed")).toHaveLength(0);
+    });
+  });
+
+  describe("Given a 'closed' bucket, when build_activity_timeline_summary renders its label", () => {
+    test("renders 'closed PR', not generic pluralization", () => {
+      const timelineJson = JSON.stringify([
+        { date: "2026-06-10", actor: "unknown", type: "closed", count: 1, earliestAt: "2026-06-10T00:00:00Z", latestAt: "2026-06-10T00:00:00Z", channels: ["system"], events: [] },
+      ]);
+      const summary = runScriptFn(`build_activity_timeline_summary '${timelineJson}'`);
+      expect(summary).toContain("closed PR");
+    });
+  });
+
   // Regression coverage: `my_last` (the viewer's own last-activity
   // timestamp, used as `effective_last`/`baseline`) only looked at
   // top-level PR comments, submitted reviews, and the viewer's own
@@ -834,7 +883,7 @@ describe("check-open-pr-updates shell helper behavior", () => {
   // and, since they aren't the PR's author, an incorrect `NO_ACTIVITY`
   // status (which also flags the PR as Needs Attention) - even though the
   // "N open conversations with me" summary elsewhere in the app
-  // (getOpenConversationCountWithMe, index.page.js) already proves the
+  // (getOpenConversationCountWithMe, pr-open-conversation-count.helpers.ts) already proves the
   // viewer has recent thread activity on the PR.
   describe("Given a non-author viewer whose only activity is a review-thread reply, when compute_pr_state_json evaluates status and baseline", () => {
     const runComputePrStateJsonWithThreads = (prJson, detailJson, threadsJson) => {

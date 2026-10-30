@@ -425,6 +425,10 @@ Successfully implemented automatic split-storage for heavy PR detail arrays, red
 **Time:** ~13 hours (vs 25-35 hour estimate = **50% time savings**)
 **Objective:** Extract tab and feature orchestrators from monolithic index.page.js (6,886 lines)
 
+> **Note (2026-10-22):** superseded since. The orchestrators described below
+> and `index.page.js` itself have been removed; React components and
+> Contexts own this work now (see `docs/history/WINDOW_BRIDGE_ELIMINATION_PLAN.md`).
+
 ### Solution
 
 Created 4 tab orchestrators that compose existing helpers using dependency injection:
@@ -676,7 +680,12 @@ the full history (including the circular-dependency blocker and its fix).
 ---
 
 ## Phase 9: Component Size Reduction
-**Status:** 📋 PLANNED  
+**Status:** ⛔ SUPERSEDED (2026-10-22) - every target component below was a
+vanilla `*.component.js` that the React migration replaced
+(`docs/history/REACT_MIGRATION_PLAN.md`); `pr-filter-panel` is deleted
+outright. Any React component that grows too large should be split as part
+of the UI rework, not under this plan. The checklists below are kept for
+history and will not be ticked.  
 **Objective:** Extract helpers from 500-800 line components
 
 ### Problem Statement
@@ -887,7 +896,7 @@ Currently using CommonJS (`require`/`module.exports`) instead of modern ES modul
 
 **Phase 11C: UI Components Migration**
 - [ ] Migrate all files in `src/ui/components/`
-- [ ] Migrate all files in `src/ui/orchestrators/`
+- [ ] Migrate all files in `src/ui/orchestrators/` - **N/A (2026-10-22):** the orchestrators were deleted during the React migration and the folder no longer exists (see `docs/history/REACT_MIGRATION_PLAN.md`).
 - [ ] Run integration tests
 
 **Phase 11D: Server Migration**
@@ -939,7 +948,7 @@ Currently using CommonJS (`require`/`module.exports`) instead of modern ES modul
 ---
 
 ## Phase 12: TypeScript Migration
-**Status:** 📋 PLANNED  
+**Status:** 🚧 IN PROGRESS - 12A (setup) done 2026-10-22  
 **Objective:** Full TypeScript migration for type safety and better tooling
 
 ### Problem Statement
@@ -991,13 +1000,25 @@ No static type checking leads to:
 
 ### Checklist
 
-**Phase 12A: TypeScript Setup**
-- [ ] Install TypeScript and @types packages
-- [ ] Create tsconfig.json with appropriate settings
-- [ ] Configure build process (tsc or ts-node)
-- [ ] Configure Jest for TypeScript (ts-jest)
-- [ ] Configure ESLint for TypeScript
-- [ ] Test with one simple file
+**Phase 12A: TypeScript Setup** ✅ (2026-10-22)
+- [x] Install TypeScript and @types packages - `typescript` ~6.0.3 (7.x is
+  outside typescript-eslint's supported range), `typescript-eslint`,
+  `@babel/preset-typescript` ^7 (8.x needs Babel 8), `@types/jest`
+- [x] Create tsconfig.json with appropriate settings - UI only for now,
+  `strict` + `noUncheckedIndexedAccess`, `allowJs` (unconverted files are
+  read for types but not checked). Browser code gets no Jest/Node globals;
+  tests are checked separately by `tsconfig.test.json`, which adds them
+- [x] Configure build process - no separate build: Vite already compiles
+  .ts/.tsx, and `tsc` only type-checks (`npm run typecheck`, in CI's lint
+  job and `check:all`)
+- [x] Configure Jest for TypeScript - `@babel/preset-typescript` in
+  babel.config.jest.js rather than ts-jest (same Babel pipeline as JSX)
+- [x] Configure ESLint for TypeScript - typescript-eslint's recommended set
+  for **/*.{ts,tsx}; the guard:state-writes scan now covers .jsx/.ts/.tsx
+- [x] Test with one simple file - `pr-user-initials.helpers.ts` (and its
+  test). Importers name the `.ts` file explicitly (`allowImportingTsExtensions`),
+  because Vite only maps a `.js` import to a `.ts` file when the importer is
+  itself TypeScript.
 
 **Phase 12B: Type Definitions**
 - [ ] Create type definitions for data schemas
@@ -1006,34 +1027,204 @@ No static type checking leads to:
 - [ ] Create types for API responses
 - [ ] Create types for server routes
 
-**Phase 12C: Helper Migration**
-- [ ] Migrate all `src/ui/helpers/*.js` → `*.ts`
-- [ ] Add proper type annotations
-- [ ] Test each batch after migration
-- [ ] Verify types catch real issues
+**Phase 12C: Helper Migration** ✅ (2026-10-23)
+- [x] Migrate all `src/ui/helpers/*.js` → `*.ts` - all 87 helpers, plus
+  `src/ui/components/pr-row-keys.js`, in 15 batches (commits "TypeScript
+  batch 1" to "batch 15"), leaf helpers first. Shared data shapes live in
+  `src/ui/types/pr-data.ts` (following the data schema) and
+  `src/ui/types/globals.d.ts` (the vendored marked/DOMPurify globals);
+  shared dependency types are exported by the helper that owns them (e.g.
+  actor-identity's ActorsMap and ResolveActorDisplayName).
+- [x] Add proper type annotations
+- [x] Test each batch after migration (typecheck, lint, vite build,
+  test:ci and e2e per batch). The review-stats timeline and aggregation
+  helpers, whose own tests are thin, were also compared old-vs-new on
+  generated data before committing.
+- [x] Verify types catch real issues - the conversion surfaced stale
+  comments and a few spots where a typed rewrite would have changed
+  behaviour (all kept identical). Converted helpers' tests stay `.js` for
+  now (Phase 12G), and their callers are still `.jsx`, so the types aren't
+  yet checked against how they're called.
 
 **Phase 12D: Component Migration**
-- [ ] Migrate all `src/ui/components/*.js` → `*.ts`
-- [ ] Add proper type annotations
+- [x] Migrate all `src/ui/components/**/*.jsx` and `src/ui/state/*.jsx` → `*.tsx`
+  (plus `src/ui/react-app.jsx`, now `.tsx`; `pr-row-keys` was converted with the helpers)
+  - State layer first (decided 2026-10-23): the contexts, hooks and
+    Providers survive the planned UI rework, the presentational components
+    largely won't, so those are converted (or rewritten in `.tsx`) as part
+    of the rework instead. Each context is converted with its Provider so
+    the exported value type is checked on both sides.
+  - State batch 1 (2026-10-23): useDebouncedCallback, useDebouncedValue,
+    useStableCallback, useMultiSelectDropdownClosing, and the OutputText,
+    Snackbar, ReviewConversationsUiState, StatusText, NotesDirty and
+    TabState contexts with their Providers.
+  - State batch 2 (2026-10-23): the RowFilter, AuthorThreadResolution and
+    ChangeFilterActor selection contexts with their Providers (sharing a
+    new useCheckedByListIdState hook), RepoLabels with its Provider,
+    useIsTabPanelVisible, useBackfillTabAutoRefresh, filterValuesStore, and
+    the FilterState and PrData contexts. Those two contexts are typed ahead
+    of their (large) Providers, which stay .jsx until a later batch and are
+    checked against the context types when they convert.
+  - State batch 3 (2026-10-23): the ActorIdentity and PrDataActions
+    contexts (also provided by PrDataProvider, so typed ahead of it), and
+    the NeedsAttention and PrActivityQueue contexts with their Providers.
+  - State batch 4 (2026-10-23): the JobEvents and RequestActivity contexts
+    with their Providers.
+  - State batch 5 (2026-10-23): the ReviewStats, PrInsightsDisplay and
+    FilterOptions contexts with their Providers. The review-stats trend
+    note is now built by one shared function (it was written out twice).
+  - State batch 6 (2026-10-23): the AutoRenderBlocking, BackfillStatus,
+    AuthorInsights and AuthorInsightsDrafts contexts with their Providers.
+    getOpenConversationCount is now shared (it was written out twice), and
+    the author-insights display helpers lose their unused
+    normalizeActorLogin option.
+  - State batch 7 (2026-10-24): FilterStateProvider and PrDataProvider,
+    checked against their already-typed contexts. Every Context and
+    Provider is now TypeScript; the state-layer hooks remain.
+  - State batch 8 (2026-10-24): the six smallest hooks - useTriggerAutoRun,
+    useNavigateToPrInTable, useFormBody, useMergedRequestMoreActionOptions,
+    useRowCheckboxActions and useNavigateToAuthorInsights.
+    buildFailureSnackbarNotification now takes any error value.
+  - State batch 9 (2026-10-24): useActivityDrawerActions,
+    useRequestMoreMerged, useTableFilterChips, useAppliedFilterSummary and
+    useSinglePrUpdate. A new useNotifyFailureSnackbar hook replaces the
+    failure-snackbar wrapper each action hook wrote out; the batch 10 hooks
+    adopt it as they convert.
+  - State batch 10 (2026-10-24): useQuickCheckActions, useRunScript,
+    useAckLabelActions, useVisiblePrNumbers and useBackfillActions. The
+    state layer (src/ui/state/ and the Providers) is now all TypeScript.
+    FilterValues lists the Run Script and row-filter fields, PrData gains
+    inReview, the scope/visible-rows helpers take a typed AttentionConfig,
+    and parseCsvTokens is one shared form-parsing helper (it was copied in
+    three places).
+  - UI redesign (`UI_REDESIGN_PLAN.md`), where the presentational
+    components convert as each phase rewrites them:
+    - Phase 0 (2026-10-24): new shared components in `components/ui/`
+      (Icon, Tooltip, Button/IconButton, Chip, Tabs), all `.tsx`.
+    - Phase 1 (2026-10-24): ExportTab, plus the new PrTableUiState context
+      and Provider.
+    - Phase 2 (2026-10-24): PrSection, PrTable, PrRow and its cells
+      (rewritten), the Signal, Avatar and MenuButton components, the
+      NowContext clock, and PrTableApp. PrDataPayload gains the user
+      state's ackByRepo, flaggedByRepo and inReviewByRepo maps.
+    - Phase 3 (2026-10-25): the new PrRowSummary, with its tested helpers;
+      the activity feed builder moves out of ActivityEventsSection.jsx
+      into the typed pr-activity-events.helpers.ts.
+    - Phase 4 (2026-10-25): the detail pane (PrDetailPane, PrOverview,
+      replacing PrInsightsRow.jsx), CopyIconButton, LinesChangedInsight,
+      ApprovalRiskSection, InsightSection and the insights hook
+      (InsightsHook.tsx), plus the useMediaQuery and useFocusTrap hooks.
+    - Phase 5 (2026-10-25): the Activity tab (PrActivityTab, replacing
+      ActivityEventsSection.jsx), ActivityEventDescription and
+      ActivityTimelineSummary, on the new pr-activity-feed.helpers.ts.
+    - Phase 6 (2026-10-25): the Conversations tab (PrConversationsTab,
+      replacing ReviewThreadsSection.jsx), on the new
+      pr-review-threads.helpers.ts, with the thread-resolution policy hook
+      moved to state/useAuthorThreadResolutionPolicy.ts.
+    - Phase 7 (2026-10-25): the Notes tab (PrNotesTab, replacing
+      NotesSection.jsx) and NotesStoriesField, on the new
+      pr-notes-fields.helpers.ts.
+    - Phase 8 (2026-10-25): the filter bar (FilterBar, FilterMultiSelect,
+      DataViewHeaderPortals, replacing TableFilterChips.jsx and
+      AppliedFilterSummary.jsx), with ScopeFilterSelect,
+      PrNumberFilterInput, FilterOptionSelect and
+      AlwaysShowInReviewCheckbox moved into components/filter-bar/ as
+      .tsx. MultiSelectCheckboxList stays .jsx for the Run & Filter tab's
+      rule lists until phase 9.
+    - Phase 9a (2026-10-26): the app header (AppHeader,
+      AutoUpdatePausedBanner), with QuickCheckAllButton and
+      AutoRenderBlockedLinks moved into components/shell/ as .tsx;
+      DataTabButton, AutoRenderBlockedStatusText and
+      AutoRenderBlockedApplyButton deleted.
+    - Phase 9b-1 (2026-10-26): the Settings drawer (SettingsDrawer,
+      RunCheckSection, ScriptOptionsSection), with ContextRunScriptTextInput,
+      ContextFilterCheckbox, OpenModeSelect, ApplyLabelSelect,
+      TriggerAutoRunButton and QuickCheckButton moved into
+      components/settings/ as .tsx; RunScriptActionButton deleted.
+    - Phase 9b-2 (2026-10-26): the rules sections (AttentionRulesSection,
+      MergeCommitsSection, ChangeDetectionSection, SettingsListDropdown) and
+      ui/MultiSelectDropdown, with AttentionNoActivityModeSelect,
+      AuthorThreadResolutionModeSelect, IgnoreCommitPatternsTextarea and
+      MergeCommitRulesTextarea moved into components/settings/ as .tsx;
+      MultiSelectListPortals, MultiSelectCheckboxList and
+      AuthorThreadResolutionRuleVisibility deleted.
+    - Phase 9b-3 (2026-10-26): the Backfill section (BackfillSection,
+      BackfillLog), with ActionLogSection, ActorNamesSection (was
+      ActorNamesTab), MappingRowsEditor and ExportSection (was ExportTab)
+      moved into components/settings/ and BackfillBadges converted in place,
+      all .tsx; BackfillControls and ManagementTabButton deleted.
+    - Phase 9c (2026-10-26): the activity popover (shell/ActivityPopover.tsx)
+      replaces ActivityDrawer.jsx (deleted); the five ActivityDrawer*Section
+      components converted to .tsx in place.
+    - Phase 9d-2 (2026-10-26): `react-app.jsx` becomes `react-app.tsx` (the
+      Providers around the new shell/AppShell.tsx, which renders the whole
+      page), with its test; DataViewHeader replaces DataViewHeaderPortals;
+      TabPanelVisibilitySync deleted.
+    - Still `.jsx` after the UI redesign (2026-10-26, UI_REDESIGN_PLAN.md
+      phase 10), 18 components, none in `src/ui/state/`:
+      - Review stats: ReviewStatsContent, ReviewStatsControls,
+        StatsVisuals, GraphCard, ReviewerActivityChart.
+      - Authors: AuthorInsightsSelector, AuthorInsightsHeader,
+        AuthorInsightsCommentsSection, AuthorInsightsNotesSection,
+        AuthorCreatedPrsSection, AuthorInsightsPrDataMeta,
+        AuthorInsightsPrLink.
+      - Shared: ActorIdentity, AutoRenderBlockingSync,
+        MergedRequestMoreAction, PrDataPolling, PrJsonModal, Snackbar.
+      - The test fixtures filter-state-probe.jsx and pr-data-probe.jsx
+        belong to 12G.
+    - Converting those (decided 2026-10-27): the 18 components and the 5
+      UI test fixtures, on the `typescript/phase-12d` branch, in four
+      reviewed slices - Review stats, Authors, shared, fixtures. The UI
+      test files stay `.js`/`.jsx` (12G).
+    - 12D-1 (2026-10-27): the Review stats components (ReviewStatsContent,
+      ReviewStatsControls, StatsVisuals, GraphCard, ReviewerActivityChart)
+      are `.tsx`, typed against the stats helpers' own types.
+    - 12D-2 (2026-10-27): the Authors components (AuthorInsightsSelector,
+      AuthorInsightsHeader, AuthorInsightsCommentsSection,
+      AuthorInsightsNotesSection, AuthorCreatedPrsSection,
+      AuthorInsightsPrDataMeta, AuthorInsightsPrLink) are `.tsx`.
+      `PrNotesComment` gains the optional `createdAt`/`updatedAt` the data
+      schema already has (the note-match sort reads them).
+    - 12D-3 (2026-10-27): the shared components (ActorIdentity,
+      AutoRenderBlockingSync, MergedRequestMoreAction, PrDataPolling,
+      PrJsonModal, Snackbar) are `.tsx`. Typing PrJsonModal found two bugs,
+      both fixed with tests: showing a PR deleted its activity, review-thread
+      and comment fields from the table's live payload (a shallow copy), and
+      diff lines before the first file header came out one block each, in
+      reverse order.
+    - 12D-4 (2026-10-27): the 5 UI test fixtures are TypeScript
+      (api-response, pr-data and pr-row `.fixtures.ts`, and the
+      filter-state and pr-data probes `.tsx`), typed against the real
+      PrData/PrEntry/PrDataPayload types and with ES exports, which the
+      `.js` tests still `require()`. With that, 12D is done: no UI source
+      file is JavaScript; the UI tests stay `.js`/`.jsx` (12G).
+- [ ] Add proper type annotations (props interfaces, Context value types)
 - [ ] Test component rendering
 
-**Phase 12E: Orchestrator Migration**
+**Phase 12E: Orchestrator Migration** - **N/A (2026-10-22):** `src/ui/orchestrators/` no longer exists; its orchestrators were deleted during the React migration (see `docs/history/REACT_MIGRATION_PLAN.md`).
 - [ ] Migrate all `src/ui/orchestrators/*.js` → `*.ts`
 - [ ] Add proper type annotations
 - [ ] Test integration
 
 **Phase 12F: Server Migration**
+- [ ] Decide how the server runs TypeScript (it is CommonJS run directly by
+  `node`, with no build step), then extend tsconfig coverage to `src/server/`
+  - Leaning (2026-10-27): Node's own type stripping (Node 22.18+), so no
+    build step and no new dependency - which rules out syntax that needs
+    transforming (enums, namespaces, parameter properties), and require()
+    needs the `.ts` extension. Not started.
 - [ ] Migrate `src/server/helpers/*.js` → `*.ts`
 - [ ] Migrate `src/server/routes/*.js` → `*.ts`
-- [ ] Migrate `src/server/initialization/*.js` → `*.ts`
-- [ ] Migrate `src/server/app.js` → `app.ts`
+- [ ] Migrate `src/server/config/` and `src/server/storage/` → `*.ts`
+- [ ] Migrate `src/server/app.js` and `server.js` → `*.ts`
 - [ ] Test server startup and all routes
 
-**Phase 12G: Main Files Migration**
-- [ ] Migrate `src/ui/index.page.js` → `index.page.ts`
-- [ ] Migrate remaining files
-- [ ] Enable strict mode in tsconfig
-- [ ] Fix all strict mode errors
+**Phase 12G: Remaining Files** (`index.page.js`, listed here originally, was
+deleted in 2026-10-22's window-bridge elimination)
+- [ ] Migrate remaining files (tests, test fixtures, `src/dependencies/`,
+  `src/schema/`, `src/backfill/`, e2e specs) as worthwhile
+- [x] Enable strict mode in tsconfig - on from the start (12A), since only
+  converted files are checked
 
 **Phase 12H: Build and Distribution**
 - [ ] Configure build output directory
@@ -1043,8 +1234,9 @@ No static type checking leads to:
 
 ### Deliverables
 
-- [ ] All 143 source files migrated to TypeScript
-- [ ] tsconfig.json with strict settings
+- [ ] Every non-test source file migrated to TypeScript (288 `.js`/`.jsx`
+  files under `src/` as of 2026-10-22)
+- [x] tsconfig.json with strict settings
 - [ ] Build process producing valid JavaScript
 - [ ] Type declarations for all public APIs
 - [ ] All tests passing with TypeScript
@@ -1143,22 +1335,19 @@ Use this table in PR descriptions or a task tracker.
 
 **See detailed phase descriptions above for full implementation plans.**
 
-**Phase 7: Page Orchestrator Extraction** ⭐⭐⭐⭐⭐ **HIGHEST PRIORITY**
-- [ ] Extract 9 orchestrators from index.page.js (6,886 → ~700 lines)
-- [ ] 90% file size reduction, clearest feature boundaries
-- [ ] Effort: 3-5 days, Risk: Medium, ROI: Very High
-- [ ] **Recommended to start with this phase**
+**Phase 7: Page Orchestrator Extraction** ✅ **COMPLETE, then superseded**
+- [x] Orchestrators extracted (see Phase 7 above). Since then the React
+  migration and the window-bridge elimination plan (both in docs/history/)
+  removed the orchestrators and deleted `index.page.js` itself (2026-10-22).
 
 **Phase 8: Server Entry Point Refactoring** ⭐⭐⭐⭐ **HIGH PRIORITY**
 - [ ] Extract 5 initialization modules from app.js (2,253 → ~350 lines)
 - [ ] 85% file size reduction, clear separation of concerns
 - [ ] Effort: 2-3 days, Risk: Medium, ROI: High
 
-**Phase 9: Component Size Reduction** ⭐⭐⭐ **GOOD, INCREMENTAL**
-- [ ] Extract helpers from 4 large components (500-800 lines each)
-- [ ] 60-70% component size reduction
-- [ ] Effort: 1-2 days per component, Risk: Low, ROI: Good
-- [ ] **Can be done incrementally alongside other work**
+**Phase 9: Component Size Reduction** ⛔ **SUPERSEDED**
+- Its target components were vanilla and have been rewritten in React (see
+  the Phase 9 section above).
 
 **Phase 10: JSDoc Documentation** ⭐⭐⭐ **GOOD, PREPARES FOR TS**
 - [ ] Add JSDoc to all public APIs (~50+ modules)
@@ -1172,7 +1361,7 @@ Use this table in PR descriptions or a task tracker.
 - [ ] Effort: 2-4 days, Risk: Medium, ROI: Moderate
 - [ ] **Required prerequisite for Phase 12 (TypeScript)**
 
-**Phase 12: TypeScript Migration** ⭐⭐⭐⭐ **LONG-TERM, HIGH VALUE**
+**Phase 12: TypeScript Migration** ⭐⭐⭐⭐ **IN PROGRESS** (12A setup done 2026-10-22)
 - [ ] Full TypeScript migration for type safety
 - [ ] Catch errors at build time, safer refactoring
 - [ ] Effort: 2-3 weeks, Risk: Medium-High, ROI: High

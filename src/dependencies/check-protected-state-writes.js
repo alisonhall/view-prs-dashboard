@@ -43,15 +43,20 @@ const ALLOWED_WRITER_FILES = new Set([
   //   so check-open-pr-updates.sh's own filename derivation matches - see
   //   each file's own comments. Real production state, at its real path,
   //   is never touched here.
+  // - e2e/smoke.spec.js's changeServerData rewrites the e2e server's data
+  //   file to make a real "new data" poll, and restores it after the test.
+  //   It takes the directory only from VIEW_PRS_E2E_TEMP_DIR, which
+  //   playwright.config.js sets to that same fresh os.tmpdir() directory.
   "src/server/helpers/file-io-helpers.js",
   "playwright.config.js",
   "e2e/stability/long-session-heap-check.js",
+  "e2e/smoke.spec.js",
 ]);
 
 const EXCLUDED_DIRS = new Set(["node_modules", ".git", "data", "coverage"]);
 
 const isTestLikeFile = (name) =>
-  /\.test\.[cm]?[jt]s$/.test(name) || /(^|\.)test\.sh$/.test(name);
+  /\.test\.[cm]?[jt]sx?$/.test(name) || /(^|\.)test\.sh$/.test(name);
 
 const shouldScanFile = (relativePath) => {
   const normalized = relativePath.split(path.sep).join("/");
@@ -59,7 +64,7 @@ const shouldScanFile = (relativePath) => {
     return false;
   }
 
-  return /\.(js|mjs|cjs|sh)$/.test(normalized);
+  return /\.(js|mjs|cjs|jsx|ts|tsx|sh)$/.test(normalized);
 };
 
 const walkFiles = (

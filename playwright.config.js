@@ -24,22 +24,32 @@ const { defineConfig } = require("@playwright/test");
  * `jest.setup.env.js` already uses for the jsdom suite - do not remove or
  * narrow this when adding new e2e tests.
  */
-const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "view-prs-e2e-"));
-fs.mkdirSync(path.join(tempDir, "backups"), { recursive: true });
-// Filenames must match what src/script/check-open-pr-updates.sh derives
-// from $DATA_DIR by default (see its DATA_DIR/PR_STATE_FILE/USER_STATE_FILE
-// lines) - checkbox/Ack actions run that script as a child process, and it
-// has its own env vars (DATA_DIR, not VIEW_PRS_DATA_DIR) completely
-// independent of app-config.js's VIEW_PRS_* vars below. Both sides need to
-// agree on the same directory *and* the same filenames inside it.
-fs.copyFileSync(
-  path.join(__dirname, "e2e/fixtures/data.json"),
-  path.join(tempDir, "check-open-pr-updates.data.json"),
-);
-fs.copyFileSync(
-  path.join(__dirname, "e2e/fixtures/user-state.json"),
-  path.join(tempDir, "check-open-pr-updates.user-state.json"),
-);
+//
+// Playwright re-loads this config in every worker process. The runner makes
+// the temp dir and exports it in VIEW_PRS_E2E_TEMP_DIR; workers inherit that
+// and reuse the directory instead of making (and filling) their own unused
+// one. Tests read it too: e2e/smoke.spec.js's changeServerData rewrites
+// the server's data file to make a real "new data" poll.
+const reusedTempDir = process.env.VIEW_PRS_E2E_TEMP_DIR;
+const tempDir = reusedTempDir || fs.mkdtempSync(path.join(os.tmpdir(), "view-prs-e2e-"));
+process.env.VIEW_PRS_E2E_TEMP_DIR = tempDir;
+if (!reusedTempDir) {
+  fs.mkdirSync(path.join(tempDir, "backups"), { recursive: true });
+  // Filenames must match what src/script/check-open-pr-updates.sh derives
+  // from $DATA_DIR by default (see its DATA_DIR/PR_STATE_FILE/USER_STATE_FILE
+  // lines) - checkbox/Ack actions run that script as a child process, and it
+  // has its own env vars (DATA_DIR, not VIEW_PRS_DATA_DIR) completely
+  // independent of app-config.js's VIEW_PRS_* vars below. Both sides need to
+  // agree on the same directory *and* the same filenames inside it.
+  fs.copyFileSync(
+    path.join(__dirname, "e2e/fixtures/data.json"),
+    path.join(tempDir, "check-open-pr-updates.data.json"),
+  );
+  fs.copyFileSync(
+    path.join(__dirname, "e2e/fixtures/user-state.json"),
+    path.join(tempDir, "check-open-pr-updates.user-state.json"),
+  );
+}
 
 const isolatedEnv = {
   NODE_ENV: "test",

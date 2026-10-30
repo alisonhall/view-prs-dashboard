@@ -2,7 +2,7 @@
 
 const {
   createPrSectionGroupingHelpers,
-} = require("./pr-section-grouping.helpers.js");
+} = require("./pr-section-grouping.helpers.ts");
 
 describe("pr section grouping helpers", () => {
   test("given mixed section rows, when building grouped sections, then rows are grouped and sorter dependencies are used", () => {

@@ -1,0 +1,347 @@
+/*
+ * Shared UI primitives (src/ui/components/ui/). Uses tokens.css.
+ */
+
+.ui-icon {
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vertical-align: middle;
+}
+
+/* Tooltip */
+.ui-tooltip-target,
+.ui-signal-group {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  border-radius: var(--radius-sm);
+  outline: none;
+}
+
+.ui-tooltip-target:focus-visible,
+.ui-signal-group:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+
+/* The page's one tooltip, appended to <body>; tooltip-controller.ts sets
+   top/left from the element it's for. */
+.ui-tooltip {
+  position: fixed;
+  z-index: 1000;
+  width: max-content;
+  max-width: min(320px, calc(100vw - 16px));
+  padding: 6px 9px;
+  border-radius: var(--radius-md);
+  background: var(--color-tooltip-bg);
+  color: var(--color-tooltip-text);
+  box-shadow: var(--shadow-tooltip);
+  font: 500 var(--font-size-sm) / 1.45 var(--font-sans);
+  text-align: left;
+  white-space: pre-line;
+}
+
+/* Read by screen readers, not shown. */
+.ui-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Avatars: initials on one of 8 colours (white text passes 4.5:1 on each) */
+.ui-avatar {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  font: 700 10px / 1 var(--font-sans);
+  color: #fff;
+  background: #57606a;
+}
+
+.ui-avatar[data-size="sm"] {
+  width: var(--avatar-size-sm);
+  height: var(--avatar-size-sm);
+  font-size: 9px;
+}
+
+.ui-avatar[data-viewer="true"] {
+  box-shadow: 0 0 0 2px var(--color-surface), 0 0 0 4px var(--color-accent);
+}
+
+.ui-avatar[data-hue="0"] { background: #6e40c9; }
+.ui-avatar[data-hue="1"] { background: #0a6b76; }
+.ui-avatar[data-hue="2"] { background: var(--color-avatar-dark); }
+.ui-avatar[data-hue="3"] { background: #9a3412; }
+.ui-avatar[data-hue="4"] { background: #0757ba; }
+.ui-avatar[data-hue="5"] { background: #1a6b33; }
+.ui-avatar[data-hue="6"] { background: #a0281b; }
+.ui-avatar[data-hue="7"] { background: #57606a; }
+
+/* Signals */
+.ui-signal {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--color-text-muted);
+}
+
+.ui-signal[data-tone="success"] { color: var(--color-success); }
+.ui-signal[data-tone="danger"] { color: var(--color-danger); }
+.ui-signal[data-tone="attention"] { color: var(--color-attention); }
+.ui-signal[data-tone="pending"] { color: var(--color-pending); }
+.ui-signal[data-tone="accent"] { color: var(--color-accent); }
+
+.ui-signal-empty {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+}
+
+/* Buttons */
+.ui-button,
+.ui-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  font: 500 var(--font-size-md) var(--font-sans);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.ui-button {
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface);
+}
+
+.ui-button:hover {
+  background: var(--color-surface-muted);
+}
+
+.ui-button[data-variant="primary"] {
+  border-color: var(--color-accent-strong);
+  background: var(--color-accent-strong);
+  color: var(--color-text-on-strong);
+}
+
+.ui-button[aria-pressed="true"] {
+  border-color: var(--color-border-selected);
+  background: var(--color-accent-subtle);
+  color: var(--color-accent-text);
+}
+
+.ui-icon-button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--color-text-muted);
+}
+
+.ui-icon-button:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+.ui-icon-button[aria-pressed="true"] {
+  background: var(--color-accent-subtle);
+  color: var(--color-accent);
+}
+
+.ui-icon-button[aria-pressed="true"][data-tone="danger"] {
+  background: var(--color-danger-subtle);
+  color: var(--color-danger);
+}
+
+.ui-button:disabled,
+.ui-icon-button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.ui-button:focus-visible,
+.ui-icon-button:focus-visible,
+.ui-chip:focus-visible,
+.ui-tab:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* Menu (portaled to <body>; MenuButton.tsx sets top/left) */
+.ui-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 180px;
+  max-width: min(320px, calc(100vw - 16px));
+  max-height: min(360px, calc(100vh - 16px));
+  overflow-y: auto;
+  padding: var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-tooltip);
+}
+
+.ui-menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: 6px var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  font: 500 var(--font-size-md) var(--font-sans);
+  color: var(--color-text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.ui-menu-item:hover,
+.ui-menu-item:focus-visible {
+  outline: none;
+  background: var(--color-surface-hover);
+}
+
+.ui-menu-group + .ui-menu-group,
+.ui-menu-item + .ui-menu-group,
+.ui-menu-group + .ui-menu-item {
+  margin-top: var(--space-1);
+  padding-top: var(--space-1);
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.ui-menu-group-label {
+  padding: 4px var(--space-2) 2px;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.ui-menu-empty {
+  padding: 6px var(--space-2);
+  font-size: var(--font-size-md);
+  color: var(--color-text-muted);
+}
+
+/* Chips */
+.ui-chip-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ui-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 12px;
+  background: var(--color-surface);
+  font: 500 var(--font-size-sm) var(--font-sans);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.ui-chip[aria-pressed="true"] {
+  border-color: var(--color-text);
+  background: var(--color-text);
+  color: var(--color-text-inverse);
+}
+
+.ui-chip-count {
+  opacity: 0.75;
+}
+
+/* Tabs */
+.ui-tab-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.ui-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 0;
+  background: none;
+  font: 500 var(--font-size-md) var(--font-sans);
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.ui-tab[aria-selected="true"] {
+  font-weight: 600;
+  color: var(--color-text);
+  box-shadow: inset 0 -2px 0 var(--color-accent);
+}
+
+.ui-tab-badge {
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  color: var(--color-text-muted);
+}
+
+.ui-tab-badge[data-tone="attention"] {
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: var(--color-attention-subtle);
+  color: var(--color-attention-text);
+}
+
+/* MultiSelectDropdown (the filter bar's and the Settings drawer's lists).
+   A list opens inline, pushing the next ones down: as a popover it would
+   cover their summaries, and a click meant for one would land on one of
+   its checkboxes. */
+.multi-select-dropdown .multi-select-summary {
+  gap: var(--space-2);
+  padding: 5px 8px;
+  border-color: var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-md);
+}
+
+.multi-select-picked {
+  margin-left: auto;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-accent-text);
+}
+
+.multi-select-dropdown .multi-select-list {
+  border-color: var(--color-border-strong);
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+}
+
+.multi-select-none {
+  margin: 0;
+  padding: 8px;
+  font-style: italic;
+  color: var(--color-text-muted);
+}

@@ -1,0 +1,214 @@
+/* The Authors view (AuthorInsights*). Moved from index.css (phase 10-1). */
+
+.author-insights-panel {
+  border: 1px solid var(--color-border-strong);
+  border-radius: 10px;
+  padding: 12px;
+  background: var(--color-surface-inset);
+  margin-bottom: 12px;
+}
+
+.author-insights-controls {
+  margin-bottom: 12px;
+}
+
+.author-insights-label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  max-width: 320px;
+}
+
+.author-insights-select {
+  height: 34px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 8px;
+  padding: 0 10px;
+  font-size: 14px;
+  box-sizing: border-box;
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.author-insights-selected {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: 12px;
+}
+
+.author-insights-section {
+  margin-top: 12px;
+}
+
+.author-insights-section h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+  color: var(--color-text);
+}
+
+.author-insights-list {
+  display: grid;
+  gap: 10px;
+}
+
+.author-insights-item {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: grid;
+  gap: 6px;
+}
+
+.author-insights-link {
+  font-weight: 600;
+  color: var(--color-accent-text);
+  text-decoration: none;
+}
+
+.author-insights-link:hover {
+  text-decoration: underline;
+}
+
+.author-insights-table-link {
+  background: var(--color-surface-inset);
+  border: 1px solid var(--color-border-strong);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--color-accent-text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.author-insights-table-link:hover {
+  background: var(--color-surface-hover);
+  border-color: var(--color-border-emphasis);
+}
+
+.author-insights-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.author-insights-meta-detail {
+  color: var(--color-text-muted);
+}
+
+.author-insights-badge {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 999px;
+  padding: 2px 8px;
+  background: var(--color-surface-inset);
+  color: var(--color-text);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.author-insights-badge-sentiment-positive,
+.author-insights-badge-status-merged,
+.author-insights-badge-status-no-change {
+  border-color: var(--color-success);
+  color: var(--color-success);
+  background: var(--color-success-subtle);
+}
+
+.author-insights-badge-sentiment-negative,
+.author-insights-badge-status-closed,
+.author-insights-badge-status-changed {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+  background: var(--color-danger-subtle);
+}
+
+.author-insights-badge-sentiment-neutral,
+.author-insights-badge-status-no-activity,
+.author-insights-badge-status-default {
+  border-color: var(--color-info);
+  color: var(--color-info);
+  background: var(--color-info-subtle);
+}
+
+.author-insights-body {
+  font-size: 13px;
+  color: var(--color-text);
+  white-space: pre-wrap;
+}
+
+.author-insights-comment-form {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.author-insights-comment-textarea {
+  width: 100%;
+  min-height: 72px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  box-sizing: border-box;
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.author-insights-comment-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.author-insights-comment-sentiment {
+  height: 32px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 6px;
+  padding: 0 8px;
+  font-size: 12px;
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.author-insights-comment-save,
+.author-insights-comment-edit,
+.author-insights-comment-cancel {
+  height: 32px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 6px;
+  padding: 0 10px;
+  font-size: 12px;
+  background: var(--color-surface);
+  color: var(--color-accent-text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.author-insights-comment-save:hover,
+.author-insights-comment-edit:hover,
+.author-insights-comment-cancel:hover {
+  background: var(--color-accent-subtle);
+  border-color: var(--color-accent);
+}
+
+.author-insights-comment-status {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.author-insights-comment-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}

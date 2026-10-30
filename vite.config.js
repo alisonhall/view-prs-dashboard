@@ -7,6 +7,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   plugins: [react()],
+  // Relative, so the build works wherever the page is served: / on the
+  // standalone server, /view-prs/ under the hub (src/server/app.js serves
+  // dist/ui with NODE_ENV=production). The dev server treats it as /.
+  base: './',
   root: path.resolve(__dirname, 'src/ui'),
   publicDir: path.resolve(__dirname, 'public'),
   build: {

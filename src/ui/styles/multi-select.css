@@ -1,0 +1,98 @@
+/*
+ * MultiSelectDropdown (the filter bar's and the Settings drawer's lists;
+ * ui.css adjusts it). Moved from index.css (phase 10-1).
+ */
+
+.multi-select-dropdown {
+  margin: 0;
+  padding: 0;
+}
+
+.multi-select-summary {
+  font-size: 13px;
+  font-weight: 500;
+  padding: 8px 12px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 8px;
+  background: var(--color-surface);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+  color: var(--color-text);
+  margin: 0;
+  list-style: none;
+}
+
+.multi-select-summary:hover {
+  background-color: var(--color-surface-muted);
+  border-color: var(--color-border-emphasis);
+}
+
+.multi-select-summary::-webkit-details-marker {
+  display: none;
+}
+
+.multi-select-summary::after {
+  content: "▼";
+  font-size: 10px;
+  margin-left: 8px;
+  transition: transform 0.15s ease;
+  display: inline-block;
+}
+
+.multi-select-dropdown[open] > .multi-select-summary::after {
+  transform: rotate(-180deg);
+}
+
+.multi-select-list {
+  border: 1px solid var(--color-border-strong);
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+  background: var(--color-surface);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  max-height: 180px;
+  overflow-y: auto;
+  margin-top: -1px;
+}
+
+.multi-select-item {
+  display: flex;
+  align-items: center;
+  padding: 6px 8px;
+  border-radius: 4px;
+  transition: background-color 0.15s ease;
+  cursor: pointer;
+}
+
+.multi-select-item:hover {
+  background-color: var(--color-surface-muted);
+}
+
+.multi-select-item input[type="checkbox"] {
+  margin: 0 8px 0 0;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.multi-select-item label {
+  cursor: pointer;
+  font-weight: 400;
+  flex: 1;
+  margin: 0;
+  font-size: 14px;
+}
+
+/* Empty state for multi-select */
+.multi-select-list.empty::after {
+  content: "No options";
+  display: block;
+  padding: 8px;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  font-style: italic;
+}

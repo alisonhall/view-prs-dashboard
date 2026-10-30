@@ -1,12 +1,24 @@
-const { createPrNotesHelpers } = require("../helpers/pr-notes.helpers.js");
+const { createPrNotesHelpers } = require("../helpers/pr-notes.helpers.ts");
 
 describe("pr notes helpers", () => {
-  const { normalizeNotesListForUi } = createPrNotesHelpers();
+  const { normalizeStoriesForUi } = createPrNotesHelpers();
 
-  test("normalizeNotesListForUi returns non-empty arrays for all inputs", () => {
-    expect(normalizeNotesListForUi(["one", "", 2])).toEqual(["one", "2"]);
-    expect(normalizeNotesListForUi([])).toEqual([""]);
-    expect(normalizeNotesListForUi("single")).toEqual(["single"]);
-    expect(normalizeNotesListForUi(null)).toEqual([""]);
+  test("normalizeStoriesForUi keeps rows with a name or URL, as strings", () => {
+    expect(
+      normalizeStoriesForUi([
+        { name: "US1", url: "https://x/US1" },
+        { name: "", url: "" },
+        { url: "https://x/US2" },
+        null,
+      ]),
+    ).toEqual([
+      { name: "US1", url: "https://x/US1" },
+      { name: "", url: "https://x/US2" },
+    ]);
+  });
+
+  test("normalizeStoriesForUi returns one empty row when there are no stories", () => {
+    expect(normalizeStoriesForUi([])).toEqual([{ name: "", url: "" }]);
+    expect(normalizeStoriesForUi(undefined)).toEqual([{ name: "", url: "" }]);
   });
 });

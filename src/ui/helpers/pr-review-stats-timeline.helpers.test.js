@@ -2,7 +2,7 @@
 
 const {
   createPrReviewStatsTimelineHelpers,
-} = require("./pr-review-stats-timeline.helpers.js");
+} = require("./pr-review-stats-timeline.helpers.ts");
 
 describe("review stats timeline helpers", () => {
   const createHelpers = () =>

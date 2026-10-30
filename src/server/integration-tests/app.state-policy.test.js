@@ -29,7 +29,7 @@ describe("state-write policy edge cases", () => {
       assert.ok(Array.isArray(result.comments) || Array.isArray(result.comments));
     });
 
-    test("handles deeply nested rally story structures", () => {
+    test("handles deeply nested legacy rally story structures", () => {
       const input = {
         comments: [{ id: "1", author: "user", note: "test" }],
         rallyStories: [
@@ -64,7 +64,7 @@ describe("state-write policy edge cases", () => {
       assert.ok(typeof result === "object");
     });
 
-    test("converts single rally field strings to arrays", () => {
+    test("converts a single legacy rally field string to a story", () => {
       const input = {
         comments: [],
         rallyStories: "story1",
@@ -73,7 +73,7 @@ describe("state-write policy edge cases", () => {
       assert.ok(typeof result === "object");
     });
 
-    test("filters empty entries from rally arrays", () => {
+    test("filters empty entries from legacy rally arrays", () => {
       const input = {
         comments: [],
         rallyStories: ["story1", "", "story2", null],

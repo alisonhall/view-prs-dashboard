@@ -4,12 +4,14 @@
 
 const {
   toBoolean,
-  getSelectedAuthorLogins,
-  applyCredentialHints,
+  NON_CREDENTIAL_INPUT_PROPS,
   parsePrNumbersInput,
   parseCommitPatterns,
+  parseCsvTokens,
   formatCommitPatternsForTextarea,
 } = require("../helpers/form-parsing.helpers");
+const React = require("react");
+const { render } = require("@testing-library/react");
 
 describe("form-parsing.helpers", () => {
   describe("toBoolean", () => {
@@ -32,96 +34,15 @@ describe("form-parsing.helpers", () => {
     });
   });
 
-  describe("getSelectedAuthorLogins", () => {
-    test("given a multi-select with no selected options when reading authors then it returns an empty array", () => {
-      const select = document.createElement("select");
-      select.id = "author";
-      select.multiple = true;
-      const option1 = document.createElement("option");
-      option1.value = "author1";
-      option1.textContent = "Author One";
-      const option2 = document.createElement("option");
-      option2.value = "author2";
-      option2.textContent = "Author Two";
-      select.appendChild(option1);
-      select.appendChild(option2);
-
-      // Explicitly deselect all in a multi-select
-      Array.from(select.options).forEach((opt) => {
-        opt.selected = false;
-      });
-
-      const result = getSelectedAuthorLogins(select);
-      expect(result).toEqual([]);
-    });
-
-    test("given selected author options when reading authors then it returns selected logins", () => {
-      const select = document.createElement("select");
-      select.id = "author";
-      select.multiple = true;
-      const option1 = document.createElement("option");
-      option1.value = "author1";
-      option1.textContent = "Author One";
-      const option2 = document.createElement("option");
-      option2.value = "author2";
-      option2.textContent = "Author Two";
-      const option3 = document.createElement("option");
-      option3.value = "author3";
-      option3.textContent = "Author Three";
-      select.appendChild(option1);
-      select.appendChild(option2);
-      select.appendChild(option3);
-
-      // Select specific options
-      option1.selected = true;
-      option2.selected = true;
-      option3.selected = false;
-
-      const result = getSelectedAuthorLogins(select);
-      expect(result).toEqual(["author1", "author2"]);
-    });
-
-    test("given selected author values with whitespace when reading authors then values are trimmed", () => {
-      const select = document.createElement("select");
-      select.id = "author";
-      select.multiple = true;
-      const option1 = document.createElement("option");
-      option1.value = "  author1  ";
-      option1.textContent = "Author One";
-      const option2 = document.createElement("option");
-      option2.value = "";
-      option2.textContent = "Empty";
-      select.appendChild(option1);
-      select.appendChild(option2);
-
-      option1.selected = true;
-      option2.selected = false;
-
-      const result = getSelectedAuthorLogins(select);
-      expect(result).toEqual(["author1"]);
-    });
-
-    test("given no author select element when reading authors then it returns an empty array", () => {
-      const result = getSelectedAuthorLogins(null);
-      expect(result).toEqual([]);
-    });
-
-    test("given no explicit select when reading authors then it falls back to the page author select", () => {
-      document.body.innerHTML = `<select id="author">
-        <option value="author1" selected="true">Author One</option>
-      </select>`;
-
-      const result = getSelectedAuthorLogins();
-      expect(result).toEqual(["author1"]);
-    });
-  });
-
-  describe("applyCredentialHints", () => {
-    test("given a text input when applying credential hints then ignore and autocomplete attributes are set", () => {
-      const input = document.createElement("input");
-      input.type = "text";
-
-      applyCredentialHints(input, "test-field");
+  // Window-bridge elimination Phase 7.5: replaces applyCredentialHints (a DOM
+  // pass index.page.js ran over the inputs). React renders these props as the
+  // same attributes the old function set - checked here through a real render.
+  describe("NON_CREDENTIAL_INPUT_PROPS", () => {
+    test("given an input rendered with the props, when read, then every credential-hint attribute is set as before", () => {
+      const { container } = render(
+        React.createElement("input", { type: "text", name: "repo", ...NON_CREDENTIAL_INPUT_PROPS }),
+      );
+      const input = container.querySelector("input");
 
       expect(input.getAttribute("data-lpignore")).toBe("true");
       expect(input.getAttribute("data-1p-ignore")).toBe("true");
@@ -131,39 +52,11 @@ describe("form-parsing.helpers", () => {
       expect(input.getAttribute("autocorrect")).toBe("off");
       expect(input.getAttribute("spellcheck")).toBe("false");
       expect(input.getAttribute("data-form-type")).toBe("other");
-    });
-
-    test("given a field name when applying credential hints then the input name is set", () => {
-      const input = document.createElement("input");
-      input.type = "text";
-
-      applyCredentialHints(input, "repo");
-
       expect(input.name).toBe("repo");
     });
 
-    test("given override disabled when applying credential hints then an existing field name is preserved", () => {
-      const input = document.createElement("input");
-      input.type = "text";
-      input.name = "existing-name";
-
-      applyCredentialHints(input, "new-name", { overrideName: false });
-
-      expect(input.name).toBe("existing-name");
-    });
-
-    test("given no field name when applying credential hints then the input name is unchanged", () => {
-      const input = document.createElement("input");
-      input.type = "text";
-
-      applyCredentialHints(input);
-
-      expect(input.name).toBe("");
-    });
-
-    test("given nullish input when applying credential hints then no exception is thrown", () => {
-      expect(() => applyCredentialHints(null, "field")).not.toThrow();
-      expect(() => applyCredentialHints(undefined, "field")).not.toThrow();
+    test("given the shared props object, when a caller tries to change it, then it stays unchanged (frozen)", () => {
+      expect(Object.isFrozen(NON_CREDENTIAL_INPUT_PROPS)).toBe(true);
     });
   });
 
@@ -202,6 +95,17 @@ describe("form-parsing.helpers", () => {
     test("given empty and non-numeric tokens when parsing then only numeric IDs are kept", () => {
       expect(parsePrNumbersInput("912, , 921")).toEqual(["912", "921"]);
       expect(parsePrNumbersInput("912,foo, 921 bar")).toEqual(["912", "921"]);
+    });
+  });
+
+  describe("parseCsvTokens", () => {
+    test("given comma-separated values with spaces and empty entries, when parsing, then returns the trimmed non-empty values", () => {
+      expect(parseCsvTokens(" bug , ,needs-review,")).toEqual(["bug", "needs-review"]);
+    });
+
+    test("given an empty or missing value, when parsing, then returns an empty array", () => {
+      expect(parseCsvTokens("")).toEqual([]);
+      expect(parseCsvTokens(undefined)).toEqual([]);
     });
   });
 

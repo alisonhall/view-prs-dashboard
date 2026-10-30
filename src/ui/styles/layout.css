@@ -1,0 +1,24 @@
+/*
+ * Page layout. The page uses the full window width so the PR table has
+ * room for the docked detail pane (UI_REDESIGN_PLAN.md, phase 0); the
+ * 1100px cap it used to have is gone.
+ */
+body {
+  margin: 24px 0;
+  padding: 0 24px 24px;
+  font-family: var(--font-sans);
+  color: var(--color-text);
+  background: var(--color-surface);
+}
+
+/* Links without their own colour (the header's Home and README) - the
+   browser's default blue doesn't suit the dark theme. */
+a {
+  color: var(--color-accent-text);
+}
+
+@media (max-width: 600px) {
+  body {
+    padding: 0 16px 24px;
+  }
+}

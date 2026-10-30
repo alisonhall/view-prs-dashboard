@@ -606,12 +606,64 @@ function createCommandExecutionHelpers({
     runViewPrsBashCommand([scriptName, ...scriptArgs], maxBufferBytes, options);
 
   /**
+   * Looks a command up on this process's own PATH, without starting a
+   * shell. Only ever returns true for a regular executable file, so a
+   * false here just means "not found this way" - isCommandAvailable falls
+   * back to the login-shell check below for that case.
+   *
+   * Never used on Windows: there, a file on PATH proves nothing. The
+   * `bash.exe` in System32 is a WSL launcher stub that exists on machines
+   * with no WSL distro installed and can't run a script, so finding it must
+   * not count as "bash is available" (run-bash-script.js's "requires bash"
+   * message depends on that check actually *running* bash). Windows also has
+   * no executable bit to check. It keeps the exact login-shell behavior it
+   * always had.
+   *
+   * @param {string} cmd - Command name (plain names only, no path separators)
+   * @returns {boolean} True if an executable of that name is on PATH
+   */
+  const isExecutableOnProcessPath = (cmd) => {
+    if (process.platform === "win32") {
+      return false;
+    }
+    // Not just a regex test: that coerces null/undefined/numbers to strings and
+    // passes, and path.join below then throws on a non-string.
+    if (typeof cmd !== "string" || !/^[A-Za-z0-9._+-]+$/.test(cmd)) {
+      return false;
+    }
+    const dirs = String((process.env && process.env.PATH) || "")
+      .split(path.delimiter)
+      .filter(Boolean);
+    return dirs.some((dir) => {
+      const candidate = path.join(dir, cmd);
+      try {
+        fs.accessSync(candidate, fs.constants.X_OK);
+        return fs.statSync(candidate).isFile();
+      } catch (_error) {
+        return false;
+      }
+    });
+  };
+
+  /**
    * Checks if a command is available on the system.
-   * 
+   *
+   * Checks this process's PATH first (instant, no shell). Only when that
+   * misses does it start a login shell (`bash -lc`), which is what the
+   * scripts themselves run under, so a command that is only on the login
+   * shell's PATH still counts. The login-shell spawn is slow (it sources
+   * the user's whole shell profile - ~1.4s on a machine that loads nvm,
+   * pyenv etc.) and getDependencyStatus() runs on the request path of
+   * POST /run-auto and every scheduler tick, so it must not be the common
+   * case: a command found on PATH never reaches it.
+   *
    * @param {string} cmd - Command name
    * @returns {boolean} True if command exists
    */
   const isCommandAvailable = (cmd) => {
+    if (isExecutableOnProcessPath(cmd)) {
+      return true;
+    }
     const check = spawnSync("bash", ["-lc", `command -v ${cmd}`], {
       stdio: "ignore",
     });

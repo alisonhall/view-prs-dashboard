@@ -100,10 +100,9 @@ describe("integration behavior", () => {
       comments: [{ author: "a", note: "n" }],
       otherNotes: "x",
       prDifficulty: "3",
-      rallyStories: ["US1001", "DE1002"],
-      rallyLinks: [
-        "https://rally.example/US1001",
-        "https://rally.example/DE1002",
+      stories: [
+        { name: "US1001", url: "https://stories.example/US1001" },
+        { name: "DE1002", url: "" },
       ],
       analysisOfPr: "Looks moderate overall",
     });
@@ -124,13 +123,59 @@ describe("integration behavior", () => {
       ],
       otherNotes: "x",
       prDifficulty: "3",
-      rallyStories: ["US1001", "DE1002"],
-      rallyLinks: [
-        "https://rally.example/US1001",
-        "https://rally.example/DE1002",
+      stories: [
+        { name: "US1001", url: "https://stories.example/US1001" },
+        { name: "DE1002", url: "" },
       ],
       analysisOfPr: "Looks moderate overall",
     });
+    expect(persistedUserState.notesByPrNumber[prNumber]).not.toHaveProperty("rallyStories");
+  });
+
+  // The Notes tab sends only id, author, tone and note. Saving used to
+  // reset every comment's createdAt/updatedAt to the save time.
+  test("given stored note comments, when POST /notes saves them without timestamps, then unchanged ones keep theirs and an edited one keeps createdAt", async () => {
+    const prNumber = "124";
+    writeViewPrsData({ byPrNumber: { [prNumber]: { repo: "owner/repo" } }, lastRun: null });
+    const storedComment = (id, note) => ({
+      id,
+      author: "alice",
+      tone: "Positive",
+      note,
+      createdAt: "2026-01-02T03:04:05Z",
+      updatedAt: "2026-01-03T03:04:05Z",
+    });
+    writeViewPrsUserState({
+      ...EMPTY_USER_STATE,
+      notesByPrNumber: {
+        [prNumber]: {
+          comments: [storedComment("comment-1", "kept"), storedComment("comment-2", "before")],
+          otherNotes: "",
+          prDifficulty: "",
+          stories: [],
+          analysisOfPr: "",
+        },
+      },
+    });
+
+    const res = await request.post("/notes").send({
+      prNumber,
+      comments: [
+        { id: "comment-1", author: "alice", tone: "Positive", note: "kept" },
+        { id: "comment-2", author: "alice", tone: "Positive", note: "after" },
+        { id: "comment-3", author: "bob", tone: "Neutral", note: "new" },
+      ],
+      otherNotes: "changed other notes",
+    });
+    expect(res.status).toBe(200);
+
+    const saved = JSON.parse(fs.readFileSync(viewPrsUserStateFile, "utf8")).notesByPrNumber[prNumber].comments;
+    const byId = Object.fromEntries(saved.map((comment) => [comment.id, comment]));
+    expect(byId["comment-1"]).toMatchObject({ createdAt: "2026-01-02T03:04:05Z", updatedAt: "2026-01-03T03:04:05Z" });
+    expect(byId["comment-2"].createdAt).toBe("2026-01-02T03:04:05Z");
+    expect(Date.parse(byId["comment-2"].updatedAt)).toBeGreaterThan(Date.parse("2026-01-03T03:04:05Z"));
+    expect(byId["comment-3"].createdAt).toBe(byId["comment-3"].updatedAt);
+    expect(Date.parse(byId["comment-3"].createdAt)).toBeGreaterThan(Date.parse("2026-01-03T03:04:05Z"));
   });
 
   test("preserves other PR notes when POST /notes clears fields for a single PR", async () => {
@@ -150,16 +195,16 @@ describe("integration behavior", () => {
           comments: [{ id: "c-1", author: "a", tone: "Neutral", note: "keep" }],
           otherNotes: "keep me",
           prDifficulty: "4",
+          // Saved before stories existed: read as stories, written back so.
           rallyStories: ["US1"],
-          rallyLinks: ["https://rally.example/US1"],
+          rallyLinks: ["https://stories.example/US1"],
           analysisOfPr: "retain",
         },
         [clearedPrNumber]: {
           comments: [{ id: "c-2", author: "b", tone: "Positive", note: "clear" }],
           otherNotes: "remove me",
           prDifficulty: "2",
-          rallyStories: ["US2"],
-          rallyLinks: ["https://rally.example/US2"],
+          stories: [{ name: "US2", url: "https://stories.example/US2" }],
           analysisOfPr: "clear this",
         },
       },
@@ -174,8 +219,7 @@ describe("integration behavior", () => {
       comments: [],
       otherNotes: "",
       prDifficulty: "",
-      rallyStories: [],
-      rallyLinks: [],
+      stories: [],
       analysisOfPr: "",
     });
 
@@ -188,16 +232,14 @@ describe("integration behavior", () => {
     expect(persistedUserState.notesByPrNumber[existingPrNumber]).toMatchObject({
       otherNotes: "keep me",
       prDifficulty: "4",
-      rallyStories: ["US1"],
-      rallyLinks: ["https://rally.example/US1"],
+      stories: [{ name: "US1", url: "https://stories.example/US1" }],
       analysisOfPr: "retain",
     });
     expect(persistedUserState.notesByPrNumber[clearedPrNumber]).toEqual({
       comments: [],
       otherNotes: "",
       prDifficulty: "",
-      rallyStories: [],
-      rallyLinks: [],
+      stories: [],
       analysisOfPr: "",
     });
   });
@@ -742,15 +784,23 @@ describe("integration behavior", () => {
     const origDep = app.getDependencyStatus;
     app.getDependencyStatus = () => ({ ok: true, missing: [] });
     app.viewPrsSchedulerState.isAutoRunInProgress = false;
-    app.viewPrsSchedulerState.autoCircuitOpenUntil = new Date(
-      Date.now() + 60000,
-    ).toISOString();
+    // No-arg auto refresh targets every configured repo - populate that
+    // same set's own circuit breaker entries (circuit breaker is now
+    // per-repo - see autoCircuitByRepo's own comment in app.js).
+    const openUntilIso = new Date(Date.now() + 60000).toISOString();
+    app.getViewPrsAutoRefreshRepos().forEach((repo) => {
+      app.viewPrsSchedulerState.autoCircuitByRepo[repo] = {
+        consecutiveFailures: 3,
+        circuitOpenUntil: openUntilIso,
+        lastCircuitOpenedAt: new Date().toISOString(),
+      };
+    });
     await runViewPrsAutoRefresh();
     expect(app.viewPrsSchedulerState.lastAutoSkipReason).toMatch(
       /auto refresh circuit open/,
     );
     app.getDependencyStatus = origDep;
-    app.viewPrsSchedulerState.autoCircuitOpenUntil = null;
+    app.viewPrsSchedulerState.autoCircuitByRepo = {};
   });
 
   test("blocks auto refresh when runViewPrsAutoRefresh detects missing dependencies", async () => {

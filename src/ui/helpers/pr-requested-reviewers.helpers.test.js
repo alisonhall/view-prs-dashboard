@@ -1,6 +1,6 @@
 const {
   createPrRequestedReviewersHelpers,
-} = require("./pr-requested-reviewers.helpers.js");
+} = require("./pr-requested-reviewers.helpers.ts");
 
 describe("pr requested reviewers helpers", () => {
   const createHelpers = () =>
@@ -43,6 +43,29 @@ describe("pr requested reviewers helpers", () => {
       { login: "reviewer1", name: "Reviewer One" },
       { login: "reviewer2", name: "Reviewer Two" },
     ]);
+  });
+
+  test("given only reviews, when collecting pending review requests, then nobody is listed (no fallback)", () => {
+    const helpers = createHelpers();
+    const row = {
+      requestedReviewers: [],
+      reviews: [{ authorLogin: "reviewer1", authorName: "Reviewer One" }],
+      metrics: { reviewsByActor: [{ login: "reviewer2", name: "Reviewer Two" }] },
+    };
+
+    expect(helpers.collectPendingReviewRequests(row)).toEqual([]);
+    expect(helpers.collectRequestedReviewers(row)).toHaveLength(2);
+  });
+
+  test("given outstanding requests, when collecting pending review requests, then they're listed", () => {
+    const helpers = createHelpers();
+
+    expect(
+      helpers.collectPendingReviewRequests({
+        requestedReviewers: [{ login: "carol", name: "Carol" }],
+        reviews: [{ authorLogin: "reviewer1" }],
+      }),
+    ).toEqual([{ login: "carol", name: "Carol" }]);
   });
 
   test("given resolved actor names, when formatting requested reviewers, then display contains names and login disambiguation", () => {

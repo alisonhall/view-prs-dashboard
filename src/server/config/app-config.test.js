@@ -1,6 +1,21 @@
 const { createAppConfig } = require("./app-config");
 const path = require("path");
 
+// Under isTestEnv, createAppConfig also refuses any other writable path that
+// resolves into the real data directory (added 2026-10-22, after tests wrote
+// the real data/user-defaults.json and data/pr-diffs). Tests that expect a
+// test-env config to succeed spread these in alongside their own overrides.
+const OTHER_WRITABLE_TEMP_PATHS = {
+  VIEW_PRS_SCHEDULER_FILE: "/tmp/scheduler.json",
+  VIEW_PRS_AUTHOR_COMMENTS_FILE: "/tmp/author-comments.json",
+  VIEW_PRS_BACKUP_DIR: "/tmp/backups",
+  VIEW_PRS_PR_DIFF_DIR: "/tmp/pr-diffs",
+  VIEW_PRS_ACTION_LOG_FILE: "/tmp/action-log.json",
+  VIEW_PRS_BACKFILL_PID_FILE: "/tmp/backfill-missing.pid",
+  VIEW_PRS_BACKFILL_LOG_FILE: "/tmp/backfill-missing.log",
+  VIEW_PRS_USER_DEFAULTS_FILE: "/tmp/user-defaults.json",
+};
+
 describe("App Configuration", () => {
   describe("Given createAppConfig", () => {
     test("When created with defaults, Then returns full config", () => {
@@ -66,6 +81,7 @@ describe("App Configuration", () => {
         VIEW_PRS_ACTOR_LOGIN_ALIASES_FILE: "/tmp/aliases.json",
         VIEW_PRS_BACKUP_RETENTION: "100",
         VIEW_PRS_AUTO_CIRCUIT_FAILURE_THRESHOLD: "5",
+        ...OTHER_WRITABLE_TEMP_PATHS,
       };
 
       // Act
@@ -102,6 +118,51 @@ describe("App Configuration", () => {
       }).toThrow("NODE_ENV=test but real actor cache file paths are in use");
     });
 
+    test("When test env with data and actor-cache overrides but other writable paths left at their defaults, Then throws, naming each one", () => {
+      // Arrange
+      const viewPrsDir = "/test/view-prs";
+      const env = {
+        VIEW_PRS_DATA_FILE: "/tmp/data.json",
+        VIEW_PRS_USER_STATE_FILE: "/tmp/state.json",
+        VIEW_PRS_ACTOR_NAME_CACHE_FILE: "/tmp/cache.json",
+        VIEW_PRS_ACTOR_LOGIN_ALIASES_FILE: "/tmp/aliases.json",
+      };
+
+      // Act
+      let error;
+      try {
+        createAppConfig({ viewPrsDir, env, isTestEnv: true });
+      } catch (caught) {
+        error = caught;
+      }
+
+      // Assert - every writable path still at its real default is named.
+      expect(error?.message).toContain("writable paths resolve into the real data directory");
+      Object.keys(OTHER_WRITABLE_TEMP_PATHS).forEach((envName) => {
+        expect(error.message).toContain(envName);
+      });
+      // VIEW_PRS_PR_DETAIL_DIR follows the (temp) data file here, so it's fine.
+      expect(error.message).not.toContain("VIEW_PRS_PR_DETAIL_DIR");
+    });
+
+    test("When test env and one writable path is set explicitly into the real data directory, Then throws for that path", () => {
+      // Arrange
+      const viewPrsDir = "/test/view-prs";
+      const env = {
+        VIEW_PRS_DATA_FILE: "/tmp/data.json",
+        VIEW_PRS_USER_STATE_FILE: "/tmp/state.json",
+        VIEW_PRS_ACTOR_NAME_CACHE_FILE: "/tmp/cache.json",
+        VIEW_PRS_ACTOR_LOGIN_ALIASES_FILE: "/tmp/aliases.json",
+        ...OTHER_WRITABLE_TEMP_PATHS,
+        VIEW_PRS_PR_DETAIL_DIR: path.join(viewPrsDir, "data", "pr-details"),
+      };
+
+      // Act & Assert
+      expect(() => createAppConfig({ viewPrsDir, env, isTestEnv: true })).toThrow(
+        /real data directory.*: VIEW_PRS_PR_DETAIL_DIR./,
+      );
+    });
+
     test("When test env with all overrides, Then succeeds", () => {
       // Arrange
       const viewPrsDir = "/test/view-prs";
@@ -110,6 +171,7 @@ describe("App Configuration", () => {
         VIEW_PRS_USER_STATE_FILE: "/tmp/state.json",
         VIEW_PRS_ACTOR_NAME_CACHE_FILE: "/tmp/cache.json",
         VIEW_PRS_ACTOR_LOGIN_ALIASES_FILE: "/tmp/aliases.json",
+        ...OTHER_WRITABLE_TEMP_PATHS,
       };
 
       // Act
@@ -182,15 +244,74 @@ describe("App Configuration", () => {
       expect(config.viewPrsPrDiffConcurrency).toBe(4); // Clamped to max
     });
 
-    test("When creating paths, Then uses path.join correctly", () => {
+    test("When dispatcher env vars are unset, Then falls back to sane defaults", () => {
       // Arrange
       const viewPrsDir = "/test/view-prs";
 
       // Act
-      const config = createAppConfig({ viewPrsDir });
+      const config = createAppConfig({ viewPrsDir, env: {} });
+
+      // Assert
+      expect(config.viewPrsDispatcherGhProcessBudget).toBe(8);
+      expect(config.viewPrsDispatcherTickIntervalMs).toBe(5000);
+      expect(config.viewPrsAutoIntervalMs).toBe(15 * 60 * 1000);
+    });
+
+    test("When dispatcher env vars are provided, Then they override the defaults", () => {
+      // Arrange
+      const viewPrsDir = "/test/view-prs";
+      const env = {
+        VIEW_PRS_DISPATCHER_GH_PROCESS_BUDGET: "12",
+        VIEW_PRS_DISPATCHER_TICK_INTERVAL_MS: "10000",
+        VIEW_PRS_AUTO_INTERVAL_MS: "600000",
+      };
+
+      // Act
+      const config = createAppConfig({ viewPrsDir, env });
+
+      // Assert
+      expect(config.viewPrsDispatcherGhProcessBudget).toBe(12);
+      expect(config.viewPrsDispatcherTickIntervalMs).toBe(10000);
+      expect(config.viewPrsAutoIntervalMs).toBe(600000);
+    });
+
+    test("When dispatcher env vars are below their minimums, Then they clamp rather than go lower", () => {
+      // Arrange
+      const viewPrsDir = "/test/view-prs";
+      const env = {
+        // "0" is deliberately avoided here: like every other `Number.parseInt(env.X || default) || default`
+        // config in this file, a parsed 0 is falsy and falls through to the
+        // default rather than reaching the Math.max floor - a negative
+        // value is what actually exercises the floor.
+        VIEW_PRS_DISPATCHER_GH_PROCESS_BUDGET: "-5",
+        VIEW_PRS_DISPATCHER_TICK_INTERVAL_MS: "10",
+        VIEW_PRS_AUTO_INTERVAL_MS: "10",
+      };
+
+      // Act
+      const config = createAppConfig({ viewPrsDir, env });
+
+      // Assert
+      expect(config.viewPrsDispatcherGhProcessBudget).toBe(1);
+      expect(config.viewPrsDispatcherTickIntervalMs).toBe(1000);
+      expect(config.viewPrsAutoIntervalMs).toBe(60 * 1000);
+    });
+
+    test("When creating paths, Then uses path.join correctly", () => {
+      // Arrange
+      const viewPrsDir = "/test/view-prs";
+
+      // Act - env: {} so the defaults are checked, not jest.setup.env.js's
+      // temp overrides in process.env.
+      const config = createAppConfig({ viewPrsDir, env: {} });
 
       // Assert
       expect(config.viewPrsUiDir).toBe(path.join(viewPrsDir, "src/ui"));
+      expect(config.viewPrsUiBuildDir).toBe(path.join(viewPrsDir, "dist/ui"));
+      expect(config.viewPrsUiBuildIndexFile).toBe(path.join(viewPrsDir, "dist/ui/index.html"));
+      expect(createAppConfig({ viewPrsDir, env: { VIEW_PRS_UI_BUILD_DIR: "/elsewhere/ui" } }).viewPrsUiBuildIndexFile).toBe(
+        path.join("/elsewhere/ui", "index.html"),
+      );
       expect(config.viewPrsBackfillManagerScript).toContain(
         path.join("src", "backfill"),
       );
@@ -207,6 +328,7 @@ describe("App Configuration", () => {
         VIEW_PRS_USER_STATE_FILE: "/custom/location/state.json",
         VIEW_PRS_ACTOR_NAME_CACHE_FILE: "/tmp/cache.json",
         VIEW_PRS_ACTOR_LOGIN_ALIASES_FILE: "/tmp/aliases.json",
+        ...OTHER_WRITABLE_TEMP_PATHS,
       };
 
       // Act

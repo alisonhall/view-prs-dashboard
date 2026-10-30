@@ -23,6 +23,15 @@ describe("check-protected-state-writes", () => {
     expect(shouldScanFile("src/example.js")).toBe(true);
   });
 
+  test("scans JSX and TypeScript sources, but not their tests", () => {
+    expect(shouldScanFile("src/example.jsx")).toBe(true);
+    expect(shouldScanFile("src/example.ts")).toBe(true);
+    expect(shouldScanFile("src/example.tsx")).toBe(true);
+    expect(shouldScanFile("src/example.test.jsx")).toBe(false);
+    expect(shouldScanFile("src/example.test.ts")).toBe(false);
+    expect(shouldScanFile("src/example.test.tsx")).toBe(false);
+  });
+
   test("flags disallowed protected-state writers", () => {
     const rootDir = makeTempDir();
 

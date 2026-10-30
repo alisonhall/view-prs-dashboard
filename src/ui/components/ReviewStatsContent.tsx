@@ -1,0 +1,335 @@
+/**
+ * ReviewStatsContent - React-owned summary cards, chart visuals, reviewer
+ * table, and trend note for the "Review Stats" tab, replacing
+ * pr-review-stats-summary.component.js's renderStatsSummaryAndTable().
+ *
+ * Track C (post-Phase-6 follow-up, see REACT_MIGRATION_PLAN.md): computes
+ * its own `stats` from PrDataContext's `payload` instead of being pushed a
+ * pre-built result via window.updateReviewStatsContent (deleted, along
+ * with renderStatsView/renderStatsViewIfVisible in index.page.js/
+ * pr-render-apply.helpers.js - nothing else needed them once this
+ * component stopped needing to be pushed data).
+ *
+ * Phase 7, sub-phase 7.0 (see REACT_MIGRATION_PLAN.md): `buildReviewerStats`/
+ * `applyStatsControls` now come from useReviewStats()
+ * (state/ReviewStatsContext.tsx, components/ReviewStatsProvider.tsx),
+ * which derives them from PrDataContext's `statsViewState` - now real
+ * state (owned by ReviewStatsControls), not just an invalidation-trigger
+ * snapshot, so the `stats` useMemo below can depend on it directly with no
+ * exhaustive-deps suppression needed.
+ *
+ * The chart visuals (formerly createStatsVisuals in
+ * pr-review-stats-visuals/chart.component.js - ~900 lines of hand-rolled
+ * DOM chart building) are now real JSX (see StatsVisuals.tsx,
+ * GraphCard.tsx, ReviewerActivityChart.tsx - Track A of the post-Phase-6
+ * migration follow-up, REACT_MIGRATION_PLAN.md), rendered directly below
+ * rather than wrapped via a ref+useEffect bridge into a vanilla builder.
+ *
+ * Phase H.16 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
+ * cluster 2): the "View in table" buttons (cards' and the reviewer
+ * table's own expandable sources) now go through useNavigateToPrInTable()
+ * (state/) instead of window.navigateToPrInTableFromStats (deleted
+ * outright, along with its sibling window.navigateToPrInTableFromAuthorInsights) -
+ * same hook AuthorInsightsPrLink.tsx now uses, same "dispatch
+ * pr-navigate-to-insights, let PrTableApp own the DOM lookup/scroll/focus"
+ * behavior the old bridge's navigateToPrInTable already had. No `repo` is
+ * passed here (unchanged from before) - this component's source items
+ * don't carry one yet, same as the bridge's own prior behavior.
+ *
+ * @module components/ReviewStatsContent
+ */
+
+import React, { useMemo, useRef, useState } from 'react';
+import { StatsVisuals } from './StatsVisuals';
+import { usePrData } from '../state/PrDataContext';
+import { useReviewStats, type ReviewStatsValue } from '../state/ReviewStatsContext';
+import { useIsTabPanelVisible } from '../state/useIsTabPanelVisible';
+import { useNavigateToPrInTable } from '../state/useNavigateToPrInTable';
+import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.ts';
+import type { ReviewerRow as ReviewerRowData, StatsSource } from '../helpers/pr-review-stats-aggregation.helpers.ts';
+
+const { formatIsoDatetime } = createPrFormattingHelpers();
+
+// The extra text after a source's PR (e.g. "3 comments").
+type SourceFormatter = (item: StatsSource) => string;
+type SourceSection = [label: string, items: StatsSource[], formatter: SourceFormatter];
+type ControlledStats = ReturnType<ReviewStatsValue['applyStatsControls']>;
+
+function SourceItemRow({ item, detailText }: { item: StatsSource; detailText: string }) {
+  const navigateToPrInTable = useNavigateToPrInTable();
+  const prNumber = String(item?.prNumber || '').trim();
+  const prTitle = String(item?.prTitle || '').trim();
+  const label = prNumber && prTitle ? `PR #${prNumber}: ${prTitle}` : prNumber ? `PR #${prNumber}` : prTitle || 'Unknown source';
+  const prUrl = String(item?.prUrl || '').trim();
+  const author = String(item?.prAuthor || item?.author || item?.authorLogin || '').trim();
+  const detailParts: string[] = [];
+  if (author) {
+    detailParts.push(`PR author: ${author}`);
+  }
+  if (detailText) {
+    detailParts.push(detailText);
+  }
+
+  return (
+    <div className="stats-source-item">
+      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+        {prUrl ? (
+          <a href={prUrl} target="_blank" rel="noreferrer noopener" className="pr-link">
+            {label}
+          </a>
+        ) : (
+          <span>{label}</span>
+        )}
+        {prNumber && (
+          <button
+            type="button"
+            className="author-insights-table-link"
+            title="Show this PR in the Pull requests view"
+            style={{ fontSize: '12px', padding: '3px 6px' }}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              navigateToPrInTable(prNumber);
+            }}
+          >
+            View in table
+          </button>
+        )}
+      </div>
+      {detailParts.length > 0 && <span className="stats-source-detail"> | {detailParts.join(' | ')}</span>}
+    </div>
+  );
+}
+
+function SourcesDetails({ items, formatter }: { items: StatsSource[] | undefined; formatter: SourceFormatter }) {
+  if (!Array.isArray(items) || items.length === 0) {
+    return null;
+  }
+  return (
+    <details className="stats-sources">
+      <summary>Show sources ({items.length})</summary>
+      <div className="stats-sources-list">
+        {items.map((item, index) => (
+          <SourceItemRow key={index} item={item} detailText={formatter(item)} />
+        ))}
+      </div>
+    </details>
+  );
+}
+
+interface StatCardProps {
+  label: string;
+  value: string;
+  detail?: string;
+  sources?: StatsSource[];
+  formatter: SourceFormatter;
+}
+
+function StatCard({ label, value, detail, sources, formatter }: StatCardProps) {
+  return (
+    <div className="stat-card" role="group" aria-label={label}>
+      <span className="stat-card-label">{label}</span>
+      <span className="stat-card-value">{value}</span>
+      {detail && <span className="stat-card-detail">{detail}</span>}
+      <SourcesDetails items={sources} formatter={formatter} />
+    </div>
+  );
+}
+
+const getReviewerSourceSections = (reviewer: ReviewerRowData): SourceSection[] =>
+  (
+    [
+      ['Comments', reviewer.sources.comments, (item) => `${item.count} comments`],
+      ['Reviews', reviewer.sources.reviews, (item) => `${item.count} reviews (${item.approvals} approvals)`],
+      [
+        'Risky approvals',
+        reviewer.sources.riskyApprovals,
+        (item) => `approved ${formatIsoDatetime(item.approvedAt || '-')}`,
+      ],
+      ['Useful signals', reviewer.sources.usefulnessSignals, (item) => `${item.count} usefulness signals`],
+    ] satisfies SourceSection[]
+  ).filter(([, items]) => Array.isArray(items) && items.length > 0);
+
+function ReviewerSourcesContent({ sections }: { sections: SourceSection[] }) {
+  return (
+    <div className="stats-sources-group">
+      {sections.map(([label, items, formatter]) => (
+        <React.Fragment key={label}>
+          <div className="stats-sources-group-title">{label}</div>
+          <div className="stats-sources-list">
+            {items.map((item, index) => (
+              <SourceItemRow key={index} item={item} detailText={formatter(item)} />
+            ))}
+          </div>
+        </React.Fragment>
+      ))}
+    </div>
+  );
+}
+
+const STATS_COLUMN_COUNT = 12;
+
+function ReviewerRow({ reviewer }: { reviewer: ReviewerRowData }) {
+  const [expanded, setExpanded] = useState(false);
+  const sections = getReviewerSourceSections(reviewer);
+  const hasSources = sections.length > 0;
+
+  return (
+    <>
+      <tr>
+        <td>{reviewer.name}</td>
+        <td>{reviewer.comments}</td>
+        <td>{reviewer.threadComments}</td>
+        <td>{reviewer.reviews}</td>
+        <td>{reviewer.approvals}</td>
+        <td>{reviewer.riskyApprovals}</td>
+        <td>{reviewer.highRiskApprovals}</td>
+        <td>{reviewer.usefulnessSignals}</td>
+        <td>{reviewer.commentsFollowedByAuthorCommit}</td>
+        <td>{reviewer.resolvedThreadComments}</td>
+        <td>{reviewer.prCount}</td>
+        <td className="stats-sources-cell">
+          {hasSources ? (
+            <button
+              type="button"
+              className="stats-sources-toggle"
+              aria-expanded={expanded ? 'true' : 'false'}
+              onClick={() => setExpanded((previous) => !previous)}
+            >
+              {expanded ? 'Hide sources' : 'Show sources'}
+            </button>
+          ) : (
+            '-'
+          )}
+        </td>
+      </tr>
+      <tr className="stats-sources-row" hidden={!expanded}>
+        <td colSpan={STATS_COLUMN_COUNT} className="stats-sources-row-cell">
+          {hasSources ? <ReviewerSourcesContent sections={sections} /> : 'No sources'}
+        </td>
+      </tr>
+    </>
+  );
+}
+
+export function ReviewStatsContent() {
+  const { payload } = usePrData();
+  const { buildReviewerStats, applyStatsControls, getNormalizedStatsDateRange, renderActivityTrendNote } =
+    useReviewStats();
+  const rows = useMemo(() => Object.values(payload?.byPrNumber || {}), [payload]);
+  const actorsMap = payload?.actorsMap || {};
+  const isVisible = useIsTabPanelVisible('tab-panel-review-stats');
+  const lastStatsRef = useRef<ControlledStats | null>(null);
+
+  // Memoized on [payload, buildReviewerStats, applyStatsControls, isVisible]
+  // specifically, not [rows, actorsMap] (which would be new references on
+  // every render) - both rows/actorsMap are themselves fully determined by
+  // payload, so this still only recomputes when the underlying data or
+  // Review Stats settings actually change (buildReviewerStats/
+  // applyStatsControls get a new reference from useReviewStats() whenever
+  // statsViewState does - see ReviewStatsProvider.tsx). While hidden, skips
+  // straight to the last computed value instead of re-running them -
+  // isVisible flipping back to true re-triggers this useMemo, so the very
+  // next payload/settings change while visible again catches up
+  // immediately (see useIsTabPanelVisible above).
+  const stats = useMemo(() => {
+    if (!isVisible) {
+      return lastStatsRef.current;
+    }
+    const currentRows = Object.values(payload?.byPrNumber || {});
+    if (!currentRows.length) {
+      lastStatsRef.current = null;
+      return null;
+    }
+    const currentActorsMap = payload?.actorsMap || {};
+    const { summary, reviewerRows } = buildReviewerStats(currentRows, currentActorsMap);
+    const computed = applyStatsControls({ summary, reviewerRows });
+    lastStatsRef.current = computed;
+    return computed;
+  }, [payload, buildReviewerStats, applyStatsControls, isVisible]);
+
+  if (!stats) {
+    return <p className="stats-empty">No filtered rows available for review statistics.</p>;
+  }
+
+  const dateRange = getNormalizedStatsDateRange();
+  const dateText =
+    dateRange.startDate || dateRange.endDate
+      ? ` Date range: ${dateRange.startDate || 'start'} to ${dateRange.endDate || 'end'}.`
+      : '';
+  const trendNoteText = renderActivityTrendNote(rows, actorsMap) || '';
+
+  return (
+    <>
+      <div className="stats-grid">
+        <StatCard
+          label="Filtered rows"
+          value={String(stats.summary.rows)}
+          detail="Current local filter scope"
+          sources={stats.summary.sources.rows}
+          formatter={(item) => {
+            const author = String(item?.prAuthor || '').trim();
+            return author ? `PR author: ${author}` : '';
+          }}
+        />
+        <StatCard
+          label="Comments on others' PRs"
+          value={String(stats.summary.commentsOnOthersPrs)}
+          detail="Top-level and thread comments combined"
+          sources={stats.summary.sources.commentsOnOthersPrs}
+          formatter={(item) => `${item.reviewer} | ${item.count} comments`}
+        />
+        <StatCard
+          label="Approvals"
+          value={String(stats.summary.approvals)}
+          detail={`${stats.summary.riskyApprovals} risky | ${stats.summary.highRiskApprovals} high-risk`}
+          sources={stats.summary.sources.approvals}
+          formatter={(item) => `${item.reviewer} | approved ${formatIsoDatetime(item.approvedAt || '-')}`}
+        />
+        <StatCard
+          label="Comment usefulness"
+          value={String(stats.summary.usefulnessSignals)}
+          detail={`${stats.summary.commentsFollowedByAuthorCommit} comments were followed by author commits`}
+          sources={stats.summary.sources.usefulnessSignals}
+          formatter={(item) => `${item.reviewer} | ${item.count} signals`}
+        />
+      </div>
+
+      <StatsVisuals stats={stats} rows={rows} actorsMap={actorsMap} />
+
+      <table className="stats-table">
+        <thead>
+          <tr>
+            {[
+              'Reviewer',
+              'Comments',
+              'Thread comments',
+              'Reviews',
+              'Approvals',
+              'Risky approvals',
+              'High-risk approvals',
+              'Useful comment signals',
+              'Comments → author commit',
+              'Resolved thread comments',
+              'PRs touched',
+              'Sources',
+            ].map((label) => (
+              <th key={label}>{label}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {stats.reviewerRows.map((reviewer) => (
+            <ReviewerRow key={reviewer.name} reviewer={reviewer} />
+          ))}
+        </tbody>
+      </table>
+
+      <p className="stats-note">
+        {`Showing ${stats.reviewerRows.length} of ${stats.totalBeforeLimit} reviewers after stats filters. Stats are computed from all stored rows and use saved per-PR metrics.${dateText}`}
+      </p>
+
+      <p className="stats-note">{trendNoteText}</p>
+    </>
+  );
+}

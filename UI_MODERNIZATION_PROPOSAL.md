@@ -4,8 +4,13 @@
 
 This document tracks UI modernization initiatives for view-prs, inspired by modern PR management tools like GitKraken Launchpad.
 
+> **Superseded (2026-10-26)** by `UI_REDESIGN_PLAN.md`, which rebuilt the
+> UI (the header and views, the filter bar, the docked detail pane, the
+> Settings drawer and the Activity popover). This document is kept for
+> its history; its file lists and layout describe the UI before that.
+
 > **Note (2026-09-15):** the PR table (including Smart Accordion Groups,
-> below) has since been migrated to React - see `REACT_MIGRATION_PLAN.md`,
+> below) has since been migrated to React - see `docs/history/REACT_MIGRATION_PLAN.md`,
 > now complete. The vanilla implementation and file list described in this
 > "Completed" section reflects the original (pre-migration) build; the
 > feature itself is still live, just React-owned now (`PrTableApp`'s

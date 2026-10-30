@@ -1,6 +1,6 @@
 const {
   createPrMergedRequestMoreActionHelpers,
-} = require("./pr-merged-request-more-action.helpers.js");
+} = require("./pr-merged-request-more-action.helpers.ts");
 
 describe("pr merged request more action helpers", () => {
   test("given a pending merged request more action, when handling request more, then no request is sent", async () => {
@@ -16,12 +16,10 @@ describe("pr merged request more action helpers", () => {
     expect(postJson).not.toHaveBeenCalled();
   });
 
-  test("given merged request more returns PR data, when handling request more, then optimistic render and success text are applied", async () => {
+  test("given merged request more returns PR data, when handling request more, then the fresh payload is applied directly and success text is shown", async () => {
     const setIsRequestMoreMergedPending = jest.fn();
     const setStatusMessage = jest.fn();
-    const setLatestStoredPayload = jest.fn();
-    const setLatestSelectedRepo = jest.fn();
-    const renderPrData = jest.fn();
+    const applyFreshPrPayload = jest.fn();
     const loadStoredData = jest.fn();
     const finishActivity = jest.fn();
     const onPendingChange = jest.fn();
@@ -42,9 +40,7 @@ describe("pr merged request more action helpers", () => {
             refreshedPrs: [{ number: 1 }, { number: 2 }],
           },
         }),
-        setLatestStoredPayload,
-        setLatestSelectedRepo,
-        renderPrData,
+        applyFreshPrPayload,
         loadStoredData,
         setStatusMessage,
         notifyFailureSnackbar: jest.fn(),
@@ -54,12 +50,10 @@ describe("pr merged request more action helpers", () => {
 
     expect(setIsRequestMoreMergedPending).toHaveBeenNthCalledWith(1, true);
     expect(onPendingChange).toHaveBeenNthCalledWith(1, true);
-    expect(setLatestStoredPayload).toHaveBeenCalledWith({ byPrNumber: { 1: {} } });
-    expect(setLatestSelectedRepo).toHaveBeenCalledWith("org/repo");
-    expect(renderPrData).toHaveBeenCalledWith(
+    expect(applyFreshPrPayload).toHaveBeenCalledTimes(1);
+    expect(applyFreshPrPayload).toHaveBeenCalledWith(
       { byPrNumber: { 1: {} } },
       "org/repo",
-      { useLastRunScope: false },
     );
     expect(loadStoredData).not.toHaveBeenCalled();
     expect(onStatusChange).toHaveBeenCalledWith("Loaded 2 merged PRs.");
@@ -86,9 +80,7 @@ describe("pr merged request more action helpers", () => {
           response: { ok: true },
           result: { ok: true, refreshedPrs: [] },
         }),
-        setLatestStoredPayload: () => {},
-        setLatestSelectedRepo: () => {},
-        renderPrData: () => {},
+        applyFreshPrPayload: () => {},
         loadStoredData,
         setStatusMessage: () => {},
         notifyFailureSnackbar: jest.fn(),
@@ -117,9 +109,7 @@ describe("pr merged request more action helpers", () => {
           response: { ok: false },
           result: { ok: false, error: "request failed" },
         }),
-        setLatestStoredPayload: () => {},
-        setLatestSelectedRepo: () => {},
-        renderPrData: () => {},
+        applyFreshPrPayload: () => {},
         loadStoredData: async () => {},
         setStatusMessage,
         notifyFailureSnackbar,

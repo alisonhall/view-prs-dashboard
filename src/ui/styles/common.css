@@ -1,0 +1,98 @@
+/*
+ * Small styles several views share: the views' panels and tables, PR
+ * links, actor names, the status colours, the row checkbox and the filter
+ * bar's scope select. Moved from index.css (phase 10-1); not yet on
+ * tokens.css.
+ */
+
+/* Shared table defaults: keep long tokens inside cells across all table views. */
+.data-tab-panel table {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.data-tab-panel table th,
+.data-tab-panel table td {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+#scope-mode {
+  height: 32px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 8px;
+  padding: 0 8px;
+  margin-bottom: 8px;
+}
+
+.data-tabs {
+  border: 1px solid var(--color-border-strong);
+  border-radius: 10px;
+  background: var(--color-surface);
+  /* clip, not hidden: it still keeps the contents inside the rounded
+     corners, but doesn't make this a scroll container, which would stop
+     the docked detail pane (pane.css) sticking to the window. */
+  overflow: clip;
+  margin-bottom: 12px;
+}
+
+.data-tab-panel {
+  padding: 10px 12px;
+  background: var(--color-surface);
+}
+
+.row-select-checkbox {
+  margin: 0;
+  transform: translateY(1px);
+}
+
+.actor-identity {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.actor-identity-viewer {
+  color: var(--color-accent-text);
+}
+
+.actor-identity-pr-author {
+  color: var(--color-attention-text);
+}
+
+.actor-identity-viewer.actor-identity-pr-author {
+  color: var(--color-success);
+}
+
+.pr-link {
+  color: var(--color-accent-text);
+  text-decoration: underline;
+}
+
+.status-changed {
+  color: var(--color-attention-text);
+  font-weight: 600;
+}
+
+.status-no-change {
+  color: var(--color-success);
+  font-weight: 600;
+}
+
+.status-no-activity {
+  color: var(--color-info);
+  font-weight: 600;
+}
+
+.approved-yes {
+  color: var(--color-success);
+  font-weight: 600;
+}
+
+.approved-no {
+  color: var(--color-danger);
+  font-weight: 600;
+}

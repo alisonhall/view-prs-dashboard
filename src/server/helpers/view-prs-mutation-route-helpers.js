@@ -288,7 +288,7 @@ const createViewPrsMutationRouteHelpers = ({ formatScriptFailureMessage }) => {
       .filter((value) => /^\d+$/.test(value));
 
   // Scopes a manual Quick Check to exactly the PR numbers entered in the
-  // Run & Filter tab's PR-number field, when present - undefined signals the
+  // Settings drawer's PR numbers field (Run & check), when present - undefined signals the
   // route/runViewPrsQuickCheck to fall back to their existing all-configured-
   // repos, day-windowed default (unchanged when the field is empty). Mirrors
   // buildApplyLabelRequest's repo/prNumbers shape, defaulting repo the same

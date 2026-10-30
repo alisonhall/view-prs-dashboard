@@ -1,0 +1,574 @@
+/**
+ * PrJsonModal - "View PR JSON details" dialog (data file entry, pr-detail
+ * file entry, user-state entry, and the PR diff with wrap/copy controls).
+ * The React version now used everywhere - the vanilla original
+ * (components/pr-json-modal.component.js, plus its
+ * helpers/pr-json-modal.helpers.js) was deleted once this fully replaced
+ * it; its "Copy for AI"/diff-summary logic below is a standalone
+ * reimplementation, not a shared helper.
+ *
+ * @module components/PrJsonModal
+ */
+
+import { useEffect, useRef, useState } from 'react';
+import { safeJsonStringify } from '../helpers/pr-ui-render-utils.helpers.ts';
+import { getPerPrUserStateFromPayload } from '../helpers/pr-per-pr-user-state.helpers.ts';
+import { DEFAULT_REPO as defaultRepo } from '../helpers/pr-default-repo.helpers.ts';
+import type { PrData, PrDataPayload, PrEntry } from '../types/pr-data.ts';
+
+type JsonRecord = Record<string, unknown>;
+const isRecord = (value: unknown): value is JsonRecord =>
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+
+// The PR the dialog shows: its table entry and row data.
+export interface PrJsonModalTarget {
+  entry: Pick<PrEntry, 'prNumber' | 'repo'> & { notes?: unknown };
+  pr: PrData;
+}
+
+// One stored file's part for this PR.
+interface JsonFileSection {
+  file: string;
+  entry: unknown;
+}
+
+interface PrJsonDetails {
+  prNumber: string;
+  repo: string;
+  dataFile: JsonFileSection;
+  prDetailFile: JsonFileSection;
+  userStateFile: JsonFileSection;
+}
+
+// GET /view-prs/diff's answer, or why there isn't one.
+interface DiffData {
+  ok: boolean;
+  error?: string;
+  file?: string;
+  source?: string;
+  stale?: boolean;
+  warning?: string;
+  commitFingerprint?: string;
+  fetchedAt?: string | null;
+  filePath?: string;
+  diffText?: string;
+}
+
+type DiffLineType = 'file' | 'meta' | 'hunk' | 'add' | 'del' | 'context';
+
+interface DiffBlock {
+  // null for lines before the first file header.
+  filePath: string | null;
+  lines: { key: number; type: DiffLineType; text: string }[];
+}
+
+function summarizeDiffText(diffText: unknown) {
+  const lines = String(diffText || '').split(/\r?\n/);
+  const summary = { filesChanged: 0, hunks: 0, additions: 0, deletions: 0, lines: lines.length };
+  lines.forEach((line) => {
+    if (line.startsWith('diff --git ')) summary.filesChanged += 1;
+    if (line.startsWith('@@')) summary.hunks += 1;
+    if (line.startsWith('+') && !line.startsWith('+++')) summary.additions += 1;
+    if (line.startsWith('-') && !line.startsWith('---')) summary.deletions += 1;
+  });
+  return summary;
+}
+
+interface BuildPrJsonModalPayloadInput {
+  entry: PrJsonModalTarget['entry'] | null | undefined;
+  pr: (PrData & { repo?: string }) | null | undefined;
+  payload: PrDataPayload | null | undefined;
+  defaultRepo: string;
+  getPerPrUserStateFromPayload: typeof getPerPrUserStateFromPayload;
+}
+
+function buildPrJsonModalPayload({
+  entry,
+  pr,
+  payload,
+  defaultRepo,
+  getPerPrUserStateFromPayload,
+}: BuildPrJsonModalPayloadInput): PrJsonDetails {
+  const prNumber = String(pr?.number || entry?.prNumber || '').trim();
+  const byPrNumber = payload?.byPrNumber || {};
+  const payloadEntry = byPrNumber?.[prNumber];
+  const dataSourceEntry: unknown = payloadEntry || entry || {};
+  // Copies, not the payload's own objects: it's the table's live data, and
+  // notes and the detail-only fields are removed from these for display.
+  const dataFileEntry = isRecord(dataSourceEntry) ? { ...dataSourceEntry } : dataSourceEntry;
+
+  if (isRecord(dataFileEntry)) {
+    delete dataFileEntry.notes;
+  }
+
+  const splitPrDetailFields = ['activityTimeline', 'activityEvents', 'reviewThreads', 'commentEvents'];
+  const dataRow = isRecord(dataFileEntry) && isRecord(dataFileEntry.data) ? { ...dataFileEntry.data } : null;
+  if (dataRow && isRecord(dataFileEntry)) {
+    dataFileEntry.data = dataRow;
+  }
+  const detailRef = dataRow && isRecord(dataRow.detailRef) ? dataRow.detailRef : null;
+  const prDetailEntry: JsonRecord = {};
+
+  splitPrDetailFields.forEach((fieldName) => {
+    if (!dataRow) return;
+    if (!Object.prototype.hasOwnProperty.call(dataRow, fieldName)) return;
+    const value = dataRow[fieldName];
+    prDetailEntry[fieldName] = Array.isArray(value) ? [...value] : [];
+    delete dataRow[fieldName];
+  });
+
+  const repo = String(
+    pr?.repo || entry?.repo || payloadEntry?.repo || payload?.lastRun?.repo || defaultRepo || '',
+  ).trim();
+
+  return {
+    prNumber,
+    repo,
+    dataFile: { file: 'check-open-pr-updates.data.json', entry: dataFileEntry },
+    prDetailFile: {
+      file: String(detailRef?.file || '').trim() || 'data/pr-details/<repo>__pr-<number>.json',
+      entry: prDetailEntry,
+    },
+    userStateFile: {
+      file: 'check-open-pr-updates.user-state.json',
+      entry: getPerPrUserStateFromPayload(payload, entry, prNumber, repo),
+    },
+  };
+}
+
+function formatDiffSummaryLine(diffData: DiffData | null) {
+  if (!diffData || diffData.ok === false) {
+    return String(diffData?.error || 'Diff data is unavailable');
+  }
+  const stats = summarizeDiffText(diffData.diffText);
+  const source = String(diffData.source || '').trim() || 'unknown source';
+  const freshness = diffData.stale ? 'stale cache' : 'current';
+  const fetchedAt = diffData.fetchedAt ? ` fetched ${diffData.fetchedAt}` : '';
+  return `${stats.filesChanged} files, +${stats.additions}/-${stats.deletions}, ${stats.hunks} hunks, ${stats.lines} lines, ${source}, ${freshness}${fetchedAt}`;
+}
+
+function buildPrJsonModalAiClipboardText(
+  detailsPayload: Partial<PrJsonDetails> | null,
+  diffData: DiffData | null,
+  safeJsonStringify: (value: unknown) => string,
+) {
+  const payload: Partial<PrJsonDetails> = detailsPayload || {};
+  const diff: Partial<DiffData> = diffData || {};
+  const repo = String(payload.repo || '').trim() || 'unknown';
+  const prNumber = String(payload.prNumber || '').trim() || 'unknown';
+  const dataFile = payload.dataFile || { file: 'check-open-pr-updates.data.json', entry: null };
+  const prDetailFile = payload.prDetailFile || { file: 'data/pr-details/<repo>__pr-<number>.json', entry: null };
+  const userStateFile = payload.userStateFile || { file: 'check-open-pr-updates.user-state.json', entry: null };
+
+  const diffMetadata = {
+    ok: Boolean(diff.ok),
+    file: diff.file || 'data/pr-diffs/<repo>__pr-<number>.json',
+    source: diff.source || '',
+    stale: Boolean(diff.stale),
+    warning: diff.warning || '',
+    commitFingerprint: diff.commitFingerprint || '',
+    fetchedAt: diff.fetchedAt || null,
+    filePath: diff.filePath || '',
+    error: diff.ok === false ? String(diff.error || 'Unknown diff error') : '',
+  };
+
+  return [
+    'PR JSON Details for AI Review',
+    `Repo: ${repo}`,
+    `PR Number: ${prNumber}`,
+    '',
+    `Data File Entry (${String(dataFile.file || 'check-open-pr-updates.data.json')})`,
+    '```json',
+    safeJsonStringify(dataFile.entry),
+    '```',
+    '',
+    `PR Detail File (${String(prDetailFile.file || 'data/pr-details/<repo>__pr-<number>.json')})`,
+    '```json',
+    safeJsonStringify(prDetailFile.entry),
+    '```',
+    '',
+    `User State Entry (${String(userStateFile.file || 'check-open-pr-updates.user-state.json')})`,
+    '```json',
+    safeJsonStringify(userStateFile.entry),
+    '```',
+    '',
+    `PR Diff Metadata (${String(diffMetadata.file || 'data/pr-diffs/<repo>__pr-<number>.json')})`,
+    '```json',
+    safeJsonStringify(diffMetadata),
+    '```',
+    '',
+    'PR Diff Text',
+    '```diff',
+    String(diff.diffText || ''),
+    '```',
+  ].join('\n');
+}
+
+async function fetchPrDiffForModal({ repo, prNumber }: { repo: string; prNumber: string }): Promise<DiffData> {
+  const safeRepo = encodeURIComponent(String(repo || '').trim());
+  const safePr = encodeURIComponent(String(prNumber || '').trim());
+  if (!safeRepo || !safePr) {
+    return { ok: false, error: 'Missing repo or PR number for diff lookup' };
+  }
+  try {
+    const response = await fetch(`/view-prs/diff?repo=${safeRepo}&prNumber=${safePr}`);
+    const result = await response.json();
+    if (!response.ok || result?.ok === false) {
+      return { ok: false, error: result?.error || `Failed to load diff (HTTP ${response.status})` };
+    }
+    return {
+      ok: true,
+      file: 'data/pr-diffs/<repo>__pr-<number>.json',
+      source: result.source || '',
+      stale: Boolean(result.stale),
+      warning: String(result.warning || ''),
+      commitFingerprint: String(result.commitFingerprint || ''),
+      fetchedAt: result.fetchedAt || null,
+      filePath: String(result.filePath || ''),
+      diffText: String(result.diffText || ''),
+    };
+  } catch (error) {
+    return { ok: false, error: String((error instanceof Error && error.message) || error || 'Failed to load diff') };
+  }
+}
+
+function getDiffLineType(line: string): DiffLineType {
+  const text = String(line || '');
+  if (text.startsWith('diff --git ')) return 'file';
+  if (text.startsWith('index ') || text.startsWith('Binary files ')) return 'meta';
+  if (text.startsWith('@@')) return 'hunk';
+  if (text.startsWith('+') && !text.startsWith('+++')) return 'add';
+  if (text.startsWith('-') && !text.startsWith('---')) return 'del';
+  return 'context';
+}
+
+function parseFileHeader(line: string) {
+  const header = String(line || '');
+  const fileHeaderMatch = header.match(/^diff --git\s+a\/(.+?)\s+b\/(.+)$/);
+  if (fileHeaderMatch) return `${fileHeaderMatch[1]} -> ${fileHeaderMatch[2]}`;
+  return header.replace(/^diff --git\s*/, '');
+}
+
+// Groups raw diff lines into per-file <details> blocks, matching the shape
+// the vanilla renderer this component replaced used to build in the DOM
+// (that vanilla builder, renderDiffText in helpers/pr-diff-render.helpers.js,
+// was deleted once nothing else called it - see REACT_MIGRATION_PLAN.md's
+// 2026-09-20 entry).
+function buildDiffBlocks(diffText: string): DiffBlock[] {
+  const lines = String(diffText || '').split(/\r?\n/);
+  const blocks: DiffBlock[] = [];
+  // Lines before the first file header, in a block of their own at the start.
+  let preamble: DiffBlock | null = null;
+  let current: DiffBlock | null = null;
+  lines.forEach((line, index) => {
+    const lineType = getDiffLineType(line);
+    if (lineType === 'file') {
+      current = { filePath: parseFileHeader(line), lines: [] };
+      blocks.push(current);
+      return;
+    }
+    const row = { key: index, type: lineType, text: line.length ? line : ' ' };
+    if (current) {
+      current.lines.push(row);
+    } else {
+      if (!preamble) {
+        preamble = { filePath: null, lines: [] };
+        blocks.unshift(preamble);
+      }
+      preamble.lines.push(row);
+    }
+  });
+  return blocks;
+}
+
+function getModalFocusableElements(root: HTMLElement | null): HTMLElement[] {
+  if (!root || typeof root.querySelectorAll !== 'function') return [];
+  return Array.from(
+    root.querySelectorAll<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'),
+  ).filter((node) => {
+    if (!node || (node as HTMLButtonElement).disabled) return false;
+    return node.getAttribute?.('aria-hidden') !== 'true';
+  });
+}
+
+export interface PrJsonModalProps {
+  target: PrJsonModalTarget | null;
+  payload: PrDataPayload | null | undefined;
+  onClose?: () => void;
+}
+
+export function PrJsonModal({ target, payload, onClose }: PrJsonModalProps) {
+  const isOpen = Boolean(target);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const lastActiveElementRef = useRef<HTMLElement | null>(null);
+  const bodyOverflowRef = useRef('');
+
+  const [detailsPayload, setDetailsPayload] = useState<PrJsonDetails | null>(null);
+  const [diffData, setDiffData] = useState<DiffData | null>(null);
+  const [loadingState, setLoading] = useState(false);
+  const [wrapped, setWrapped] = useState(false);
+  const [copyAllLabel, setCopyAllLabel] = useState('Copy all');
+  const [copyDiffLabel, setCopyDiffLabel] = useState('Copy diff');
+
+  // Open/close lifecycle: build the JSON payload synchronously, fetch the
+  // diff, manage focus + Escape/Tab handling + body scroll lock, matching
+  // vanilla's openPrJsonModal/closePrJsonModal/handlePrJsonModalKeydown.
+  useEffect(() => {
+    if (!target) return undefined;
+
+    const builtPayload = buildPrJsonModalPayload({
+      entry: target.entry,
+      pr: target.pr,
+      payload,
+      defaultRepo,
+      getPerPrUserStateFromPayload,
+    });
+    setDetailsPayload(builtPayload);
+    setDiffData(null);
+    setLoading(true);
+    setWrapped(false);
+    setCopyAllLabel('Copy all');
+    setCopyDiffLabel('Copy diff');
+
+    lastActiveElementRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (document.body?.style) {
+      bodyOverflowRef.current = String(document.body.style.overflow || '');
+      document.body.style.overflow = 'hidden';
+    }
+
+    let cancelled = false;
+    fetchPrDiffForModal({ repo: builtPayload.repo, prNumber: builtPayload.prNumber }).then((result) => {
+      if (cancelled) return;
+      setDiffData(result);
+      setLoading(false);
+    });
+
+    const handleKeydown = (event: KeyboardEvent) => {
+      const key = String(event?.key || '');
+      if (key === 'Escape') {
+        event.preventDefault?.();
+        // This is a true modal (focus trap, body scroll lock) that can sit
+        // on top of other dismissable overlays (e.g. the activity popover,
+        // shell/ActivityPopover.tsx - also closes on Escape via its own
+        // window listener). Stopping propagation here means Escape closes only
+        // the topmost/true modal, not everything listening for it at once.
+        event.stopPropagation?.();
+        onClose?.();
+        return;
+      }
+      if (key !== 'Tab') return;
+
+      const focusable = getModalFocusableElements(rootRef.current);
+      if (!focusable.length) {
+        event.preventDefault?.();
+        rootRef.current?.focus?.();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+      if (!event.shiftKey && active === last) {
+        event.preventDefault?.();
+        first?.focus();
+      } else if (event.shiftKey && active === first) {
+        event.preventDefault?.();
+        last?.focus();
+      }
+    };
+    document.addEventListener('keydown', handleKeydown);
+
+    return () => {
+      cancelled = true;
+      // Drop the previous PR's data on close/target change, so reopening
+      // (possibly for a different PR) starts from "loading" instead of
+      // flashing the last PR's JSON for a frame before the open effect
+      // above replaces it.
+      setDetailsPayload(null);
+      setDiffData(null);
+      document.removeEventListener('keydown', handleKeydown);
+      if (document.body?.style) {
+        document.body.style.overflow = bodyOverflowRef.current;
+      }
+      lastActiveElementRef.current?.focus?.();
+      lastActiveElementRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, target]);
+
+  // Focus the close button once the modal actually opens (after the DOM commits).
+  useEffect(() => {
+    if (isOpen) {
+      closeButtonRef.current?.focus?.();
+    }
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+
+  // detailsPayload is only set by the open effect above, so the very first
+  // render after opening has loadingState=false and no payload yet - without
+  // this it would flash empty JSON blocks for a frame (and a test or
+  // assistive tech reading the dialog in that window sees nothing, not
+  // "Loading..."). No payload yet always means still loading.
+  const loading = loadingState || !detailsPayload;
+
+  const diffBlocks = buildDiffBlocks(diffData?.ok === false ? '' : diffData?.diffText || '');
+  const diffMeta = loading ? 'Loading diff details...' : formatDiffSummaryLine(diffData);
+  const diffErrorText =
+    diffData?.ok === false ? `Unable to load diff\n${String(diffData.error || 'Unknown error')}` : '';
+  const copyAllText = detailsPayload
+    ? buildPrJsonModalAiClipboardText(detailsPayload, diffData, safeJsonStringify)
+    : '';
+
+  const handleCopyAll = async () => {
+    if (!copyAllText) {
+      setCopyAllLabel('Unavailable');
+      setTimeout(() => setCopyAllLabel('Copy all'), 1200);
+      return;
+    }
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(copyAllText);
+        setCopyAllLabel('Copied');
+      } else {
+        setCopyAllLabel('Unavailable');
+      }
+    } catch (_error) {
+      setCopyAllLabel('Copy failed');
+    }
+    setTimeout(() => setCopyAllLabel('Copy all'), 1200);
+  };
+
+  const handleCopyDiff = async () => {
+    const value = String(diffData?.diffText || '');
+    if (!value) return;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(value);
+        setCopyDiffLabel('Copied');
+      } else {
+        setCopyDiffLabel('Unavailable');
+      }
+    } catch (_error) {
+      setCopyDiffLabel('Copy failed');
+    }
+    setTimeout(() => setCopyDiffLabel('Copy diff'), 1200);
+  };
+
+  return (
+    <div
+      ref={rootRef}
+      id="pr-json-modal"
+      className="pr-json-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="pr-json-modal-title"
+      aria-describedby="pr-json-modal-subtitle"
+      tabIndex={-1}
+      onClick={(event) => {
+        if (event.target === rootRef.current) onClose?.();
+      }}
+    >
+      <div className="pr-json-modal-card">
+        <div className="pr-json-modal-header">
+          <h3 id="pr-json-modal-title">PR JSON Details</h3>
+          <button
+            type="button"
+            className="pr-json-modal-copy-btn"
+            aria-label="Copy all PR JSON details for AI chat"
+            disabled={loading || !copyAllText}
+            onClick={handleCopyAll}
+          >
+            {copyAllLabel}
+          </button>
+          <button
+            ref={closeButtonRef}
+            type="button"
+            className="pr-json-modal-close"
+            aria-label="Close PR JSON details"
+            onClick={() => onClose?.()}
+          >
+            x
+          </button>
+        </div>
+
+        <p id="pr-json-modal-subtitle" className="pr-json-modal-subtitle">
+          {`PR #${detailsPayload?.prNumber || '-'} (${detailsPayload?.repo || 'repo unknown'})`}
+        </p>
+
+        <div id="pr-json-modal-content" className="pr-json-modal-content">
+          <details className="pr-json-section" open>
+            <summary>Data File Entry</summary>
+            <pre className="pr-json-block" role="region" aria-label="Data File Entry">
+              {loading ? 'Loading data file entry...' : safeJsonStringify(detailsPayload?.dataFile)}
+            </pre>
+          </details>
+
+          <details className="pr-json-section" open>
+            <summary>PR Detail File</summary>
+            <pre className="pr-json-block" role="region" aria-label="PR Detail File">
+              {loading ? 'Loading pr-detail file entry...' : safeJsonStringify(detailsPayload?.prDetailFile)}
+            </pre>
+          </details>
+
+          <details className="pr-json-section" open>
+            <summary>User State Entry</summary>
+            <pre className="pr-json-block" role="region" aria-label="User State Entry">
+              {loading ? 'Loading user-state entry...' : safeJsonStringify(detailsPayload?.userStateFile)}
+            </pre>
+          </details>
+
+          <details className="pr-json-section pr-json-section-diff" open>
+            <summary>PR Diff</summary>
+            <div className="pr-json-diff-header">
+              <div className="pr-json-diff-actions">
+                <button type="button" className="pr-json-diff-btn" onClick={() => setWrapped((prev) => !prev)}>
+                  {wrapped ? 'Unwrap lines' : 'Wrap lines'}
+                </button>
+                <button type="button" className="pr-json-diff-btn" onClick={handleCopyDiff}>
+                  {copyDiffLabel}
+                </button>
+              </div>
+            </div>
+            <p className="pr-json-diff-meta">{diffMeta}</p>
+            <div
+              className={`pr-json-diff${wrapped ? ' is-wrapped' : ''}`}
+              data-wrapped={wrapped ? 'true' : 'false'}
+              data-raw-diff={String(diffData?.diffText || '')}
+            >
+              {loading ? (
+                'Loading diff...'
+              ) : diffErrorText ? (
+                diffErrorText
+              ) : (
+                diffBlocks.map((block, blockIndex) =>
+                  block.filePath !== null ? (
+                    <details key={blockIndex} className="pr-json-diff-file-block" open>
+                      <summary className="pr-json-diff-line pr-json-diff-line-file pr-json-diff-file-summary">
+                        <span className="pr-json-diff-file-pill">FILE</span>
+                        <span className="pr-json-diff-file-path">{block.filePath}</span>
+                      </summary>
+                      <div className="pr-json-diff-file-body">
+                        {block.lines.map((line) => (
+                          <div key={line.key} className={`pr-json-diff-line pr-json-diff-line-${line.type}`}>
+                            {line.text}
+                          </div>
+                        ))}
+                      </div>
+                    </details>
+                  ) : (
+                    block.lines.map((line) => (
+                      <div key={line.key} className={`pr-json-diff-line pr-json-diff-line-${line.type}`}>
+                        {line.text}
+                      </div>
+                    ))
+                  ),
+                )
+              )}
+            </div>
+          </details>
+        </div>
+      </div>
+    </div>
+  );
+}

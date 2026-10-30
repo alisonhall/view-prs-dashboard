@@ -1,4 +1,4 @@
-const { createPrCommandOutputHelpers } = require("./pr-command-output.helpers.js");
+const { createPrCommandOutputHelpers } = require("./pr-command-output.helpers.ts");
 
 const stripAnsi = (text) => {
   const input = String(text || "");

@@ -122,6 +122,36 @@ describe("user-state schema", () => {
 
     expect(validate(payload)).toBe(true);
   });
+
+  const notesPayload = (notes) => ({
+    notesByPrNumber: { 101: { comments: [], otherNotes: "", ...notes } },
+    ackByRepo: {},
+    reverifyByRepo: {},
+    inReviewByRepo: {},
+    flaggedByRepo: {},
+  });
+
+  test("accepts notes with stories, each a name and URL", () => {
+    expect(
+      validate(
+        notesPayload({
+          stories: [
+            { name: "US1001", url: "https://stories.example/US1001" },
+            { name: "DE1002", url: "" },
+          ],
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  test("rejects a story missing its url or with an unknown field", () => {
+    expect(validate(notesPayload({ stories: [{ name: "US1001" }] }))).toBe(false);
+    expect(validate(notesPayload({ stories: [{ name: "US1001", url: "", id: "x" }] }))).toBe(false);
+  });
+
+  test("still accepts the deprecated rallyStories/rallyLinks lists in files not yet rewritten", () => {
+    expect(validate(notesPayload({ rallyStories: ["US1001"], rallyLinks: ["https://stories.example/US1001"] }))).toBe(true);
+  });
 });
 
 describe("author-comments schema", () => {
