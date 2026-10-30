@@ -1547,21 +1547,18 @@ test("changing a React-owned filter auto-applies without clicking \"Apply filter
   await filterBar(page).getByLabel("View scope", { exact: true }).selectOption("last-run");
   await expect(page.getByRole("region", { name: "PR data summary", exact: true, includeHidden: true })).toContainText("scope=last run rows");
 
-  // Reset so this test's change doesn't affect whatever loads next. This
-  // change also fires its own auto-persist PUT (FilterStateProvider's debounced
-  // persistence watcher) debounced 150ms behind the one from
-  // "last-run" above - wait for it to actually land (same reasoning as
-  // waitForFilterPersist above) so this test can't leak a
-  // stale scope-mode value into whatever unrelated test loads next against
-  // this suite's one shared webServer.
-  const [persistResponse] = await Promise.all([
-    page.waitForResponse(
-      (res) => res.url().includes("/view-prs/user-defaults") && res.request().method() === "PUT",
-    ),
-    filterBar(page).getByLabel("View scope", { exact: true }).selectOption("all"),
-  ]);
-  expect(persistResponse.ok()).toBe(true);
+  // Reset so this test's change doesn't affect whatever loads next against
+  // this suite's one shared webServer. Waiting for "a" save isn't enough:
+  // the "last-run" save could still be in flight and be the one caught,
+  // and then this reset's save (150ms behind it) never went out before the
+  // page closed - leaving scope at "last run rows" for every later test
+  // (CI, 2026-10-30). So wait for saving to settle, then check the file.
+  await filterBar(page).getByLabel("View scope", { exact: true }).selectOption("all");
   await expect(page.getByRole("region", { name: "PR data summary", exact: true, includeHidden: true })).toContainText("scope=all stored rows");
+  await waitForFilterPersist(page);
+  await expect
+    .poll(async () => (await (await page.request.get("/view-prs/user-defaults")).json()).overrides?.["scope-mode"] ?? "all")
+    .toBe("all");
 });
 
 test("typing a PR-number filter updates the rendered React table live, with no \"Apply filters (local)\" click at all", async ({ page }) => {
@@ -1792,6 +1789,8 @@ test("removing a filter chip persists the clear on its own, with no explicit per
   // entirely on its own, the same way a real user's click would trigger
   // it with no test-only help.
   await persistResponse;
+  // The watcher can save again just after; let that land before reloading.
+  await waitForFilterPersist(page);
 
   await page.reload();
   await waitForPrTable(page);
