@@ -24,8 +24,13 @@ import {
 } from '../helpers/pr-merge-commit-rules.helpers.ts';
 
 // Built once, not per render: its only dependency is the real fetch.
-const { getUiOptionDefaults, FILTER_STATE_FIELD_MAP, readUiSessionOverrides, writeUiSessionOverrides } =
-  createPrUiOptionPersistenceHelpers({ fetch: (input, init) => fetch(input, init) });
+const {
+  getUiOptionDefaults,
+  FILTER_STATE_FIELD_MAP,
+  readUiSessionOverrides,
+  readUiSessionOverridesOrNull,
+  writeUiSessionOverrides,
+} = createPrUiOptionPersistenceHelpers({ fetch: (input, init) => fetch(input, init) });
 
 const TEXT_FIELD_IDS = [
   'repo',
@@ -424,8 +429,11 @@ export function FilterStateProvider({
     return overrides;
   }, [rowFilterSelection, authorThreadResolutionSelection, changeFilterActorSelection]);
 
+  // Both read the saved overrides and write them back with these options
+  // changed - not when they can't be read, which would lose the rest.
   const persistRunScriptOptions = useCallback(async () => {
-    const existingOverrides = await readUiSessionOverrides();
+    const existingOverrides = await readUiSessionOverridesOrNull();
+    if (!existingOverrides) return;
     const overrides = buildOverrides(
       ['repo', 'limit', 'merged-limit', 'jobs', 'pr-numbers', 'open-mode', 'ack-changed', 'show-reason', 'quiet'],
       existingOverrides,
@@ -434,7 +442,8 @@ export function FilterStateProvider({
   }, [buildOverrides]);
 
   const persistViewFilterOptions = useCallback(async () => {
-    const existingOverrides = await readUiSessionOverrides();
+    const existingOverrides = await readUiSessionOverridesOrNull();
+    if (!existingOverrides) return;
     const overrides = buildOverrides(
       [
         'scope-mode',

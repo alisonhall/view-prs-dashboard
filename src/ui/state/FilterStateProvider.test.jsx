@@ -257,6 +257,22 @@ describe('FilterStateProvider', () => {
       expect(putBody).not.toHaveProperty('mergeCommitRules');
       expect(putBody.changeFilters).toEqual({ ignoreCommitPatterns: ['^docs:'] });
     });
+
+    test("given the saved settings can't be read, when the persist debounce fires, then nothing is written (it would lose them)", async () => {
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      mockUserDefaults({});
+      const succeeding = global.fetch;
+      global.fetch = jest.fn(async (url, init = {}) =>
+        String(url) === '/view-prs/user-defaults' && !init.method ? { ok: false, status: 500 } : succeeding(url, init),
+      );
+      renderProbe();
+      await act(async () => {});
+
+      await user.click(screen.getByText('add bots'));
+      await flushPersist();
+
+      expect(putBody).toBeNull();
+    });
   });
 
   describe('restoredRepoOverride (restore-on-mount)', () => {

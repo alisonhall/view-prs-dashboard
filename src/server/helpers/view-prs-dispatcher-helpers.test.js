@@ -141,18 +141,29 @@ describe("View Prs Dispatcher Helpers", () => {
 
       const entries = helpers.getOrInitRegistry();
 
-      expect(entries["owner/repoA::autoRefresh"].priority).toBe(9);
+      expect(entries["owner/repoA::autoRefresh"].priority).toBe(3 + 9);
       expect(entries["owner/repoA::autoRefresh"].intervalMs).toBe(60000);
-      // priority is repo-wide (not per-task) per schedulerRepoConfig's shape,
-      // so the untouched task type picks up the same overridden priority -
-      // only its interval stays at the default since no *Interval override
-      // was given for it.
-      expect(entries["owner/repoA::quickCheck"].priority).toBe(9);
+      // The priority boost is repo-wide, added to each task type's own
+      // default, so the quick check keeps its lead over the full refresh;
+      // its interval stays at the default since no override was given for it.
+      expect(entries["owner/repoA::quickCheck"].priority).toBe(5 + 9);
       expect(entries["owner/repoA::quickCheck"].intervalMs).toBe(DEFAULT_INTERVALS.quickCheck);
+      expect(entries["owner/repoA::mergedDrain"].priority).toBe(1 + 9);
+    });
+
+    test("When a repo's priority boost is negative, Then its tasks rank below the defaults", () => {
+      schedulerRepoConfig = { "owner/repoA": { priority: -2 } };
+
+      const entries = helpers.getOrInitRegistry();
+
+      expect(entries["owner/repoA::quickCheck"].priority).toBe(3);
+      expect(entries["owner/repoA::autoRefresh"].priority).toBe(1);
+      expect(entries["owner/repoA::mergedDrain"].priority).toBe(-1);
+      expect(mockConsole.warn).not.toHaveBeenCalled();
     });
 
     test("When schedulerRepoConfig has an invalid override, Then it falls back to the default instead of throwing", () => {
-      schedulerRepoConfig = { "owner/repoA": { priority: -3, autoRefreshIntervalMs: "not-a-number" } };
+      schedulerRepoConfig = { "owner/repoA": { priority: "high", autoRefreshIntervalMs: "not-a-number" } };
 
       const entries = helpers.getOrInitRegistry();
 
@@ -160,6 +171,54 @@ describe("View Prs Dispatcher Helpers", () => {
       expect(entries["owner/repoA::autoRefresh"].intervalMs).toBe(DEFAULT_INTERVALS.autoRefresh);
       expect(mockConsole.warn).toHaveBeenCalledWith(expect.stringContaining("priority"));
       expect(mockConsole.warn).toHaveBeenCalledWith(expect.stringContaining("autoRefreshIntervalMs"));
+    });
+
+    test("When an interval changes after a successful run, Then the wait under way uses the new interval", () => {
+      const entries = helpers.getOrInitRegistry();
+      const quickCheck = entries["owner/repoA::quickCheck"];
+      helpers.markEntryFinished(quickCheck, { nowMs: BASE_MS, ok: true });
+      expect(quickCheck.nextDueAt).toBe(iso(BASE_MS + DEFAULT_INTERVALS.quickCheck));
+
+      schedulerRepoConfig = { "owner/repoA": { quickCheckIntervalMs: 60000 } };
+      helpers.getOrInitRegistry();
+      expect(quickCheck.nextDueAt).toBe(iso(BASE_MS + 60000));
+
+      // Longer again: later, from the same finish.
+      schedulerRepoConfig = { "owner/repoA": { quickCheckIntervalMs: 20 * 60 * 1000 } };
+      helpers.getOrInitRegistry();
+      expect(quickCheck.nextDueAt).toBe(iso(BASE_MS + 20 * 60 * 1000));
+    });
+
+    test("When an interval changes for an entry that's bumped, deferred or backing off, Then its due time stays", () => {
+      const entries = helpers.getOrInitRegistry();
+      const quickCheck = entries["owner/repoA::quickCheck"];
+      const autoRefresh = entries["owner/repoA::autoRefresh"];
+      const mergedDrain = entries["owner/repoA::mergedDrain"];
+      helpers.markEntryFinished(quickCheck, { nowMs: BASE_MS, ok: true });
+      helpers.bumpEntryUrgent("owner/repoA", "quickCheck");
+      helpers.markEntryDeferred(autoRefresh, { nowMs: BASE_MS });
+      helpers.markEntryFinished(mergedDrain, { nowMs: BASE_MS, ok: false });
+      const before = [quickCheck, autoRefresh, mergedDrain].map((entry) => entry.nextDueAt);
+
+      schedulerRepoConfig = {
+        "owner/repoA": { quickCheckIntervalMs: 60000, autoRefreshIntervalMs: 60000, mergedDrainIntervalMs: 60000 },
+      };
+      helpers.getOrInitRegistry();
+
+      expect([quickCheck, autoRefresh, mergedDrain].map((entry) => entry.nextDueAt)).toEqual(before);
+    });
+  });
+
+  describe("Given getRepoSettingsDefaults", () => {
+    test("Then it lists the scheduled repos and each task type's default interval and priority", () => {
+      expect(helpers.getRepoSettingsDefaults()).toEqual({
+        repos: ["owner/repoA"],
+        taskTypes: [
+          { taskType: "quickCheck", intervalMs: DEFAULT_INTERVALS.quickCheck, priority: 5 },
+          { taskType: "autoRefresh", intervalMs: DEFAULT_INTERVALS.autoRefresh, priority: 3 },
+          { taskType: "mergedDrain", intervalMs: DEFAULT_INTERVALS.mergedDrain, priority: 1 },
+        ],
+      });
     });
   });
 

@@ -182,7 +182,8 @@ const { createPrSmartGroupsHelpers } = require('../helpers/pr-smart-groups.helpe
 // `dirtyPrNumbers`: PRs with unsaved notes (NotesDirtyContext).
 // `sectionPreferences`: Settings › Appearance's saved section choices
 // (user-defaults.json's prSections), read by PrSectionPreferencesProvider
-// through a mocked fetch.
+// through a mocked fetch, which answers once `sectionPreferencesHeld`
+// resolves, when given.
 const renderPrTableApp = ({
   initialPayload,
   selectedRepo,
@@ -190,11 +191,15 @@ const renderPrTableApp = ({
   filterStateValues,
   dirtyPrNumbers,
   sectionPreferences,
+  sectionPreferencesHeld,
   ...tableProps
 } = {}) => {
   const table = <PrTableApp {...tableProps} />;
   if (sectionPreferences) {
-    global.fetch = jest.fn(async () => ({ ok: true, json: async () => ({ overrides: { prSections: sectionPreferences } }) }));
+    global.fetch = jest.fn(async () => {
+      await sectionPreferencesHeld;
+      return { ok: true, json: async () => ({ overrides: { prSections: sectionPreferences } }) };
+    });
   }
   return render(
     <AllSelectionProviders>
@@ -1830,6 +1835,8 @@ describe('PrTableApp', () => {
   describe("Settings › Appearance section choices", () => {
     afterEach(() => {
       delete global.fetch;
+      // The provider keeps a browser copy of the choices.
+      window.localStorage.clear();
     });
 
     const payload = { byPrNumber: { 1: makeEntry({ prNumber: "1", repo: "owner/repo", section: "open" }) } };
@@ -1838,8 +1845,28 @@ describe('PrTableApp', () => {
 
     test("given a hidden section, then it is not rendered, and the others are", async () => {
       renderPrTableApp({ initialPayload: payload, selectedRepo: "", sectionPreferences: { closed: { hidden: true } } });
-      await waitFor(() => expect(renderedKeys()).not.toContain("closed"));
-      expect(renderedKeys()).toEqual(["open", "draft", "merged"]);
+      await waitFor(() => expect(renderedKeys()).toEqual(["open", "draft", "merged"]));
+    });
+
+    test("given the choices not read yet (and no browser copy), then no sections are drawn until they are", async () => {
+      let release = () => {};
+      const held = new Promise((resolve) => {
+        release = resolve;
+      });
+      capturedSectionProps.length = 0;
+      renderPrTableApp({
+        initialPayload: payload,
+        selectedRepo: "",
+        sectionPreferences: { closed: { hidden: true } },
+        sectionPreferencesHeld: held,
+      });
+
+      expect(screen.getByText("Loading Pull Requests...")).toBeInTheDocument();
+      expect(capturedSectionProps.some((p) => p.section.key === "closed")).toBe(false);
+
+      await React.act(async () => release());
+      await waitFor(() => expect(renderedKeys()).toEqual(["open", "draft", "merged"]));
+      expect(capturedSectionProps.some((p) => p.section.key === "closed")).toBe(false);
     });
 
     test("given a saved \"open when the page loads\" choice, then the section starts open", async () => {

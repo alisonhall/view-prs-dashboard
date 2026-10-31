@@ -97,4 +97,27 @@ describe("pr-ui-option-persistence helpers", () => {
     await updateUiSessionOverride("theme", undefined);
     expect(saved).toEqual({ repo: "a/b", prSections: { closed: { hidden: true } } });
   });
+
+  test("readUiSessionOverridesOrNull tells a failed read from nothing saved", async () => {
+    const failing = createPrUiOptionPersistenceHelpers({ fetch: jest.fn(async () => ({ ok: false })) });
+    await expect(failing.readUiSessionOverridesOrNull()).resolves.toBeNull();
+    const throwing = createPrUiOptionPersistenceHelpers({
+      fetch: jest.fn(async () => {
+        throw new Error("network down");
+      }),
+    });
+    await expect(throwing.readUiSessionOverridesOrNull()).resolves.toBeNull();
+    const empty = createPrUiOptionPersistenceHelpers({ fetch: jest.fn(async () => ({ ok: true, json: async () => ({}) })) });
+    await expect(empty.readUiSessionOverridesOrNull()).resolves.toEqual({});
+  });
+
+  test("updateUiSessionOverride writes nothing when the saved overrides can't be read", async () => {
+    const fetchFn = jest.fn(async () => ({ ok: false }));
+    const { updateUiSessionOverride } = createPrUiOptionPersistenceHelpers({ fetch: fetchFn });
+
+    await updateUiSessionOverride("theme", "dark");
+
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    expect(fetchFn.mock.calls.some(([, init]) => init?.method === "PUT")).toBe(false);
+  });
 });

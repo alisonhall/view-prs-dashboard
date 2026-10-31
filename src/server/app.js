@@ -3186,6 +3186,7 @@ const createViewPrsApp = ({ production = isProductionEnv } = {}) => {
     viewPrsBackfillPidFile,
     bumpDispatcherEntry,
     dispatcherTaskTypes: DISPATCHER_TASK_TYPES,
+    getDispatcherSettings: () => callDispatcherHelpers().getRepoSettingsDefaults(),
     resetAutoCircuitBreaker: resetAutoCircuitBreakerAndRetry,
     emitSchedulerStateChanged: callEmitSchedulerStateChanged,
   });

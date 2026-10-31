@@ -321,7 +321,8 @@ test("at phone width the Settings sections are one row that scrolls sideways, le
       return range.getClientRects().length;
     }),
   );
-  expect(labelLines).toEqual(Array(10).fill(1));
+  expect(labelLines.length).toBeGreaterThan(1);
+  expect(labelLines).toEqual(labelLines.map(() => 1));
   expect(await nav.evaluate((element) => element.closest(".settings-nav").scrollWidth > element.closest(".settings-nav").clientWidth)).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(375);
 
@@ -557,6 +558,71 @@ test("the docked detail pane stays in view while the page scrolls", async ({ pag
   expect(box.y).toBeLessThan(40);
 });
 
+test("at the end of the list the docked detail pane shrinks instead of its header going above the window", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 700 });
+  await page.goto("/");
+  await waitForPrTable(page);
+  await prTables(page)
+    .locator("details")
+    .evaluateAll((sections) => sections.forEach((section) => (section.open = true)));
+  await openFirstRowInPane(page);
+
+  const pane = detailPane(page);
+  await page.evaluate(() => window.scrollTo(0, 400));
+  const stuckTop = (await pane.boundingBox()).y;
+  const fullHeight = (await pane.boundingBox()).height;
+  // Mid-list there's no limit, so scrolling writes nothing (and never on
+  // the workspace, which would restyle every row).
+  const roomSet = () =>
+    page.evaluate(() =>
+      [".pr-workspace", ".pr-pane"].map((selector) => document.querySelector(selector).style.getPropertyValue("--pr-pane-room")),
+    );
+  expect(await roomSet()).toEqual(["", ""]);
+
+  // There's page below the list, so a full-height pane would be pushed up.
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await expect.poll(async () => Math.round((await pane.boundingBox()).y)).toBe(Math.round(stuckTop));
+  await expect(pane.getByRole("button", { name: "Close details", exact: true })).toBeInViewport({ ratio: 1 });
+  const box = await pane.boundingBox();
+  expect(box.height).toBeLessThan(fullHeight);
+  // It ends with the list.
+  const listBottom = await page.evaluate(() => document.querySelector(".pr-workspace-list").getBoundingClientRect().bottom);
+  expect(Math.abs(box.y + box.height - listBottom)).toBeLessThanOrEqual(1);
+
+  // Back up the page, it's full height again.
+  await page.evaluate(() => window.scrollTo(0, 400));
+  await expect.poll(async () => (await pane.boundingBox()).height).toBe(fullHeight);
+  expect(await roomSet()).toEqual(["", ""]);
+});
+
+test("a list a little shorter than the window still keeps the docked pane's header in the window at its end", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/");
+  await waitForPrTable(page);
+  await openFirstRowInPane(page);
+  const pane = detailPane(page);
+  // Enough in the pane to fill its full height, whatever the PR.
+  await pane.evaluate((element) => {
+    const spacer = document.createElement("div");
+    spacer.style.height = "3000px";
+    element.append(spacer);
+  });
+
+  // Make the window just taller than the list: taller than the pane, which
+  // stops short of the window's top and bottom.
+  const listHeight = await page.evaluate(() => document.querySelector(".pr-workspace-list").getBoundingClientRect().height);
+  await page.setViewportSize({ width: 1440, height: Math.ceil(listHeight) + 8 });
+  await expect.poll(() => page.evaluate(() => document.querySelector(".pr-workspace-list").getBoundingClientRect().height)).toBe(listHeight);
+  const paneHeight = (await pane.boundingBox()).height;
+  expect(paneHeight).toBeLessThan(listHeight);
+
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await expect(pane.getByRole("button", { name: "Close details", exact: true })).toBeInViewport({ ratio: 1 });
+  const box = await pane.boundingBox();
+  const stickyTop = await pane.evaluate((element) => parseFloat(getComputedStyle(element).top));
+  expect(Math.round(box.y)).toBe(Math.round(stickyTop));
+});
+
 test("an open section's header stays at the top while its rows scroll by", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 400 });
   await page.goto("/");
@@ -609,14 +675,14 @@ test("the pane's Previous PR scrolls the row into view below the stuck headers",
     .toBeGreaterThanOrEqual(0);
 });
 
-// Removes Settings › Appearance choices from user-defaults.json (shared by
+// Removes Settings choices (keys) from user-defaults.json (shared by
 // every test), keeping the other settings.
-const clearSavedAppearance = async (request, keys) => {
+const clearSavedSettings = async (request, keys) => {
   const { overrides = {} } = await (await request.get("/view-prs/user-defaults")).json();
   keys.forEach((key) => delete overrides[key]);
   await request.put("/view-prs/user-defaults", { data: overrides });
 };
-const clearSavedTheme = (request) => clearSavedAppearance(request, ["theme"]);
+const clearSavedTheme = (request) => clearSavedSettings(request, ["theme"]);
 
 test("Settings › Appearance: Dark is applied and kept after the browser is closed", async ({ page }) => {
   // Starts from no saved theme, and leaves none even if a check fails, so
@@ -652,7 +718,7 @@ test("Settings › Appearance: Dark is applied and kept after the browser is clo
 
 test("Settings › Appearance: a hidden section and a section's open-on-load choice are kept after a reload", async ({ page }) => {
   // Starts from no saved choices, and leaves none even if a check fails.
-  await clearSavedAppearance(page.request, ["prSections"]);
+  await clearSavedSettings(page.request, ["prSections"]);
   try {
     await page.goto("/");
     await waitForPrTable(page);
@@ -675,7 +741,94 @@ test("Settings › Appearance: a hidden section and a section's open-on-load cho
     const { overrides } = await (await page.request.get("/view-prs/user-defaults")).json();
     expect(overrides.prSections).toEqual({ flagged: { hidden: true }, open: { open: true } });
   } finally {
-    await clearSavedAppearance(page.request, ["prSections"]);
+    await clearSavedSettings(page.request, ["prSections"]);
+  }
+});
+
+test("Settings › Background updates: a repo's check interval and priority boost are saved to user-defaults.json", async ({ page }) => {
+  await clearSavedSettings(page.request, ["schedulerRepoConfig"]);
+  try {
+    const { repos } = await (await page.request.get("/view-prs/dispatcher/settings")).json();
+    expect(repos.length).toBeGreaterThan(0);
+    const [repo] = repos;
+
+    await page.goto("/");
+    await waitForPrTable(page);
+    const drawer = await openSettings(page, "Background updates");
+    const group = drawer.getByRole("group", { name: new RegExp(`^${repo.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`) });
+    await expect(group.getByRole("textbox", { name: "Quick check every", exact: true })).toHaveAttribute("placeholder", "5");
+
+    await group.getByRole("textbox", { name: "Quick check every", exact: true }).fill("2");
+    await group.getByRole("textbox", { name: "Priority boost", exact: true }).fill("3");
+    await expect(group).toContainText("Priorities with the boost: Quick check 8, Auto refresh 6, Merged/closed drain 4");
+    await expect
+      .poll(async () => (await (await page.request.get("/view-prs/user-defaults")).json()).overrides?.schedulerRepoConfig)
+      .toEqual({ [repo]: { quickCheckIntervalMs: 120000, priority: 3 } });
+
+    // A value that would be rejected is flagged, and not saved.
+    await group.getByRole("textbox", { name: "Auto refresh every", exact: true }).fill("0");
+    await expect(group.getByRole("textbox", { name: "Auto refresh every", exact: true })).toHaveAttribute("aria-invalid", "true");
+    await expect(group).toContainText("At least 1 minute.");
+
+    await page.reload();
+    const reopened = await openSettings(page, "Background updates");
+    const reopenedGroup = reopened.getByRole("group", { name: new RegExp(`^${repo.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`) });
+    await expect(reopenedGroup.getByRole("textbox", { name: "Quick check every", exact: true })).toHaveValue("2");
+    await expect(reopenedGroup.getByRole("textbox", { name: "Auto refresh every", exact: true })).toHaveValue("");
+
+    await reopenedGroup.getByRole("button", { name: `Restore defaults for ${repo}`, exact: true }).click();
+    await expect
+      .poll(async () => (await (await page.request.get("/view-prs/user-defaults")).json()).overrides?.schedulerRepoConfig)
+      .toBeUndefined();
+  } finally {
+    await clearSavedSettings(page.request, ["schedulerRepoConfig"]);
+  }
+});
+
+test("Settings › Appearance: a hidden section never shows while the page loads, even when the saved choices are slow", async ({ page }) => {
+  const { overrides = {} } = await (await page.request.get("/view-prs/user-defaults")).json();
+  await page.request.put("/view-prs/user-defaults", { data: { ...overrides, prSections: { flagged: { hidden: true } } } });
+  try {
+    // Records whether the Flagged section is ever on the page.
+    await page.addInitScript(() => {
+      window.__flaggedSeen = false;
+      new MutationObserver(() => {
+        if (document.querySelector('[data-pr-section="flagged"]')) window.__flaggedSeen = true;
+      }).observe(document, { childList: true, subtree: true });
+    });
+    // user-defaults.json is read only once `release` is called.
+    let release = () => {};
+    const routeSlowDefaults = () => {
+      const held = new Promise((resolve) => {
+        release = resolve;
+      });
+      return page.route("**/view-prs/user-defaults", async (route) => {
+        if (route.request().method() === "GET") await held;
+        await route.continue();
+      });
+    };
+
+    // A fresh browser: no copy, so the table waits for the saved choices.
+    await routeSlowDefaults();
+    await page.goto("/");
+    await page.waitForTimeout(1000);
+    await expect(prTables(page).locator("[data-pr-section]")).toHaveCount(0);
+    release();
+    await waitForPrTable(page);
+    await expect(prSection(page, "Open PRs")).toHaveCount(1);
+    expect(await page.evaluate(() => window.__flaggedSeen)).toBe(false);
+
+    // Now with the browser copy, the table draws without waiting.
+    await page.unrouteAll();
+    await routeSlowDefaults();
+    await page.reload();
+    await waitForPrTable(page);
+    await expect(prSection(page, "Open PRs")).toHaveCount(1);
+    expect(await page.evaluate(() => window.__flaggedSeen)).toBe(false);
+    release();
+  } finally {
+    await page.unrouteAll({ behavior: "ignoreErrors" });
+    await clearSavedSettings(page.request, ["prSections"]);
   }
 });
 

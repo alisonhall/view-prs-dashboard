@@ -61,7 +61,14 @@
   position: sticky;
   /* Below the Auto update paused banner when it's showing (AppShell). */
   top: calc(var(--sticky-top, 0px) + var(--space-3));
-  max-height: calc(100vh - var(--space-6) - var(--sticky-top, 0px));
+  /* Its borders count in max-height, so it fits the room exactly. */
+  box-sizing: border-box;
+  /* As far above the window's bottom as top is below --sticky-top (which
+     PrTableApp relies on). Near the list's end, no taller than the room
+     left above its bottom (PrTableApp sets --pr-pane-room on the pane
+     then), so the header stays in the window. */
+  --pr-pane-room: calc(100vh - var(--space-6) - var(--sticky-top, 0px));
+  max-height: var(--pr-pane-room);
   overflow-y: auto;
 }
 

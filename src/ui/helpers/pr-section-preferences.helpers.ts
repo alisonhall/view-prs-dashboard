@@ -2,6 +2,8 @@
 // and which start open when the page loads. Saved in user-defaults.json
 // under PR_SECTIONS_OVERRIDE_KEY, keeping only what differs from the
 // built-in defaults: { "flagged": { "open": true }, "closed": { "hidden": true } }.
+// A browser copy (PR_SECTIONS_STORAGE_KEY) lets the table draw with them
+// straight away, before user-defaults.json has been read.
 
 export interface PrSectionCatalogEntry {
   key: string;
@@ -27,6 +29,7 @@ export const PR_SECTION_CATALOG: ReadonlyArray<PrSectionCatalogEntry> = [
 ];
 
 export const PR_SECTIONS_OVERRIDE_KEY = 'prSections';
+export const PR_SECTIONS_STORAGE_KEY = 'view-prs:pr-sections';
 
 export interface PrSectionPreference {
   hidden?: true;
@@ -53,7 +56,26 @@ export const normalizePrSectionPreferences = (value: unknown): PrSectionPreferen
   return result;
 };
 
-export const isPrSectionHidden = (preferences: PrSectionPreferences, key: string) => preferences[key]?.hidden === true;
+// Storage can throw (blocked site data) or be missing, and the copy can be
+// malformed; then there's no copy.
+export const readStoredPrSectionPreferences = (): PrSectionPreferences | null => {
+  try {
+    const value = window.localStorage.getItem(PR_SECTIONS_STORAGE_KEY);
+    return value === null ? null : normalizePrSectionPreferences(JSON.parse(value));
+  } catch (_error) {
+    return null;
+  }
+};
+
+export const storePrSectionPreferences = (preferences: PrSectionPreferences) => {
+  try {
+    window.localStorage.setItem(PR_SECTIONS_STORAGE_KEY, JSON.stringify(preferences));
+  } catch (_error) {
+    // Only the first draw uses the copy; user-defaults.json keeps the choices.
+  }
+};
+
+export const isPrSectionHidden =(preferences: PrSectionPreferences, key: string) => preferences[key]?.hidden === true;
 
 // Whether a section starts open: the saved choice, else the built-in default.
 export const prSectionStartsOpen = (preferences: PrSectionPreferences, key: string, fallback = builtInOpen(key)) =>

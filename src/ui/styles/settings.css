@@ -185,6 +185,72 @@
   white-space: nowrap;
 }
 
+/* Settings › Background updates: a group per repo, its fields in a row
+   that wraps. */
+.settings-repo {
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.settings-repo-name {
+  padding: 0 4px;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-text);
+  overflow-wrap: anywhere;
+}
+
+.settings-repo-note {
+  font-family: var(--font-sans);
+  font-weight: 400;
+  color: var(--color-text-muted);
+}
+
+.settings-repo-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: start;
+  gap: var(--space-2) var(--space-4);
+}
+
+/* Labels on one line, so the boxes line up across the row. */
+.settings-repo-field label {
+  white-space: nowrap;
+}
+
+.settings-input-unit {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.settings-input-unit input {
+  box-sizing: border-box;
+  width: 6em;
+}
+
+.settings-field input[aria-invalid="true"] {
+  border-color: var(--color-danger);
+}
+
+.settings-field-error,
+.settings-error {
+  color: var(--color-danger);
+}
+
+.settings-field-error,
+.settings-field-note {
+  font-size: var(--font-size-xs);
+}
+
+.settings-hint {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
 .settings-actions {
   display: flex;
   flex-wrap: wrap;

@@ -28,6 +28,7 @@ import { usePrSectionPreferences } from '../state/PrSectionPreferencesProvider';
 import { useSettingsDrawer } from '../state/SettingsDrawerContext';
 import { isPrSectionHidden, prSectionStartsOpen } from '../helpers/pr-section-preferences.helpers.ts';
 import { captureRowAnchor, restoreRowAnchor, type RowAnchor } from '../helpers/row-scroll-anchor.helpers.ts';
+import { dockedPaneRoom } from '../helpers/docked-pane-room.helpers.ts';
 import { PrDetailPane } from './pane/PrDetailPane';
 import { Button } from './ui/Button';
 import { useRowCheckboxActions } from '../state/useRowCheckboxActions';
@@ -117,7 +118,7 @@ export function PrTableApp() {
   } = usePrTableUiState();
   const { dirtyPrNumbers } = useNotesDirty();
   // Settings › Appearance: which sections show, and which start open.
-  const { preferences: sectionPreferences } = usePrSectionPreferences();
+  const { preferences: sectionPreferences, isReady: areSectionPreferencesReady } = usePrSectionPreferences();
   const settingsDrawer = useSettingsDrawer();
   // Below 900px the detail pane is an overlay drawer instead of docked.
   const isNarrow = useMediaQuery(NARROW_SCREEN_QUERY);
@@ -668,6 +669,7 @@ export function PrTableApp() {
   // each shows, so Settings › Export can export the open sections' rows. The
   // numbers are each row's `data.number`, which PrNumberCell renders.
   useEffect(() => {
+    if (!areSectionPreferencesReady) return;
     reportRenderedSections(
       sections.map((section) => ({
         key: section.key,
@@ -676,7 +678,7 @@ export function PrTableApp() {
       })),
       hiddenPrCount,
     );
-  }, [sections, hiddenPrCount, reportRenderedSections]);
+  }, [sections, hiddenPrCount, reportRenderedSections, areSectionPreferencesReady]);
 
   // The selected PR's entry, looked up again in each payload; null when
   // nothing is selected or the PR is no longer in the data.
@@ -756,6 +758,54 @@ export function PrTableApp() {
     paneAnchorRef.current = null;
     restoreRowAnchor(anchor);
   }, [isPaneVisible]);
+
+  // Near the end of the list the docked pane shrinks to fit above the
+  // list's bottom, so its header (close, previous/next) stays in the window
+  // (dockedPaneRoom). Set directly in the pane's --pr-pane-room, without a
+  // re-render - on the pane, not an ancestor, so only it restyles, and
+  // only when the limit changes: mid-list there's none, so scrolling
+  // writes nothing.
+  const workspaceRef = useRef<HTMLDivElement>(null);
+  const hasWorkspace = builtSections.length > 0 && areSectionPreferencesReady;
+  const isDockedPaneShown = isPaneVisible && !isNarrow;
+  useEffect(() => {
+    const workspace = workspaceRef.current;
+    const list = workspace?.querySelector('.pr-workspace-list');
+    if (!isDockedPaneShown || !workspace || !list) return undefined;
+    let limited: { pane: HTMLElement; room: number | null } | null = null;
+    const write = (pane: HTMLElement | null, room: number | null) => {
+      if (limited?.pane === pane && limited.room === room) return;
+      if (limited && limited.pane !== pane) limited.pane.style.removeProperty('--pr-pane-room');
+      if (pane && room !== null) pane.style.setProperty('--pr-pane-room', `${room}px`);
+      else pane?.style.removeProperty('--pr-pane-room');
+      limited = pane ? { pane, room } : null;
+    };
+    const update = () => {
+      const pane = workspace.querySelector<HTMLElement>('.pr-pane[data-mode="docked"]');
+      if (!pane) return write(null, null);
+      const style = getComputedStyle(pane);
+      const stickyTop = parseFloat(style.top) || 0;
+      // Its usual height runs from where it sticks to as far above the
+      // window's bottom as it sticks below --sticky-top (pane.css).
+      const gap = stickyTop - (parseFloat(style.getPropertyValue('--sticky-top')) || 0);
+      const { top, bottom } = list.getBoundingClientRect();
+      write(
+        pane,
+        dockedPaneRoom({ listTop: top, listBottom: bottom, stickyTop, paneMaxHeight: window.innerHeight - stickyTop - gap }),
+      );
+    };
+    update();
+    window.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+    const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(update) : null;
+    observer?.observe(list);
+    return () => {
+      window.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
+      observer?.disconnect();
+      write(null, null);
+    };
+  }, [isDockedPaneShown, hasWorkspace]);
 
   // Listen for "View in table" clicks (Author Insights, Review Stats) and
   // the "Auto update paused" chips (with `focusUnsaved`), which dispatch
@@ -975,8 +1025,9 @@ export function PrTableApp() {
   const actorsMap = useMemo(() => payload?.actorsMap || NO_ACTORS, [payload?.actorsMap]);
 
   // Loading state: Show message while data loads (no sections built yet -
-  // not every section hidden, which shows its own message below).
-  if (builtSections.length === 0) {
+  // not every section hidden, which shows its own message below), or until
+  // the section choices are known (so a hidden section doesn't flash).
+  if (builtSections.length === 0 || !areSectionPreferencesReady) {
     const hasPayload = payload && Object.keys(payload).length > 0;
     const hasPrs = payload?.byPrNumber && Object.keys(payload.byPrNumber).length > 0;
     
@@ -1019,7 +1070,7 @@ export function PrTableApp() {
           Detail pane
         </Button>
       </div>
-      <div className="pr-workspace" data-pane={isPaneDocked ? 'docked' : undefined}>
+      <div ref={workspaceRef} className="pr-workspace" data-pane={isPaneDocked ? 'docked' : undefined}>
         <div className="pr-workspace-list">
           {sections.length === 0 && (
             <div className="pr-sections-all-hidden">

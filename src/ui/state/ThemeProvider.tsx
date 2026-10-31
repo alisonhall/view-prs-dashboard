@@ -58,6 +58,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     readUiSessionOverrides().then((overrides) => {
       const saved = overrides[THEME_OVERRIDE_KEY];
+      // (A failed read gives {}: no theme, so the browser copy stays.)
       if (cancelled || hasChosenRef.current || !isThemePreference(saved)) return;
       setPreferenceState(saved);
       storeThemePreference(saved);

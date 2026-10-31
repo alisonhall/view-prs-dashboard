@@ -941,7 +941,8 @@ describe("route behavior", () => {
         appModule.viewPrsSchedulerState.dispatcher.entries[
           "acme-org/repo-config-test::autoRefresh"
         ];
-      expect(entry.priority).toBe(9);
+      // The boost adds to auto refresh's default priority, 3.
+      expect(entry.priority).toBe(3 + 9);
       expect(entry.intervalMs).toBe(60000);
     } finally {
       if (savedAutoRepos === undefined) {
@@ -950,6 +951,29 @@ describe("route behavior", () => {
         process.env.VIEW_PRS_AUTO_REPOS = savedAutoRepos;
       }
       appModule.viewPrsSchedulerState.dispatcher = { entries: {}, reservedGhSlots: 0 };
+    }
+  });
+
+  test("GET /view-prs/dispatcher/settings lists the scheduled repos and each task type's defaults", async () => {
+    const savedAutoRepos = process.env.VIEW_PRS_AUTO_REPOS;
+    process.env.VIEW_PRS_AUTO_REPOS = "acme-org/settings-a,acme-org/settings-b";
+    try {
+      const { response, payload } = await requestJson(server, "/view-prs/dispatcher/settings");
+      expect(response.status).toBe(200);
+      expect(payload.ok).toBe(true);
+      expect(payload.repos).toEqual(expect.arrayContaining(["acme-org/settings-a", "acme-org/settings-b"]));
+      expect(payload.taskTypes.map((entry) => [entry.taskType, entry.priority])).toEqual([
+        ["quickCheck", 5],
+        ["autoRefresh", 3],
+        ["mergedDrain", 1],
+      ]);
+      payload.taskTypes.forEach((entry) => expect(entry.intervalMs).toBeGreaterThan(0));
+    } finally {
+      if (savedAutoRepos === undefined) {
+        delete process.env.VIEW_PRS_AUTO_REPOS;
+      } else {
+        process.env.VIEW_PRS_AUTO_REPOS = savedAutoRepos;
+      }
     }
   });
 

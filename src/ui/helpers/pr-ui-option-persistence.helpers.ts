@@ -76,19 +76,25 @@ const createPrUiOptionPersistenceHelpers = ({ fetch: fetchFn }: PrUiOptionPersis
     "filter-analysis-of-pr": "filterAnalysisOfPr",
   };
 
-  const readUiSessionOverrides = async (): Promise<UiOptionOverrides> => {
+  // null when they couldn't be read (the server down, an error) - unlike
+  // {}, nothing saved. Anything that writes them back, or keeps a copy,
+  // needs to tell the two apart: building on {} would lose every setting.
+  const readUiSessionOverridesOrNull = async (): Promise<UiOptionOverrides | null> => {
     try {
       const response = await (fetchFn as NonNullable<typeof fetchFn>)("/view-prs/user-defaults");
-      if (!response.ok) return {};
+      if (!response.ok) return null;
       const result: { overrides?: unknown } = await response.json();
       const parsed = result?.overrides;
       return parsed && typeof parsed === "object" && !Array.isArray(parsed)
         ? (parsed as UiOptionOverrides)
         : {};
     } catch (_error) {
-      return {};
+      return null;
     }
   };
+
+  const readUiSessionOverrides = async (): Promise<UiOptionOverrides> =>
+    (await readUiSessionOverridesOrNull()) ?? {};
 
   // Empty arrays are dropped (so a cleared list falls back to its default)
   // unless their key is in preserveEmptyArrayKeys.
@@ -121,9 +127,12 @@ const createPrUiOptionPersistenceHelpers = ({ fetch: fetchFn }: PrUiOptionPersis
 
   // Saves one setting, keeping the others: reads the saved overrides, sets
   // `key` (or removes it when `value` is undefined), and writes them back.
-  // Settings › Appearance saves its choices this way.
+  // Settings › Appearance saves its choices this way. Nothing is written
+  // when they can't be read, rather than write back only this one.
   const updateUiSessionOverride = async (key: string, value: unknown): Promise<void> => {
-    const overrides = { ...(await readUiSessionOverrides()) };
+    const existing = await readUiSessionOverridesOrNull();
+    if (!existing) return;
+    const overrides = { ...existing };
     if (value === undefined) {
       delete overrides[key];
     } else {
@@ -136,6 +145,7 @@ const createPrUiOptionPersistenceHelpers = ({ fetch: fetchFn }: PrUiOptionPersis
     getUiOptionDefaults,
     FILTER_STATE_FIELD_MAP,
     readUiSessionOverrides,
+    readUiSessionOverridesOrNull,
     writeUiSessionOverrides,
     updateUiSessionOverride,
   };

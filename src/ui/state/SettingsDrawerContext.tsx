@@ -13,6 +13,7 @@ export type SettingsSectionId =
   | 'merge-commits'
   | 'change-detection'
   | 'script-options'
+  | 'background-updates'
   | 'backfill'
   | 'action-log'
   | 'actor-names'

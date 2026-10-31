@@ -59,15 +59,20 @@ const createViewPrsDispatcherHelpers = ({
   // call and pass it through here, rather than this function re-reading
   // user-defaults.json itself on every (repo, taskType) pair (3x per repo,
   // every ~5s tick - a real, avoidable disk read multiplied by repo count).
+  //
+  // A repo's `priority` is a boost added to every task type's default
+  // priority (quick check 5, auto refresh 3, merged/closed drain 1), so a
+  // boosted repo's quick checks still go before its full refreshes. It can
+  // be negative, to let a repo's work wait behind the others'.
   const resolveEntryConfig = (repo, taskType, schedulerRepoConfig) => {
     const repoConfig = schedulerRepoConfig?.[repo] || {};
     const intervalKey = `${taskType}IntervalMs`;
     const rawInterval = repoConfig[intervalKey];
     const rawPriority = repoConfig.priority;
     const configuredInterval = Number(rawInterval);
-    const configuredPriority = Number(rawPriority);
+    const configuredBoost = Number(rawPriority);
     const intervalValid = Number.isFinite(configuredInterval) && configuredInterval > 0;
-    const priorityValid = Number.isFinite(configuredPriority) && configuredPriority >= 0;
+    const priorityValid = typeof rawPriority === "number" && Number.isFinite(configuredBoost);
 
     if (rawInterval !== undefined && !intervalValid) {
       console?.warn?.(
@@ -82,10 +87,15 @@ const createViewPrsDispatcherHelpers = ({
 
     return {
       intervalMs: intervalValid ? configuredInterval : defaultIntervalsByTaskType[taskType],
-      priority: priorityValid ? configuredPriority : defaultPriorityByTaskType[taskType],
+      priority: defaultPriorityByTaskType[taskType] + (priorityValid ? configuredBoost : 0),
     };
   };
 
+  // A changed interval applies to the wait already under way: an entry
+  // scheduled by a successful run (nextDueAt = lastFinishedAt + interval)
+  // is rescheduled to lastFinishedAt + the new interval, so shortening the
+  // quick check from 5 minutes to 1 doesn't first wait out the 5. An entry
+  // that's running, bumped, deferred or backing off keeps its time.
   const recomputeEntryConfig = (repo, taskType, schedulerRepoConfig) => {
     const dispatcher = ensureDispatcherState();
     const entry = dispatcher.entries[buildEntryKey(repo, taskType)];
@@ -93,10 +103,31 @@ const createViewPrsDispatcherHelpers = ({
       return null;
     }
     const { intervalMs, priority } = resolveEntryConfig(repo, taskType, schedulerRepoConfig);
+    const lastFinishedMs = entry.lastFinishedAt ? Date.parse(entry.lastFinishedAt) : NaN;
+    if (
+      intervalMs !== entry.intervalMs &&
+      !entry.isRunning &&
+      Number.isFinite(lastFinishedMs) &&
+      Date.parse(entry.nextDueAt) === lastFinishedMs + entry.intervalMs
+    ) {
+      entry.nextDueAt = new Date(lastFinishedMs + intervalMs).toISOString();
+    }
     entry.intervalMs = intervalMs;
     entry.priority = priority;
     return entry;
   };
+
+  // For Settings › Background updates: the repos the dispatcher schedules
+  // and each task type's defaults, which a repo's schedulerRepoConfig
+  // overrides (intervals) or adds to (priority).
+  const getRepoSettingsDefaults = () => ({
+    repos: [...getViewPrsAutoRefreshRepos()],
+    taskTypes: TASK_TYPES.map((taskType) => ({
+      taskType,
+      intervalMs: defaultIntervalsByTaskType[taskType],
+      priority: defaultPriorityByTaskType[taskType],
+    })),
+  });
 
   // Adds any missing (repo, taskType) entries (new repos discovered since
   // the last call) and refreshes every existing entry's priority/interval
@@ -449,6 +480,7 @@ const createViewPrsDispatcherHelpers = ({
     isAnyEntryRunning,
     latestFinishedAtAcrossEntries,
     getPublicStateFields,
+    getRepoSettingsDefaults,
     migrateLegacyPersistedState,
     reserveGhSlots,
     releaseGhSlots,

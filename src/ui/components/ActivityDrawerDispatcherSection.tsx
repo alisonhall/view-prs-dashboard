@@ -34,7 +34,7 @@ const STATUS_EXPLANATIONS: Record<string, string> = {
 
 const PRIORITY_TOOLTIP =
   'Priority ranks which task wins when several are due at the same moment - it does not change WHEN a task becomes due, only which due task goes first. ' +
-  'Default priorities: quick check p5 (highest), auto refresh p3, merged/closed drain p1 (lowest). Can be overridden per repo.';
+  'Default priorities: quick check p5 (highest), auto refresh p3, merged/closed drain p1 (lowest). A repo\'s boost in Settings › Background updates adds to all three.';
 
 const BUMP_TOOLTIP =
   'Runs this sooner: makes it due immediately instead of waiting for its scheduled time. ' +
@@ -53,10 +53,9 @@ const BUMP_TOOLTIP =
  * getDispatcherQueueSnapshot (view-prs-dispatcher-helpers.js) itself
  * produces, so this component trusts the given order and never re-sorts.
  *
- * Also doubles as the read-only display of each repo's effective
- * priority/cadence (set via the schedulerRepoConfig key in
- * /view-prs/user-defaults - no settings UI yet) - entry.priority/intervalMs
- * are already part of every entry, so no extra plumbing is needed.
+ * Also shows each repo's effective priority (set via the schedulerRepoConfig
+ * key in /view-prs/user-defaults, which Settings › Background updates
+ * edits) - entry.priority is already part of every entry.
  *
  * `onBump(repo, taskType)` (optional - the manual reprioritize action,
  * useActivityDrawerActions' handleDispatcherBump, via the popover)

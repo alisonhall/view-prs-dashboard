@@ -14,6 +14,9 @@ import { ScriptOptionsSection } from './ScriptOptionsSection';
 
 // Loaded the first time their section is opened (each its own chunk).
 const ActionLogSection = lazy(() => import('./ActionLogSection').then((m) => ({ default: m.ActionLogSection })));
+const BackgroundUpdatesSection = lazy(() =>
+  import('./BackgroundUpdatesSection').then((m) => ({ default: m.BackgroundUpdatesSection })),
+);
 const ActorNamesSection = lazy(() => import('./ActorNamesSection').then((m) => ({ default: m.ActorNamesSection })));
 const ExportSection = lazy(() => import('./ExportSection').then((m) => ({ default: m.ExportSection })));
 
@@ -32,6 +35,15 @@ const SECTIONS: ReadonlyArray<{ id: SettingsSectionId; label: string; render: ()
   { id: 'merge-commits', label: 'Merge commits', render: () => <MergeCommitsSection /> },
   { id: 'change-detection', label: 'Change detection', render: () => <ChangeDetectionSection /> },
   { id: 'script-options', label: 'Script options', render: () => <ScriptOptionsSection /> },
+  {
+    id: 'background-updates',
+    label: 'Background updates',
+    render: () => (
+      <OnceOpened section="background-updates">
+        <BackgroundUpdatesSection />
+      </OnceOpened>
+    ),
+  },
   { id: 'backfill', label: 'Backfill', render: () => <BackfillSection /> },
   {
     id: 'action-log',
@@ -79,7 +91,8 @@ export const SETTINGS_NAV_ROW_QUERY = '(max-width: 640px)';
  * Always mounted, hidden while closed: every section's fields keep their
  * ids in the page (useAckLabelActions reads the label to apply,
  * PrDataProvider the status text), and a closed section keeps its state.
- * Action log, Actor names and Export mount the first time they're opened.
+ * Background updates, Action log, Actor names and Export mount the first
+ * time they're opened.
  */
 export function SettingsDrawer() {
   const { isOpen, section, close, setSection } = useSettingsDrawer();
