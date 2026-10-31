@@ -63,7 +63,8 @@ Each `byPrNumber[prNumber]` value is an object with this shape:
 | `prNumber` | string | yes | retrieval | Duplicates the map key |
 | `repo` | string | yes | retrieval | `owner/name` |
 | `section` | string | yes | retrieval | One of `open`, `draft`, `merged` |
-| `updatedAt` | string | yes | retrieval | Run timestamp |
+| `updatedAt` | string | yes | retrieval | Run timestamp (the run's start, the same for every row it writes) |
+| `fetchedAt` | string | no | retrieval | When this row was written (ISO-8601 UTC); missing on rows written before 2026-10-31. The live summary only replaces a row's values when listed after this (or after `updatedAt` without it) |
 | `rowOrder` | number | yes | retrieval | Preserved across later upserts once first set |
 | `data` | object | yes | retrieval | Current PR snapshot and derived metrics |
 
@@ -388,6 +389,57 @@ All count fields are numbers.
 | `reviewConversations` | number |
 | `estimatedTotalConversations` | number |
 | `estimatedOpenConversations` | number |
+
+## Live summary (separate file, laid over the rows when read)
+
+`view-prs/data/check-open-pr-updates.live-summary.json` (`VIEW_PRS_LIVE_SUMMARY_FILE`) is written only by the server (`src/server/helpers/view-prs-live-summary-helpers.js`), from a GraphQL listing of each repo's open PRs run with every quick check. It isn't part of the data file; the server lays it over open and draft rows when it reads them, so `/view-prs/data` and the delta routes return rows with it applied.
+
+```json
+{
+  "byRepo": {
+    "owner/name": {
+      "checkedAt": "2026-10-31T10:05:00.000Z",
+      "complete": true,
+      "lastError": null,
+      "lastErrorAt": null,
+      "prs": {
+        "923": {
+          "number": "923",
+          "title": "...",
+          "url": "...",
+          "isDraft": false,
+          "updatedAt": "2026-10-31T10:00:00Z",
+          "labels": ["backend"],
+          "additions": "40",
+          "deletions": "3",
+          "changedFiles": "2",
+          "viewedFiles": "1",
+          "checkState": "PASS",
+          "mergeState": "YES",
+          "assignees": [{ "login": "...", "name": "..." }],
+          "requestedReviewers": [{ "login": "...", "name": "..." }],
+          "openConversationCount": "1"
+        }
+      }
+    }
+  }
+}
+```
+
+- `checkedAt` is the last successful listing; a failed one keeps the previous `prs` and sets `lastError`/`lastErrorAt`. `complete` is false when the listing stopped at its page limit (500 PRs) before the last open PR.
+- Each repo's `checkedAt`, `complete`, `lastError` and `lastErrorAt` are also in the data meta (`dataMeta.liveSummary`, from `/view-prs/data-meta` and with the data), rather than on each row, so a listing that changes nothing for a row leaves that row unchanged.
+- Values use the data file's shapes. `viewedFiles` and `openConversationCount` are `null` when the listing's first page of files or threads didn't hold them all (or, for conversations, the PR has no threads, where the script estimates from comments); `mergeState` is `null` while GitHub reports `UNKNOWN`. A `null` leaves the row's own value.
+- When `checkedAt` is newer than the row's `fetchedAt` (or `updatedAt` without it), these replace the row's `title`, `url`, `labels`, `additions`, `deletions`, `changedFilesCount`, `viewedFilesCount`, `viewedFilesSummary`, `checkState`, `mergeState`, `titleDisplay`, `assignees`, `requestedReviewers` and `openConversationCount`, and `isDraft` sets the row's `section` (`open`/`draft`). Everything else comes only from a full refresh.
+
+An open/draft row of a listed repo gets `data.live`:
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `updatedAt` | string | GitHub's `updatedAt` for the PR when listed; absent when not listed |
+| `detailsBehind` | boolean | GitHub's `updatedAt` is later than the row's `sourceUpdatedAt`: activity a full refresh hasn't fetched; absent when not listed |
+| `stillOpen` | boolean | `true` when listed; `false` (the only field then) when a complete listing after the row was written didn't include it (merged or closed since) |
+
+A row not in a listing that's older than it, or incomplete, gets no `data.live`.
 
 ## User-state schema (separate file)
 

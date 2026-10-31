@@ -1,4 +1,5 @@
 const express = require("express");
+const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const { spawn, spawnSync } = require("child_process");
@@ -59,6 +60,10 @@ const {
 } = require("./helpers/view-prs-data-helpers");
 const { mergePrDetailFields } = require("./helpers/view-prs-pr-detail-storage");
 const {
+  applyLiveSummaryToEntry,
+  createViewPrsLiveSummaryHelpers,
+} = require("./helpers/view-prs-live-summary-helpers");
+const {
   runMigration: runPrDetailMigration,
 } = require("../script/migrate-pr-detail-sidecar-v1");
 const {
@@ -86,6 +91,7 @@ const {
   viewPrsUiBuildDir,
   viewPrsUiBuildIndexFile,
   viewPrsDataFile,
+  viewPrsLiveSummaryFile,
   viewPrsUserStateFile,
   viewPrsAuthorCommentsFile,
   viewPrsSchedulerFile,
@@ -429,6 +435,24 @@ const {
   viewPrsPrDiffTimeoutMs,
   viewPrsPrDiffConcurrency,
 });
+
+// Open PRs' live summary, listed with each quick check and laid over the
+// rows in readViewPrsData (see view-prs-live-summary-helpers.js).
+const {
+  readLiveSummary,
+  refreshRepoLiveSummary,
+  getLiveSummaryVersion,
+  getLiveSummaryMeta,
+} = createViewPrsLiveSummaryHelpers({
+  fs,
+  liveSummaryFile: viewPrsLiveSummaryFile,
+  runViewPrsCommand: callRunViewPrsCommand,
+});
+// Overridable like callRunViewPrsCommand, so tests can stand in for it.
+const callRefreshRepoLiveSummary = (...args) =>
+  (module.exports.refreshRepoLiveSummary || refreshRepoLiveSummary)(...args);
+const isLiveSummaryDisabled = () =>
+  /^(1|true|yes)$/i.test(String(process.env.VIEW_PRS_DISABLE_LIVE_SUMMARY || "").trim());
 
 // Custom "More Insights" hook - an optional, user-provided executable
 // (VIEW_PRS_INSIGHTS_HOOK_SCRIPT, unset by default) that receives PR metadata
@@ -1535,6 +1559,7 @@ const readViewPrsData = () => {
       parsed.lastRun,
     );
     const pendingUpdateKeys = getPendingUpdatePrNumberKeys();
+    const liveSummaryByRepo = readLiveSummary().byRepo;
     const byPrNumber = Object.fromEntries(
       Object.entries(byPrNumberRaw)
         .filter(([, entry]) => !isViewPrsFixtureRow(entry))
@@ -1542,7 +1567,10 @@ const readViewPrsData = () => {
           if (!isObject(entry)) {
             return [prNumber, entry];
           }
-          const hydratedEntry = hydrateViewPrsEntryWithDetail(entry);
+          const hydratedEntry = applyLiveSummaryToEntry(
+            hydrateViewPrsEntryWithDetail(entry),
+            liveSummaryByRepo[toTrimmedString(entry.repo)],
+          );
           const notes = mergedUserState.notesByPrNumber[prNumber];
           const withNotes = notes ? { ...hydratedEntry, notes } : hydratedEntry;
           const isUpdatePending = pendingUpdateKeys.has(
@@ -1625,11 +1653,20 @@ const getViewPrsDataMeta = () => {
     const mtimeMs = Number.isFinite(stats.mtimeMs)
       ? Math.trunc(stats.mtimeMs)
       : Date.parse(String(stats.mtime || "")) || 0;
+    // What readViewPrsData lays over the file counts too: a new live
+    // summary, or a PR newly queued for update ("Update queued"), changes
+    // the rows the page gets, so it changes the version the page polls.
+    const pendingKeys = Array.from(getPendingUpdatePrNumberKeys()).sort().join(",");
+    const pendingVersion = pendingKeys
+      ? crypto.createHash("sha1").update(pendingKeys).digest("hex").slice(0, 12)
+      : "none";
 
     return {
-      dataVersion: `${mtimeMs}:${stats.size}`,
+      dataVersion: `${mtimeMs}:${stats.size}:${getLiveSummaryVersion()}:${pendingVersion}`,
       lastModifiedAt: mtimeMs > 0 ? new Date(mtimeMs).toISOString() : null,
       sizeBytes: Number.isFinite(stats.size) ? stats.size : 0,
+      // Per repo: when its open PRs were last listed, and the last failure.
+      liveSummary: getLiveSummaryMeta(),
     };
   } catch (error) {
     return {
@@ -2277,6 +2314,18 @@ const runViewPrsQuickCheck = async ({
       if (viewPrsSchedulerState.autoRefreshInProgressRepos.has(repo)) {
         reposSkippedForAutoRefresh.push(repo);
         return;
+      }
+      // The repo's open PRs as GitHub has them now, for the rows (see
+      // view-prs-live-summary-helpers.js) - not for a check of entered
+      // numbers, which may not be open. A failure keeps the last listing
+      // and doesn't fail the check.
+      if (!extraArgs.includes("--quick-check-numbers") && !isLiveSummaryDisabled()) {
+        const liveSummaryResult = await callRefreshRepoLiveSummary(repo);
+        if (!liveSummaryResult?.ok) {
+          console.warn(
+            `[view-prs] live summary failed for ${repo}: ${liveSummaryResult?.error || "unknown error"}`,
+          );
+        }
       }
       try {
         const result = await callRunViewPrsScript(
@@ -3393,6 +3442,9 @@ module.exports = {
   readViewPrsData,
   getViewPrsDataMeta,
   getViewPrsDataManifest,
+  readLiveSummary,
+  refreshRepoLiveSummary,
+  getLiveSummaryVersion,
   getViewPrsSchedulerPublicState,
   getViewPrsAutoCircuitOpenState,
   buildAckRefreshBudgetSkipErrors,

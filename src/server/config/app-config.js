@@ -64,6 +64,11 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
 
   const viewPrsPrDetailDir =
     env.VIEW_PRS_PR_DETAIL_DIR || path.join(path.dirname(viewPrsDataFile), "pr-details");
+  // Open PRs' live summary (view-prs-live-summary-helpers.js), beside the
+  // data file it's laid over - so tests' temp data file brings a temp one.
+  const viewPrsLiveSummaryFile =
+    env.VIEW_PRS_LIVE_SUMMARY_FILE ||
+    path.join(path.dirname(viewPrsDataFile), "check-open-pr-updates.live-summary.json");
 
   // Test environment validation
   if (isTestEnv) {
@@ -137,6 +142,7 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
       VIEW_PRS_PR_DIFF_DIR: viewPrsPrDiffDir,
       VIEW_PRS_ACTION_LOG_FILE: viewPrsActionLogFile,
       VIEW_PRS_PR_DETAIL_DIR: viewPrsPrDetailDir,
+      VIEW_PRS_LIVE_SUMMARY_FILE: viewPrsLiveSummaryFile,
       VIEW_PRS_BACKFILL_PID_FILE: viewPrsBackfillPidFile,
       VIEW_PRS_BACKFILL_LOG_FILE: viewPrsBackfillLogFile,
       VIEW_PRS_USER_DEFAULTS_FILE: viewPrsUserDefaultsFile,
@@ -343,6 +349,7 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
     viewPrsUiBuildDir,
     viewPrsUiBuildIndexFile,
     viewPrsDataFile,
+    viewPrsLiveSummaryFile,
     viewPrsUserStateFile,
     viewPrsAuthorCommentsFile,
     viewPrsSchedulerFile,

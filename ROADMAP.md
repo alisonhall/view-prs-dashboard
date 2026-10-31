@@ -94,6 +94,17 @@ The redesign chosen on 2026-10-24 (sections with icon rows, a docked detail pane
 
 For detailed performance analysis, see [`PERFORMANCE_OPTIMIZATION_OPPORTUNITIES.md`](PERFORMANCE_OPTIMIZATION_OPPORTUNITIES.md).
 
+### Data freshness (planned 2026-10-31)
+
+Goal: the collapsed rows as current as possible, and anything not yet fully updated obviously so. Found in a review of the retrieval flow: one changed PR made the quick check's fast-follow refetch the whole repo, and the 15-minute sweep refetched every listed PR (about 6 `gh` calls each; `VIEW_PRS_SKIP_UNCHANGED` row reuse is off by default); what GitHub changes without moving `updatedAt` (CI, mergeability, viewed files, possibly resolved threads) waited for that sweep, unmarked; each row written rewrote and backed up the whole data file; merged/closed PRs were fetched like open ones.
+
+- [x] 1. Live summary: a GraphQL listing of each repo's open PRs with every quick check, laid over the rows (see README's automatic background refresh, and `DATA_SCHEMA.md`). Rows carry `data.live`; the polled data version includes it and the PRs queued for update.
+- [ ] 2. Refresh only the PRs that changed: a `--prs` full mode for the script, used by the fast-follow and the merged/closed drain.
+- [ ] 3. The sweep as a safety net: reuse rows whose `updatedAt` matches; revalidate open rows after a few hours; merged/closed rows only when `updatedAt` changes, without CI/viewed-files/mergeability fetches.
+- [ ] 4. Write path: one backup per run, not per row; one `jq` pass for every row's cached `updatedAt`; reuse the details call's CI data instead of fetching it again.
+- [ ] 5. Show freshness: per row, when its summary was confirmed and its details fetched; "updating" on detail-based parts while queued (`data.live.detailsBehind`); stale when its repo's listing is older than about two intervals or failing; per-repo "checked N min ago"; push data changes over the existing event stream instead of the 30s poll.
+- [ ] 6. (Optional) Move the detail computation from bash to Node.
+
 ### React Migration
 
 The React migration is complete; its history is in [`docs/history/REACT_MIGRATION_PLAN.md`](docs/history/REACT_MIGRATION_PLAN.md).

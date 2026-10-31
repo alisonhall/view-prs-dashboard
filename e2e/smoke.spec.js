@@ -1737,11 +1737,17 @@ test("typing a PR-number filter updates the rendered React table live, with no \
 
   // Reset so this test's filter doesn't hide PRs from whatever unrelated
   // test happens to load next against this suite's one shared webServer -
-  // clearing is ALSO live, same as filling above.
+  // clearing is ALSO live, same as filling above. And wait for the clear to
+  // be saved, as the scope test above does: the next test once loaded with
+  // "1" still saved, hiding "Fix flaky test" (2026-10-31).
   await openFilterBar(page);
   await filterBar(page).getByLabel("PR numbers", { exact: true }).fill("");
   await page.getByRole("tab", { name: "Pull requests" }).click();
   await expect(prTables(page)).toContainText("Fix flaky test");
+  await waitForFilterPersist(page);
+  await expect
+    .poll(async () => (await (await page.request.get("/view-prs/user-defaults")).json()).overrides?.["filter-pr-numbers"] ?? "")
+    .toBe("");
 });
 
 test("checking a row-filtering multi-select (label) filters the rendered table live, with no \"Apply filters (local)\" click at all", async ({ page }) => {

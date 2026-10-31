@@ -886,6 +886,11 @@ upsert_pr_state_unlocked() {
   tmp=$(mktemp)
   row_file=$(mktemp)
   printf '%s' "$row_json" >"$row_file"
+  # fetchedAt: when this row was written - updatedAt is the run's start for
+  # every row, so a long run's late rows look older than they are. The
+  # server's live summary (view-prs-live-summary-helpers.js) only replaces a
+  # row's values when listed after this. Written after the row's data was
+  # fetched, so a listing it counts as newer always is.
   jq \
     --arg number "$number" \
     --arg repo "$REPO" \
@@ -900,6 +905,7 @@ upsert_pr_state_unlocked() {
         repo: $repo,
         section: $section,
         updatedAt: $updatedAt,
+        fetchedAt: (now | todate),
         rowOrder: ((.byPrNumber[$number].rowOrder // $rowOrder)),
         data: ($row_file[0] // {})
       }) |

@@ -54,6 +54,8 @@ if (!process.env.VIEW_PRS_TEST_STATE_DIR) {
   process.env.DATA_DIR = tempDir;
   process.env.VIEW_PRS_PR_DIFF_CONCURRENCY = "0";
   process.env.VIEW_PRS_DISABLE_BACKGROUND_DIFF_REFRESH = "1";
+  // Quick checks would otherwise list PRs with a real `gh api graphql`.
+  process.env.VIEW_PRS_DISABLE_LIVE_SUMMARY = "1";
   process.env.VIEW_PRS_BACKUP_DIR = path.join(tempDir, "backups");
   // Expose to other setup files / global teardown if needed.
   process.env.VIEW_PRS_TEST_STATE_DIR = tempDir;

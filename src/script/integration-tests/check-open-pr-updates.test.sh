@@ -1180,6 +1180,9 @@ JSON
   updated_row=$(jq -cn '{number:"123", title:"Updated"}')
   upsert_pr_state "$updated_row" 'open'
   assert_eq "$(jq -r '.byPrNumber["123"].rowOrder' "$PR_STATE_FILE")" '3' 'existing PR rowOrder should remain stable on upsert'
+  # When the row was written, not the run's start (RUN_TS, in the past here).
+  fetched_at=$(jq -r '.byPrNumber["123"].fetchedAt' "$PR_STATE_FILE")
+  assert_true "[[ \"$fetched_at\" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\$ && \"$fetched_at\" > '2026-03-12T22:00:00Z' ]]" 'upsert should stamp the row with when it was written'
 
   RUN_ROW_INDEX=25
   new_row=$(jq -cn '{number:"456", title:"New"}')
