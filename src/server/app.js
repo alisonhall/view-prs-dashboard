@@ -133,6 +133,7 @@ const {
   viewPrsBackupRetention,
   viewPrsEventsHeartbeatIntervalMs,
   viewPrsEventsMaxClients,
+  viewPrsEventsDataWatchIntervalMs,
   viewPrsSchedulerStateThrottleMs,
 } = config;
 
@@ -1650,34 +1651,65 @@ const readViewPrsData = () => {
   }
 };
 
+// The data file's stats and the version the page polls. Cheap (two stats
+// and the in-memory queue), so the event stream can watch it
+// (registerViewPrsEventsRoutes' getDataVersion).
+const readViewPrsDataVersion = () => {
+  if (!fs.existsSync(viewPrsDataFile)) {
+    return { dataVersion: "missing", mtimeMs: 0, sizeBytes: 0 };
+  }
+  const stats = fs.statSync(viewPrsDataFile);
+  const mtimeMs = Number.isFinite(stats.mtimeMs)
+    ? Math.trunc(stats.mtimeMs)
+    : Date.parse(String(stats.mtime || "")) || 0;
+  // What readViewPrsData lays over the file counts too: a new live
+  // summary, or a PR newly queued for update ("Update queued"), changes
+  // the rows the page gets, so it changes the version the page polls.
+  const pendingKeys = Array.from(getPendingUpdatePrNumberKeys()).sort().join(",");
+  const pendingVersion = pendingKeys
+    ? crypto.createHash("sha1").update(pendingKeys).digest("hex").slice(0, 12)
+    : "none";
+  return {
+    dataVersion: `${mtimeMs}:${stats.size}:${getLiveSummaryVersion()}:${pendingVersion}`,
+    mtimeMs,
+    sizeBytes: Number.isFinite(stats.size) ? stats.size : 0,
+  };
+};
+
+const getViewPrsDataVersion = () => {
+  try {
+    return readViewPrsDataVersion().dataVersion;
+  } catch (_error) {
+    return "unavailable";
+  }
+};
+
 const getViewPrsDataMeta = () => {
   try {
-    if (!fs.existsSync(viewPrsDataFile)) {
+    const { dataVersion, mtimeMs, sizeBytes } = readViewPrsDataVersion();
+    if (dataVersion === "missing") {
       return {
-        dataVersion: "missing",
+        dataVersion,
         lastModifiedAt: null,
         sizeBytes: 0,
       };
     }
 
-    const stats = fs.statSync(viewPrsDataFile);
-    const mtimeMs = Number.isFinite(stats.mtimeMs)
-      ? Math.trunc(stats.mtimeMs)
-      : Date.parse(String(stats.mtime || "")) || 0;
-    // What readViewPrsData lays over the file counts too: a new live
-    // summary, or a PR newly queued for update ("Update queued"), changes
-    // the rows the page gets, so it changes the version the page polls.
-    const pendingKeys = Array.from(getPendingUpdatePrNumberKeys()).sort().join(",");
-    const pendingVersion = pendingKeys
-      ? crypto.createHash("sha1").update(pendingKeys).digest("hex").slice(0, 12)
-      : "none";
+    // Per repo: when its open PRs were last listed, the last failure, and
+    // how often it's listed (its quick check's interval; null when the repo
+    // isn't checked in the background) - the page marks rows stale from it.
+    const liveSummary = Object.fromEntries(
+      Object.entries(getLiveSummaryMeta()).map(([repo, meta]) => [
+        repo,
+        { ...meta, quickCheckIntervalMs: callDispatcherHelpers().getEntryIntervalMs?.(repo, "quickCheck") ?? null },
+      ]),
+    );
 
     return {
-      dataVersion: `${mtimeMs}:${stats.size}:${getLiveSummaryVersion()}:${pendingVersion}`,
+      dataVersion,
       lastModifiedAt: mtimeMs > 0 ? new Date(mtimeMs).toISOString() : null,
-      sizeBytes: Number.isFinite(stats.size) ? stats.size : 0,
-      // Per repo: when its open PRs were last listed, and the last failure.
-      liveSummary: getLiveSummaryMeta(),
+      sizeBytes,
+      liveSummary,
     };
   } catch (error) {
     return {
@@ -3380,6 +3412,9 @@ const createViewPrsApp = ({ production = isProductionEnv } = {}) => {
     console,
     heartbeatIntervalMs: viewPrsEventsHeartbeatIntervalMs,
     maxClients: viewPrsEventsMaxClients,
+    getDataVersion: () => (module.exports.getViewPrsDataVersion || getViewPrsDataVersion)(),
+    emitDataChanged: callEmitDataChanged,
+    dataWatchIntervalMs: viewPrsEventsDataWatchIntervalMs,
   });
 
   return app;
@@ -3559,6 +3594,7 @@ module.exports = {
   readViewPrsDetailPayload,
   hydrateViewPrsEntryWithDetail,
   readViewPrsData,
+  getViewPrsDataVersion,
   getViewPrsDataMeta,
   getViewPrsDataManifest,
   readLiveSummary,

@@ -94,7 +94,6 @@ export const PrRow = memo(function PrRow({
   onUpdatePr,
   onViewJson,
 }: PrRowProps) {
-  const lastCheckedAt = String(entry?.updatedAt || '').trim();
   const summaryId = useId();
   const reasons = attentionReasons ? attentionReasons.split('\n') : [];
 
@@ -140,9 +139,9 @@ export const PrRow = memo(function PrRow({
         <PrReviewCell entry={entry} pr={pr} actorsMap={actorsMap} />
         <PrChecksCell pr={pr} />
         <PrSizeCell pr={pr} />
-        {/* Staleness depends on the PR's own lifecycle section, not the
-            smart group it's shown in. */}
-        <PrActivityCell pr={pr} lastCheckedAt={lastCheckedAt} sectionKey={lifecycleSection || sectionKey} />
+        {/* Staleness depends on the PR's own lifecycle section (the
+            entry's), not the smart group it's shown in. */}
+        <PrActivityCell pr={pr} entry={entry} />
         <PrActionsCell
           pr={pr}
           repo={repo}

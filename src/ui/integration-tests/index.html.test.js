@@ -1056,7 +1056,7 @@ describe("index page rendering with Testing Library", () => {
     ).toBe("49 lines changed");
   });
 
-  test("given open and merged rows when rendering PR cells then relative last-checked indicators use each row's updated timestamp", async () => {
+  test("given open and merged rows when rendering PR cells then each row's freshness is in its Activity tooltip, from its own timestamps", async () => {
     // The Activity column only shows while the detail pane is hidden.
     hideDetailPane();
     const nowSpy = jest
@@ -1107,21 +1107,24 @@ describe("index page rendering with Testing Library", () => {
         expect(screen.getByText("#11")).toBeInTheDocument();
       });
 
-      // UI redesign phase 2: the last check is in the Activity cell's
-      // tooltip (it was the Status column's "↻ 20m ago"), and a stale one
-      // is marked on the age.
+      // The row's freshness is in the Activity cell's tooltip (README's
+      // Freshness), from its own timestamps (fetchedAt, else updatedAt -
+      // these rows have no fetchedAt and their repo no listing), and a
+      // stale open row is marked on the age.
       const openRow = screen.getByText("#11").closest("tr");
       const mergedRow = screen.getByText("#99").closest("tr");
       const openActivity = openRow?.querySelector(".pr-activity");
       const mergedActivity = mergedRow?.querySelector(".pr-activity");
 
+      const openAt = formatIsoDatetime("2026-06-16T10:10:00Z");
       expect(tooltipDescription(openActivity)).toContain(
-        `Last checked for updates at ${formatIsoDatetime("2026-06-16T10:10:00Z")}. (stale)`,
+        `Summary confirmed 20m ago (${openAt}).\nDetails fetched 20m ago (${openAt}).\nStale: not confirmed recently.`,
       );
       expect(tooltipDescription(mergedActivity)).toContain(
-        `Last checked for updates at ${formatIsoDatetime("2026-06-16T10:20:00Z")}.`,
+        `Details fetched 10m ago (${formatIsoDatetime("2026-06-16T10:20:00Z")}).`,
       );
-      expect(tooltipDescription(mergedActivity)).not.toContain("(stale)");
+      expect(tooltipDescription(mergedActivity)).not.toContain("Summary confirmed");
+      expect(tooltipDescription(mergedActivity)).not.toContain("Stale");
       expect(openActivity).toHaveAttribute("data-stale", "true");
       expect(mergedActivity).not.toHaveAttribute("data-stale");
     } finally {
@@ -1129,7 +1132,7 @@ describe("index page rendering with Testing Library", () => {
     }
   });
 
-  test("given an open PR row, when rendering, then the PR link is in the Pull request cell with no busy indicator, and the last check is in the Activity cell's tooltip", async () => {
+  test("given an open PR row, when rendering, then the PR link is in the Pull request cell with no busy indicator, and its freshness is in the Activity cell's tooltip", async () => {
     // The Activity column only shows while the detail pane is hidden.
     hideDetailPane();
     initTestPage({
@@ -1163,9 +1166,9 @@ describe("index page rendering with Testing Library", () => {
     expect(titleCell?.querySelector(".pr-link")).toHaveTextContent("#12");
     expect(titleCell?.querySelector(".pr-busy")).toBeNull();
     const row = titleCell?.closest("tr");
-    expect(tooltipDescription(row?.querySelector(".pr-activity"))).toContain(
-      `Last checked for updates at ${formatIsoDatetime("2026-06-16T10:10:00Z")}.`,
-    );
+    const description = tooltipDescription(row?.querySelector(".pr-activity"));
+    expect(description).toContain("Details fetched ");
+    expect(description).toContain(`(${formatIsoDatetime("2026-06-16T10:10:00Z")}).`);
   });
 
   test("given author thread-resolution policy modes, when PR author resolves a review thread, then warning behavior follows the selected rule", async () => {

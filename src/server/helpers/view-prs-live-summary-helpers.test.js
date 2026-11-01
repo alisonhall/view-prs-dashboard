@@ -198,6 +198,25 @@ describe("applyLiveSummaryToEntry", () => {
     expect(applyLiveSummaryToEntry(early, repoSummary([normalizeLiveSummaryPr(prNode())])).data.checkState).toBe("PASS");
   });
 
+  test("CI and mergeability fetched again after the listing (a reused row) are kept; the rest is replaced", () => {
+    // A run reused the row (fetchedAt unchanged) but fetched its CI at 10:07.
+    const reused = entry({ fetchedAt: "2026-10-31T09:00:00Z", ciFetchedAt: "2026-10-31T10:07:00Z" });
+    const result = applyLiveSummaryToEntry(reused, repoSummary([normalizeLiveSummaryPr(prNode())]));
+    expect(result.data).toMatchObject({
+      title: "Add widgets",
+      checkState: "RUN",
+      mergeState: "NO",
+      titleDisplay: "Add widgets [CHK:RUN][MRG:NO]",
+      viewedFilesCount: "1",
+    });
+    // A listing after that replaces them too.
+    const olderCi = entry({ fetchedAt: "2026-10-31T09:00:00Z", ciFetchedAt: "2026-10-31T10:01:00Z" });
+    expect(applyLiveSummaryToEntry(olderCi, repoSummary([normalizeLiveSummaryPr(prNode())])).data).toMatchObject({
+      checkState: "PASS",
+      mergeState: "YES",
+    });
+  });
+
   test("a PR turned into a draft moves to the draft section", () => {
     const result = applyLiveSummaryToEntry(entry(), repoSummary([normalizeLiveSummaryPr(prNode({ isDraft: true }))]));
     expect(result.section).toBe("draft");

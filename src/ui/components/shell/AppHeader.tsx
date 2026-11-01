@@ -8,6 +8,9 @@ import { useSettingsDrawer } from '../../state/SettingsDrawerContext';
 import { INITIAL_STATUS_TEXT, useStatusText } from '../../state/StatusTextContext';
 import { useTabState, type DataTabKey } from '../../state/TabStateContext';
 import { describeLastUpdate, describeRepos } from '../../helpers/pr-app-header.helpers.ts';
+import { describeReposChecked } from '../../helpers/pr-row-freshness.helpers.ts';
+import { readDefaultQuickCheckIntervalMs } from '../../state/RepoFreshnessContext';
+import type { PrDataMeta } from '../../types/pr-data.ts';
 import { ActivityPopover } from './ActivityPopover';
 import { QuickCheckAllButton, type QuickCheckAllButtonProps } from './QuickCheckAllButton';
 
@@ -35,11 +38,31 @@ function LatestStatus() {
   );
 }
 
-// "Updated 5m ago", moving once a minute; the exact time on hover.
-function LastUpdatePill({ updatedAt, loaded }: { updatedAt: unknown; loaded: boolean }) {
+// "Checked 3m ago": how long since the repos shown were last checked (their
+// live summaries, with each quick check) - the least recently checked one,
+// each repo's on hover, with the last run; in the attention tone when one's
+// stale or failing. Before any repo's been listed, "Updated 5m ago" (the
+// last run). Moving once a minute.
+function LastUpdatePill({
+  updatedAt,
+  loaded,
+  repos,
+  liveSummary,
+  defaultIntervalMs,
+}: {
+  updatedAt: unknown;
+  loaded: boolean;
+  repos: string[];
+  liveSummary: PrDataMeta['liveSummary'];
+  defaultIntervalMs: number;
+}) {
   const now = useNow();
   if (!loaded) return <span className="app-header-status">Loading…</span>;
-  const { label, title, isStale } = describeLastUpdate(updatedAt, now);
+  const checked = describeReposChecked({ repos, liveSummary, defaultIntervalMs, lastRunAt: updatedAt, nowMs: now });
+  const lastUpdate = describeLastUpdate(updatedAt, now);
+  const { label, title, isStale } = checked.label
+    ? { label: checked.label, title: checked.title, isStale: checked.isStale || lastUpdate.isStale }
+    : lastUpdate;
   return (
     <span className="app-header-status" data-tone={isStale ? 'attention' : undefined} title={title || undefined}>
       <span className="app-header-status-dot" aria-hidden="true" />
@@ -93,7 +116,13 @@ export function AppHeader({ onQuickCheckAll }: AppHeaderProps) {
         <div className="app-header-actions">
           <LatestStatus />
           <NowProvider>
-            <LastUpdatePill updatedAt={payload?.lastRun?.updatedAt} loaded={Boolean(payload?.ok)} />
+            <LastUpdatePill
+              updatedAt={payload?.lastRun?.updatedAt}
+              loaded={Boolean(payload?.ok)}
+              repos={repos.all}
+              liveSummary={payload?.dataMeta?.liveSummary}
+              defaultIntervalMs={readDefaultQuickCheckIntervalMs(payload?.scheduler)}
+            />
           </NowProvider>
           <QuickCheckAllButton onCheck={onQuickCheckAll} />
           <ActivityPopover />

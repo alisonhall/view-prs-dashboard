@@ -48,12 +48,26 @@ describe('PrOverview', () => {
     expect(groupRows('Review')).toMatchObject({ 'CHK state': 'FAIL', Mergeability: 'NO' });
   });
 
-  test('keeps Data freshness in a collapsed group, with the check time from the entry', () => {
-    renderOverview({ number: '1', sourceUpdatedAt: '2026-01-02T03:04:05Z' }, { entry: { updatedAt: '2026-01-03T00:00:00Z' } });
+  test('keeps Data freshness in a collapsed group, with when the details were fetched from the entry', () => {
+    renderOverview({ number: '1', sourceUpdatedAt: '2026-01-02T03:04:05Z' }, { entry: { section: 'merged', updatedAt: '2026-01-03T00:00:00Z' } });
     const freshness = screen.getByText('Data freshness').closest('details') as HTMLDetailsElement;
     expect(freshness.open).toBe(false);
-    expect(within(freshness).getByText('Last checked for updates')).toBeInTheDocument();
+    expect(within(freshness).getByText('Details fetched')).toBeInTheDocument();
+    // Only an open PR's summary is confirmed by its repo's checks.
+    expect(within(freshness).queryByText('Summary confirmed')).not.toBeInTheDocument();
     expect(within(freshness).getByText('Latest data timestamp')).toHaveAttribute('title', expect.stringContaining('source PR data'));
+  });
+
+  test("an open PR's Data freshness has when its summary was confirmed, marked stale when it's old", () => {
+    renderOverview(
+      { number: '1', live: { stillOpen: true, detailsBehind: true } },
+      { entry: { section: 'open', fetchedAt: '2026-01-03T00:00:00Z' } },
+    );
+    const freshness = screen.getByText('Data freshness').closest('details') as HTMLDetailsElement;
+    // Each key and value is a grid item of its own.
+    const rowValue = (label: string) => within(freshness).getByText(label).nextElementSibling?.textContent ?? '';
+    expect(rowValue('Summary confirmed')).toMatch(/\(stale\)$/);
+    expect(rowValue('Details fetched')).toMatch(/\(GitHub has newer activity\)$/);
   });
 
   test('shows Approval risk details only when there are approvals', () => {

@@ -509,10 +509,12 @@ describe("check-open-pr-updates shell helper behavior", () => {
         );
 
         const fresh = JSON.parse(rowFor(storedState(), { pr: listed(), env: `CI_MERGE_CACHE_DIR="${ciMergeDir}";` }));
-        expect(fresh).toMatchObject({ checkState: "FAIL", mergeState: "NO" });
+        // __ciFetched: upsert_pr_state stamps the row's ciFetchedAt.
+        expect(fresh).toMatchObject({ checkState: "FAIL", mergeState: "NO", __ciFetched: true });
 
         const withoutCi = JSON.parse(rowFor(storedState(), { pr: listed(), env: `CI_MERGE_CACHE_DIR="$(mktemp -d)";` }));
         expect(withoutCi).toMatchObject({ checkState: "PASS", mergeState: "YES" });
+        expect(withoutCi).not.toHaveProperty("__ciFetched");
       });
 
       test("a reused merged row isn't given CI data at all", () => {
@@ -535,6 +537,31 @@ describe("check-open-pr-updates shell helper behavior", () => {
 
       expect(JSON.parse(upsert({ number: "123", __reused: true }))).toEqual({ fetchedAt, reused: false });
       expect(JSON.parse(upsert({ number: "123" })).fetchedAt).not.toBe(fetchedAt);
+    });
+
+    test("upsert_pr_state stamps ciFetchedAt when the run fetched the row's CI, reused or not", () => {
+      const fetchedAt = "2026-05-26T12:30:00Z";
+      const upsert = (row, entry = { fetchedAt }) => {
+        const stateFile = writeState(storedState({ entry }));
+        return JSON.parse(
+          runScriptFn(
+            `${setup(stateFile)} RUN_TS='2026-05-26T13:00:00Z'; RUN_ROW_INDEX=1; upsert_pr_state_unlocked '${JSON.stringify(row)}' open; jq -c '.byPrNumber["123"] | {fetchedAt, ciFetchedAt, marked: (.data | has("__ciFetched"))}' "${stateFile}"`,
+          ),
+        );
+      };
+
+      // Reused, CI fetched: fetchedAt kept, ciFetchedAt now.
+      const reusedWithCi = upsert({ number: "123", __reused: true, __ciFetched: true });
+      expect(reusedWithCi).toMatchObject({ fetchedAt, marked: false });
+      expect(Date.parse(reusedWithCi.ciFetchedAt)).toBeGreaterThan(Date.parse(fetchedAt));
+      // Reused without CI: the row's own, else its fetchedAt.
+      expect(upsert({ number: "123", __reused: true })).toMatchObject({ fetchedAt, ciFetchedAt: fetchedAt });
+      expect(upsert({ number: "123", __reused: true }, { fetchedAt, ciFetchedAt: "2026-05-26T12:45:00Z" })).toMatchObject({
+        ciFetchedAt: "2026-05-26T12:45:00Z",
+      });
+      // Fetched: both now.
+      const fetched = upsert({ number: "123" });
+      expect(fetched.ciFetchedAt).toBe(fetched.fetchedAt);
     });
 
     test("upsert_pr_state writes a row without a backup (the run takes one), and leaves the file as it was when it can't", () => {

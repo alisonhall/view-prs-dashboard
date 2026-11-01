@@ -35,14 +35,14 @@ type JobEventsFrame = JobEventEnvelope & { type?: string };
  * On every frame it receives (snapshot/job/scheduler/data-changed), it calls
  * RequestActivityProvider's renderSchedulerStatus with the bundled
  * scheduler object, which keeps the per-row progress indicator and the
- * request-activity badges current. And on an autoRefresh/mergedQueueDrain
- * "finish" job event, OR a "data-changed" event (fired by ack/apply-label/
- * manual-run/request-more once one of those routes actually wrote to the
- * stored PR data file), it calls PrDataContext's pollForDataChanges
- * immediately rather than waiting for that poll's own next tick - the
- * interval itself stays as a slower safety net, since not every possible
- * write path is instrumented (e.g. anything that bypasses these routes
- * entirely would still rely on it).
+ * request-activity badges current. And on an autoRefresh/mergedQueueDrain/
+ * quickCheck "finish" job event, OR a "data-changed" event (fired by ack/
+ * apply-label/manual-run/request-more once one of those routes actually
+ * wrote to the stored PR data file, and by the server's data watcher when
+ * the data version moves), it calls PrDataContext's pollForDataChanges
+ * immediately - one at a time - rather than waiting for that poll's own
+ * next tick, and again on reconnecting. The interval itself stays as a
+ * slower safety net (PrDataPolling slows it while this connection is open).
  */
 export function JobEventsProvider({ children }: { children?: ReactNode }) {
   // Reads PrDataContext directly (not the throwing usePrData() hook) so
@@ -77,6 +77,29 @@ export function JobEventsProvider({ children }: { children?: ReactNode }) {
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let reconnectDelayMs = RECONNECT_BASE_DELAY_MS;
     let stopped = false;
+    let snapshotCount = 0;
+
+    // One data poll at a time: frames can come every few seconds during a
+    // run (the server's data watcher), and a poll can take longer than that.
+    // A request while one's running runs once more after it.
+    let isPolling = false;
+    let pollAgain = false;
+    const requestDataPoll = () => {
+      if (isPolling) {
+        pollAgain = true;
+        return;
+      }
+      isPolling = true;
+      Promise.resolve(pollForDataChangesRef.current?.())
+        .catch(() => {})
+        .finally(() => {
+          isPolling = false;
+          if (pollAgain && !stopped) {
+            pollAgain = false;
+            requestDataPoll();
+          }
+        });
+    };
 
     const applySchedulerSideEffects = (scheduler: SchedulerSnapshot | undefined) => {
       renderSchedulerStatusRef.current?.(scheduler);
@@ -91,6 +114,12 @@ export function JobEventsProvider({ children }: { children?: ReactNode }) {
       }
       setJobEventsState((previous) => applyJobEventsSnapshot(previous, payload));
       applySchedulerSideEffects(payload?.scheduler);
+      // A reconnect: whatever changed while disconnected wasn't pushed. (The
+      // first connection's page is loading the data itself.)
+      snapshotCount += 1;
+      if (snapshotCount > 1) {
+        requestDataPoll();
+      }
     };
 
     const handleJobOrSchedulerFrame = (event: MessageEvent) => {
@@ -105,15 +134,16 @@ export function JobEventsProvider({ children }: { children?: ReactNode }) {
 
       const isDataWritingJobFinish =
         envelope?.phase === 'finish' &&
-        (envelope?.job === 'autoRefresh' || envelope?.job === 'mergedQueueDrain');
+        (envelope?.job === 'autoRefresh' || envelope?.job === 'mergedQueueDrain' || envelope?.job === 'quickCheck');
       // "data-changed" is emitted by ack/apply-label/manual-run/request-more
       // once one of those routes has actually written to the stored PR data
       // file - the requesting tab already has its own fresh result from that
       // route's own response, so this is specifically for every *other*
-      // connected tab.
+      // connected tab - and by the server's data watcher whenever the data
+      // version moves (a script run's rows, a quick check's listing).
       const isDataChangedEvent = envelope?.type === 'data-changed';
       if (isDataWritingJobFinish || isDataChangedEvent) {
-        pollForDataChangesRef.current?.();
+        requestDataPoll();
       }
     };
 

@@ -938,7 +938,10 @@ upsert_pr_state_unlocked() {
   # fetched, so a listing it counts as newer always is. A row reused as it
   # was (get_pr_row_json's __reused) wasn't fetched, so keeps its fetchedAt:
   # the live summary still applies to it, and an open row is still fetched
-  # again once that's VIEW_PRS_OPEN_REVALIDATE_SECONDS old.
+  # again once that's VIEW_PRS_OPEN_REVALIDATE_SECONDS old. ciFetchedAt: when
+  # its CI and mergeability were, which a reused open row's are
+  # (enrich_cached_row_with_ci_merge's __ciFetched) - so a listing older
+  # than that doesn't replace them.
   #
   # A run of chosen PRs (is_targeted_run) keeps an existing row's updatedAt
   # and lastFullRun: they mark which rows the last full run saw - the "last
@@ -962,16 +965,23 @@ upsert_pr_state_unlocked() {
     '
       ($row_file[0] // {}) as $row |
       ($row.number | tostring) as $number |
+      (now | todate) as $now |
       .byPrNumber //= {} |
-      (.byPrNumber[$number].updatedAt // (.lastFullRun // .lastRun).updatedAt // null) as $existingUpdatedAt |
-      .byPrNumber[$number] = (((.byPrNumber[$number] // {}) | del(.notes)) + {
+      (.byPrNumber[$number] // {}) as $existing |
+      ($existing.updatedAt // (.lastFullRun // .lastRun).updatedAt // null) as $existingUpdatedAt |
+      .byPrNumber[$number] = (($existing | del(.notes)) + {
         prNumber: $number,
         repo: $repo,
         section: $section,
         updatedAt: (if $targeted then ($existingUpdatedAt // $updatedAt) else $updatedAt end),
-        fetchedAt: (if $row.__reused == true then .byPrNumber[$number].fetchedAt else (now | todate) end),
-        rowOrder: ((.byPrNumber[$number].rowOrder // $rowOrder)),
-        data: ($row | del(.__reused))
+        fetchedAt: (if $row.__reused == true then $existing.fetchedAt else $now end),
+        ciFetchedAt: (
+          if $row.__reused != true or $row.__ciFetched == true then $now
+          else ($existing.ciFetchedAt // $existing.fetchedAt)
+          end
+        ),
+        rowOrder: (($existing.rowOrder // $rowOrder)),
+        data: ($row | del(.__reused, .__ciFetched))
       }) |
       .lastFullRun = (if $targeted then (.lastFullRun // .lastRun) else {
         repo: $repo,
@@ -3158,7 +3168,7 @@ enrich_cached_row_with_ci_merge() {
         else $m
         end
     ' 2>/dev/null || echo '"UNK"')" \
-    '.checkState = $check_state | .mergeState = $merge_state | .titleDisplay = (.title + " [CHK:" + $check_state + "][MRG:" + $merge_state + "]")'
+    '.checkState = $check_state | .mergeState = $merge_state | .titleDisplay = (.title + " [CHK:" + $check_state + "][MRG:" + $merge_state + "]") | .__ciFetched = true'
 }
 
 get_pr_row_json() {

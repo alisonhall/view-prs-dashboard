@@ -30,7 +30,8 @@ const labelHue = (label: string) => [...label].reduce((sum, char) => sum + char.
  * - the label chips
  *
  * A second line holds a non-main target branch, unsubmitted pending
- * comments, and "update queued". The chevron opens the row's summary
+ * comments, and "Details updating" / "No longer open" while the row's
+ * details are behind GitHub. The chevron opens the row's summary
  * (PrRowSummary). The cell carries
  * data-pr-number / data-repo and the .pr-link class, which "Jump to PR"
  * looks for.
@@ -67,7 +68,12 @@ export function PrTitleCell({
   const targetBranch = String(pr?.targetBranch || '').trim();
   const showTargetBranch = Boolean(targetBranch) && targetBranch.toLowerCase() !== 'main';
   const pendingCommentCount = countPendingThreadComments(pr);
-  const hasMeta = showTargetBranch || pendingCommentCount > 0 || Boolean(pr?.updatePending);
+  // The live summary's view (pr.live, open/draft rows): a complete listing
+  // no longer has it, or GitHub has activity the row's details haven't
+  // caught up with (or the quick check queued it).
+  const noLongerOpen = pr?.live?.stillOpen === false;
+  const detailsBehind = !noLongerOpen && (Boolean(pr?.updatePending) || pr?.live?.detailsBehind === true);
+  const hasMeta = showTargetBranch || pendingCommentCount > 0 || noLongerOpen || detailsBehind;
 
   return (
     <td className="pr-cell pr-cell-title" data-pr-number={prNumber} data-repo={repo || ''}>
@@ -136,10 +142,23 @@ export function PrTitleCell({
                   {pendingCommentCount} pending comment{pendingCommentCount === 1 ? '' : 's'}
                 </span>
               )}
-              {pr?.updatePending && (
-                <span className="pr-meta-chip" title="A change was detected on GitHub; full details are queued to refresh.">
+              {noLongerOpen && (
+                <span
+                  className="pr-meta-chip"
+                  data-tone="attention"
+                  title="GitHub no longer lists it as open (merged or closed since); its update is queued."
+                >
                   <Icon name="refresh" size={12} />
-                  Update queued
+                  No longer open
+                </span>
+              )}
+              {detailsBehind && (
+                <span
+                  className="pr-meta-chip"
+                  title="GitHub has newer activity. The row's summary (CI, mergeability, labels, size) is current; reviews, approvals and activity update when its queued refresh runs."
+                >
+                  <Icon name="refresh" size={12} />
+                  Details updating
                 </span>
               )}
             </div>

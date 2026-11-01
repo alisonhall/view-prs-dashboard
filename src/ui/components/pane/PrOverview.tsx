@@ -5,6 +5,9 @@ import { LinesChangedInsight } from '../insights/LinesChangedInsight';
 import { ApprovalRiskSection } from '../insights/ApprovalRiskSection';
 import { usePrInsightsDisplay } from '../../state/PrInsightsDisplayContext';
 import { createPrFormattingHelpers } from '../../helpers/pr-formatting.helpers.ts';
+import { describeRepoListing, describeRowFreshness } from '../../helpers/pr-row-freshness.helpers.ts';
+import { useNow } from '../../state/NowContext';
+import { useRepoFreshness } from '../../state/RepoFreshnessContext';
 
 const { formatIsoDatetime, toCount } = createPrFormattingHelpers();
 
@@ -57,6 +60,15 @@ function Rows({ rows }: { rows: Row[] }) {
 }
 
 export function PrOverview({ entry, pr, actorsMap }: PrOverviewProps) {
+  const now = useNow();
+  const { liveSummary, defaultIntervalMs } = useRepoFreshness();
+  // The row's Activity tooltip has the same (README's Freshness).
+  const rowFreshness = describeRowFreshness({
+    entry: { ...entry, data: pr },
+    listing: describeRepoListing(liveSummary[String(entry?.repo || '')], { nowMs: now, defaultIntervalMs }),
+    nowMs: now,
+  });
+  const isOpen = entry?.section === 'open' || entry?.section === 'draft';
   const {
     parseMarkerState,
     formatApproversDisplay,
@@ -109,10 +121,20 @@ export function PrOverview({ entry, pr, actorsMap }: PrOverviewProps) {
       labelTitle: 'When source PR data (comments/reviews/threads/metadata) was last updated.',
       value: formatIsoDatetime(pr.sourceUpdatedAt || '-'),
     },
+    ...(isOpen
+      ? [
+          {
+            label: 'Summary confirmed',
+            labelTitle:
+              "When what the row shows (CI, mergeability, labels, size, viewed files, conversations) was last confirmed: its repo's latest check, or its last full fetch.",
+            value: `${formatIsoDatetime(rowFreshness.summaryConfirmedAt || '-')}${rowFreshness.isStale ? ' (stale)' : ''}`,
+          },
+        ]
+      : []),
     {
-      label: 'Last checked for updates',
-      labelTitle: 'When this dashboard last evaluated the PR for new changes during a script run.',
-      value: formatIsoDatetime(entry?.updatedAt || '-'),
+      label: 'Details fetched',
+      labelTitle: "When the PR's details (reviews, approvals, activity) were last fetched from GitHub.",
+      value: `${formatIsoDatetime(rowFreshness.detailsFetchedAt || '-')}${rowFreshness.detailsBehind ? ' (GitHub has newer activity)' : ''}`,
     },
     { label: 'Baseline', value: formatIsoDatetime(pr.baseline || '-') },
   ];

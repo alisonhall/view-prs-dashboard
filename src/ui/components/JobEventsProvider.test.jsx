@@ -245,7 +245,9 @@ describe('JobEventsProvider', () => {
     expect(pollForDataChanges).toHaveBeenCalledTimes(1);
   });
 
-  test('a quickCheck finish event does not trigger pollForDataChanges', () => {
+  // A quick check writes its repo's live summary and queues changed PRs,
+  // both of which the rows show.
+  test('a quickCheck finish event triggers pollForDataChanges', () => {
     const pollForDataChanges = jest.fn();
     render(
       <PrDataContext.Provider value={{ pollForDataChanges }}>
@@ -260,7 +262,64 @@ describe('JobEventsProvider', () => {
       instance.emit('job', { type: 'job', job: 'quickCheck', phase: 'finish', seq: 1, ok: true });
     });
 
+    expect(pollForDataChanges).toHaveBeenCalledTimes(1);
+  });
+
+  test('runs one data poll at a time: requests while one runs make one more after it', async () => {
+    let finishPoll;
+    const pollForDataChanges = jest.fn(
+      () =>
+        new Promise((resolve) => {
+          finishPoll = resolve;
+        }),
+    );
+    render(
+      <PrDataContext.Provider value={{ pollForDataChanges }}>
+        <JobEventsProvider>
+          <Probe />
+        </JobEventsProvider>
+      </PrDataContext.Provider>,
+    );
+    const instance = FakeEventSource.instances[0];
+
+    act(() => {
+      instance.emit('data-changed', { type: 'data-changed', seq: 1 });
+      instance.emit('data-changed', { type: 'data-changed', seq: 2 });
+      instance.emit('data-changed', { type: 'data-changed', seq: 3 });
+    });
+    expect(pollForDataChanges).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      finishPoll();
+    });
+    expect(pollForDataChanges).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      finishPoll();
+    });
+    expect(pollForDataChanges).toHaveBeenCalledTimes(2);
+  });
+
+  test('polls on a reconnect snapshot, not the first', () => {
+    const pollForDataChanges = jest.fn();
+    render(
+      <PrDataContext.Provider value={{ pollForDataChanges }}>
+        <JobEventsProvider>
+          <Probe />
+        </JobEventsProvider>
+      </PrDataContext.Provider>,
+    );
+    const instance = FakeEventSource.instances[0];
+
+    act(() => {
+      instance.emit('snapshot', { scheduler: {}, at: '2026-01-01T00:00:00.000Z' });
+    });
     expect(pollForDataChanges).not.toHaveBeenCalled();
+
+    act(() => {
+      instance.emit('snapshot', { scheduler: {}, at: '2026-01-01T00:01:00.000Z' });
+    });
+    expect(pollForDataChanges).toHaveBeenCalledTimes(1);
   });
 
   test('onerror while CONNECTING marks the connection reconnecting without opening a new EventSource', () => {

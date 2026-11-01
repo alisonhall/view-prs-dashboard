@@ -97,10 +97,40 @@ describe("the live summary laid over the rows", () => {
     expect(data.checkState).toBe("PASS");
     expect(data.titleDisplay).toBe("Add widgets [CHK:PASS][MRG:YES]");
     expect(data.live).toEqual({ updatedAt: "2026-10-31T08:00:00Z", detailsBehind: false, stillOpen: true });
-    // When the repo was listed is in the data meta.
+    // When the repo was listed is in the data meta, with how often it's
+    // listed (none: no quick check registered for it).
     expect(getViewPrsDataMeta().liveSummary).toEqual({
-      "acme/api": { checkedAt: "2026-10-31T10:00:00.000Z", complete: false, lastError: null, lastErrorAt: null },
+      "acme/api": {
+        checkedAt: "2026-10-31T10:00:00.000Z",
+        complete: false,
+        lastError: null,
+        lastErrorAt: null,
+        quickCheckIntervalMs: null,
+      },
     });
+  });
+
+  test("the data meta gives each listed repo its quick check's interval", () => {
+    const savedDispatcher = viewPrsSchedulerState.dispatcher;
+    try {
+      viewPrsSchedulerState.dispatcher = {
+        entries: { "acme/api::quickCheck": { repo: "acme/api", taskType: "quickCheck", intervalMs: 120000 } },
+        reservedGhSlots: 0,
+      };
+      writeLiveSummary("PASS");
+      expect(getViewPrsDataMeta().liveSummary["acme/api"].quickCheckIntervalMs).toBe(120000);
+    } finally {
+      viewPrsSchedulerState.dispatcher = savedDispatcher;
+    }
+  });
+
+  test("a row whose CI a run fetched after the listing keeps that CI", () => {
+    const data = JSON.parse(fs.readFileSync(dataFile, "utf8"));
+    data.byPrNumber["12"].fetchedAt = "2026-10-31T09:00:00Z";
+    data.byPrNumber["12"].ciFetchedAt = "2026-10-31T10:02:00Z";
+    fs.writeFileSync(dataFile, JSON.stringify(data));
+    writeLiveSummary("PASS");
+    expect(readViewPrsData().byPrNumber["12"].data.checkState).toBe("RUN");
   });
 
   test("the data version the page polls changes with a new listing and with a newly queued PR", () => {

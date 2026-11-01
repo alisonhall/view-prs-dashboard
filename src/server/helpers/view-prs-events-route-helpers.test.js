@@ -1,5 +1,6 @@
 const {
   createViewPrsEventsRouteHelpers,
+  createDataVersionWatcher,
   formatSseFrame,
   formatSseComment,
   SSE_RESPONSE_HEADERS,
@@ -72,6 +73,97 @@ describe("View Prs Events Route Helpers", () => {
 
       // Assert
       expect(payload.scheduler).toBeNull();
+    });
+  });
+
+  describe("Given createDataVersionWatcher", () => {
+    const buildWatcher = (versions) => {
+      let version = versions[0];
+      const timers = [];
+      const emitDataChanged = jest.fn();
+      const watcher = createDataVersionWatcher({
+        getDataVersion: () => {
+          if (version instanceof Error) throw version;
+          return version;
+        },
+        emitDataChanged,
+        intervalMs: 1000,
+        setIntervalFn: (fn, ms) => {
+          const timer = { fn, ms, cleared: false };
+          timers.push(timer);
+          return timer;
+        },
+        clearIntervalFn: (timer) => {
+          timer.cleared = true;
+        },
+        console: { error: jest.fn() },
+      });
+      return {
+        watcher,
+        emitDataChanged,
+        timers,
+        setVersion: (next) => {
+          version = next;
+        },
+      };
+    };
+
+    test("When the version moves while a page is connected, Then it pushes data-changed once per move", () => {
+      const { watcher, emitDataChanged, timers, setVersion } = buildWatcher(["v1"]);
+      watcher.retain();
+      expect(timers).toHaveLength(1);
+      expect(timers[0].ms).toBe(1000);
+
+      watcher.check();
+      expect(emitDataChanged).not.toHaveBeenCalled();
+      setVersion("v2");
+      watcher.check();
+      watcher.check();
+      expect(emitDataChanged).toHaveBeenCalledTimes(1);
+      expect(emitDataChanged).toHaveBeenCalledWith({ dataVersion: "v2" });
+    });
+
+    test("When pages connect and leave, Then one timer runs while any is connected", () => {
+      const { watcher, timers } = buildWatcher(["v1"]);
+      watcher.retain();
+      watcher.retain();
+      expect(timers).toHaveLength(1);
+      watcher.release();
+      expect(watcher.isRunning()).toBe(true);
+      watcher.release();
+      expect(watcher.isRunning()).toBe(false);
+      expect(timers[0].cleared).toBe(true);
+      // Extra releases don't go negative: the next connection starts it again.
+      watcher.release();
+      watcher.retain();
+      expect(timers).toHaveLength(2);
+    });
+
+    test("When a page reconnects after none were, Then it starts from the version then", () => {
+      const { watcher, emitDataChanged, setVersion } = buildWatcher(["v1"]);
+      watcher.retain();
+      watcher.release();
+      setVersion("v2");
+      watcher.retain();
+      watcher.check();
+      expect(emitDataChanged).not.toHaveBeenCalled();
+    });
+
+    test("When the version can't be read, Then nothing is pushed until it can, and compared then", () => {
+      const { watcher, emitDataChanged, setVersion } = buildWatcher(["v1"]);
+      watcher.retain();
+      setVersion(new Error("disk"));
+      watcher.check();
+      expect(emitDataChanged).not.toHaveBeenCalled();
+      setVersion("v2");
+      watcher.check();
+      expect(emitDataChanged).toHaveBeenCalledWith({ dataVersion: "v2" });
+    });
+
+    test("When it isn't given both functions, Then it never starts", () => {
+      const watcher = createDataVersionWatcher({ getDataVersion: () => "v1" });
+      watcher.retain();
+      expect(watcher.isRunning()).toBe(false);
     });
   });
 });

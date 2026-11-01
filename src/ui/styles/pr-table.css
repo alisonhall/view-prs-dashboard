@@ -521,6 +521,11 @@
   text-decoration: underline dotted;
 }
 
+/* From the row's details, which are behind GitHub until its refresh runs */
+.pr-activity[data-details-behind="true"] {
+  opacity: 0.6;
+}
+
 /* "Author 2d", and under it "You 5d" */
 .pr-activity-line {
   display: block;

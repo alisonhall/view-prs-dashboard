@@ -264,6 +264,15 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
     Number.parseInt(env.VIEW_PRS_EVENTS_MAX_CLIENTS || "25", 10) || 25,
   );
 
+  // How often, while a page is connected to the event stream, the server
+  // checks the data version (the data file, the live summary, the update
+  // queue) and pushes "data-changed" when it moved - so a script run's rows
+  // and each quick check's listing reach the page without its poll.
+  const viewPrsEventsDataWatchIntervalMs = Math.max(
+    500,
+    Number.parseInt(env.VIEW_PRS_EVENTS_DATA_WATCH_INTERVAL_MS || "3000", 10) || 3000,
+  );
+
   // Caps how often the job-events emitter will push a job-agnostic
   // "scheduler" SSE frame (activePrNumbers progress) - incrementActivePrNumber/
   // decrementActivePrNumber fire roughly twice per PR touched by a refresh,
@@ -383,6 +392,7 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
     viewPrsAckTotalRefreshTimeoutMs,
     viewPrsEventsHeartbeatIntervalMs,
     viewPrsEventsMaxClients,
+    viewPrsEventsDataWatchIntervalMs,
     viewPrsSchedulerStateThrottleMs,
     viewPrsBackfillStatusTimeoutMs,
     viewPrsBackfillActionTimeoutMs,

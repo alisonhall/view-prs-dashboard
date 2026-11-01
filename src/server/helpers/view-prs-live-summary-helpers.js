@@ -150,10 +150,11 @@ const normalizeLiveSummaryPr = (node = {}) => {
 };
 
 // The row's data fields this summary replaces, when it's newer than the
-// row's full refresh.
-const overlayLiveSummaryFields = (data = {}, summary) => {
-  const checkState = summary.checkState;
-  const mergeState = summary.mergeState || asString(data.mergeState) || "UNK";
+// row's full refresh. CI and mergeability only with `includeCi`: a run that
+// reused the row fetched those again (ciFetchedAt), after this listing.
+const overlayLiveSummaryFields = (data = {}, summary, { includeCi = true } = {}) => {
+  const checkState = includeCi ? summary.checkState : asString(data.checkState) || "UNK";
+  const mergeState = (includeCi && summary.mergeState) || asString(data.mergeState) || "UNK";
   const next = {
     ...data,
     title: summary.title || data.title,
@@ -193,7 +194,9 @@ const overlayLiveSummaryFields = (data = {}, summary) => {
 // The summary's values replace the row's only when listed after the row
 // was written (`fetchedAt`, from the script; `updatedAt`, the run's start,
 // for rows written before it had one) - a newer full refresh is just as
-// current, and more complete.
+// current, and more complete. CI and mergeability only when listed after
+// the script last fetched them (`ciFetchedAt`: a run that reuses an open
+// row still fetches its CI, without moving `fetchedAt`).
 const applyLiveSummaryToEntry = (entry, repoSummary) => {
   if (!entry || typeof entry !== "object" || !repoSummary || !repoSummary.checkedAt) {
     return entry;
@@ -223,10 +226,11 @@ const applyLiveSummaryToEntry = (entry, repoSummary) => {
   if (!isNewer) {
     return { ...entry, data: { ...data, live } };
   }
+  const includeCi = checkedAtMs > toMs(entry.ciFetchedAt || entry.fetchedAt || entry.updatedAt);
   return {
     ...entry,
     section: summary.isDraft ? "draft" : "open",
-    data: { ...overlayLiveSummaryFields(data, summary), live },
+    data: { ...overlayLiveSummaryFields(data, summary, { includeCi }), live },
   };
 };
 

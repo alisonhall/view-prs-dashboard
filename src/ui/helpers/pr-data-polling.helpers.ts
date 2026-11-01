@@ -67,11 +67,14 @@ const computePrDataManifest = (payload: PrDataPayload | null | undefined): PrMan
     .forEach((prNumber) => {
       const entry = byPrNumber[prNumber] || {};
       manifest[prNumber] = {
+        // As the server's computeViewPrsRowVersion (view-prs-data-helpers.js).
         rowVersion: JSON.stringify({
           prNumber,
           repo: entry?.repo || "",
           section: entry?.section || "",
           updatedAt: entry?.updatedAt || "",
+          fetchedAt: entry?.fetchedAt || "",
+          ciFetchedAt: entry?.ciFetchedAt || "",
           notes: entry?.notes || null,
           data: entry?.data || null,
         }),

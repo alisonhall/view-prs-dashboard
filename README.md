@@ -258,7 +258,7 @@ A full run (not a run of chosen PRs, or one that acks) reuses a stored row as it
 - complete (every field a row has);
 - for an **open/draft** PR, fetched in full within `VIEW_PRS_OPEN_REVALIDATE_SECONDS` (default 14400, 4 hours), since CI, mergeability, viewed files and resolved threads change without moving `updatedAt`. A **merged/closed** PR's row is reused for as long as the PR doesn't change.
 
-A reused row still takes the listing's title, URL, labels and size, and a reused open/draft row this run's CI and mergeability (one call each). It keeps its `fetchedAt` - it wasn't fetched - so the live summary (see the automatic background refresh) keeps its CI, mergeability, viewed files and open threads current in between. A merged/closed PR that has changed is fetched without its viewed files when its stored row was already merged/closed: those counts stand. Its first row after merging or closing fetches them, since files pushed or viewed after the open row was fetched would otherwise never be counted.
+A reused row still takes the listing's title, URL, labels and size, and a reused open/draft row this run's CI and mergeability (one call each). It keeps its `fetchedAt` - it wasn't fetched - so the live summary (see the automatic background refresh) keeps its viewed files and open threads current in between, and its CI and mergeability once listed after this run fetched them (`ciFetchedAt`). A merged/closed PR that has changed is fetched without its viewed files when its stored row was already merged/closed: those counts stand. Its first row after merging or closing fetches them, since files pushed or viewed after the open row was fetched would otherwise never be counted.
 
 `VIEW_PRS_SKIP_UNCHANGED=0` fetches every PR in full. A `Run script` from Settings always does.
 
@@ -417,25 +417,26 @@ When localhost is running, the server starts an automatic background refresh for
   - The defaults and the checked repos come from `GET /view-prs/dispatcher/settings`. The Activity popover's "Dispatcher queue" section shows each task's effective priority. All of the above - and every repo configured - shares one global ceiling on concurrent `gh` processes (`VIEW_PRS_DISPATCHER_GH_PROCESS_BUDGET`, default `8`), so a burst of due work across many repos degrades gracefully (spilling into the next ~5s tick, `VIEW_PRS_DISPATCHER_TICK_INTERVAL_MS`) instead of spawning unboundedly many `gh` calls at once.
 - On successful full refresh, `check-open-pr-updates.data.json` is updated and the UI detects the new run and rerenders automatically.
 - While a run is in progress, PR rows currently being refreshed show a small spinner beside the PR number link without forcing a full table rerender.
-- A PR flagged by the quick check but not yet picked up by a full refresh shows an `Update queued` badge in its STATUS cell.
+- A PR flagged by the quick check but not yet picked up by a full refresh shows `Details updating` under its title (see [Freshness](#freshness)).
 - During long runs, open/draft PR indicators and data refreshes are intentionally prioritized ahead of closed/merged work so the most actionable rows settle first.
 - When auto refresh includes multiple repos, refreshes run with bounded repo concurrency (default `2`), configurable via `VIEW_PRS_AUTO_REPO_CONCURRENCY`.
 - A merged PR's diff is fetched once and never re-fetched afterward - the diff cache fingerprint for merged PRs depends only on the (immutable) commit set, not on `updatedAt`, so later metadata-only changes (a new comment, a label edit) never trigger a redundant diff re-download.
 
 An **Activity** button in the app header (with a count of running jobs and queued bulk chunks) opens a popover under it showing all of this background activity in one place. Esc, its close button, a click or Tab outside it, or scrolling the page closes it:
 
-- **Scheduled background jobs** (auto refresh, quick check, merged/closed drain) - pushed live over Server-Sent-Events (`GET /view-prs/events`), not polled. Per-job-type status (running/idle, last result), not ordering - a quick check that's blocked by an in-progress auto refresh shows "Waiting on auto refresh" rather than a queue position. Any PRs quick-check has flagged as changed but the merged/closed drain hasn't picked up yet show as "Update queued" on that row.
+- **Scheduled background jobs** (auto refresh, quick check, merged/closed drain) - pushed live over Server-Sent-Events (`GET /view-prs/events`), not polled. Per-job-type status (running/idle, last result), not ordering - a quick check that's blocked by an in-progress auto refresh shows "Waiting on auto refresh" rather than a queue position. Any PRs quick-check has flagged as changed but the merged/closed drain hasn't picked up yet show as "Details updating" on that row.
 - **Dispatcher queue** - the per-repo-aware dispatcher's own real, ordered task list (one entry per repo per job type), shown in the exact order it'll actually run: running first, then due (highest priority first), then scheduled (soonest first). Also where each repo's effective priority/cadence (including any `schedulerRepoConfig` override) is visible.
 - **Backfill** and **in-flight requests from this browser tab** - both still polled (every 5s and 1s respectively), shown in the popover as-is.
 - **Bulk Ack/Clear or Apply-label queue** - the other real ordered queue: a batch larger than 5 PRs is split into chunks run a few at a time, and the popover shows each chunk's real position and outcome (including a chunk that failed, distinct from one that succeeded).
 - If the live connection drops, the popover shows its own status (reconnecting/offline).
 
-The 30s PR-data poll itself isn't fully retired - it's the only mechanism that catches a change made from a *different* browser tab or user, which has no push hook. But ack, apply-label, a manual "Run script", and "Request more merged PRs" each push a lightweight signal the moment they've actually written data, so every other open tab refreshes immediately instead of waiting out that poll's own interval; it remains as a slower fallback for anything outside those four actions.
+PR data changes are pushed too. While a page is connected, the server checks the data version (the data file, the live summary and the update queue) every few seconds and sends a `data-changed` event when it moved, so a script run's rows, each quick check's listing and the PRs it queues reach the page within seconds; ack, apply-label, a manual "Run script" and "Request more merged PRs" also send one the moment they've written. The page then fetches only the changed rows (one fetch at a time, however many events arrive), and again after reconnecting. Its PR-data poll stays as a safety net: every 5 minutes while the connection is open, every 30s while it isn't. (Before 2026-11-01 only those four actions pushed, and the page otherwise polled every 30s.)
 
 Optional tuning via env vars:
 
 - `VIEW_PRS_EVENTS_HEARTBEAT_INTERVAL_MS` (default `25000`): how often a keep-alive comment is written to an idle `/view-prs/events` connection.
 - `VIEW_PRS_EVENTS_MAX_CLIENTS` (default `25`): how many concurrent `/view-prs/events` connections are accepted before a further one gets a 503.
+- `VIEW_PRS_EVENTS_DATA_WATCH_INTERVAL_MS` (default `3000`, at least `500`): how often the server checks the data version for `data-changed` while a page is connected. It doesn't check while none is.
 - `VIEW_PRS_SCHEDULER_STATE_THROTTLE_MS` (default `250`): caps how often a per-PR progress update (during a refresh) actually pushes an SSE frame - set to `0` to disable throttling entirely.
 - `VIEW_PRS_DISPATCHER_GH_PROCESS_BUDGET` (default `8`): the dispatcher's single ceiling on total concurrent `gh` processes across every repo/job-type it runs at once.
 - `VIEW_PRS_DISPATCHER_TICK_INTERVAL_MS` (default `5000`): how often the dispatcher re-checks what's due. An urgency bump (a quick check finding a real change) isn't affected by this - it triggers an immediate tick regardless.
@@ -685,7 +686,7 @@ Scope mode behavior:
 
 Insights behavior notes:
 
-- The app header shows the app's name and the repo the table shows (or how many, when the stored rows span several - the list on hover), the views (`Pull requests`, `Review stats`, `Authors`; ←/→ move between them), the latest action's result (a row's Ack, a run, a backfill... - its first line, all of it on hover and in Settings › Run & check), how long ago the data was updated (`Updated 5m ago`, the exact time on hover, marked once it's a day old), `Quick check all`, `Activity` (see below), `Settings` and a link to this README.
+- The app header shows the app's name and the repo the table shows (or how many, when the stored rows span several - the list on hover), the views (`Pull requests`, `Review stats`, `Authors`; ←/→ move between them), the latest action's result (a row's Ack, a run, a backfill... - its first line, all of it on hover and in Settings › Run & check), how long since the repos were checked (`Checked 3m ago`, each repo and the last run on hover, marked when one is stale or failing - see [Freshness](#freshness); `Updated 5m ago`, from the last run, before any repo has been checked), `Quick check all`, `Activity` (see below), `Settings` and a link to this README.
 - A row's chevron (`Show summary for PR #N`) opens a short summary under it: why it needs attention with a status line (checks, conflicts, approvals, viewed files), the three latest activity events, and the two most recently active open conversations. Any number of rows can be open at once.
 - The detail pane, docked to the right of the table, shows the selected PR: a header (title and GitHub link, author, branch with a copy button, previous/next, and close - which hides the pane until a row is clicked), its actions (Update, Ack, In review, Flagged, Add label, JSON), and tabs - Overview (grouped as Review / People / Changes, with Approval risk and Data freshness collapsible), Activity, Conversations (with the open count) and Notes (marked while unsaved), plus Custom insights when the insights hook returns something. The last tab picked stays for the next PR.
   - Select a PR by clicking anywhere on its row that isn't a control (clicking the PR in the pane again closes the pane, like its close button; a click also shows the pane if it was hidden), with ↑/↓ while focus is in the table, or with its summary's `Show details`. Esc clears the selection.
@@ -792,7 +793,7 @@ The UI includes:
 - per-row Notes editor saved to `check-open-pr-updates.user-state.json` via `POST /view-prs/notes`
   - note `createdAt`/`updatedAt` values are normalized to UTC second precision (`YYYY-MM-DDTHH:mm:ssZ`) so persisted user-state remains schema-valid
 - The `Authors` view's manual comments editor, saved to `check-open-pr-updates.author-comments.json` via `GET/POST/PUT /view-prs/author-comments`
-- PR-number-column relative `↻ ... ago` indicators are based on the latest successfully rendered run timestamp (`lastRun.updatedAt`), not per-row stale timestamps.
+- how current each row is, and when each repo was last checked (see [Freshness](#freshness))
 - `YOUR LAST ACTIVITY` / `MERGED AT` date cells show five small gray indicator boxes per row for saved notes fields (custom comments, other notes, PR difficulty, stories, analysis); boxes are filled when data exists and outlined when empty, and the difficulty box displays the saved numeric level when present
 - per-row `View PR JSON details` modal with four expanded-by-default sections:
   - `Data File Entry`
@@ -960,7 +961,22 @@ The Activity column shows how long ago, in two short lines:
 - **Author**: the PR author's last activity - their latest event in the PR's activity (a commit, comment, review...), the same events the detail pane's Activity tab lists. `–` when none is recorded.
 - **You**: your own last activity on the PR (the `baseline` field), shown only when you have any.
 
-The tooltip has both exact times, when the PR merged or closed, and when it was last checked for updates. The ages are underlined (dotted) when an open PR's last check is stale.
+The tooltip has both exact times, when the PR merged or closed, and how current the row is (see [Freshness](#freshness)). The ages are underlined (dotted) when an open PR is stale, and dimmed while its details are behind GitHub.
+
+### Freshness
+
+An open or draft PR's row has two ages, both in its Activity tooltip:
+
+- **Summary confirmed**: what the collapsed row shows - title, labels, size, CI, mergeability, viewed files, open conversations - as of its repo's latest live summary (the listing with each quick check, every 5 minutes by default), or the last run that refreshed it when that's newer or the PR wasn't listed: a full fetch, or a full run that reused the row (it takes the listing's title, labels and size and fetches the CI).
+- **Details fetched**: reviews, approvals and activity, from its last full fetch (`fetchedAt`).
+
+It's **stale** - the Activity ages underlined (dotted), "Stale" in the tooltip - when its summary hasn't been confirmed for about two of its repo's quick-check intervals (plus a minute), or its repo's last listing failed. A repo with no background updates isn't checked, so its rows say `Not checked automatically` instead of going stale. Merged and closed rows only change when GitHub says they did, so they're never stale; their tooltip has when their details were fetched.
+
+While GitHub has activity newer than the row's details, or the quick check has queued the PR, the row shows `Details updating` under its title and its Activity ages are dimmed: its summary is current, its reviews, approvals and activity update when the queued refresh runs. A PR that a complete listing no longer has (merged or closed since) shows `No longer open` until its refresh moves it.
+
+The header's status pill says how long since the repos shown were checked (`Checked 3m ago`, the least recently checked one), with each repo's time - or its failure - and the last run on hover; it takes the attention tone when a repo is stale or failing. A repo with no background updates (an old listing from when it had them) is listed as not checked automatically, and doesn't count. Before any repo has been listed, it shows the last run (`Updated 5m ago`).
+
+An automatic update says so in the header's status line once per new run (`Auto-updated from latest run at ...`); other pushed changes, which come every few seconds during a run, leave the status line with the result of your last action.
 
 ## Troubleshooting
 

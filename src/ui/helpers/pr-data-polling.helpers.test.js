@@ -115,6 +115,22 @@ describe("pr data polling helpers", () => {
     });
   });
 
+  // The page falls back to its own manifest as the previous one, so it must
+  // match the server's, or every row reads as changed.
+  test("computePrDataManifest's row versions match the server's", () => {
+    const { computeViewPrsRowVersion } = require("../../server/helpers/view-prs-data-helpers.js");
+    const entry = {
+      repo: "owner/repo",
+      section: "open",
+      updatedAt: "2026-06-01T10:00:00Z",
+      fetchedAt: "2026-06-01T10:01:00Z",
+      ciFetchedAt: "2026-06-01T10:02:00Z",
+      notes: { otherNotes: "x" },
+      data: { labels: ["a"] },
+    };
+    expect(computePrDataManifest({ byPrNumber: { 5: entry } })["5"].rowVersion).toBe(computeViewPrsRowVersion(entry, "5"));
+  });
+
   test("computePrDataManifest returns an empty manifest for missing payload data", () => {
     expect(computePrDataManifest(null)).toEqual({});
     expect(computePrDataManifest({ byPrNumber: null })).toEqual({});

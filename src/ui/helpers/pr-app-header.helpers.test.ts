@@ -30,13 +30,13 @@ describe('describeLastUpdate', () => {
 
 describe('describeRepos', () => {
   test('one repo by name; several as a count with the list for the tooltip', () => {
-    expect(describeRepos([{ repo: 'o/a' }, { repo: 'o/a' }])).toEqual({ label: 'o/a', title: '' });
-    expect(describeRepos([{ repo: 'o/b' }, { repo: 'o/a' }, { repo: ' o/b ' }])).toEqual({ label: '2 repos', title: 'o/a, o/b' });
+    expect(describeRepos([{ repo: 'o/a' }, { repo: 'o/a' }])).toEqual({ label: 'o/a', title: '', all: ['o/a'] });
+    expect(describeRepos([{ repo: 'o/b' }, { repo: 'o/a' }, { repo: ' o/b ' }])).toEqual({ label: '2 repos', title: 'o/a, o/b', all: ['o/a', 'o/b'] });
   });
 
   test('without rows naming one, the repo being run', () => {
-    expect(describeRepos([], 'o/run')).toEqual({ label: 'o/run', title: '' });
-    expect(describeRepos([{ repo: '' }, {}], ' o/run ')).toEqual({ label: 'o/run', title: '' });
-    expect(describeRepos([])).toEqual({ label: '', title: '' });
+    expect(describeRepos([], 'o/run')).toEqual({ label: 'o/run', title: '', all: ['o/run'] });
+    expect(describeRepos([{ repo: '' }, {}], ' o/run ')).toEqual({ label: 'o/run', title: '', all: ['o/run'] });
+    expect(describeRepos([])).toEqual({ label: '', title: '', all: [] });
   });
 });

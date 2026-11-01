@@ -437,12 +437,17 @@ const buildGitDiffOnlyMergedEntry = (
   };
 };
 
+// The page's row freshness reads fetchedAt/ciFetchedAt, which a run of
+// chosen PRs can move without changing anything else (it keeps updatedAt).
+// Mirrored by the page's computePrDataManifest (pr-data-polling.helpers.ts).
 const computeViewPrsRowVersion = (entry = {}, prNumber = "") =>
   JSON.stringify({
     prNumber: String(prNumber || ""),
     repo: String(entry?.repo || ""),
     section: String(entry?.section || ""),
     updatedAt: String(entry?.updatedAt || ""),
+    fetchedAt: String(entry?.fetchedAt || ""),
+    ciFetchedAt: String(entry?.ciFetchedAt || ""),
     notes: entry?.notes || null,
     data: entry?.data || null,
   });

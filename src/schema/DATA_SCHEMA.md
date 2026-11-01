@@ -66,6 +66,7 @@ Each `byPrNumber[prNumber]` value is an object with this shape:
 | `section` | string | yes | retrieval | One of `open`, `draft`, `merged` |
 | `updatedAt` | string | yes | retrieval | Run timestamp (the run's start, the same for every row it writes). A run of chosen PRs (`-p/--pr`, `--prs`) keeps an existing row's, and gives a row it adds `lastFullRun`'s, so it marks the last full run's rows (`Last run rows`) |
 | `fetchedAt` | string | no | retrieval | When this row's details were last fetched from GitHub (ISO-8601 UTC); missing on rows written before 2026-10-31. A full run that reuses the row unchanged keeps it; an open/draft row is fetched again once it's `VIEW_PRS_OPEN_REVALIDATE_SECONDS` old. The live summary only replaces a row's values when listed after this (or after `updatedAt` without it) |
+| `ciFetchedAt` | string | no | retrieval | When this row's CI and mergeability were last fetched: as `fetchedAt` for a fetched row, and moved on by a full run that reuses an open row (which still fetches its CI); missing on rows written before 2026-11-01. The live summary only replaces `checkState`/`mergeState` when listed after this |
 | `rowOrder` | number | yes | retrieval | Preserved across later upserts once first set |
 | `data` | object | yes | retrieval | Current PR snapshot and derived metrics |
 
@@ -429,9 +430,9 @@ All count fields are numbers.
 ```
 
 - `checkedAt` is the last successful listing; a failed one keeps the previous `prs` and sets `lastError`/`lastErrorAt`. `complete` is false when the listing stopped at its page limit (500 PRs) before the last open PR.
-- Each repo's `checkedAt`, `complete`, `lastError` and `lastErrorAt` are also in the data meta (`dataMeta.liveSummary`, from `/view-prs/data-meta` and with the data), rather than on each row, so a listing that changes nothing for a row leaves that row unchanged.
+- Each repo's `checkedAt`, `complete`, `lastError` and `lastErrorAt` are also in the data meta (`dataMeta.liveSummary`, from `/view-prs/data-meta` and with the data), rather than on each row, so a listing that changes nothing for a row leaves that row unchanged. The data meta adds `quickCheckIntervalMs`: the repo's quick-check interval (its `schedulerRepoConfig` override or the default), `null` when it has no quick check scheduled (its rows then read as not checked automatically, rather than stale). The page marks an open row stale from it (see README's freshness).
 - Values use the data file's shapes. `viewedFiles` and `openConversationCount` are `null` when the listing's first page of files or threads didn't hold them all (or, for conversations, the PR has no threads, where the script estimates from comments); `mergeState` is `null` while GitHub reports `UNKNOWN`. A `null` leaves the row's own value.
-- When `checkedAt` is newer than the row's `fetchedAt` (or `updatedAt` without it), these replace the row's `title`, `url`, `labels`, `additions`, `deletions`, `changedFilesCount`, `viewedFilesCount`, `viewedFilesSummary`, `checkState`, `mergeState`, `titleDisplay`, `assignees`, `requestedReviewers` and `openConversationCount`, and `isDraft` sets the row's `section` (`open`/`draft`). Everything else comes only from a full refresh.
+- When `checkedAt` is newer than the row's `fetchedAt` (or `updatedAt` without it), these replace the row's `title`, `url`, `labels`, `additions`, `deletions`, `changedFilesCount`, `viewedFilesCount`, `viewedFilesSummary`, `checkState`, `mergeState`, `titleDisplay`, `assignees`, `requestedReviewers` and `openConversationCount`, and `isDraft` sets the row's `section` (`open`/`draft`) - except `checkState` and `mergeState` (and the markers in `titleDisplay`), which it only replaces when also newer than the row's `ciFetchedAt`. Everything else comes only from a full refresh.
 
 An open/draft row of a listed repo gets `data.live`:
 

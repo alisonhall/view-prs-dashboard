@@ -22,6 +22,7 @@ import { useStableCallback } from '../state/useStableCallback';
 import { useAckLabelActions } from '../state/useAckLabelActions';
 import { usePrTableUiState, type SelectedPr } from '../state/PrTableUiStateContext';
 import { NowProvider } from '../state/NowContext';
+import { readDefaultQuickCheckIntervalMs, RepoFreshnessProvider } from '../state/RepoFreshnessContext';
 import { useNotesDirty } from '../state/NotesDirtyContext';
 import { useMediaQuery } from '../state/useMediaQuery';
 import { usePrSectionPreferences } from '../state/PrSectionPreferencesProvider';
@@ -1063,74 +1064,81 @@ export function PrTableApp() {
   const paneAckedAt = selectedPr ? String(payload?.ackByRepo?.[selectedPr.repo]?.[selectedPr.prNumber] || '') : '';
 
   // NowProvider: one clock for the rows' relative times (Activity ages).
+  // RepoFreshnessProvider: each repo's listing state, for the rows'
+  // freshness.
   return (
     <NowProvider>
-      <div className="pr-workspace-toolbar">
-        <Button icon="panel" pressed={isPaneVisible} onClick={handleTogglePane}>
-          Detail pane
-        </Button>
-      </div>
-      <div ref={workspaceRef} className="pr-workspace" data-pane={isPaneDocked ? 'docked' : undefined}>
-        <div className="pr-workspace-list">
-          {sections.length === 0 && (
-            <div className="pr-sections-all-hidden">
-              <p>Every section is hidden.</p>
-              <Button onClick={() => settingsDrawer.open('appearance')}>Choose sections to show</Button>
-            </div>
-          )}
-          {sections.map((section) => (
-            <PrSection
-              key={section.key}
-              section={section}
+      <RepoFreshnessProvider
+        liveSummary={payload?.dataMeta?.liveSummary}
+        defaultIntervalMs={readDefaultQuickCheckIntervalMs(payload?.scheduler)}
+      >
+        <div className="pr-workspace-toolbar">
+          <Button icon="panel" pressed={isPaneVisible} onClick={handleTogglePane}>
+            Detail pane
+          </Button>
+        </div>
+        <div ref={workspaceRef} className="pr-workspace" data-pane={isPaneDocked ? 'docked' : undefined}>
+          <div className="pr-workspace-list">
+            {sections.length === 0 && (
+              <div className="pr-sections-all-hidden">
+                <p>Every section is hidden.</p>
+                <Button onClick={() => settingsDrawer.open('appearance')}>Choose sections to show</Button>
+              </div>
+            )}
+            {sections.map((section) => (
+              <PrSection
+                key={section.key}
+                section={section}
+                repo={effectiveRepo}
+                actorsMap={actorsMap}
+                isOpen={isSectionOpen(section.key, Boolean(section.defaultOpen))}
+                expandedInsights={expandedInsights}
+                selectedPrKey={selectedPrKey}
+                onToggleSection={handleToggleSection}
+                onToggleInsights={handleToggleInsights}
+                onSelectRow={handleSelectRow}
+                onSelectPr={handleSelectPr}
+                onShowDetails={handleShowDetails}
+                onClearSelection={handleClearSelection}
+                onCheckboxChange={handleCheckboxChange}
+                onAckAction={handleAckActionBusy}
+                onApplyLabel={handleApplyLabelBusy}
+                onUpdatePr={handleUpdatePrBusy}
+                onViewJson={handleViewJson}
+                getPrFlags={getPrFlags}
+                getAttentionReasons={getAttentionReasons}
+                activePrNumbers={combinedActivePrNumbers}
+                queuedPrNumbers={combinedQueuedPrNumbers}
+              />
+            ))}
+          </div>
+          {isPaneVisible && (
+            <PrDetailPane
+              entry={selectedEntry}
               repo={effectiveRepo}
+              mode={paneMode}
               actorsMap={actorsMap}
-              isOpen={isSectionOpen(section.key, Boolean(section.defaultOpen))}
-              expandedInsights={expandedInsights}
-              selectedPrKey={selectedPrKey}
-              onToggleSection={handleToggleSection}
-              onToggleInsights={handleToggleInsights}
-              onSelectRow={handleSelectRow}
-              onSelectPr={handleSelectPr}
-              onShowDetails={handleShowDetails}
+              isFlagged={Boolean(paneFlags?.isFlagged)}
+              isInReview={Boolean(paneFlags?.isInReview)}
+              isAcknowledged={Boolean(paneFlags?.isAcknowledged)}
+              ackedAt={paneAckedAt}
+              tab={paneTab}
+              onTabChange={setPaneTab}
+              onPrevious={previousPr ? () => handleStepPr(previousPr) : undefined}
+              onNext={nextPr ? () => handleStepPr(nextPr) : undefined}
+              onClose={handleClosePane}
               onClearSelection={handleClearSelection}
               onCheckboxChange={handleCheckboxChange}
               onAckAction={handleAckActionBusy}
               onApplyLabel={handleApplyLabelBusy}
               onUpdatePr={handleUpdatePrBusy}
               onViewJson={handleViewJson}
-              getPrFlags={getPrFlags}
-              getAttentionReasons={getAttentionReasons}
-              activePrNumbers={combinedActivePrNumbers}
-              queuedPrNumbers={combinedQueuedPrNumbers}
+              onDataRefresh={setPayload}
             />
-          ))}
+          )}
         </div>
-        {isPaneVisible && (
-          <PrDetailPane
-            entry={selectedEntry}
-            repo={effectiveRepo}
-            mode={paneMode}
-            actorsMap={actorsMap}
-            isFlagged={Boolean(paneFlags?.isFlagged)}
-            isInReview={Boolean(paneFlags?.isInReview)}
-            isAcknowledged={Boolean(paneFlags?.isAcknowledged)}
-            ackedAt={paneAckedAt}
-            tab={paneTab}
-            onTabChange={setPaneTab}
-            onPrevious={previousPr ? () => handleStepPr(previousPr) : undefined}
-            onNext={nextPr ? () => handleStepPr(nextPr) : undefined}
-            onClose={handleClosePane}
-            onClearSelection={handleClearSelection}
-            onCheckboxChange={handleCheckboxChange}
-            onAckAction={handleAckActionBusy}
-            onApplyLabel={handleApplyLabelBusy}
-            onUpdatePr={handleUpdatePrBusy}
-            onViewJson={handleViewJson}
-            onDataRefresh={setPayload}
-          />
-        )}
-      </div>
-      <PrJsonModal target={jsonModalTarget} payload={payload} onClose={() => setJsonModalTarget(null)} />
+        <PrJsonModal target={jsonModalTarget} payload={payload} onClose={() => setJsonModalTarget(null)} />
+      </RepoFreshnessProvider>
     </NowProvider>
   );
 }

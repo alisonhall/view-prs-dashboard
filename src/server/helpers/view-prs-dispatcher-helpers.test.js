@@ -589,6 +589,20 @@ describe("View Prs Dispatcher Helpers", () => {
     });
   });
 
+  describe("Given getEntryIntervalMs", () => {
+    test("When the repo has an entry, Then it gives that entry's interval (its override, or the default)", () => {
+      schedulerRepoConfig = { "owner/repoA": { quickCheckIntervalMs: 120000 } };
+      helpers.getOrInitRegistry();
+      expect(helpers.getEntryIntervalMs("owner/repoA", "quickCheck")).toBe(120000);
+      expect(helpers.getEntryIntervalMs("owner/repoA", "autoRefresh")).toBe(DEFAULT_INTERVALS.autoRefresh);
+    });
+
+    test("When the repo has no entry, Then null, without creating the dispatcher state", () => {
+      expect(helpers.getEntryIntervalMs("owner/other", "quickCheck")).toBeNull();
+      expect(viewPrsSchedulerState.dispatcher).toBeUndefined();
+    });
+  });
+
   describe("Given getPublicStateFields", () => {
     test("When called, Then it bundles the derived isXInProgress/lastXAt fields and the dispatcherQueue snapshot in one object", () => {
       helpers = makeHelpers({

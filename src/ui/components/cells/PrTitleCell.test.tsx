@@ -131,15 +131,27 @@ describe('PrTitleCell', () => {
     expect(screen.getByText('2 pending comments')).toBeInTheDocument();
   });
 
-  test('shows "Update queued" when the server flagged a pending update', () => {
+  test('shows "Details updating" when the server queued the PR for update', () => {
     renderCell({ pr: { number: '101', title: 'Fix', updatePending: true } });
-    expect(screen.getByText('Update queued')).toBeInTheDocument();
+    expect(screen.getByText('Details updating')).toBeInTheDocument();
+  });
+
+  test('shows "Details updating" while the live summary has newer activity than the details', () => {
+    renderCell({ pr: { number: '101', title: 'Fix', live: { stillOpen: true, detailsBehind: true } } });
+    expect(screen.getByText('Details updating')).toBeInTheDocument();
+  });
+
+  test('shows "No longer open" when a complete listing no longer has the PR', () => {
+    renderCell({ pr: { number: '101', title: 'Fix', updatePending: true, live: { stillOpen: false } } });
+    expect(screen.getByText('No longer open')).toBeInTheDocument();
+    expect(screen.queryByText('Details updating')).not.toBeInTheDocument();
   });
 
   test('shows nothing extra for a plain PR', () => {
     renderCell();
     expect(screen.queryByText(/pending comment/)).not.toBeInTheDocument();
-    expect(screen.queryByText('Update queued')).not.toBeInTheDocument();
+    expect(screen.queryByText('Details updating')).not.toBeInTheDocument();
+    expect(screen.queryByText('No longer open')).not.toBeInTheDocument();
   });
 
   test('shows the PR refreshing, and active wins over queued', () => {

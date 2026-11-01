@@ -183,6 +183,10 @@ export interface PrData {
   // Set by the server (app.js) on a PR whose change was detected but whose
   // full details are still queued to refresh; not in the data file.
   updatePending?: boolean;
+  // Set by the server on an open/draft row its repo's live summary listed
+  // (or, complete, no longer lists); not in the data file (DATA_SCHEMA.md,
+  // live summary).
+  live?: PrLiveState;
   sourceBranch?: string;
   targetBranch?: string;
   // "YES" / "NO", and the approvals count as a digits-only string.
@@ -231,6 +235,18 @@ export interface PrData {
   changedFilesCount?: string | number;
 }
 
+// An open/draft row's place in its repo's latest live summary (the
+// server's GraphQL listing with each quick check).
+export interface PrLiveState {
+  // GitHub's updatedAt for the PR when listed.
+  updatedAt?: string;
+  // GitHub has activity the row's full refresh hasn't fetched yet.
+  detailsBehind?: boolean;
+  // false: a complete listing after the row's refresh didn't have it
+  // (merged or closed since).
+  stillOpen?: boolean;
+}
+
 // One entry of the data file's top-level `byPrNumber` map ($defs.byPrEntry):
 // the PR's data plus where it came from.
 export interface PrEntry {
@@ -239,6 +255,11 @@ export interface PrEntry {
   section?: "open" | "draft" | "closed" | "merged";
   updatedAt?: string;
   rowOrder?: number | string;
+  // When the script last fetched the row's details, and its CI and
+  // mergeability (a run reusing an unchanged open row fetches only those);
+  // missing on older rows.
+  fetchedAt?: string;
+  ciFetchedAt?: string;
   data?: PrData;
   // Copied from the user state onto the entry by the server when it builds
   // the /view-prs/data payload (app.js); not stored in the data file.
@@ -267,7 +288,7 @@ export interface PrDataPayload {
   // chosen PRs (a fast-follow, the refresh after an Ack) moves lastRun but
   // not this.
   lastFullRun?: LastRun | null;
-  dataMeta?: { dataVersion?: string } | null;
+  dataMeta?: PrDataMeta | null;
   scheduler?: unknown;
   // Login -> display name for every actor seen (ActorsMap).
   actorsMap?: Record<string, string | undefined>;
@@ -281,6 +302,22 @@ export interface PrDataPayload {
   ackByRepo?: PrFlagsByRepo;
   flaggedByRepo?: PrFlagsByRepo;
   inReviewByRepo?: PrFlagsByRepo;
+}
+
+// A repo's live summary state (dataMeta.liveSummary): when its open PRs
+// were last listed, the last failure, and how often it's listed (null when
+// it isn't checked in the background).
+export interface RepoLiveSummaryMeta {
+  checkedAt?: string | null;
+  complete?: boolean;
+  lastError?: string | null;
+  lastErrorAt?: string | null;
+  quickCheckIntervalMs?: number | null;
+}
+
+export interface PrDataMeta {
+  dataVersion?: string;
+  liveSummary?: Record<string, RepoLiveSummaryMeta | undefined>;
 }
 
 // What polling compares to find changed PRs: per PR, a version string of

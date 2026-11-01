@@ -35,6 +35,8 @@ export interface ReposShown {
   label: string;
   // Every repo, for the tooltip when there's more than one.
   title: string;
+  // Every repo, sorted (the one named when it's the fallback).
+  all: string[];
 }
 
 // The repos the table shows rows from: every stored row's, which can span
@@ -42,6 +44,7 @@ export interface ReposShown {
 // the repo being run (`fallbackRepo`).
 export const describeRepos = (entries: ReadonlyArray<{ repo?: string }>, fallbackRepo = ""): ReposShown => {
   const repos = Array.from(new Set(entries.map((entry) => String(entry?.repo || "").trim()).filter(Boolean))).sort();
-  if (repos.length > 1) return { label: `${repos.length} repos`, title: repos.join(", ") };
-  return { label: repos[0] ?? fallbackRepo.trim(), title: "" };
+  if (repos.length > 1) return { label: `${repos.length} repos`, title: repos.join(", "), all: repos };
+  const label = repos[0] ?? fallbackRepo.trim();
+  return { label, title: "", all: label ? [label] : [] };
 };

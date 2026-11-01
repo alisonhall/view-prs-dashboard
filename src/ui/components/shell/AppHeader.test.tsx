@@ -104,6 +104,38 @@ describe('AppHeader', () => {
       expect(screen.getByText('Updated 1d ago')).toHaveAttribute('data-tone', 'attention');
     });
 
+    test("once the repos shown are checked, says when (the least recent), each repo and the last run on hover", () => {
+      renderHeader({
+        ...loaded({ repo: 'o/a', updatedAt: minutesAgo(30) }),
+        byPrNumber: { 1: { repo: 'o/a', prNumber: '1' }, 2: { repo: 'o/b', prNumber: '2' } },
+        dataMeta: {
+          dataVersion: 'v1',
+          liveSummary: {
+            'o/a': { checkedAt: minutesAgo(1), quickCheckIntervalMs: 5 * 60_000 },
+            'o/b': { checkedAt: minutesAgo(3), quickCheckIntervalMs: 5 * 60_000 },
+          },
+        },
+      });
+      const pill = screen.getByText('Checked 3m ago');
+      expect(pill.getAttribute('title')?.split('\n')).toEqual([
+        expect.stringMatching(/^o\/a: checked 1m ago/),
+        expect.stringMatching(/^o\/b: checked 3m ago/),
+        expect.stringMatching(/^Last run 30m ago/),
+      ]);
+      expect(pill).not.toHaveAttribute('data-tone');
+    });
+
+    test("marks a repo whose check is failing", () => {
+      renderHeader({
+        ...loaded({ repo: 'o/a', updatedAt: minutesAgo(30) }),
+        byPrNumber: { 1: { repo: 'o/a', prNumber: '1' } },
+        dataMeta: { liveSummary: { 'o/a': { checkedAt: minutesAgo(2), lastError: 'rate limited', lastErrorAt: minutesAgo(1) } } },
+      });
+      const pill = screen.getByText('Checked 2m ago');
+      expect(pill).toHaveAttribute('data-tone', 'attention');
+      expect(pill).toHaveAttribute('title', expect.stringContaining('failing (rate limited)'));
+    });
+
     test('before the first load, and before any run', () => {
       const { unmount } = renderHeader({});
       expect(screen.getByText('Loading…')).toBeInTheDocument();

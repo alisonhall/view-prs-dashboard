@@ -383,6 +383,16 @@ const createViewPrsDispatcherHelpers = ({
   const isAnyEntryRunning = (taskType) =>
     getAllEntries().some((entry) => entry.taskType === taskType && entry.isRunning);
 
+  // A repo's interval for a task type, as its registry entry has it (its
+  // schedulerRepoConfig override, or the default); null when the repo has
+  // no entry - it isn't updated in the background. Read-only: it doesn't
+  // create the dispatcher state (initializeScheduler's migration checks for
+  // it).
+  const getEntryIntervalMs = (repo, taskType) => {
+    const entry = viewPrsSchedulerState.dispatcher?.entries?.[buildEntryKey(repo, taskType)];
+    return entry && Number.isFinite(entry.intervalMs) ? entry.intervalMs : null;
+  };
+
   const latestFinishedAtAcrossEntries = (taskType) => {
     let latestMs = null;
     getAllEntries().forEach((entry) => {
@@ -510,6 +520,7 @@ const createViewPrsDispatcherHelpers = ({
     isBumpedOnlyFor,
     getDispatcherQueueSnapshot,
     isAnyEntryRunning,
+    getEntryIntervalMs,
     latestFinishedAtAcrossEntries,
     getPublicStateFields,
     getRepoSettingsDefaults,
