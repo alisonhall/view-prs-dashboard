@@ -416,7 +416,30 @@ replace_state_file() {
   fi
 
   create_state_backup "$target_file" "$tag"
-  command mv -f "$tmp_file" "$target_file"
+  move_into_state_file "$tmp_file" "$target_file"
+}
+
+# A temp file beside a state file, named like the server's own
+# (view-prs-state-storage.js), so moving it over the file is a rename.
+state_file_tmp_path() {
+  printf '%s.tmp-%s-%s' "$1" "${BASHPID:-$$}" "$RANDOM"
+}
+
+# Replaces target_file with tmp_file in one step. mktemp's files are in the
+# system temp folder - often another drive (C: here, data on D:) - and a
+# move between drives copies over the file in place, where the server's
+# poll could read it half-written. Moved beside it first, then renamed.
+move_into_state_file() {
+  local tmp_file="$1"
+  local target_file="$2"
+  local staged
+
+  staged=$(state_file_tmp_path "$target_file")
+  if ! command mv -f "$tmp_file" "$staged"; then
+    rm -f "$tmp_file" "$staged" 2>/dev/null || true
+    return 1
+  fi
+  command mv -f "$staged" "$target_file"
 }
 
 list_state_backups() {
@@ -676,6 +699,12 @@ ensure_user_state_store() {
 ensure_pr_state_store() {
   [[ -f "$PR_STATE_FILE" ]] || printf '{"byPrNumber":{},"lastRun":null}' >"$PR_STATE_FILE"
 
+  # Rewritten (and backed up) only when there's something to fix - not with
+  # every quick check. A run that writes rows backs it up itself (main).
+  if jq -e '(.byPrNumber | type) == "object" and ([has("ackByRepo", "reverifyByRepo", "inReviewByRepo", "flaggedByRepo")] | any | not)' "$PR_STATE_FILE" >/dev/null 2>&1; then
+    return 0
+  fi
+
   local tmp
   tmp=$(mktemp)
   jq '.byPrNumber //= {} | del(.ackByRepo, .reverifyByRepo, .inReviewByRepo, .flaggedByRepo)' "$PR_STATE_FILE" >"$tmp"
@@ -896,10 +925,10 @@ with_user_state_lock() {
 upsert_pr_state_unlocked() {
   local row_json="$1"
   local section="$2"
-  local number tmp row_file
+  local tmp row_file
 
-  number=$(printf '%s' "$row_json" | jq -r '.number')
-  tmp=$(mktemp)
+  # Beside the data file, so replacing it is a rename (move_into_state_file).
+  tmp=$(state_file_tmp_path "$PR_STATE_FILE")
   row_file=$(mktemp)
   printf '%s' "$row_json" >"$row_file"
   # fetchedAt: when this row was written - updatedAt is the run's start for
@@ -917,10 +946,13 @@ upsert_pr_state_unlocked() {
   # adds takes the last full run's stamp too, so a new PR shows there
   # straight away. lastRun is every run's, for "updated N minutes ago".
   # (Data from before lastFullRun takes its lastRun as one.)
+  #
+  # Written straight over the file, without replace_state_file's backup and
+  # second parse: the run backed the file up once before its first row
+  # (main), and jq only succeeds with a whole document.
   local targeted=false
   is_targeted_run && targeted=true
-  jq \
-    --arg number "$number" \
+  if ! jq \
     --arg repo "$REPO" \
     --arg section "$section" \
     --arg updatedAt "$RUN_TS" \
@@ -928,9 +960,10 @@ upsert_pr_state_unlocked() {
     --argjson targeted "$targeted" \
     --slurpfile row_file "$row_file" \
     '
+      ($row_file[0] // {}) as $row |
+      ($row.number | tostring) as $number |
       .byPrNumber //= {} |
       (.byPrNumber[$number].updatedAt // (.lastFullRun // .lastRun).updatedAt // null) as $existingUpdatedAt |
-      ($row_file[0] // {}) as $row |
       .byPrNumber[$number] = (((.byPrNumber[$number] // {}) | del(.notes)) + {
         prNumber: $number,
         repo: $repo,
@@ -948,10 +981,13 @@ upsert_pr_state_unlocked() {
         repo: $repo,
         updatedAt: $updatedAt
       }
-    ' "$PR_STATE_FILE" >"$tmp"
+    ' "$PR_STATE_FILE" >"$tmp" || [[ ! -s "$tmp" ]]; then
+    rm -f "$row_file" "$tmp"
+    echo "Refusing to replace $PR_STATE_FILE: couldn't add row" >&2
+    return 1
+  fi
   rm -f "$row_file"
-
-  replace_state_file "$tmp" "$PR_STATE_FILE" 'pr-data'
+  command mv -f "$tmp" "$PR_STATE_FILE"
 }
 
 upsert_pr_state() {
@@ -1053,7 +1089,7 @@ prefetch_pr_details() {
   local numbers="$1"
   [[ -z "$numbers" ]] && return
 
-  printf '%s\n' "$numbers" | xargs -P "$JOBS" -I '{}' bash -c '
+  printf '%s\n' "$numbers" | xargs -P "$(prefetch_task_jobs)" -I '{}' bash -c '
     number="$1"
     repo="$2"
     cache_dir="$3"
@@ -1157,12 +1193,55 @@ fetch_quick_check_target_prs() {
   rm -rf "$scratch_dir"
 }
 
+# How many `gh` calls one prefetch task runs at once: --jobs shared among
+# the VIEW_PRS_PREFETCH_GROUP_CONCURRENCY tasks run together, so a group
+# runs about --jobs in all (the open/draft group and the merged/closed one
+# can overlap: about twice that). Not --jobs each - with every prefetch
+# working that was up to 36 at once, where the server budgets 4 a refresh.
+prefetch_task_jobs() {
+  local jobs="$JOBS"
+  local groups="$VIEW_PRS_PREFETCH_GROUP_CONCURRENCY"
+  [[ "$jobs" =~ ^[0-9]+$ ]] && ((jobs > 0)) || jobs=1
+  [[ "$groups" =~ ^[0-9]+$ ]] && ((groups > 0)) || groups=1
+  jobs=$((jobs / groups))
+  ((jobs < 1)) && jobs=1
+  printf '%s' "$jobs"
+}
+
+# Runs `fn number` for each number, prefetch_task_jobs at a time, each in a
+# background subshell, for the cache file it writes. A subshell has the
+# script's functions and variables; the `bash -c` these used to run under
+# xargs had neither, so they fetched nothing and every PR's was fetched one
+# at a time while its row was computed.
+run_for_each_number_in_parallel() {
+  local fn="$1"
+  local numbers="$2"
+  local max_parallel
+  local -a pids=()
+  local number pid
+
+  max_parallel=$(prefetch_task_jobs)
+
+  while IFS= read -r number; do
+    [[ -z "$number" ]] && continue
+    { "$fn" "$number" >/dev/null 2>&1 || true; } &
+    pids+=("$!")
+    if ((${#pids[@]} >= max_parallel)); then
+      wait "${pids[0]}"
+      pids=("${pids[@]:1}")
+    fi
+  done <<<"$numbers"
+
+  for pid in ${pids[@]+"${pids[@]}"}; do
+    wait "$pid"
+  done
+}
+
 prefetch_review_threads() {
   local numbers="$1"
   [[ -z "$numbers" ]] && return
 
-  printf '%s\n' "$numbers" | xargs -P "$JOBS" -I '{}' bash -c 'fetch_review_threads_json "{}" > /dev/null' _ '{}' 2>/dev/null &
-  wait
+  run_for_each_number_in_parallel fetch_review_threads_json "$numbers"
 }
 
 prefetch_review_comments() {
@@ -1170,8 +1249,7 @@ prefetch_review_comments() {
   [[ -z "$numbers" ]] && return
   [[ -z "$REVIEW_COMMENT_CACHE_DIR" ]] && return
 
-  printf '%s\n' "$numbers" | xargs -P "$JOBS" -I '{}' bash -c 'fetch_pr_review_comments_json "{}" > /dev/null' _ '{}' 2>/dev/null &
-  wait
+  run_for_each_number_in_parallel fetch_pr_review_comments_json "$numbers"
 }
 
 prefetch_review_urls() {
@@ -1179,16 +1257,14 @@ prefetch_review_urls() {
   [[ -z "$numbers" ]] && return
   [[ -z "$REVIEW_URL_CACHE_DIR" ]] && return
 
-  printf '%s\n' "$numbers" | xargs -P "$JOBS" -I '{}' bash -c 'fetch_pr_review_url_map_json "{}" > /dev/null' _ '{}' 2>/dev/null &
-  wait
+  run_for_each_number_in_parallel fetch_pr_review_url_map_json "$numbers"
 }
 
 prefetch_viewed_files_stats() {
   local numbers="$1"
   [[ -z "$numbers" ]] && return
 
-  printf '%s\n' "$numbers" | xargs -P "$JOBS" -I '{}' bash -c 'fetch_pr_viewed_files_stats_json "{}" > /dev/null' _ '{}' 2>/dev/null &
-  wait
+  run_for_each_number_in_parallel fetch_pr_viewed_files_stats_json "$numbers"
 }
 
 prefetch_ci_merge_stats() {
@@ -1196,7 +1272,7 @@ prefetch_ci_merge_stats() {
   [[ -z "$numbers" ]] && return
   [[ -z "$CI_MERGE_CACHE_DIR" ]] && return
 
-  printf '%s\n' "$numbers" | xargs -P "$JOBS" -I '{}' bash -c '
+  printf '%s\n' "$numbers" | xargs -P "$(prefetch_task_jobs)" -I '{}' bash -c '
     number="$1"
     repo="$2"
     cache_dir="$3"
@@ -2744,15 +2820,13 @@ print_row() {
   local pr_text pr_pad_len pr_spaces pr_display
   local status_display approved_display date_display
 
-  number=$(printf '%s' "$row_json" | jq -r '.number')
-  title=$(printf '%s' "$row_json" | jq -r '.title')
-  title_display=$(printf '%s' "$row_json" | jq -r '.titleDisplay // .title')
-  url=$(printf '%s' "$row_json" | jq -r '.url')
-  author=$(printf '%s' "$row_json" | jq -r '.author')
-  status=$(printf '%s' "$row_json" | jq -r '.status')
-  approved=$(printf '%s' "$row_json" | jq -r '.approved')
-  approval_count=$(printf '%s' "$row_json" | jq -r '.approvalCount // "0"')
-  reason=$(printf '%s' "$row_json" | jq -r '.reason')
+  # One jq for every field (each call is a process), split on the unit
+  # separator so empty fields and tabs in a title survive.
+  IFS=$'\x1f' read -r number title title_display url author status approved approval_count reason <<<"$(printf '%s' "$row_json" | jq -r '
+    [.number, .title, (.titleDisplay // .title), .url, .author, .status, .approved, (.approvalCount // "0"), .reason]
+    | map(tostring | gsub("[\u001f\n\r]"; " "))
+    | join("\u001f")
+  ')"
 
   pr_text="#$number"
   pr_pad_len=$((8 - ${#pr_text}))
@@ -2891,19 +2965,66 @@ cache_shortcut_allowed_for_section() {
 # merge-commit rules (user-defaults.json), and ROW_CACHE_VERSION. Stored
 # with each row computed (get_pr_row_json); a stored row is reused only
 # while it matches, so acking a PR or changing a filter recomputes it.
+# The key is "<checksum of what every PR shares>|<the PR's marks>", so
+# get_cached_row_json_for_pr can work out the marks in its own jq.
+ROW_LOCAL_STATE_MARKS_JQ='
+  def local_state_marks($user; $repo; $number):
+    [
+      ($user.ackByRepo[$repo][$number] // ""),
+      ($user.reverifyByRepo[$repo][$number] // false),
+      ($user.inReviewByRepo[$repo][$number] // false)
+    ] | map(tostring) | join("|");
+'
+
+# The shared part, set once a run (main) - each call is a process.
+ROW_LOCAL_STATE_SHARED_KEY=''
+row_local_state_shared_key() {
+  local sum
+  if [[ -n "$ROW_LOCAL_STATE_SHARED_KEY" ]]; then
+    printf '%s' "$ROW_LOCAL_STATE_SHARED_KEY"
+    return
+  fi
+  read -r sum _ <<<"$(printf '%s' "$ROW_CACHE_VERSION|$CHANGE_FILTER_IGNORE_COMMENT_AUTHORS|$CHANGE_FILTER_IGNORE_REVIEW_AUTHORS|$CHANGE_FILTER_IGNORE_COMMIT_PATTERNS|$MERGE_COMMIT_HEADLINE_PATTERNS_JSON|$MERGE_COMMIT_LOGINS_JSON" | cksum)"
+  printf '%s' "$sum"
+}
+
+# USER_STATE_FILE, or an empty document when there's none yet.
+user_state_file_or_empty() {
+  if [[ -f "${USER_STATE_FILE:-}" ]]; then
+    printf '%s' "$USER_STATE_FILE"
+  else
+    printf '%s' /dev/null
+  fi
+}
+
 build_row_local_state_key() {
   local number="$1"
   local marks
 
-  marks=$(jq -r --arg repo "$REPO" --arg number "$number" '
-    [
-      (.ackByRepo[$repo][$number] // ""),
-      (.reverifyByRepo[$repo][$number] // false),
-      (.inReviewByRepo[$repo][$number] // false)
-    ] | map(tostring) | join("|")
-  ' "$USER_STATE_FILE" 2>/dev/null || true)
+  marks=$(jq -rn --slurpfile user "$(user_state_file_or_empty)" --arg repo "$REPO" --arg number "$number" \
+    "$ROW_LOCAL_STATE_MARKS_JQ"' local_state_marks($user[0] // {}; $repo; $number)' 2>/dev/null || true)
 
-  printf '%s' "$ROW_CACHE_VERSION|$marks|$CHANGE_FILTER_IGNORE_COMMENT_AUTHORS|$CHANGE_FILTER_IGNORE_REVIEW_AUTHORS|$CHANGE_FILTER_IGNORE_COMMIT_PATTERNS|$MERGE_COMMIT_HEADLINE_PATTERNS_JSON|$MERGE_COMMIT_LOGINS_JSON" | cksum | awk '{print $1}'
+  printf '%s|%s' "$(row_local_state_shared_key)" "$marks"
+}
+
+# Each of this repo's stored rows in its own small file (the data file's
+# shape, one PR in it), in ROW_REUSE_SNAPSHOT_DIR: get_cached_row_json_for_pr
+# then reads that instead of the whole data file, twice for every listed PR.
+# Taken before the run writes its first row; a row is only looked up before
+# it's written again. None when the run reuses nothing (chosen PRs, acks,
+# VIEW_PRS_SKIP_UNCHANGED=0).
+build_row_reuse_snapshot() {
+  local number entry_json
+  [[ -n "${ROW_REUSE_SNAPSHOT_DIR:-}" && -f "$PR_STATE_FILE" ]] || return 0
+  cache_shortcut_allowed_for_section 'open' || return 0
+  while IFS=$'\t' read -r number entry_json; do
+    [[ -n "$number" && -n "$entry_json" ]] || continue
+    printf '%s' "$entry_json" >"$ROW_REUSE_SNAPSHOT_DIR/$number.json"
+  done < <(jq -r --arg repo "$REPO" '
+    (.byPrNumber // {}) | to_entries[]
+    | select(.value.repo == $repo and (.key | test("^[0-9]+$")))
+    | "\(.key)\t\({byPrNumber: {(.key): .value}} | tojson)"
+  ' "$PR_STATE_FILE" 2>/dev/null || true)
 }
 
 # The stored row for this listed PR when a full run can use it as it is -
@@ -2917,15 +3038,20 @@ build_row_local_state_key() {
 get_cached_row_json_for_pr() {
   local pr_json="$1"
   local section="$2"
-  local number source_updated_at local_state_key max_age_seconds
+  local number source_updated_at max_age_seconds state_file
 
   cache_shortcut_allowed_for_section "$section" || return 0
 
-  number=$(printf '%s' "$pr_json" | jq -r '.number')
-  source_updated_at=$(printf '%s' "$pr_json" | jq -r '.updatedAt // ""')
+  IFS=$'\t' read -r number source_updated_at <<<"$(printf '%s' "$pr_json" | jq -r '[(.number // "" | tostring), (.updatedAt // "")] | @tsv')"
 
   [[ -z "$number" || "$number" == 'null' ]] && return 0
   [[ -z "$source_updated_at" || "$source_updated_at" == 'null' ]] && return 0
+
+  state_file="$PR_STATE_FILE"
+  if [[ -n "${ROW_REUSE_SNAPSHOT_DIR:-}" ]]; then
+    state_file="$ROW_REUSE_SNAPSHOT_DIR/$number.json"
+    [[ -f "$state_file" ]] || return 0
+  fi
 
   max_age_seconds="$VIEW_PRS_OPEN_REVALIDATE_SECONDS"
   if ! [[ "$max_age_seconds" =~ ^[0-9]+$ ]]; then
@@ -2935,17 +3061,17 @@ get_cached_row_json_for_pr() {
     max_age_seconds=-1
   fi
 
-  local_state_key=$(build_row_local_state_key "$number")
-
   jq -c \
     --arg number "$number" \
     --arg repo "$REPO" \
     --arg section "$section" \
     --arg viewerLogin "$VIEWER_LOGIN" \
     --arg sourceUpdatedAt "$source_updated_at" \
-    --arg localStateKey "$local_state_key" \
+    --arg sharedKey "$(row_local_state_shared_key)" \
+    --slurpfile user "$(user_state_file_or_empty)" \
     --argjson maxAgeSeconds "$max_age_seconds" \
-    '
+    "$ROW_LOCAL_STATE_MARKS_JQ"'
+      ($sharedKey + "|" + local_state_marks($user[0] // {}; $repo; $number)) as $localStateKey |
       def to_epoch($ts):
         (($ts | fromdateiso8601?) //
         (($ts | sub("\\.[0-9]+Z$"; "Z")) | fromdateiso8601?) //
@@ -2974,7 +3100,7 @@ get_cached_row_json_for_pr() {
       | select(has("metrics") and .metrics != null)
       | select((has("detailRef") and .detailRef != null) or (has("activityTimeline") and .activityTimeline != null))
       | select(has("activityTimelineSummary") and .activityTimelineSummary != null)
-    ' "$PR_STATE_FILE" 2>/dev/null || true
+    ' "$state_file" 2>/dev/null || true
 }
 
 enrich_cached_row_with_ci_merge() {
@@ -3672,6 +3798,7 @@ main() {
 
   ensure_ack_store
   load_change_filter_config
+  ROW_LOCAL_STATE_SHARED_KEY=$(row_local_state_shared_key)
   apply_ack_changes
 
   if [[ "$ACK_ONLY" -eq 1 ]]; then
@@ -3871,6 +3998,11 @@ main() {
     exit 0
   fi
 
+  # One backup for the run, before its first row: upsert_pr_state writes
+  # each row without one (a backup per row filled the retention with copies
+  # from a single run).
+  create_state_backup "$PR_STATE_FILE" 'pr-data'
+
   current_open_numbers=$(collect_numbers_from_b64 "$prs_b64")
   current_closed_numbers=$(collect_numbers_from_b64 "$closed_prs_b64")
   current_merged_numbers=$(collect_numbers_from_b64 "$merged_prs_b64")
@@ -3906,29 +4038,29 @@ main() {
     CI_MERGE_CACHE_DIR=$(mktemp -d)
     ci_merge_cache_tmp=1
   fi
+  ROW_REUSE_SNAPSHOT_DIR=$(mktemp -d)
+  build_row_reuse_snapshot
 
-  if [[ "$detail_cache_tmp" -eq 1 || "$thread_cache_tmp" -eq 1 || "$files_cache_tmp" -eq 1 || "$review_url_cache_tmp" -eq 1 || "$review_comment_cache_tmp" -eq 1 || "$ci_merge_cache_tmp" -eq 1 ]]; then
-    cleanup_cmd=''
-    if [[ "$detail_cache_tmp" -eq 1 ]]; then
-      cleanup_cmd+=' "$DETAIL_CACHE_DIR"'
-    fi
-    if [[ "$thread_cache_tmp" -eq 1 ]]; then
-      cleanup_cmd+=' "$THREAD_CACHE_DIR"'
-    fi
-    if [[ "$files_cache_tmp" -eq 1 ]]; then
-      cleanup_cmd+=' "$FILES_CACHE_DIR"'
-    fi
-    if [[ "$review_url_cache_tmp" -eq 1 ]]; then
-      cleanup_cmd+=' "$REVIEW_URL_CACHE_DIR"'
-    fi
-    if [[ "$review_comment_cache_tmp" -eq 1 ]]; then
-      cleanup_cmd+=' "$REVIEW_COMMENT_CACHE_DIR"'
-    fi
-    if [[ "$ci_merge_cache_tmp" -eq 1 ]]; then
-      cleanup_cmd+=' "$CI_MERGE_CACHE_DIR"'
-    fi
-    trap "rm -rf${cleanup_cmd}" EXIT
+  cleanup_cmd=' "$ROW_REUSE_SNAPSHOT_DIR"'
+  if [[ "$detail_cache_tmp" -eq 1 ]]; then
+    cleanup_cmd+=' "$DETAIL_CACHE_DIR"'
   fi
+  if [[ "$thread_cache_tmp" -eq 1 ]]; then
+    cleanup_cmd+=' "$THREAD_CACHE_DIR"'
+  fi
+  if [[ "$files_cache_tmp" -eq 1 ]]; then
+    cleanup_cmd+=' "$FILES_CACHE_DIR"'
+  fi
+  if [[ "$review_url_cache_tmp" -eq 1 ]]; then
+    cleanup_cmd+=' "$REVIEW_URL_CACHE_DIR"'
+  fi
+  if [[ "$review_comment_cache_tmp" -eq 1 ]]; then
+    cleanup_cmd+=' "$REVIEW_COMMENT_CACHE_DIR"'
+  fi
+  if [[ "$ci_merge_cache_tmp" -eq 1 ]]; then
+    cleanup_cmd+=' "$CI_MERGE_CACHE_DIR"'
+  fi
+  trap "rm -rf${cleanup_cmd}" EXIT
 
   collect_prioritized_stale_number_sets "$prs_b64" "$closed_prs_b64" "$merged_prs_b64"
 

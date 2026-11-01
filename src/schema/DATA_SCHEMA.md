@@ -84,7 +84,7 @@ The `data` object is written by `compute_pr_state_json()` during retrieval.
 | `mergedAt` | string | yes | ISO timestamp or empty string |
 | `sourceUpdatedAt` | string | yes | Head/source branch updated timestamp |
 | `sourceFingerprint` | string | no | Digest of the fetched inputs the row was computed from (for example `fp:v2:sha256:<hex>`); not used to reuse rows since 2026-11-01 |
-| `localStateKey` | string | no | Checksum of the local state the row's status was computed from (the PR's ack, re-verify and in-review marks, the change filters and merge-commit rules, a row-format version). A full run reuses the row only while it matches, with the same `sourceUpdatedAt`; missing on rows computed before 2026-11-01 |
+| `localStateKey` | string | no | The local state the row's status was computed from: the checksum of the change filters, merge-commit rules and a row-format version, then the PR's ack timestamp, re-verify and in-review marks, separated by vertical bars (a single checksum before 2026-11-01). A full run reuses the row only while it matches, with the same `sourceUpdatedAt`; missing on rows computed before 2026-11-01 |
 | `detailRef` | object | no | Optional pointer to externalized heavy PR detail payload (for future split storage) |
 | `sourceBranch` | string | yes | PR head branch |
 | `targetBranch` | string | yes | PR base branch |

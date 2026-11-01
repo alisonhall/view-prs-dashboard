@@ -262,6 +262,8 @@ A reused row still takes the listing's title, URL, labels and size, and a reused
 
 `VIEW_PRS_SKIP_UNCHANGED=0` fetches every PR in full. A `Run script` from Settings always does.
 
+The PRs to fetch have their details, review threads, review comments, review links and viewed files fetched in parallel before their rows are computed: about `--jobs` `gh` calls at a time for the open/draft PRs, shared among the `VIEW_PRS_PREFETCH_GROUP_CONCURRENCY` (3) kinds fetched together, and as many again for merged/closed ones alongside. Before 2026-11-01 only the details were: the other four silently fetched nothing, and each was fetched one at a time with its row.
+
 The UI also polls scheduler state independently of `dataVersion`, so the Activity popover's scheduled jobs update even when the underlying PR data file has not changed.
 
 ## Development Servers
@@ -1212,7 +1214,7 @@ Additional notes:
 -h, --help                   Show this help
 ```
 
-A run of chosen PRs (`-p/--pr` or `--prs`) keeps each existing row's `updatedAt` and the data file's `lastFullRun`, so `Last run rows` still means the rows the last full run saw (before 2026-10-31, refreshing one PR - after an Ack, say - narrowed that view to just it). `lastRun` is still every run's, so the header's "Updated N minutes ago" counts them. A row such a run adds takes the last full run's stamp too, so a new PR shows in `Last run rows` straight away. Every row also records when it was written (`fetchedAt`). `--prs` refreshes the PRs it can fetch, then fails, naming the rest, if any couldn't be fetched - so the server keeps those queued rather than treat them as refreshed.
+A run of chosen PRs (`-p/--pr` or `--prs`) keeps each existing row's `updatedAt` and the data file's `lastFullRun`, so `Last run rows` still means the rows the last full run saw (before 2026-10-31, refreshing one PR - after an Ack, say - narrowed that view to just it). `lastRun` is still every run's, so the header's "Updated N minutes ago" counts them. A row such a run adds takes the last full run's stamp too, so a new PR shows in `Last run rows` straight away. Every row also records when it was written (`fetchedAt`). A run that writes rows backs the data file up once, before its first row, in `data/backups/` (before 2026-11-01, once for every row, so a large run filled the 50 kept with copies from that run alone); a quick check takes none. `--prs` refreshes the PRs it can fetch, then fails, naming the rest, if any couldn't be fetched - so the server keeps those queued rather than treat them as refreshed.
 
 ## Common examples
 

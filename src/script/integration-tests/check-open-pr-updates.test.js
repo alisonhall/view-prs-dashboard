@@ -431,6 +431,54 @@ describe("check-open-pr-updates shell helper behavior", () => {
       expect(runScriptFn("REPO='owner/repo'; build_row_local_state_key 123")).toBe(localStateKey);
     });
 
+    test("a row computed while acked is reused while the ack stands - the lookup works out the same key", () => {
+      const ackedState = runShell("mktemp");
+      runShell(`printf '%s' '{"ackByRepo":{"owner/repo":{"123":"2026-05-26T13:00:00Z"}}}' > "${ackedState}"`);
+      const ackedKey = runShell(`source "${scriptPath}"; USER_STATE_FILE="${ackedState}"; REPO='owner/repo'; build_row_local_state_key 123`);
+      const stateFile = writeState(storedState({ data: { localStateKey: ackedKey } }));
+      const lookUpWith = (userStateFile) =>
+        runShell(
+          `source "${scriptPath}"; USER_STATE_FILE="${userStateFile}"; ${setup(stateFile)} get_cached_row_json_for_pr '${listed()}' open`,
+        );
+
+      expect(ackedKey).toMatch(/^\d+\|2026-05-26T13:00:00Z\|false\|false$/);
+      expect(lookUpWith(ackedState)).toContain('"number":"123"');
+      expect(lookUpWith(isolatedUserStateFile)).toBe("");
+      // No user state file yet: the same as an empty one.
+      expect(runShell(`source "${scriptPath}"; USER_STATE_FILE="/nonexistent/user-state.json"; REPO='owner/repo'; build_row_local_state_key 123`)).toBe(localStateKey);
+    });
+
+    test("the run's snapshot holds each of this repo's rows in its own file, and the lookup reads that instead", () => {
+      const state = storedState();
+      state.byPrNumber[456] = { ...state.byPrNumber[123], repo: "other/repo" };
+      const stateFile = writeState(state);
+      const snapshotDir = runShell("mktemp -d");
+
+      runScriptFn(`${setup(stateFile)} ROW_REUSE_SNAPSHOT_DIR="${snapshotDir}"; build_row_reuse_snapshot`);
+
+      expect(runShell(`ls "${snapshotDir}"`).split("\n")).toEqual(["123.json"]);
+      expect(JSON.parse(runShell(`cat "${snapshotDir}/123.json"`))).toEqual({ byPrNumber: { 123: state.byPrNumber[123] } });
+
+      const lookUpIn = (dir, pr = listed()) =>
+        runScriptFn(`${setup(stateFile)} ROW_REUSE_SNAPSHOT_DIR="${dir}"; get_cached_row_json_for_pr '${pr}' open`);
+      expect(lookUpIn(snapshotDir)).toContain('"number":"123"');
+      // Not in the snapshot (a new PR): fetched.
+      expect(lookUpIn(snapshotDir, listed({ number: 789 }))).toBe("");
+      expect(lookUpIn(runShell("mktemp -d"))).toBe("");
+    });
+
+    test.each([
+      ["VIEW_PRS_SKIP_UNCHANGED=0", "VIEW_PRS_SKIP_UNCHANGED=0;"],
+      ["a run of chosen PRs", "TARGET_PRS='123';"],
+    ])("no snapshot is taken when the run reuses nothing (%s)", (_label, env) => {
+      const stateFile = writeState(storedState());
+      const snapshotDir = runShell("mktemp -d");
+
+      runScriptFn(`${setup(stateFile)} ${env} ROW_REUSE_SNAPSHOT_DIR="${snapshotDir}"; build_row_reuse_snapshot`);
+
+      expect(runShell(`ls -A "${snapshotDir}"`)).toBe("");
+    });
+
     describe("get_pr_row_json", () => {
       const rowFor = (state, { section = "open", pr, env = "" } = {}) =>
         runScriptFn(`${setup(writeState(state), { env })} get_pr_row_json '${pr}' '${section}' 2>&1`);
@@ -489,6 +537,35 @@ describe("check-open-pr-updates shell helper behavior", () => {
       expect(JSON.parse(upsert({ number: "123" })).fetchedAt).not.toBe(fetchedAt);
     });
 
+    test("upsert_pr_state writes a row without a backup (the run takes one), and leaves the file as it was when it can't", () => {
+      const stateFile = writeState(storedState());
+      const backupDir = runShell("mktemp -d");
+      const env = `${setup(stateFile)} STATE_BACKUP_DIR="${backupDir}"; RUN_TS='2026-05-26T13:00:00Z'; RUN_ROW_INDEX=1;`;
+
+      runScriptFn(`${env} upsert_pr_state_unlocked '{"number":456,"title":"New"}' open`);
+      expect(JSON.parse(runShell(`cat "${stateFile}"`)).byPrNumber["456"].data.title).toBe("New");
+      expect(runShell(`ls -A "${backupDir}"`)).toBe("");
+      expect(runShell(`ls -A "$(dirname "${stateFile}")" | grep -cF "$(basename "${stateFile}").tmp-" || true`)).toBe("0");
+
+      const before = runShell(`cat "${stateFile}"`);
+      expect(runScriptFn(`${env} upsert_pr_state_unlocked 'not json' open 2>/dev/null && echo ok || echo refused`)).toBe("refused");
+      expect(runShell(`cat "${stateFile}"`)).toBe(before);
+    });
+
+    test("ensure_pr_state_store leaves a sound data file alone, and fixes one that needs it", () => {
+      const backupDir = runShell("mktemp -d");
+      const ensure = (stateFile) => runScriptFn(`PR_STATE_FILE="${stateFile}"; STATE_BACKUP_DIR="${backupDir}"; ensure_pr_state_store; cat "${stateFile}"`);
+
+      const sound = writeState(storedState());
+      const soundBefore = runShell(`cat "${sound}"`);
+      expect(ensure(sound)).toBe(soundBefore);
+      expect(runShell(`ls -A "${backupDir}"`)).toBe("");
+
+      const legacy = writeState({ ...storedState(), ackByRepo: {} });
+      expect(JSON.parse(ensure(legacy))).not.toHaveProperty("ackByRepo");
+      expect(runShell(`ls -A "${backupDir}"`)).not.toBe("");
+    });
+
     test("a changed merged PR keeps its stored viewed-files counts instead of fetching them", () => {
       const stateFile = writeState(storedState({ entry: { section: "merged" }, data: { viewedFilesCount: "3", changedFilesCount: "4" } }));
 
@@ -504,6 +581,46 @@ describe("check-open-pr-updates shell helper behavior", () => {
       const openState = writeState(storedState({ data: { viewedFilesCount: "3", changedFilesCount: "4" } }));
       expect(runScriptFn(`${setup(openState)} get_stored_viewed_files_stats_json 123`)).toBe("");
     });
+  });
+
+  test("run_for_each_number_in_parallel runs a script function for every number (the prefetches' xargs `bash -c` couldn't see them)", () => {
+    const outDir = runShell("mktemp -d");
+    runScriptFn(
+      `JOBS=2; mark() { : > "${outDir}/$1"; return 1; }; run_for_each_number_in_parallel mark $'1\\n2\\n\\n3'; echo done`,
+    );
+
+    expect(runShell(`ls "${outDir}"`).split("\n")).toEqual(["1", "2", "3"]);
+  });
+
+  test.each([
+    ["--jobs shared among the tasks run together", "6", "3", "2"],
+    ["rounded down", "7", "2", "3"],
+    ["at least one", "2", "3", "1"],
+    ["a bad value counts as one", "x", "0", "1"],
+  ])("prefetch_task_jobs: %s", (_label, jobs, groups, expected) => {
+    expect(runScriptFn(`JOBS='${jobs}'; VIEW_PRS_PREFETCH_GROUP_CONCURRENCY='${groups}'; prefetch_task_jobs`)).toBe(expected);
+  });
+
+  test("move_into_state_file replaces a state file by a rename beside it, leaving no temp files", () => {
+    const dir = runShell("mktemp -d");
+    const output = runScriptFn(
+      `printf '{"a":1}' > "${dir}/data.json"; src=$(mktemp); printf '{"a":2}' > "$src"; move_into_state_file "$src" "${dir}/data.json"; [[ -e "$src" ]] && echo src-left; state_file_tmp_path "${dir}/data.json"; echo; ls -A "${dir}"; cat "${dir}/data.json"`,
+    );
+    const [tmpPath, ...rest] = output.split("\n");
+
+    expect(tmpPath.startsWith(`${dir}/data.json.tmp-`)).toBe(true);
+    expect(rest).toEqual(["data.json", '{"a":2}']);
+  });
+
+  test("print_row prints each field from one row, a title with a tab or an empty reason included", () => {
+    const row = { number: 42, title: "Fix\tthing", titleDisplay: "Fix\tthing [CHK:PASS][MRG:YES]", url: "https://x/42", author: "Ann", status: "NO_CHANGE", approved: "YES", approvalCount: 2, reason: "" };
+    const output = runScriptFn(`print_row '${JSON.stringify(row)}' ''`);
+
+    expect(output).toContain("#42");
+    expect(output).toContain("Ann");
+    expect(output).toContain("NO_CHANGE");
+    expect(output).toContain("YES (2)");
+    expect(output).toMatch(/Fix\tthing \[CHK:PASS\]\[MRG:YES\]$/);
   });
 
   // Regression coverage for a broken `jq` expression in both
