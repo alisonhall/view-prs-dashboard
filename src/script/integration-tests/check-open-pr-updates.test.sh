@@ -5,6 +5,14 @@ set -euo pipefail
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 SCRIPT_PATH="$SCRIPT_DIR/../check-open-pr-updates.sh"
 TEST_RETRIES="${TEST_RETRIES:-0}"
+# The jq npm installed (node-jq), for the mock gh below - so these tests
+# don't need jq on PATH, as the script itself doesn't.
+for candidate in "$SCRIPT_DIR/../../../node_modules/node-jq/bin/jq" "$SCRIPT_DIR/../../../node_modules/node-jq/bin/jq.exe"; do
+  if [[ -x "$candidate" ]]; then
+    export MOCK_JQ_BIN="$candidate"
+    break
+  fi
+done
 
 print_debug_context() {
   echo 'Test run context:'
@@ -63,6 +71,14 @@ make_mock_gh() {
   cat >"$dir/gh" <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
+# As in run_quick_check_numbers_tests' mock: a test that sourced the script
+# exported its jq() wrapper, whose JQ_BIN isn't exported. Use the jq npm
+# installed (MOCK_JQ_BIN, set at the top of this file) when there is one,
+# as the script does, else jq on PATH.
+unset -f jq 2>/dev/null || true
+if [[ -n "${MOCK_JQ_BIN:-}" ]]; then
+  jq() { "$MOCK_JQ_BIN" "$@"; }
+fi
 
 find_arg_value() {
   local key="$1"
@@ -107,7 +123,7 @@ if [[ "$1" == "api" && "$2" == "graphql" ]]; then
   fi
 
   if [[ -n "${jq_expr:-}" ]]; then
-    printf '%s' "$payload" | jq -r "$jq_expr"
+    printf '%s' "$payload" | jq -r "$jq_expr" | tr -d '\r'
   else
     printf '%s' "$payload"
   fi
@@ -125,7 +141,7 @@ if [[ "$1" == "pr" && "$2" == "list" ]]; then
     payload=$(cat "$MOCK_MERGED_JSON")
   fi
   if [[ -n "${jq_expr:-}" ]]; then
-    printf '%s' "$payload" | jq -r "$jq_expr"
+    printf '%s' "$payload" | jq -r "$jq_expr" | tr -d '\r'
   else
     printf '%s' "$payload"
   fi
@@ -137,15 +153,21 @@ if [[ "$1" == "pr" && "$2" == "view" ]]; then
   jq_expr=$(extract_jq "$@")
   summary_file="${MOCK_PR_VIEW_DIR:-}/$number.json"
   detail_file="${MOCK_DETAILS_DIR}/$number.json"
+  # A lookup by number (--prs, --quick-check-numbers) of a PR with no
+  # summary file: not found, as gh says for one that doesn't exist.
+  if [[ -n "${MOCK_PR_VIEW_DIR:-}" && "$jq_expr" == '. | @base64' && ! -f "$summary_file" ]]; then
+    echo "GraphQL: Could not resolve to a PullRequest with the number of $number." >&2
+    exit 1
+  fi
   if [[ -n "$jq_expr" && -f "$summary_file" ]]; then
     payload=$(cat "$summary_file")
-    printf '%s' "$payload" | jq -r "$jq_expr"
+    printf '%s' "$payload" | jq -r "$jq_expr" | tr -d '\r'
     exit 0
   fi
   if [[ -f "$detail_file" ]]; then
     payload=$(cat "$detail_file")
     if [[ -n "${jq_expr:-}" ]]; then
-      printf '%s' "$payload" | jq -r "$jq_expr"
+      printf '%s' "$payload" | jq -r "$jq_expr" | tr -d '\r'
     else
       printf '%s' "$payload"
     fi
@@ -153,7 +175,7 @@ if [[ "$1" == "pr" && "$2" == "view" ]]; then
   fi
   payload='{"comments":[],"reviews":[],"commits":[]}'
   if [[ -n "${jq_expr:-}" ]]; then
-    printf '%s' "$payload" | jq -r "$jq_expr"
+    printf '%s' "$payload" | jq -r "$jq_expr" | tr -d '\r'
   else
     printf '%s' "$payload"
   fi
@@ -242,7 +264,9 @@ run_helper_tests() {
     tries=$((tries + 1))
     [[ "$tries" -ge 3 ]]
   }
-  gh_with_retry flaky_cmd
+  # With no timeout: `timeout` (or gtimeout/perl) can only run a program,
+  # not this shell function.
+  GH_COMMAND_TIMEOUT_SECONDS=0 gh_with_retry flaky_cmd
   assert_eq "$tries" '3' 'gh_with_retry should retry and eventually succeed'
 
   dead_lock_dir="$TEST_TMP/dead.lock"
@@ -1428,9 +1452,102 @@ MOCK
   PATH="$old_path"
 }
 
+run_targeted_prs_tests() {
+  local mock_bin="$TEST_TMP/prs-mock-bin"
+  local mock_data="$TEST_TMP/prs-mock-data"
+  local prs_state="$TEST_TMP/prs-state.json"
+  local prs_state_lock="$TEST_TMP/prs-state.lock"
+  mkdir -p "$mock_data/details" "$mock_data/threads" "$mock_data/view"
+  make_mock_gh "$mock_bin"
+  # Listing a repo would fail: a run of chosen PRs must look each one up.
+  printf '%s' 'not json' >"$mock_data/unlisted.json"
+
+  cat >"$mock_data/view/1.json" <<'JSON'
+{"number":1,"title":"Open A, renamed","url":"https://example.com/1","labels":[],"isDraft":false,"author":{"login":"other","name":"Other, User"},"mergedAt":"","closedAt":"","mergedBy":null,"createdAt":"2026-03-01T00:00:00Z","updatedAt":"2026-03-07T00:00:00Z","headRefName":"a","baseRefName":"main"}
+JSON
+  cat >"$mock_data/view/10.json" <<'JSON'
+{"number":10,"title":"Now merged","url":"https://example.com/10","labels":[],"isDraft":false,"author":{"login":"other","name":"Other, User"},"mergedAt":"2026-03-06T00:00:00Z","closedAt":"2026-03-06T00:00:00Z","mergedBy":{"login":"other"},"createdAt":"2026-03-01T00:00:00Z","updatedAt":"2026-03-06T00:00:00Z","headRefName":"b","baseRefName":"main"}
+JSON
+  cat >"$mock_data/view/2.json" <<'JSON'
+{"number":2,"title":"New draft","url":"https://example.com/2","labels":[],"isDraft":true,"author":{"login":"other","name":"Other, User"},"mergedAt":"","closedAt":"","mergedBy":null,"createdAt":"2026-03-07T00:00:00Z","updatedAt":"2026-03-07T00:00:00Z","headRefName":"c","baseRefName":"main"}
+JSON
+
+  cat >"$prs_state" <<'JSON'
+{
+  "byPrNumber": {
+    "1": {"prNumber":"1","repo":"owner/repo","section":"open","updatedAt":"2026-03-05T00:00:00Z","rowOrder":1,"data":{"number":"1","title":"Open A"}},
+    "10": {"prNumber":"10","repo":"owner/repo","section":"open","updatedAt":"2026-03-05T00:00:00Z","rowOrder":2,"data":{"number":"10","title":"Was open"}},
+    "30": {"prNumber":"30","repo":"owner/repo","section":"open","updatedAt":"2026-03-05T00:00:00Z","rowOrder":3,"data":{"number":"30","title":"Untouched"}}
+  },
+  "lastRun": {"repo":"owner/repo","updatedAt":"2026-03-05T00:00:00Z"}
+}
+JSON
+
+  run_prs() {
+    PATH="$mock_bin:$PATH" MOCK_OPEN_JSON="$mock_data/unlisted.json" MOCK_CLOSED_JSON="$mock_data/unlisted.json" MOCK_MERGED_JSON="$mock_data/unlisted.json" MOCK_PR_VIEW_DIR="$mock_data/view" MOCK_DETAILS_DIR="$mock_data/details" MOCK_THREADS_DIR="$mock_data/threads" PR_STATE_FILE="$prs_state" PR_STATE_LOCK_DIR="$prs_state_lock" JOBS=2 sh "$SCRIPT_PATH" --open none --quiet --repo owner/repo --prs "$1" >"$mock_data/run.log" 2>&1 || {
+      cat "$mock_data/run.log"
+      echo "FAIL: --prs $1 run failed"
+      exit 1
+    }
+  }
+
+  run_prs '1,10'
+  assert_eq "$(jq -r '.byPrNumber["1"].data.title' "$prs_state")" 'Open A, renamed' '--prs should refresh each chosen PR'
+  assert_eq "$(jq -r '.byPrNumber["10"].section' "$prs_state")" 'merged' '--prs should move a chosen PR to the section it is in now'
+  assert_eq "$(jq -r '.byPrNumber["10"].data.title' "$prs_state")" 'Now merged' '--prs should refresh a chosen PR that has merged'
+  assert_eq "$(jq -c '.byPrNumber["30"]' "$prs_state")" '{"prNumber":"30","repo":"owner/repo","section":"open","updatedAt":"2026-03-05T00:00:00Z","rowOrder":3,"data":{"number":"30","title":"Untouched"}}' '--prs should leave other rows alone - no reconcile of open rows it did not list'
+  assert_eq "$(jq -r '[.byPrNumber["1"].updatedAt, .byPrNumber["10"].updatedAt] | join(",")' "$prs_state")" '2026-03-05T00:00:00Z,2026-03-05T00:00:00Z' '--prs should keep refreshed rows in the last full run'
+  # lastRun is any run's (the header's "updated N minutes ago"); a run of
+  # chosen PRs leaves lastFullRun - here taken from lastRun, as data from
+  # before lastFullRun has none.
+  assert_eq "$(jq -c '.lastFullRun' "$prs_state")" '{"repo":"owner/repo","updatedAt":"2026-03-05T00:00:00Z"}' '--prs should keep the last full run'
+  assert_true "[[ \"$(jq -r '.lastRun.updatedAt' "$prs_state")\" > '2026-03-05T00:00:00Z' ]]" '--prs should still move lastRun'
+  assert_true "[[ \"$(jq -r '.byPrNumber["1"].fetchedAt' "$prs_state")\" > '2026-03-05T00:00:00Z' ]]" '--prs should stamp refreshed rows with when they were written'
+
+  run_prs '2'
+  assert_eq "$(jq -r '.byPrNumber["2"].section' "$prs_state")" 'draft' '--prs should add a chosen PR not saved yet'
+  assert_true "[[ \"$(jq -r '.byPrNumber["2"].updatedAt' "$prs_state")\" != '2026-03-05T00:00:00Z' ]]" 'a row --prs adds should take its own run stamp, not join the last full run'
+  assert_eq "$(jq -c '.lastFullRun' "$prs_state")" '{"repo":"owner/repo","updatedAt":"2026-03-05T00:00:00Z"}' 'a second --prs run should keep the last full run too'
+
+  local prs_err prs_status
+  # One chosen PR that can't be fetched (999 has no summary file, so the
+  # mock says it's not found): the others are still refreshed, and the run
+  # fails, so the server keeps them queued.
+  jq '.byPrNumber["1"].data.title = "Stale again"' "$prs_state" >"$prs_state.tmp" && command mv -f "$prs_state.tmp" "$prs_state"
+  set +e
+  prs_err=$(PATH="$mock_bin:$PATH" MOCK_OPEN_JSON="$mock_data/unlisted.json" MOCK_CLOSED_JSON="$mock_data/unlisted.json" MOCK_MERGED_JSON="$mock_data/unlisted.json" MOCK_PR_VIEW_DIR="$mock_data/view" MOCK_DETAILS_DIR="$mock_data/details" MOCK_THREADS_DIR="$mock_data/threads" PR_STATE_FILE="$prs_state" PR_STATE_LOCK_DIR="$prs_state_lock" JOBS=2 GH_COMMAND_TIMEOUT_SECONDS=5 sh "$SCRIPT_PATH" --open none --quiet --repo owner/repo --prs 1,999 2>&1 >/dev/null)
+  prs_status=$?
+  set -e
+  assert_true "[[ $prs_status -ne 0 ]]" '--prs should fail when a chosen PR could not be fetched'
+  assert_contains "$prs_err" 'Could not fetch PR(s): 999' '--prs should name the PR it could not fetch'
+  assert_eq "$(jq -r '.byPrNumber["1"].data.title' "$prs_state")" 'Open A, renamed' '--prs should still refresh the chosen PRs it could fetch'
+  set +e
+  prs_err=$(sh "$SCRIPT_PATH" --prs 1 -p 2 --repo owner/repo --quiet 2>&1)
+  prs_status=$?
+  set -e
+  assert_true "[[ $prs_status -ne 0 ]]" '--prs combined with -p should fail'
+  assert_contains "$prs_err" 'cannot be combined with -p' '--prs combined with -p should say why'
+
+  set +e
+  prs_err=$(sh "$SCRIPT_PATH" --prs 1 --quick-check --repo owner/repo --quiet 2>&1)
+  prs_status=$?
+  set -e
+  assert_true "[[ $prs_status -ne 0 ]]" '--prs combined with --quick-check should fail'
+  assert_contains "$prs_err" 'cannot be combined with --quick-check' '--prs combined with --quick-check should say why'
+}
+
 setup_tmp
 run_all_tests() {
   setup_tmp
+  # ONLY_TESTS="run_a_tests run_b_tests" runs just those (check-open-pr-
+  # updates.sh-tests.test.js runs the ones known to pass this way).
+  if [[ -n "${ONLY_TESTS:-}" ]]; then
+    local test_fn
+    for test_fn in $ONLY_TESTS; do
+      "$test_fn"
+    done
+    return 0
+  fi
   run_helper_tests
   run_ack_store_tests
   run_compute_state_tests
@@ -1441,6 +1558,7 @@ run_all_tests() {
   run_quick_check_tests
   run_quick_check_numbers_tests
   run_row_order_stability_tests
+  run_targeted_prs_tests
   run_main_integration_tests
 }
 

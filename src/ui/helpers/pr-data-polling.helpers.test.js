@@ -184,6 +184,29 @@ describe("pr data polling helpers", () => {
     expect(merged.dataManifest).toEqual({ 5: { rowVersion: "manifest-v2" } });
   });
 
+  test("mergeDataDeltaPayload takes a new lastFullRun, or keeps the one it had", () => {
+    const basePayload = {
+      byPrNumber: {},
+      lastRun: { updatedAt: "2026-01-01T00:00:00Z" },
+      lastFullRun: { updatedAt: "2026-01-01T00:00:00Z" },
+    };
+    // A refresh of a few PRs: lastRun moves, lastFullRun doesn't.
+    const afterFewPrs = mergeDataDeltaPayload({
+      basePayload,
+      deltaByPrNumber: {},
+      nextLastRun: { updatedAt: "2026-01-01T00:05:00Z" },
+    });
+    expect(afterFewPrs.lastRun).toEqual({ updatedAt: "2026-01-01T00:05:00Z" });
+    expect(afterFewPrs.lastFullRun).toEqual({ updatedAt: "2026-01-01T00:00:00Z" });
+
+    const afterFullRun = mergeDataDeltaPayload({
+      basePayload,
+      deltaByPrNumber: {},
+      nextLastFullRun: { updatedAt: "2026-01-01T00:15:00Z" },
+    });
+    expect(afterFullRun.lastFullRun).toEqual({ updatedAt: "2026-01-01T00:15:00Z" });
+  });
+
   test("computePrDataFingerprint returns an empty string for empty payloads", () => {
     expect(computePrDataFingerprint(null)).toBe("");
     expect(computePrDataFingerprint({ byPrNumber: {} })).toBe("");

@@ -743,7 +743,8 @@ describe("runViewPrsAutoRefresh behavior", () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
 
       expect(quickCheckCalled).toBe(true);
-      expect(autoRefreshArgs).toEqual({ reposOverride: ["acme-org/acme-repo"] });
+      // The startup run is the full one: nothing has been queued yet.
+      expect(autoRefreshArgs).toEqual({ reposOverride: ["acme-org/acme-repo"], prNumbersByRepo: {} });
     } finally {
       createdIntervals.forEach((id) => clearInterval(id));
       setIntervalSpy.mockRestore();
@@ -1699,7 +1700,11 @@ describe("runViewPrsMergedQueueDrain behavior", () => {
       appModule.runViewPrsAutoRefresh = originalRunViewPrsAutoRefresh;
     }
 
-    expect(receivedArgs).toEqual({ reposOverride: ["owner/repo-drain-override"] });
+    // Only the queued merged/closed PR, not the whole repo.
+    expect(receivedArgs).toEqual({
+      reposOverride: ["owner/repo-drain-override"],
+      prNumbersByRepo: { "owner/repo-drain-override": ["301"] },
+    });
   });
 
   test("skips a repo that also has a pending open change, leaving it for the fast-follow path instead", async () => {

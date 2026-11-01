@@ -34,6 +34,7 @@ export interface MergeDataDeltaInput {
   nextDataMeta?: PrDataPayload["dataMeta"] | null;
   nextScheduler?: unknown;
   nextLastRun?: PrDataPayload["lastRun"] | null;
+  nextLastFullRun?: PrDataPayload["lastFullRun"] | null;
   nextManifest?: PrManifest | null;
 }
 
@@ -53,6 +54,7 @@ type FocusedElement = { tagName?: string } | null | undefined;
 const computePrDataMetaFingerprint = (payload: PrDataPayload | null | undefined): string =>
   JSON.stringify({
     lastRun: payload?.lastRun || null,
+    lastFullRun: payload?.lastFullRun || null,
     dataMeta: payload?.dataMeta || null,
     scheduler: payload?.scheduler || null,
   });
@@ -125,6 +127,7 @@ const mergeDataDeltaPayload = ({
   nextDataMeta = null,
   nextScheduler = null,
   nextLastRun = null,
+  nextLastFullRun = null,
   nextManifest = null,
 }: MergeDataDeltaInput = {}): PrDataPayload => {
   const mergedByPrNumber: Record<string, PrEntry> = {
@@ -144,6 +147,7 @@ const mergeDataDeltaPayload = ({
     dataMeta: nextDataMeta || basePayload?.dataMeta || null,
     scheduler: nextScheduler || basePayload?.scheduler || null,
     lastRun: nextLastRun || basePayload?.lastRun || null,
+    lastFullRun: nextLastFullRun || basePayload?.lastFullRun || null,
     dataManifest:
       nextManifest ||
       computePrDataManifest({ byPrNumber: mergedByPrNumber }),

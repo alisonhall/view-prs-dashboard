@@ -26,6 +26,9 @@ QUIET=0
 QUICK_CHECK=0
 QUICK_CHECK_NUMBERS_RAW_INPUT=''
 QUICK_CHECK_NUMBERS=''
+TARGET_PRS_RAW_INPUT=''
+TARGET_PRS=''
+TARGET_PRS_MISSING=''
 STATUS_COL_WIDTH=28
 APPROVED_COL_WIDTH=14
 GH_COMMAND_TIMEOUT_SECONDS="${GH_COMMAND_TIMEOUT_SECONDS:-45}"
@@ -229,6 +232,13 @@ Options:
                                 bypasses --limit/--merged-limit/the day-window entirely, so
                                 an older merged/closed PR can still be checked. Mutually
                                 exclusive with -p/--pr.
+      --prs <numbers>          Fully refresh exactly these PR number(s) (comma-separated),
+                                looked up directly in whatever state they're in - for
+                                refreshing only what a quick check found changed. Like
+                                -p/--pr, a run of chosen PRs keeps each existing row's run
+                                stamp and the last run, so "last run rows" still means the
+                                last full run. Mutually exclusive with -p/--pr and
+                                --quick-check.
   -h, --help                   Show this help
 
 Examples:
@@ -891,24 +901,38 @@ upsert_pr_state_unlocked() {
   # server's live summary (view-prs-live-summary-helpers.js) only replaces a
   # row's values when listed after this. Written after the row's data was
   # fetched, so a listing it counts as newer always is.
+  #
+  # A run of chosen PRs (is_targeted_run) keeps an existing row's updatedAt
+  # and lastFullRun: they mark which rows the last full run saw - the "last
+  # run rows" view - which refreshing a few PRs doesn't change. A row it
+  # adds takes this run's stamp. lastRun is every run's, for "updated N
+  # minutes ago". (Data from before lastFullRun takes its lastRun as one.)
+  local targeted=false
+  is_targeted_run && targeted=true
   jq \
     --arg number "$number" \
     --arg repo "$REPO" \
     --arg section "$section" \
     --arg updatedAt "$RUN_TS" \
     --argjson rowOrder "$RUN_ROW_INDEX" \
+    --argjson targeted "$targeted" \
     --slurpfile row_file "$row_file" \
     '
       .byPrNumber //= {} |
+      (.byPrNumber[$number].updatedAt // null) as $existingUpdatedAt |
       .byPrNumber[$number] = (((.byPrNumber[$number] // {}) | del(.notes)) + {
         prNumber: $number,
         repo: $repo,
         section: $section,
-        updatedAt: $updatedAt,
+        updatedAt: (if $targeted then ($existingUpdatedAt // $updatedAt) else $updatedAt end),
         fetchedAt: (now | todate),
         rowOrder: ((.byPrNumber[$number].rowOrder // $rowOrder)),
         data: ($row_file[0] // {})
       }) |
+      .lastFullRun = (if $targeted then (.lastFullRun // .lastRun) else {
+        repo: $repo,
+        updatedAt: $updatedAt
+      } end) |
       .lastRun = {
         repo: $repo,
         updatedAt: $updatedAt
@@ -2763,7 +2787,9 @@ reconcile_missing_open_rows() {
   local current_open_tmp stale_tmp stale_count number
   local limit fresh_pr_b64 fresh_pr_json fresh_section row_json
 
-  [[ -n "$TARGET_PR_NUMBER" ]] && return 0
+  # A run of chosen PRs didn't list the open ones, so every other saved
+  # open row would look missing.
+  is_targeted_run && return 0
   RECONCILED_MISSING_OPEN_COUNT=0
 
   current_open_tmp=$(mktemp)
@@ -2820,8 +2846,13 @@ reconcile_missing_open_rows() {
   rm -f "$current_open_tmp" "$stale_tmp"
 }
 
+# -p/--pr or --prs: a run of chosen PRs, not of the repo.
+is_targeted_run() {
+  [[ -n "$TARGET_PR_NUMBER" || -n "$TARGET_PRS" ]]
+}
+
 cache_shortcut_allowed() {
-  [[ "$ACK_ENABLED" -eq 0 && "$ACK_CLEAR_ENABLED" -eq 0 && "$ACK_CHANGED" -eq 0 && -z "$TARGET_PR_NUMBER" ]]
+  [[ "$ACK_ENABLED" -eq 0 && "$ACK_CLEAR_ENABLED" -eq 0 && "$ACK_CHANGED" -eq 0 ]] && ! is_targeted_run
 }
 
 cache_shortcut_allowed_for_section() {
@@ -3434,6 +3465,10 @@ parse_args() {
         QUICK_CHECK_NUMBERS_RAW_INPUT="$2"
         shift 2
         ;;
+      --prs)
+        TARGET_PRS_RAW_INPUT="$2"
+        shift 2
+        ;;
       --label)
         INCLUDE_LABEL="$2"
         shift 2
@@ -3601,6 +3636,18 @@ main() {
     QUICK_CHECK_NUMBERS=$(parse_number_list_or_fail "$QUICK_CHECK_NUMBERS_RAW_INPUT" '--quick-check-numbers')
   fi
 
+  if [[ -n "$TARGET_PRS_RAW_INPUT" ]]; then
+    if [[ -n "$TARGET_PR_NUMBER" ]]; then
+      echo '--prs cannot be combined with -p/--pr' >&2
+      exit 1
+    fi
+    if [[ "$QUICK_CHECK" -eq 1 ]]; then
+      echo '--prs cannot be combined with --quick-check' >&2
+      exit 1
+    fi
+    TARGET_PRS=$(parse_number_list_or_fail "$TARGET_PRS_RAW_INPUT" '--prs')
+  fi
+
   INCLUDE_LABEL=$(printf '%s' "$INCLUDE_LABEL" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
   EXCLUDE_LABEL=$(printf '%s' "$EXCLUDE_LABEL" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
   INCLUDE_AUTHOR=$(printf '%s' "$INCLUDE_AUTHOR" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
@@ -3721,8 +3768,10 @@ main() {
     echo
   fi
 
-  if [[ -n "$QUICK_CHECK_NUMBERS" ]]; then
-    quick_check_numbers_b64=$(fetch_quick_check_target_prs "$QUICK_CHECK_NUMBERS")
+  # --quick-check-numbers and --prs both look their PRs up by number, in
+  # whatever state they're in, rather than listing.
+  if [[ -n "$QUICK_CHECK_NUMBERS" || -n "$TARGET_PRS" ]]; then
+    quick_check_numbers_b64=$(fetch_quick_check_target_prs "${QUICK_CHECK_NUMBERS:-$TARGET_PRS}")
 
     prs_b64=''
     closed_prs_b64=''
@@ -3746,6 +3795,15 @@ main() {
         prs_b64+="$pr_b64_line"$'\n'
       fi
     done <<<"$quick_check_numbers_b64"
+
+    # --prs: the chosen PRs that couldn't be fetched (after retries). The
+    # rest are still refreshed; the run then fails (end of main), so they
+    # stay queued for update rather than look done.
+    if [[ -n "$TARGET_PRS" ]]; then
+      local fetched_numbers
+      fetched_numbers=$(collect_numbers_from_b64 "$quick_check_numbers_b64" | tr -d '\r' | awk 'NF' | sort -u)
+      TARGET_PRS_MISSING=$(printf '%s\n' "$TARGET_PRS" | awk 'NF' | sort -u | grep -vxF -f <(printf '%s\n' "$fetched_numbers") || true)
+    fi
   elif [[ -n "$TARGET_PR_NUMBER" ]]; then
     target_pr_b64=$(gh_with_retry gh pr view "$TARGET_PR_NUMBER" -R "$REPO" --json number,title,url,labels,isDraft,author,mergedAt,closedAt,mergedBy,createdAt,updatedAt,headRefName,baseRefName,additions,deletions --jq '. | @base64')
 
@@ -4143,6 +4201,11 @@ main() {
   echo "  NO_CHANGE   : $no_change_count"
   echo "  NO_ACTIVITY : $no_activity_count"
   debug_log "summary changed=$changed_count no_change=$no_change_count no_activity=$no_activity_count"
+
+  if [[ -n "$TARGET_PRS_MISSING" ]]; then
+    echo "Could not fetch PR(s): $(printf '%s' "$TARGET_PRS_MISSING" | tr '\n' ',' | sed 's/,$//')" >&2
+    exit 1
+  fi
 }
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then

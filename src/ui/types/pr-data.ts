@@ -245,7 +245,8 @@ export interface PrEntry {
   notes?: PrNotes;
 }
 
-// The data file's top-level `lastRun` record (the last script run).
+// The data file's top-level `lastRun` (the last script run of any kind)
+// and `lastFullRun` (the last run of a whole repo) records.
 export interface LastRun {
   repo?: string;
   updatedAt?: string;
@@ -262,6 +263,10 @@ export interface PrDataPayload {
   error?: string;
   byPrNumber?: Record<string, PrEntry>;
   lastRun?: LastRun | null;
+  // Which rows "Last run rows" shows: those with its updatedAt. A run of
+  // chosen PRs (a fast-follow, the refresh after an Ack) moves lastRun but
+  // not this.
+  lastFullRun?: LastRun | null;
   dataMeta?: { dataVersion?: string } | null;
   scheduler?: unknown;
   // Login -> display name for every actor seen (ActorsMap).

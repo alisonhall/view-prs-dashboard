@@ -85,7 +85,8 @@ export function useAppliedFilterSummary(): AppliedFilterSummary {
       alwaysShowInReview: selectedFilters.alwaysShowInReview,
       openModeFilter: selectedFilters.openModeFilter,
       rowsCount: visiblePrNumbers.length,
-      lastRunUpdatedAt: payload?.lastRun?.updatedAt,
+      // The stamp "Last run rows" matches (see useVisiblePrNumbers).
+      lastRunUpdatedAt: (payload?.lastFullRun || payload?.lastRun)?.updatedAt,
       scheduler: schedulerSummary,
     });
 

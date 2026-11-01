@@ -319,6 +319,33 @@ const createViewPrsSchedulerHelpers = ({
     delete pendingByRepo[safeRepo];
   };
 
+  // After a refresh of chosen PRs: clears just those, so anything a quick
+  // check queued while it ran stays queued.
+  const clearPendingNumbersForRepo = (repo, numbers) => {
+    const safeRepo = toTrimmedString(repo);
+    const pendingByRepo = viewPrsSchedulerState.pendingByRepo || {};
+    const entry = pendingByRepo[safeRepo];
+    if (!entry) {
+      return;
+    }
+    const cleared = new Set((Array.isArray(numbers) ? numbers : []).map((value) => String(value).trim()));
+    const open = (entry.open || []).filter((value) => !cleared.has(String(value)));
+    const mergedClosed = (entry.mergedClosed || []).filter((value) => !cleared.has(String(value)));
+    if (open.length === 0 && mergedClosed.length === 0) {
+      delete pendingByRepo[safeRepo];
+      return;
+    }
+    pendingByRepo[safeRepo] = { ...entry, open, mergedClosed };
+  };
+
+  const getPendingForRepo = (repo) => {
+    const entry = (viewPrsSchedulerState.pendingByRepo || {})[toTrimmedString(repo)] || {};
+    return {
+      open: Array.isArray(entry.open) ? [...entry.open] : [],
+      mergedClosed: Array.isArray(entry.mergedClosed) ? [...entry.mergedClosed] : [],
+    };
+  };
+
   const getReposWithPendingOpen = () => {
     const pendingByRepo = viewPrsSchedulerState.pendingByRepo || {};
     return Object.entries(pendingByRepo)
@@ -613,6 +640,8 @@ const createViewPrsSchedulerHelpers = ({
     getViewPrsAutoRefreshRepos,
     setPendingForRepo,
     clearPendingForRepo,
+    clearPendingNumbersForRepo,
+    getPendingForRepo,
     getReposWithPendingOpen,
     getReposWithPendingMergedClosed,
     getPendingUpdatePrNumberKeys,

@@ -92,8 +92,10 @@ const createPrVisiblePrNumbersHelpers = ({
     analysisOfPr,
   }: VisiblePrNumbersInput = {}): VisiblePrNumbersResult => {
     const allEntries = Object.values(payload?.byPrNumber || {});
-    const lastRun = payload?.lastRun || null;
-    const runStamp = String(lastRun?.updatedAt || "").trim();
+    // "Last run rows": the rows the last full run saw (lastFullRun - not
+    // lastRun, which a refresh of a few PRs moves too).
+    const lastFullRun = payload?.lastFullRun || payload?.lastRun || null;
+    const runStamp = String(lastFullRun?.updatedAt || "").trim();
 
     const filterPrNumbers = parseCsvTokens(filterPrNumbersRaw)
       .map((value) => String(value || "").trim())

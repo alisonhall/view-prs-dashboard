@@ -38,6 +38,7 @@ interface DeltaResult {
   byPrNumber?: Record<string, PrEntry>;
   scheduler?: unknown;
   lastRun?: PrDataPayload["lastRun"];
+  lastFullRun?: PrDataPayload["lastFullRun"];
 }
 
 export interface PrDataPollingOrchestrationDeps {
@@ -257,6 +258,7 @@ const createPrDataPollingOrchestrationHelpers = ({
                 nextDataMeta: manifestResult?.dataMeta || null,
                 nextScheduler: deltaResult?.scheduler || null,
                 nextLastRun: deltaResult?.lastRun || null,
+                nextLastFullRun: deltaResult?.lastFullRun || null,
                 nextManifest,
               });
               setLatestPrManifestSafe(nextManifest);

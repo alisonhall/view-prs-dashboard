@@ -437,6 +437,72 @@ describe("View Prs Dispatcher Helpers", () => {
     });
   });
 
+  describe("Given a fast-follow that refreshes only the changed PRs (keepSchedule)", () => {
+    const sweepDueMs = BASE_MS + 15 * 60 * 1000;
+    let entry;
+    beforeEach(() => {
+      helpers.getOrInitRegistry();
+      entry = viewPrsSchedulerState.dispatcher.entries["owner/repoA::autoRefresh"];
+      entry.nextDueAt = iso(sweepDueMs);
+    });
+
+    test("When bumped twice before it runs, Then it remembers when it was due before the first bump", () => {
+      clockMs = BASE_MS + 1000;
+      helpers.bumpEntryUrgent("owner/repoA", "autoRefresh", { reason: "quick-check-pending-open" });
+      clockMs = BASE_MS + 2000;
+      helpers.bumpEntryUrgent("owner/repoA", "autoRefresh", { reason: "quick-check-pending-open" });
+
+      expect(entry.bumpedFromDueAt).toBe(iso(sweepDueMs));
+      expect(helpers.isBumpedOnlyFor(entry, "quick-check-pending-open")).toBe(true);
+      expect(helpers.isBumpedOnlyFor(entry, "something-else")).toBe(false);
+    });
+
+    test("When its own time has come anyway, Then it isn't due only because of the bump", () => {
+      helpers.bumpEntryUrgent("owner/repoA", "autoRefresh", { reason: "quick-check-pending-open" });
+      expect(helpers.isBumpedOnlyFor(entry, "quick-check-pending-open", { nowMs: sweepDueMs + 1 })).toBe(false);
+      expect(helpers.isBumpedOnlyFor({ ...entry, bumpReasons: undefined }, "quick-check-pending-open")).toBe(false);
+    });
+
+    test("When something else bumped it too since its last run, Then it isn't only for the quick check, whichever came last", () => {
+      helpers.bumpEntryUrgent("owner/repoA", "autoRefresh", { reason: "manual" });
+      helpers.bumpEntryUrgent("owner/repoA", "autoRefresh", { reason: "quick-check-pending-open" });
+
+      expect(entry.lastBumpReason).toBe("quick-check-pending-open");
+      expect(helpers.isBumpedOnlyFor(entry, "quick-check-pending-open")).toBe(false);
+
+      // A run forgets them.
+      helpers.markEntryFinished(entry, { nowMs: BASE_MS + 1000, ok: true });
+      entry.nextDueAt = iso(sweepDueMs);
+      helpers.bumpEntryUrgent("owner/repoA", "autoRefresh", { reason: "quick-check-pending-open" });
+      expect(helpers.isBumpedOnlyFor(entry, "quick-check-pending-open")).toBe(true);
+    });
+
+    test("When it finishes with keepSchedule, Then it goes back to the sweep's time, and forgets the bump", () => {
+      helpers.bumpEntryUrgent("owner/repoA", "autoRefresh", { reason: "quick-check-pending-open" });
+      helpers.markEntryFinished(entry, { nowMs: BASE_MS + 60 * 1000, ok: true, keepSchedule: true });
+
+      expect(entry.nextDueAt).toBe(iso(sweepDueMs));
+      expect(entry.bumpedFromDueAt).toBeUndefined();
+      expect(entry.lastBumpReason).toBeUndefined();
+    });
+
+    test("When the sweep's time passed during the run, or the run failed, or it was the full sweep, Then the usual next time applies", () => {
+      helpers.bumpEntryUrgent("owner/repoA", "autoRefresh", { reason: "quick-check-pending-open" });
+      helpers.markEntryFinished(entry, { nowMs: sweepDueMs + 1, ok: true, keepSchedule: true });
+      expect(entry.nextDueAt).toBe(iso(sweepDueMs + 1 + DEFAULT_INTERVALS.autoRefresh));
+
+      entry.nextDueAt = iso(sweepDueMs + 10 * 60 * 1000);
+      helpers.bumpEntryUrgent("owner/repoA", "autoRefresh", { reason: "quick-check-pending-open" });
+      helpers.markEntryFinished(entry, { nowMs: sweepDueMs + 2, ok: false, keepSchedule: true });
+      expect(Date.parse(entry.nextDueAt)).toBeGreaterThan(sweepDueMs + 2 + DEFAULT_INTERVALS.autoRefresh);
+
+      entry.nextDueAt = iso(sweepDueMs + 20 * 60 * 1000);
+      helpers.bumpEntryUrgent("owner/repoA", "autoRefresh", { reason: "quick-check-pending-open" });
+      helpers.markEntryFinished(entry, { nowMs: sweepDueMs + 3, ok: true });
+      expect(entry.nextDueAt).toBe(iso(sweepDueMs + 3 + DEFAULT_INTERVALS.autoRefresh));
+    });
+  });
+
   describe("Given getDispatcherQueueSnapshot", () => {
     beforeEach(() => {
       helpers = makeHelpers({

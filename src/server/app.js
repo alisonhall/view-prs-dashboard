@@ -978,6 +978,8 @@ const {
   getViewPrsAutoRefreshRepos,
   setPendingForRepo,
   clearPendingForRepo,
+  clearPendingNumbersForRepo,
+  getPendingForRepo,
   getReposWithPendingOpen,
   getReposWithPendingMergedClosed,
   getPendingUpdatePrNumberKeys,
@@ -1536,6 +1538,7 @@ const readViewPrsData = () => {
     return {
       byPrNumber: {},
       lastRun: null,
+      lastFullRun: null,
       viewerLogin: getViewPrsViewerLogin(),
       actorsMap: {},
       actorLoginAliases: readViewPrsActorLoginAliases(),
@@ -1612,6 +1615,9 @@ const readViewPrsData = () => {
     return {
       byPrNumber,
       lastRun: parsed.lastRun || null,
+      // The last full run (lastRun is any run, including one of chosen PRs);
+      // data from before it had one: its lastRun.
+      lastFullRun: parsed.lastFullRun || parsed.lastRun || null,
       viewerLogin:
         Object.values(byPrNumber)
           .map((entry) => toTrimmedString(entry?.data?.viewerLogin))
@@ -1627,6 +1633,7 @@ const readViewPrsData = () => {
     return {
       byPrNumber: {},
       lastRun: null,
+      lastFullRun: null,
       viewerLogin: getViewPrsViewerLogin(),
       actorsMap: {},
       actorLoginAliases: readViewPrsActorLoginAliases(),
@@ -1690,9 +1697,13 @@ const getViewPrsDataManifest = (dataOverride = null) => {
 };
 
 // Auto-refresh logic
+// prNumbersByRepo: { [repo]: ["12", ...] } - those repos refresh only these
+// PRs (the script's --prs), the PRs a quick check found changed, instead
+// of the whole repo; only these are then cleared from its queue.
 const runViewPrsAutoRefresh = async ({
   skipCooldownChecks = false,
   reposOverride = null,
+  prNumbersByRepo = {},
 } = {}) => {
   // Resolved up front (same reasoning as runViewPrsQuickCheck's own
   // quickCheckTargetRepos) so a call whose entire target set overlaps an
@@ -1846,7 +1857,10 @@ const runViewPrsAutoRefresh = async ({
     let nextRepoIndex = 0;
 
     const runRepoRefresh = async (repo) => {
-      const seededPrNumbers = getLatestMergedPrNumbersForRepo(repo, 15);
+      const targetPrNumbers = Array.isArray(prNumbersByRepo?.[repo]) && prNumbersByRepo[repo].length > 0
+        ? prNumbersByRepo[repo].map(String)
+        : null;
+      const seededPrNumbers = targetPrNumbers || getLatestMergedPrNumbersForRepo(repo, 15);
       const repoStartMs = Date.now();
       let repoFirstPrProgressMs = null;
 
@@ -1861,6 +1875,7 @@ const runViewPrsAutoRefresh = async ({
             "--repo",
             repo,
             "--show-reason",
+            ...(targetPrNumbers ? ["--prs", targetPrNumbers.join(",")] : []),
           ],
           10 * 1024 * 1024,
           {
@@ -1880,13 +1895,20 @@ const runViewPrsAutoRefresh = async ({
         );
         const repoFinishedMs = Date.now();
         // A full run refreshes both sections, so anything queued by the
-        // quick-check for this repo has now been addressed.
-        clearPendingForRepo(repo);
+        // quick-check for this repo has now been addressed; a run of chosen
+        // PRs addressed just those.
+        if (targetPrNumbers) {
+          clearPendingNumbersForRepo(repo, targetPrNumbers);
+        } else {
+          clearPendingForRepo(repo);
+        }
         return {
           ok: true,
           repo,
+          targeted: Boolean(targetPrNumbers),
           metrics: {
             repo,
+            targetedPrCount: targetPrNumbers ? targetPrNumbers.length : null,
             startedAt: new Date(repoStartMs).toISOString(),
             completedAt: new Date(repoFinishedMs).toISOString(),
             durationMs: repoFinishedMs - repoStartMs,
@@ -2055,6 +2077,10 @@ const runViewPrsAutoRefresh = async ({
     return {
       skipped: false,
       succeededRepos,
+      // Of those, the ones that refreshed only chosen PRs (prNumbersByRepo).
+      targetedRepos: refreshResults
+        .filter((result) => result && result.ok === true && result.targeted)
+        .map((result) => result.repo),
       failedRepos,
       failedRepoErrors,
       reposExcludedForAlreadyInProgress,
@@ -2595,7 +2621,13 @@ const runViewPrsMergedQueueDrain = async ({ reposOverride } = {}) => {
   // watching the job event stream.
   let innerResult;
   try {
-    innerResult = await callRunViewPrsAutoRefresh({ reposOverride: reposToDrain });
+    // Just the queued merged/closed PRs, unless a repo has too many.
+    const prNumbersByRepo = {};
+    reposToDrain.forEach((repo) => {
+      const numbers = getTargetedRefreshNumbers(repo, ["mergedClosed"]);
+      if (numbers) prNumbersByRepo[repo] = numbers;
+    });
+    innerResult = await callRunViewPrsAutoRefresh({ reposOverride: reposToDrain, prNumbersByRepo });
   } finally {
     viewPrsSchedulerState.isMergedDrainInProgress = false;
     if (innerResult?.skipped) {
@@ -2658,6 +2690,20 @@ const callRunViewPrsMergedQueueDrain = (...args) =>
 const buildUniformResultsByRepo = (repos, outcome) =>
   Object.fromEntries(repos.map((repo) => [repo, outcome]));
 
+// A repo with more PRs queued than this gets its full refresh instead: a
+// run of chosen PRs looks each one up on its own, where a full refresh
+// lists them, and past a point the listing is cheaper.
+const MAX_TARGETED_REFRESH_PRS = 25;
+
+// The repo's queued PR numbers of these kinds ("open", "mergedClosed") to
+// refresh on their own, or null for a full refresh (none queued, or too
+// many).
+const getTargetedRefreshNumbers = (repo, kinds) => {
+  const pending = getPendingForRepo(repo);
+  const numbers = [...new Set(kinds.flatMap((kind) => pending[kind] || []).map(String))];
+  return numbers.length > 0 && numbers.length <= MAX_TARGETED_REFRESH_PRS ? numbers : null;
+};
+
 const runTaskGroup = async (taskType, entries) => {
   const repos = entries.map((entry) => entry.repo);
 
@@ -2712,20 +2758,58 @@ const runTaskGroup = async (taskType, entries) => {
     return { resultsByRepo };
   }
 
-  const callForTaskType =
-    taskType === "autoRefresh" ? callRunViewPrsAutoRefresh : callRunViewPrsMergedQueueDrain;
-  const result = await callForTaskType({ reposOverride: repos });
+  // An auto refresh due only because a quick check found PRs changed (its
+  // full sweep isn't due yet) refreshes just those PRs - open and merged/
+  // closed alike - and keeps the sweep's time (keepSchedule below).
+  // Otherwise it's the full sweep.
+  // A fast-follow whose queue emptied before it ran (a manual run refreshed
+  // the repo, say) has nothing to do: done, keeping the sweep's time.
+  const prNumbersByRepo = {};
+  const nothingLeftRepos = [];
+  if (taskType === "autoRefresh") {
+    entries.forEach((entry) => {
+      if (!callDispatcherHelpers().isBumpedOnlyFor(entry, "quick-check-pending-open")) return;
+      const pending = getPendingForRepo(entry.repo);
+      if (pending.open.length === 0 && pending.mergedClosed.length === 0) {
+        nothingLeftRepos.push(entry.repo);
+        return;
+      }
+      const numbers = getTargetedRefreshNumbers(entry.repo, ["open", "mergedClosed"]);
+      if (numbers) prNumbersByRepo[entry.repo] = numbers;
+    });
+  }
+  const nothingLeftResults = Object.fromEntries(
+    nothingLeftRepos.map((repo) => [repo, { ok: true, error: null, keepSchedule: true }]),
+  );
+  const reposToRun = repos.filter((repo) => !nothingLeftRepos.includes(repo));
+  if (reposToRun.length === 0) {
+    return { resultsByRepo: nothingLeftResults };
+  }
+  const result =
+    taskType === "autoRefresh"
+      ? await callRunViewPrsAutoRefresh({ reposOverride: reposToRun, prNumbersByRepo })
+      : await callRunViewPrsMergedQueueDrain({ reposOverride: reposToRun });
   if (result?.skipped) {
     return {
-      resultsByRepo: buildUniformResultsByRepo(repos, {
-        skipped: true,
-        skipReason: result.skipReason,
-      }),
+      resultsByRepo: {
+        ...nothingLeftResults,
+        ...buildUniformResultsByRepo(reposToRun, {
+          skipped: true,
+          skipReason: result.skipReason,
+        }),
+      },
     };
   }
-  const resultsByRepo = {};
+  const resultsByRepo = { ...nothingLeftResults };
+  const targetedRepos = new Set(result?.targetedRepos || []);
   (result?.succeededRepos || []).forEach((repo) => {
-    resultsByRepo[repo] = { ok: true, error: null };
+    resultsByRepo[repo] = {
+      ok: true,
+      error: null,
+      // Only the auto refresh's fast-follow keeps a schedule; the drain
+      // runs only when something's queued, so its next time is as usual.
+      ...(taskType === "autoRefresh" && targetedRepos.has(repo) ? { keepSchedule: true } : {}),
+    };
   });
   (result?.failedRepos || []).forEach((repo) => {
     resultsByRepo[repo] = {
@@ -2782,6 +2866,7 @@ const executeTaskTypeGroup = async (dispatcher, taskType, entries) => {
           nowMs: finishedAtMs,
           ok: result.ok,
           error: result.error,
+          keepSchedule: result.keepSchedule === true,
         });
       }
     });
@@ -3456,6 +3541,8 @@ module.exports = {
   getViewPrsAutoRefreshRepos,
   setPendingForRepo,
   clearPendingForRepo,
+  clearPendingNumbersForRepo,
+  getPendingForRepo,
   getReposWithPendingOpen,
   getReposWithPendingMergedClosed,
   getPendingUpdatePrNumberKeys,

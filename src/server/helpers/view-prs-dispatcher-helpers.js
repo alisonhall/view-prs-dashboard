@@ -247,16 +247,28 @@ const createViewPrsDispatcherHelpers = ({
     entry.lastStartedAt = new Date(nowMs).toISOString();
   };
 
-  const markEntryFinished = (entry, { nowMs = now(), ok, error = null } = {}) => {
+  // keepSchedule: the run only covered what a bump was for (a refresh of
+  // the PRs a quick check found changed, not the repo's full sweep), so on
+  // success the entry goes back to when it was due before the bump - a
+  // busy repo's fast-follows mustn't keep pushing its sweep back - unless
+  // that time has passed.
+  const markEntryFinished = (entry, { nowMs = now(), ok, error = null, keepSchedule = false } = {}) => {
+    const bumpedFromDueMs = Date.parse(entry.bumpedFromDueAt || "");
     entry.isRunning = false;
     entry.lastFinishedAt = new Date(nowMs).toISOString();
     entry.lastOk = ok;
     entry.lastError = error || null;
     entry.runCount = (entry.runCount || 0) + 1;
+    delete entry.bumpedFromDueAt;
+    delete entry.lastBumpReason;
+    delete entry.bumpReasons;
 
     if (ok) {
       entry.consecutiveFailureCount = 0;
-      entry.nextDueAt = new Date(nowMs + entry.intervalMs).toISOString();
+      entry.nextDueAt =
+        keepSchedule && Number.isFinite(bumpedFromDueMs) && bumpedFromDueMs > nowMs
+          ? new Date(bumpedFromDueMs).toISOString()
+          : new Date(nowMs + entry.intervalMs).toISOString();
       return entry;
     }
 
@@ -296,10 +308,29 @@ const createViewPrsDispatcherHelpers = ({
     if (!entry) {
       return null;
     }
+    // When it was due before the first bump since its last run (a second
+    // bump before it runs mustn't record "now"): see markEntryFinished's
+    // keepSchedule and isBumpedOnlyFor.
+    if (!entry.bumpedFromDueAt) {
+      entry.bumpedFromDueAt = entry.nextDueAt;
+    }
     entry.nextDueAt = new Date(now()).toISOString();
     entry.lastBumpReason = reason;
+    // Every reason since its last run: a manual "run now" followed by a
+    // quick check's bump is still a manual "run now".
+    entry.bumpReasons = [...new Set([...(entry.bumpReasons || []), reason])];
     return entry;
   };
+
+  // Due only because of bumps for this reason - its own time hasn't come,
+  // and nothing else asked for it - so a run of just what they were for
+  // will do.
+  const isBumpedOnlyFor = (entry, reason, { nowMs = now() } = {}) =>
+    Array.isArray(entry?.bumpReasons) &&
+    entry.bumpReasons.length > 0 &&
+    entry.bumpReasons.every((bumpReason) => bumpReason === reason) &&
+    Number.isFinite(Date.parse(entry.bumpedFromDueAt || "")) &&
+    Date.parse(entry.bumpedFromDueAt) > nowMs;
 
   // "circuit-open" takes priority over "due"/"scheduled": an entry whose
   // repo's circuit is open would never actually be selected to run (see
@@ -476,6 +507,7 @@ const createViewPrsDispatcherHelpers = ({
     markEntryDeferred,
     markEntryFinished,
     bumpEntryUrgent,
+    isBumpedOnlyFor,
     getDispatcherQueueSnapshot,
     isAnyEntryRunning,
     latestFinishedAtAcrossEntries,

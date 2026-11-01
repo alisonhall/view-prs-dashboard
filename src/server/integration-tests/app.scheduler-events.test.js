@@ -74,6 +74,7 @@ describe("scheduler job event emission", () => {
     expect(result).toEqual({
       skipped: false,
       succeededRepos: ["owner/repo-one"],
+      targetedRepos: [],
       failedRepos: [],
       failedRepoErrors: {},
       reposExcludedForAlreadyInProgress: [],

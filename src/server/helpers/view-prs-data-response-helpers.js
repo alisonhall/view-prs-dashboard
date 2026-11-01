@@ -49,6 +49,7 @@ const createViewPrsDataResponseHelpers = ({
     dataMeta: getViewPrsDataMeta(),
     scheduler: getViewPrsSchedulerPublicState(),
     lastRun: data?.lastRun || null,
+    lastFullRun: data?.lastFullRun || null,
   });
 
   return {

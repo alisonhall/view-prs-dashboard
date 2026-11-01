@@ -74,6 +74,30 @@ describe("pr-visible-pr-numbers helpers", () => {
     expect(scopeLabel).toBe("all stored rows");
   });
 
+  test("given \"Last run rows\", when a refresh of a few PRs moved lastRun since, then it still shows the last full run's rows", () => {
+    const computeVisiblePrNumbers = makeComputeVisiblePrNumbers();
+    const fullRun = "2026-10-31T10:00:00Z";
+    const payload = {
+      byPrNumber: {
+        1: makeEntry(1, { updatedAt: fullRun }),
+        // A fast-follow refreshed 2, keeping its full-run stamp.
+        2: makeEntry(2, { updatedAt: fullRun }),
+        // Left over from an older run.
+        3: makeEntry(3, { updatedAt: "2026-10-30T10:00:00Z" }),
+      },
+      lastRun: { updatedAt: "2026-10-31T10:05:00Z" },
+      lastFullRun: { updatedAt: fullRun },
+    };
+
+    expect(computeVisiblePrNumbers({ payload, scopeMode: "last-run", filterPrNumbersRaw: "" }).visiblePrNumbers.sort()).toEqual(["1", "2"]);
+    // Data from before lastFullRun: lastRun.
+    const { lastFullRun: _omitted, ...older } = payload;
+    expect(
+      computeVisiblePrNumbers({ payload: { ...older, lastRun: { updatedAt: fullRun } }, scopeMode: "last-run", filterPrNumbersRaw: "" })
+        .visiblePrNumbers.sort(),
+    ).toEqual(["1", "2"]);
+  });
+
   test("given a PR-number filter, when called, then only that PR is visible, regardless of scope", () => {
     const computeVisiblePrNumbers = makeComputeVisiblePrNumbers();
     const payload = { byPrNumber: { 1: makeEntry(1), 2: makeEntry(2) } };

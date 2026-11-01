@@ -126,7 +126,7 @@ describe("view-prs data response helpers", () => {
           missingPrNumbers: ["999"],
           requestedCount: 2,
         },
-        data: { lastRun: "2026-07-22T12:00:00.000Z" },
+        data: { lastRun: "2026-07-22T12:00:00.000Z", lastFullRun: "2026-07-22T11:45:00.000Z" },
       }),
     ).toEqual({
       ok: true,
@@ -136,6 +136,7 @@ describe("view-prs data response helpers", () => {
       dataMeta: { rows: 7 },
       scheduler: { running: false, intervalMs: 30000 },
       lastRun: "2026-07-22T12:00:00.000Z",
+      lastFullRun: "2026-07-22T11:45:00.000Z",
     });
   });
 
@@ -164,6 +165,7 @@ describe("view-prs data response helpers", () => {
       dataMeta: { rows: 7 },
       scheduler: { running: false },
       lastRun: null,
+      lastFullRun: null,
     });
   });
 });
