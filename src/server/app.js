@@ -207,6 +207,9 @@ const viewPrsSchedulerState = {
   lastMergedDrainAt: null,
   isMergedDrainInProgress: false,
   pendingByRepo: {},
+  // { [repo | "*"]: iso } - each repo's last manual full refresh, which its
+  // auto refresh waits out (see setLastManualRunNow).
+  manualFullRunAtByRepo: {},
 };
 
 const viewPrsActivePrCounts = new Map();
@@ -967,6 +970,7 @@ const {
   readViewPrsSchedulerState,
   persistViewPrsSchedulerState,
   setLastManualRunNow,
+  getManualFullRunAtForRepo,
   getViewPrsSchedulerPublicState,
   getViewPrsAutoCircuitOpenState,
   buildAckRefreshBudgetSkipErrors,
@@ -1705,6 +1709,10 @@ const runViewPrsAutoRefresh = async ({
   reposOverride = null,
   prNumbersByRepo = {},
 } = {}) => {
+  const getTargetPrNumbers = (repo) =>
+    Array.isArray(prNumbersByRepo?.[repo]) && prNumbersByRepo[repo].length > 0
+      ? prNumbersByRepo[repo].map(String)
+      : null;
   // Resolved up front (same reasoning as runViewPrsQuickCheck's own
   // quickCheckTargetRepos) so a call whose entire target set overlaps an
   // ALREADY-running auto refresh can defer immediately, preserving today's
@@ -1797,13 +1805,22 @@ const runViewPrsAutoRefresh = async ({
     return { skipped: true, skipReason: "missing-dependencies" };
   }
 
+  // A manual full refresh of a repo makes its own auto refresh redundant
+  // for a while - not other repos', nor a refresh of chosen PRs, which is
+  // for changes found since. Same partial-skip shape as the circuit check.
+  let reposExcludedForManualCooldown = [];
   if (!skipCooldownChecks) {
-    const skipReason = getManualCooldownSkipReason({
-      nowMs,
-      lastManualRunAt: viewPrsSchedulerState.lastManualRunAt,
-      manualCooldownMs: viewPrsManualCooldownMs,
-    });
-    if (skipReason) {
+    const manualCooldownReasonFor = (repo) =>
+      getTargetPrNumbers(repo)
+        ? null
+        : getManualCooldownSkipReason({
+          nowMs,
+          lastManualRunAt: getManualFullRunAtForRepo(repo),
+          manualCooldownMs: viewPrsManualCooldownMs,
+        });
+    reposExcludedForManualCooldown = reposToRefresh.filter((repo) => manualCooldownReasonFor(repo));
+    if (reposExcludedForManualCooldown.length > 0 && reposExcludedForManualCooldown.length === reposToRefresh.length) {
+      const skipReason = manualCooldownReasonFor(reposExcludedForManualCooldown[0]);
       viewPrsSchedulerState.lastAutoAttemptAt = new Date().toISOString();
       viewPrsSchedulerState.lastAutoSkipReason = skipReason;
       viewPrsSchedulerState.lastAutoError = null;
@@ -1814,6 +1831,7 @@ const runViewPrsAutoRefresh = async ({
       });
       return { skipped: true, skipReason: "manual-cooldown" };
     }
+    reposToRefresh = reposToRefresh.filter((repo) => !reposExcludedForManualCooldown.includes(repo));
   }
 
   // Only ADD this call's own repos to the shared Set - don't replace it -
@@ -1857,9 +1875,7 @@ const runViewPrsAutoRefresh = async ({
     let nextRepoIndex = 0;
 
     const runRepoRefresh = async (repo) => {
-      const targetPrNumbers = Array.isArray(prNumbersByRepo?.[repo]) && prNumbersByRepo[repo].length > 0
-        ? prNumbersByRepo[repo].map(String)
-        : null;
+      const targetPrNumbers = getTargetPrNumbers(repo);
       const seededPrNumbers = targetPrNumbers || getLatestMergedPrNumbersForRepo(repo, 15);
       const repoStartMs = Date.now();
       let repoFirstPrProgressMs = null;
@@ -2085,6 +2101,7 @@ const runViewPrsAutoRefresh = async ({
       failedRepoErrors,
       reposExcludedForAlreadyInProgress,
       reposExcludedForCircuitOpen,
+      reposExcludedForManualCooldown,
     };
   } catch (failure) {
     viewPrsSchedulerState.lastAutoError =
@@ -2369,12 +2386,24 @@ const runViewPrsQuickCheck = async ({
         newPendingOpenCount += pendingOpen.length;
         newPendingMergedClosedCount += pendingMergedClosed.length;
 
+        // A check of entered numbers settles only those: the ones it found
+        // unchanged come off the queue, and the rest of the repo's stay.
+        const numbersArgIndex = extraArgs.indexOf("--quick-check-numbers");
+        if (numbersArgIndex >= 0) {
+          clearPendingNumbersForRepo(
+            repo,
+            String(extraArgs[numbersArgIndex + 1] || "").split(/[\s,]+/).filter(Boolean),
+          );
+        }
+
         if (pendingOpen.length === 0 && pendingMergedClosed.length === 0) {
           // Clear any stale pending flag this repo left behind from an
           // earlier quick check - previously this returned early here
           // without clearing, so a since-resolved repo could keep
           // reporting an old pending count indefinitely.
-          clearPendingForRepo(repo);
+          if (numbersArgIndex < 0) {
+            clearPendingForRepo(repo);
+          }
           return;
         }
 
@@ -2823,6 +2852,9 @@ const runTaskGroup = async (taskType, entries) => {
   (result?.reposExcludedForCircuitOpen || []).forEach((repo) => {
     resultsByRepo[repo] = { skipped: true, skipReason: "circuit-open" };
   });
+  (result?.reposExcludedForManualCooldown || []).forEach((repo) => {
+    resultsByRepo[repo] = { skipped: true, skipReason: "manual-cooldown" };
+  });
   // Any repo in THIS group not otherwise accounted for defaults to a
   // genuine success, not a failure - covers mergedDrain's own
   // "nothing-pending" early return (bare `return;`, no result object at
@@ -3241,6 +3273,7 @@ const createViewPrsApp = ({ production = isProductionEnv } = {}) => {
     defaultViewPrsRepo,
     setLastManualRunNow,
     clearPendingForRepo,
+    clearPendingNumbersForRepo,
     appendActionLogEntry,
     readViewPrsData,
     enqueuePrDiffRefreshForData,
@@ -3506,6 +3539,7 @@ module.exports = {
   readViewPrsSchedulerState,
   persistViewPrsSchedulerState,
   setLastManualRunNow,
+  getManualFullRunAtForRepo,
   formatScriptFailureMessage,
   runViewPrsCommand,
   runViewPrsScript,

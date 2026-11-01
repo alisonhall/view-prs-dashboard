@@ -64,7 +64,7 @@ Each `byPrNumber[prNumber]` value is an object with this shape:
 | `prNumber` | string | yes | retrieval | Duplicates the map key |
 | `repo` | string | yes | retrieval | `owner/name` |
 | `section` | string | yes | retrieval | One of `open`, `draft`, `merged` |
-| `updatedAt` | string | yes | retrieval | Run timestamp (the run's start, the same for every row it writes). A run of chosen PRs (`-p/--pr`, `--prs`) keeps an existing row's, so it marks the last full run that saw the row (`Last run rows`) |
+| `updatedAt` | string | yes | retrieval | Run timestamp (the run's start, the same for every row it writes). A run of chosen PRs (`-p/--pr`, `--prs`) keeps an existing row's, and gives a row it adds `lastFullRun`'s, so it marks the last full run's rows (`Last run rows`) |
 | `fetchedAt` | string | no | retrieval | When this row was written (ISO-8601 UTC); missing on rows written before 2026-10-31. The live summary only replaces a row's values when listed after this (or after `updatedAt` without it) |
 | `rowOrder` | number | yes | retrieval | Preserved across later upserts once first set |
 | `data` | object | yes | retrieval | Current PR snapshot and derived metrics |

@@ -17,6 +17,7 @@ const resetSchedulerState = () => {
   viewPrsSchedulerState.lastAutoError = null;
   viewPrsSchedulerState.lastAutoRunAt = null;
   viewPrsSchedulerState.lastManualRunAt = null;
+  viewPrsSchedulerState.manualFullRunAtByRepo = {};
   viewPrsSchedulerState.lastQuickCheckAttemptAt = null;
   viewPrsSchedulerState.lastQuickCheckSkipReason = null;
   viewPrsSchedulerState.lastQuickCheckError = null;
@@ -79,6 +80,7 @@ describe("scheduler job event emission", () => {
       failedRepoErrors: {},
       reposExcludedForAlreadyInProgress: [],
       reposExcludedForCircuitOpen: [],
+      reposExcludedForManualCooldown: [],
     });
   });
 
@@ -132,9 +134,9 @@ describe("scheduler job event emission", () => {
   });
 
   test("a manual-cooldown auto refresh attempt emits skipped with no start", async () => {
-    viewPrsSchedulerState.lastManualRunAt = new Date(
-      Date.now() - 5 * 60 * 1000,
-    ).toISOString();
+    viewPrsSchedulerState.manualFullRunAtByRepo = {
+      "owner/repo-one": new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+    };
 
     const result = await runViewPrsAutoRefresh({ reposOverride: ["owner/repo-one"] });
 

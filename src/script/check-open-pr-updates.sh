@@ -905,8 +905,9 @@ upsert_pr_state_unlocked() {
   # A run of chosen PRs (is_targeted_run) keeps an existing row's updatedAt
   # and lastFullRun: they mark which rows the last full run saw - the "last
   # run rows" view - which refreshing a few PRs doesn't change. A row it
-  # adds takes this run's stamp. lastRun is every run's, for "updated N
-  # minutes ago". (Data from before lastFullRun takes its lastRun as one.)
+  # adds takes the last full run's stamp too, so a new PR shows there
+  # straight away. lastRun is every run's, for "updated N minutes ago".
+  # (Data from before lastFullRun takes its lastRun as one.)
   local targeted=false
   is_targeted_run && targeted=true
   jq \
@@ -919,7 +920,7 @@ upsert_pr_state_unlocked() {
     --slurpfile row_file "$row_file" \
     '
       .byPrNumber //= {} |
-      (.byPrNumber[$number].updatedAt // null) as $existingUpdatedAt |
+      (.byPrNumber[$number].updatedAt // (.lastFullRun // .lastRun).updatedAt // null) as $existingUpdatedAt |
       .byPrNumber[$number] = (((.byPrNumber[$number] // {}) | del(.notes)) + {
         prNumber: $number,
         repo: $repo,

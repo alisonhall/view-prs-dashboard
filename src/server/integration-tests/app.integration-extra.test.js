@@ -820,13 +820,13 @@ describe("integration behavior", () => {
     const origDep = app.getDependencyStatus;
     app.getDependencyStatus = () => ({ ok: true, missing: [] });
     app.viewPrsSchedulerState.isAutoRunInProgress = false;
-    app.viewPrsSchedulerState.lastManualRunAt = new Date().toISOString();
+    app.viewPrsSchedulerState.manualFullRunAtByRepo = { "*": new Date().toISOString() };
     await runViewPrsAutoRefresh();
     expect(app.viewPrsSchedulerState.lastAutoSkipReason).toMatch(
       /manual run happened within/,
     );
     app.getDependencyStatus = origDep;
-    app.viewPrsSchedulerState.lastManualRunAt = null;
+    app.viewPrsSchedulerState.manualFullRunAtByRepo = {};
   });
 
   test("given author-comments file is missing, when POST /author-comments succeeds, then the file is created", async () => {

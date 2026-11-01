@@ -1506,7 +1506,7 @@ JSON
 
   run_prs '2'
   assert_eq "$(jq -r '.byPrNumber["2"].section' "$prs_state")" 'draft' '--prs should add a chosen PR not saved yet'
-  assert_true "[[ \"$(jq -r '.byPrNumber["2"].updatedAt' "$prs_state")\" != '2026-03-05T00:00:00Z' ]]" 'a row --prs adds should take its own run stamp, not join the last full run'
+  assert_eq "$(jq -r '.byPrNumber["2"].updatedAt' "$prs_state")" '2026-03-05T00:00:00Z' 'a row --prs adds should join the last full run, so "Last run rows" shows it'
   assert_eq "$(jq -c '.lastFullRun' "$prs_state")" '{"repo":"owner/repo","updatedAt":"2026-03-05T00:00:00Z"}' 'a second --prs run should keep the last full run too'
 
   local prs_err prs_status

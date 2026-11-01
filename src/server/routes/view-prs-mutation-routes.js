@@ -17,6 +17,7 @@ const registerViewPrsMutationRoutes = ({
   defaultViewPrsRepo,
   setLastManualRunNow,
   clearPendingForRepo,
+  clearPendingNumbersForRepo,
   appendActionLogEntry,
   readViewPrsData,
   enqueuePrDiffRefreshForData,
@@ -173,11 +174,18 @@ const registerViewPrsMutationRoutes = ({
     })
       .finally(() => releaseGhSlotsSafe())
       .then(({ stdout, stderr }) => {
-        setLastManualRunNow();
+        // Only a full-repo run holds off that repo's auto refresh (the
+        // manual cooldown) - one PR's doesn't cover the rest.
+        setLastManualRunNow({
+          fullRunRepo: detail.prNumber ? null : detail.repo || defaultViewPrsRepo || "*",
+        });
         // A full-repo manual run (no single --pr target) covers everything
-        // the quick-check may have queued, so it's resolved now too.
+        // the quick-check may have queued, so it's resolved now too; a run
+        // of one PR, just that PR.
         if (detail.repo && !detail.prNumber) {
           clearPendingForRepo(detail.repo);
+        } else if (detail.repo && detail.prNumber && typeof clearPendingNumbersForRepo === "function") {
+          clearPendingNumbersForRepo(detail.repo, [detail.prNumber]);
         }
         appendActionLogEntry(
           buildRunSuccessActionLogEntry({

@@ -27,6 +27,7 @@ const resetSchedulerState = () => {
   viewPrsSchedulerState.lastAutoError = null;
   viewPrsSchedulerState.lastAutoRunAt = null;
   viewPrsSchedulerState.lastManualRunAt = null;
+  viewPrsSchedulerState.manualFullRunAtByRepo = {};
   viewPrsSchedulerState.isQuickCheckInProgress = false;
   viewPrsSchedulerState.lastQuickCheckAttemptAt = null;
   viewPrsSchedulerState.lastQuickCheckSkipReason = null;
@@ -431,9 +432,10 @@ describe("runViewPrsAutoRefresh behavior", () => {
   });
 
   test("sets a manual-cooldown skip reason when runViewPrsAutoRefresh is called inside cooldown", async () => {
-    viewPrsSchedulerState.lastManualRunAt = new Date(
-      Date.now() - 5 * 60 * 1000,
-    ).toISOString();
+    // A manual run with no --repo refreshed every repo.
+    viewPrsSchedulerState.manualFullRunAtByRepo = {
+      "*": new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+    };
 
     await runViewPrsAutoRefresh();
 
@@ -456,9 +458,9 @@ describe("runViewPrsAutoRefresh behavior", () => {
   });
 
   test("bypasses manual cooldown when runViewPrsAutoRefresh receives skipCooldownChecks=true", async () => {
-    viewPrsSchedulerState.lastManualRunAt = new Date(
-      Date.now() - 5 * 60 * 1000,
-    ).toISOString();
+    viewPrsSchedulerState.manualFullRunAtByRepo = {
+      "*": new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+    };
 
     await runViewPrsAutoRefresh({ skipCooldownChecks: true });
 

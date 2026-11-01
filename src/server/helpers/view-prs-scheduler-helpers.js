@@ -85,6 +85,10 @@ const createViewPrsSchedulerHelpers = ({
         viewPrsSchedulerState.pendingByRepo = parsed.pendingByRepo;
       }
 
+      if (isPlainObject(parsed.manualFullRunAtByRepo)) {
+        viewPrsSchedulerState.manualFullRunAtByRepo = parsed.manualFullRunAtByRepo;
+      }
+
       // Per-repo dispatcher registry (see view-prs-dispatcher-helpers.js) -
       // a plain data copy only. A persisted file without dispatcherVersion:2
       // (i.e. written before the dispatcher existed) is left alone here -
@@ -165,6 +169,7 @@ const createViewPrsSchedulerHelpers = ({
       lastQuickCheckAt: viewPrsSchedulerState.lastQuickCheckAt || null,
       lastMergedDrainAt: viewPrsSchedulerState.lastMergedDrainAt || null,
       pendingByRepo: viewPrsSchedulerState.pendingByRepo || {},
+      manualFullRunAtByRepo: viewPrsSchedulerState.manualFullRunAtByRepo || {},
       dispatcherVersion: 2,
       entries: getPersistableDispatcherEntries(),
     };
@@ -183,10 +188,31 @@ const createViewPrsSchedulerHelpers = ({
     }
   };
 
-  const setLastManualRunNow = () => {
-    viewPrsSchedulerState.lastManualRunAt = new Date().toISOString();
+  // fullRunRepo: the repo a manual run refreshed in full ("*": every repo -
+  // a run with no --repo), whose auto refresh then waits out the manual
+  // cooldown (getManualFullRunAtForRepo); null for a run of chosen PRs,
+  // which doesn't cover the repo. lastManualRunAt is any manual run's, for
+  // display.
+  const setLastManualRunNow = ({ fullRunRepo = null } = {}) => {
+    const nowIso = new Date().toISOString();
+    viewPrsSchedulerState.lastManualRunAt = nowIso;
     viewPrsSchedulerState.lastAutoSkipReason = null;
+    if (fullRunRepo) {
+      viewPrsSchedulerState.manualFullRunAtByRepo = {
+        ...(viewPrsSchedulerState.manualFullRunAtByRepo || {}),
+        [fullRunRepo]: nowIso,
+      };
+    }
     persistViewPrsSchedulerState();
+  };
+
+  // When this repo was last refreshed in full by a manual run, or null.
+  const getManualFullRunAtForRepo = (repo) => {
+    const byRepo = viewPrsSchedulerState.manualFullRunAtByRepo || {};
+    const stamps = [byRepo[toTrimmedString(repo)], byRepo["*"]].filter(
+      (value) => parseTimestamp(value) !== null,
+    );
+    return stamps.sort().pop() || null;
   };
 
   const getPendingCounts = () => {
@@ -629,6 +655,7 @@ const createViewPrsSchedulerHelpers = ({
     readViewPrsSchedulerState,
     persistViewPrsSchedulerState,
     setLastManualRunNow,
+    getManualFullRunAtForRepo,
     getViewPrsSchedulerPublicState,
     getViewPrsAutoCircuitOpenState,
     buildAckRefreshBudgetSkipErrors,
