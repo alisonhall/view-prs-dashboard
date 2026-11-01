@@ -171,6 +171,9 @@ const registerViewPrsMutationRoutes = ({
       // unique within a repo, and other repos' PRs may be visible
       // alongside this run's in the UI.
       repo: detail.repo,
+      // Asked for by hand: every PR fetched in full, none reused as stored
+      // (as the background sweep does) - the way to make sure of a row.
+      env: { VIEW_PRS_SKIP_UNCHANGED: "0" },
     })
       .finally(() => releaseGhSlotsSafe())
       .then(({ stdout, stderr }) => {

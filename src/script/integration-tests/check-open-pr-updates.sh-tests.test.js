@@ -18,3 +18,8 @@ test("upserts keep a row's order and stamp when it was written; --prs refreshes 
   const output = runShellTests(["run_row_order_stability_tests", "run_targeted_prs_tests"]);
   expect(output).toContain("All tests passed");
 }, 180000);
+
+test("a full run reuses rows whose PR hasn't changed, and fetches the rest", () => {
+  const output = runShellTests(["run_row_reuse_tests"]);
+  expect(output).toContain("All tests passed");
+}, 360000);

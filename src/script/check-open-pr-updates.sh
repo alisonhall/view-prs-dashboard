@@ -32,7 +32,14 @@ TARGET_PRS_MISSING=''
 STATUS_COL_WIDTH=28
 APPROVED_COL_WIDTH=14
 GH_COMMAND_TIMEOUT_SECONDS="${GH_COMMAND_TIMEOUT_SECONDS:-45}"
-VIEW_PRS_CACHE_REVALIDATE_SECONDS="${VIEW_PRS_CACHE_REVALIDATE_SECONDS:-1800}"
+# A full run reuses a stored row whose PR hasn't changed (see
+# get_cached_row_json_for_pr); VIEW_PRS_SKIP_UNCHANGED=0 fetches every PR
+# instead. An open/draft row is fetched in full again once it's older than
+# this, for what GitHub changes without moving the PR's updatedAt.
+VIEW_PRS_OPEN_REVALIDATE_SECONDS="${VIEW_PRS_OPEN_REVALIDATE_SECONDS:-14400}"
+# Part of every row's localStateKey: bump it when compute_pr_state_json
+# changes what it writes, so stored rows are computed again.
+ROW_CACHE_VERSION=1
 VIEW_PRS_PREFETCH_GROUP_CONCURRENCY="${VIEW_PRS_PREFETCH_GROUP_CONCURRENCY:-3}"
 VIEW_PRS_PROGRESS_MARKERS="${VIEW_PRS_PROGRESS_MARKERS:-0}"
 
@@ -56,7 +63,6 @@ FILES_CACHE_DIR="${FILES_CACHE_DIR:-}"
 REVIEW_URL_CACHE_DIR="${REVIEW_URL_CACHE_DIR:-}"
 REVIEW_COMMENT_CACHE_DIR="${REVIEW_COMMENT_CACHE_DIR:-}"
 CI_MERGE_CACHE_DIR="${CI_MERGE_CACHE_DIR:-}"
-VIEWED_FILES_FRESH_CACHE_DIR="${VIEWED_FILES_FRESH_CACHE_DIR:-}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VIEW_PRS_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -900,7 +906,10 @@ upsert_pr_state_unlocked() {
   # every row, so a long run's late rows look older than they are. The
   # server's live summary (view-prs-live-summary-helpers.js) only replaces a
   # row's values when listed after this. Written after the row's data was
-  # fetched, so a listing it counts as newer always is.
+  # fetched, so a listing it counts as newer always is. A row reused as it
+  # was (get_pr_row_json's __reused) wasn't fetched, so keeps its fetchedAt:
+  # the live summary still applies to it, and an open row is still fetched
+  # again once that's VIEW_PRS_OPEN_REVALIDATE_SECONDS old.
   #
   # A run of chosen PRs (is_targeted_run) keeps an existing row's updatedAt
   # and lastFullRun: they mark which rows the last full run saw - the "last
@@ -921,14 +930,15 @@ upsert_pr_state_unlocked() {
     '
       .byPrNumber //= {} |
       (.byPrNumber[$number].updatedAt // (.lastFullRun // .lastRun).updatedAt // null) as $existingUpdatedAt |
+      ($row_file[0] // {}) as $row |
       .byPrNumber[$number] = (((.byPrNumber[$number] // {}) | del(.notes)) + {
         prNumber: $number,
         repo: $repo,
         section: $section,
         updatedAt: (if $targeted then ($existingUpdatedAt // $updatedAt) else $updatedAt end),
-        fetchedAt: (now | todate),
+        fetchedAt: (if $row.__reused == true then .byPrNumber[$number].fetchedAt else (now | todate) end),
         rowOrder: ((.byPrNumber[$number].rowOrder // $rowOrder)),
-        data: ($row_file[0] // {})
+        data: ($row | del(.__reused))
       }) |
       .lastFullRun = (if $targeted then (.lastFullRun // .lastRun) else {
         repo: $repo,
@@ -1179,25 +1189,6 @@ prefetch_viewed_files_stats() {
 
   printf '%s\n' "$numbers" | xargs -P "$JOBS" -I '{}' bash -c 'fetch_pr_viewed_files_stats_json "{}" > /dev/null' _ '{}' 2>/dev/null &
   wait
-}
-
-prefetch_viewed_files_stats_fresh() {
-  local numbers="$1"
-  local previous_files_cache_dir
-  local number
-
-  [[ -z "$numbers" ]] && return
-  [[ -z "$VIEWED_FILES_FRESH_CACHE_DIR" ]] && return
-
-  previous_files_cache_dir="$FILES_CACHE_DIR"
-  FILES_CACHE_DIR="$VIEWED_FILES_FRESH_CACHE_DIR"
-
-  while IFS= read -r number; do
-    [[ -z "$number" ]] && continue
-    fetch_pr_viewed_files_stats_json "$number" >/dev/null 2>&1 || true
-  done <<<"$numbers"
-
-  FILES_CACHE_DIR="$previous_files_cache_dir"
 }
 
 prefetch_ci_merge_stats() {
@@ -2132,6 +2123,26 @@ row_passes_display_filters() {
   pr_passes_label_filters "$row_json" && pr_passes_author_filters "$row_json"
 }
 
+# The PR's viewed-files counts as last stored, in
+# fetch_pr_viewed_files_stats_json's shape, or nothing: none stored, none
+# changed (likely a failed fetch), or stored while the PR was still open -
+# files pushed or viewed after that fetch would stay uncounted.
+get_stored_viewed_files_stats_json() {
+  local number="$1"
+  [[ -n "${PR_STATE_FILE:-}" && -f "$PR_STATE_FILE" ]] || return 0
+  jq -c --arg number "$number" --arg repo "$REPO" '
+    .byPrNumber[$number] // empty
+    | select(.repo == $repo and (.section == "merged" or .section == "closed"))
+    | .data
+    | select(.viewedFilesCount != null and .changedFilesCount != null)
+    | select((.changedFilesCount | tostring) != "0")
+    | {
+        viewedFiles: ((.viewedFilesCount | tonumber?) // 0),
+        changedFiles: ((.changedFilesCount | tonumber?) // 0)
+      }
+  ' "$PR_STATE_FILE" 2>/dev/null || true
+}
+
 compute_pr_state_json() {
   local pr_json="$1"
 
@@ -2422,7 +2433,14 @@ compute_pr_state_json() {
 
   open_conversation_count=$(printf '%s' "$metrics_json" | jq -r '.conversationSummary.estimatedOpenConversations // .conversationSummary.openThreads // 0')
 
-  viewed_files_stats_json=$(fetch_pr_viewed_files_stats_json "$number")
+  # A merged/closed PR's files are settled, and seldom viewed after: its
+  # stored counts stand once stored as such, saving their fetch (one or
+  # more calls).
+  viewed_files_stats_json=''
+  if [[ -n "$merged_at" || -n "$closed_at" ]]; then
+    viewed_files_stats_json=$(get_stored_viewed_files_stats_json "$number")
+  fi
+  [[ -z "$viewed_files_stats_json" ]] && viewed_files_stats_json=$(fetch_pr_viewed_files_stats_json "$number")
   viewed_files_count=$(printf '%s' "$viewed_files_stats_json" | jq -r '.viewedFiles // 0')
   changed_files_count=$(printf '%s' "$viewed_files_stats_json" | jq -r '.changedFiles // 0')
   viewed_files_summary="${viewed_files_count}/${changed_files_count} viewed"
@@ -2833,7 +2851,7 @@ reconcile_missing_open_rows() {
 
     fresh_pr_json=$(printf '%s' "$fresh_pr_b64" | base64 --decode)
     fresh_section=$(classify_pr_section "$fresh_pr_json")
-    row_json=$(compute_pr_state_json "$fresh_pr_json")
+    row_json=$(get_pr_row_json "$fresh_pr_json" "$fresh_section")
 
     RUN_ROW_INDEX=$((RUN_ROW_INDEX + 1))
     upsert_pr_state "$row_json" "$fresh_section"
@@ -2860,88 +2878,64 @@ cache_shortcut_allowed_for_section() {
   local section="$1"
   cache_shortcut_allowed || return 1
 
-  # Enable cache reuse for all sections, but require fresh source fingerprints
-  # so stale cached rows are only reused when all fetched inputs match.
-  # Check VIEW_PRS_SKIP_UNCHANGED=1 to opt into this behavior (defaults to off for now, can be enabled)
-  if [[ "${VIEW_PRS_SKIP_UNCHANGED:-0}" != '1' ]]; then
+  # On by default; VIEW_PRS_SKIP_UNCHANGED=0 fetches every PR in full.
+  if [[ "${VIEW_PRS_SKIP_UNCHANGED:-1}" == '0' ]]; then
     return 1
   fi
 
   return 0
 }
 
+# What a row's status depends on besides GitHub's data: the viewer's ack,
+# re-verify and in-review marks for the PR, the change filters and
+# merge-commit rules (user-defaults.json), and ROW_CACHE_VERSION. Stored
+# with each row computed (get_pr_row_json); a stored row is reused only
+# while it matches, so acking a PR or changing a filter recomputes it.
+build_row_local_state_key() {
+  local number="$1"
+  local marks
+
+  marks=$(jq -r --arg repo "$REPO" --arg number "$number" '
+    [
+      (.ackByRepo[$repo][$number] // ""),
+      (.reverifyByRepo[$repo][$number] // false),
+      (.inReviewByRepo[$repo][$number] // false)
+    ] | map(tostring) | join("|")
+  ' "$USER_STATE_FILE" 2>/dev/null || true)
+
+  printf '%s' "$ROW_CACHE_VERSION|$marks|$CHANGE_FILTER_IGNORE_COMMENT_AUTHORS|$CHANGE_FILTER_IGNORE_REVIEW_AUTHORS|$CHANGE_FILTER_IGNORE_COMMIT_PATTERNS|$MERGE_COMMIT_HEADLINE_PATTERNS_JSON|$MERGE_COMMIT_LOGINS_JSON" | cksum | awk '{print $1}'
+}
+
+# The stored row for this listed PR when a full run can use it as it is -
+# the PR hasn't changed on GitHub (the same updatedAt) - or nothing, for a
+# full fetch. Also needs the same section, viewer and localStateKey, every
+# field a row has; and for an open/draft row, a full fetch (fetchedAt)
+# within VIEW_PRS_OPEN_REVALIDATE_SECONDS, since CI, mergeability, viewed
+# files and resolved threads change without moving updatedAt (the server's
+# live summary keeps those current in between). A merged/closed row is
+# reused for as long as its PR doesn't change.
 get_cached_row_json_for_pr() {
   local pr_json="$1"
   local section="$2"
-  local number source_updated_at source_fingerprint
-  local now_epoch_seconds max_cache_age_seconds has_prefetched_fingerprint_data
+  local number source_updated_at local_state_key max_age_seconds
 
   cache_shortcut_allowed_for_section "$section" || return 0
 
   number=$(printf '%s' "$pr_json" | jq -r '.number')
   source_updated_at=$(printf '%s' "$pr_json" | jq -r '.updatedAt // ""')
-  source_fingerprint=''
-  has_prefetched_fingerprint_data=0
 
   [[ -z "$number" || "$number" == 'null' ]] && return 0
   [[ -z "$source_updated_at" || "$source_updated_at" == 'null' ]] && return 0
 
-  now_epoch_seconds=$(date '+%s' 2>/dev/null || echo '0')
-  if ! [[ "$now_epoch_seconds" =~ ^[0-9]+$ ]]; then
-    now_epoch_seconds=0
+  max_age_seconds="$VIEW_PRS_OPEN_REVALIDATE_SECONDS"
+  if ! [[ "$max_age_seconds" =~ ^[0-9]+$ ]]; then
+    max_age_seconds=14400
+  fi
+  if [[ "$section" != 'open' && "$section" != 'draft' ]]; then
+    max_age_seconds=-1
   fi
 
-  max_cache_age_seconds="$VIEW_PRS_CACHE_REVALIDATE_SECONDS"
-  if ! [[ "$max_cache_age_seconds" =~ ^[0-9]+$ ]]; then
-    max_cache_age_seconds=1800
-  fi
-
-  if [[ -f "$DETAIL_CACHE_DIR/$number.json" && \
-    -f "$THREAD_CACHE_DIR/$number.json" && \
-    -f "$REVIEW_COMMENT_CACHE_DIR/$number.json" && \
-    -f "$REVIEW_URL_CACHE_DIR/$number.json" && \
-    -f "$FILES_CACHE_DIR/$number.json" && \
-    -f "$CI_MERGE_CACHE_DIR/$number.json" ]]; then
-    source_fingerprint=$(build_pr_source_fingerprint "$number")
-    if [[ -n "$source_fingerprint" ]]; then
-      has_prefetched_fingerprint_data=1
-    fi
-  fi
-
-  if [[ "$has_prefetched_fingerprint_data" -eq 1 ]]; then
-    jq -c \
-      --arg number "$number" \
-      --arg repo "$REPO" \
-      --arg section "$section" \
-      --arg viewerLogin "$VIEWER_LOGIN" \
-      --arg sourceUpdatedAt "$source_updated_at" \
-      --arg sourceFingerprint "$source_fingerprint" \
-      '
-        .byPrNumber[$number] // empty
-        | select(.repo == $repo and .section == $section)
-        | .data
-        | select((.viewerLogin // "") == $viewerLogin)
-        | select((.sourceUpdatedAt // "") == $sourceUpdatedAt)
-        | select((.sourceFingerprint // "") == $sourceFingerprint)
-        | select(has("sourceBranch") and .sourceBranch != null)
-        | select(has("targetBranch") and .targetBranch != null)
-        | select(has("approvers") and .approvers != null)
-        | select(has("openConversationCount") and .openConversationCount != null)
-        | select(has("viewedFilesCount") and .viewedFilesCount != null)
-        | select(has("changedFilesCount") and .changedFilesCount != null)
-        | select(has("viewedFilesSummary") and .viewedFilesSummary != null)
-        | select(has("comments") and .comments != null)
-        | select(has("reviews") and .reviews != null)
-        | select(has("commits") and .commits != null)
-        | select((has("detailRef") and .detailRef != null) or (has("reviewThreads") and .reviewThreads != null))
-        | select((has("detailRef") and .detailRef != null) or (has("commentEvents") and .commentEvents != null))
-        | select((has("detailRef") and .detailRef != null) or (has("activityEvents") and .activityEvents != null))
-        | select(has("metrics") and .metrics != null)
-        | select((has("detailRef") and .detailRef != null) or (has("activityTimeline") and .activityTimeline != null))
-        | select(has("activityTimelineSummary") and .activityTimelineSummary != null)
-      ' "$PR_STATE_FILE" 2>/dev/null || true
-    return 0
-  fi
+  local_state_key=$(build_row_local_state_key "$number")
 
   jq -c \
     --arg number "$number" \
@@ -2949,8 +2943,8 @@ get_cached_row_json_for_pr() {
     --arg section "$section" \
     --arg viewerLogin "$VIEWER_LOGIN" \
     --arg sourceUpdatedAt "$source_updated_at" \
-    --argjson nowEpochSeconds "$now_epoch_seconds" \
-    --argjson maxCacheAgeSeconds "$max_cache_age_seconds" \
+    --arg localStateKey "$local_state_key" \
+    --argjson maxAgeSeconds "$max_age_seconds" \
     '
       def to_epoch($ts):
         (($ts | fromdateiso8601?) //
@@ -2959,12 +2953,11 @@ get_cached_row_json_for_pr() {
 
       .byPrNumber[$number] // empty
       | select(.repo == $repo and .section == $section)
+      | select(($maxAgeSeconds < 0) or ((now - to_epoch(.fetchedAt // "")) <= $maxAgeSeconds))
       | .data
       | select((.viewerLogin // "") == $viewerLogin)
       | select((.sourceUpdatedAt // "") == $sourceUpdatedAt)
-      | select(($maxCacheAgeSeconds <= 0) or (
-          ($nowEpochSeconds - to_epoch(.updatedAt // "")) <= $maxCacheAgeSeconds
-        ))
+      | select((.localStateKey // "") == $localStateKey)
       | select(has("sourceBranch") and .sourceBranch != null)
       | select(has("targetBranch") and .targetBranch != null)
       | select(has("approvers") and .approvers != null)
@@ -2991,8 +2984,13 @@ enrich_cached_row_with_ci_merge() {
 
   [[ -z "$cached_row_json" ]] && return
 
-  ci_merge_json=$(cat "$CI_MERGE_CACHE_DIR/$number.json" 2>/dev/null || echo '{}')
-  [[ -z "$ci_merge_json" ]] && ci_merge_json='{}'
+  # No fresh CI data (its fetch failed, or none ran): the row's own values
+  # stand, rather than read as no checks at all.
+  ci_merge_json=$(cat "${CI_MERGE_CACHE_DIR:-/nonexistent}/$number.json" 2>/dev/null || true)
+  if [[ -z "$ci_merge_json" ]]; then
+    printf '%s' "$cached_row_json"
+    return
+  fi
 
   printf '%s' "$cached_row_json" | jq -c \
     --arg check_state "$(printf '%s' "$ci_merge_json" | jq -r '
@@ -3037,86 +3035,41 @@ enrich_cached_row_with_ci_merge() {
     '.checkState = $check_state | .mergeState = $merge_state | .titleDisplay = (.title + " [CHK:" + $check_state + "][MRG:" + $merge_state + "]")'
 }
 
-enrich_cached_row_with_viewed_files() {
-  local cached_row_json="$1"
-  local number="$2"
-  local viewed_files_json
-  local viewed_files_count
-  local changed_files_count
-  local viewed_files_summary
-
-  [[ -z "$cached_row_json" ]] && return
-  [[ -z "$VIEWED_FILES_FRESH_CACHE_DIR" ]] && {
-    printf '%s' "$cached_row_json"
-    return
-  }
-
-  viewed_files_json=$(cat "$VIEWED_FILES_FRESH_CACHE_DIR/$number.json" 2>/dev/null || echo '{}')
-  [[ -z "$viewed_files_json" || "$viewed_files_json" == '{}' ]] && {
-    printf '%s' "$cached_row_json"
-    return
-  }
-
-  viewed_files_count=$(printf '%s' "$viewed_files_json" | jq -r '.viewedFiles // 0' 2>/dev/null || echo '0')
-  changed_files_count=$(printf '%s' "$viewed_files_json" | jq -r '.changedFiles // 0' 2>/dev/null || echo '0')
-  viewed_files_summary="${viewed_files_count}/${changed_files_count} viewed"
-
-  printf '%s' "$cached_row_json" | jq -c \
-    --arg viewedFilesCount "$viewed_files_count" \
-    --arg changedFilesCount "$changed_files_count" \
-    --arg viewedFilesSummary "$viewed_files_summary" \
-    '.viewedFilesCount = $viewedFilesCount | .changedFilesCount = $changedFilesCount | .viewedFilesSummary = $viewedFilesSummary'
-}
-
 get_pr_row_json() {
   local pr_json="$1"
   local section="$2"
-  local row_json number
+  local row_json number local_state_key
 
   row_json=$(get_cached_row_json_for_pr "$pr_json" "$section")
   if [[ -z "$row_json" ]]; then
-    compute_pr_state_json "$pr_json"
+    number=$(printf '%s' "$pr_json" | jq -r '.number')
+    # Before computing: the state the row is computed from (computing may
+    # clear the ack, which then recomputes it once more next run).
+    local_state_key=$(build_row_local_state_key "$number")
+    row_json=$(compute_pr_state_json "$pr_json")
+    printf '%s' "$row_json" | jq -c --arg localStateKey "$local_state_key" '.localStateKey = $localStateKey' 2>/dev/null || printf '%s' "$row_json"
     return
   fi
 
   number=$(printf '%s' "$row_json" | jq -r '.number // ""')
   emit_pr_progress_marker 'START' "$number"
-  row_json=$(enrich_cached_row_with_ci_merge "$row_json" "$number")
-  row_json=$(enrich_cached_row_with_viewed_files "$row_json" "$number")
+  # The listing's own fields as they are now (a label renamed across the
+  # repo doesn't move a PR's updatedAt). __reused tells upsert_pr_state the
+  # row wasn't fetched, so it keeps the row's fetchedAt.
+  row_json=$(printf '%s' "$row_json" | jq -c --argjson pr "$pr_json" '
+    .title = ($pr.title // .title)
+    | .titleDisplay = (.title + " [CHK:" + (.checkState // "UNK") + "][MRG:" + (.mergeState // "UNK") + "]")
+    | .url = ($pr.url // .url)
+    | .labels = (($pr.labels // null) | if . == null then null else map(if type == "object" then (.name // "") else tostring end) end) // .labels
+    | .additions = (($pr.additions // null) | if . == null then null else tostring end) // .additions
+    | .deletions = (($pr.deletions // null) | if . == null then null else tostring end) // .deletions
+    | .__reused = true
+  ' 2>/dev/null || printf '%s' "$row_json")
+  if [[ "$section" == 'open' || "$section" == 'draft' ]]; then
+    row_json=$(enrich_cached_row_with_ci_merge "$row_json" "$number")
+  fi
   emit_pr_progress_marker 'END' "$number"
   printf '%s' "$row_json"
-}
-
-build_pr_source_fingerprint() {
-  local number="$1"
-  local detail_json comments_json reviews_json requested_reviewers_json commits_json assignees_json threads_json review_comments_json review_url_map_json viewed_files_stats_json ci_merge_json
-
-  [[ -z "$number" || "$number" == 'null' ]] && return 0
-
-  detail_json=$(cat "$DETAIL_CACHE_DIR/$number.json" 2>/dev/null || echo '{}')
-  comments_json=$(printf '%s' "$detail_json" | jq -c '.comments // []' 2>/dev/null || echo '[]')
-  reviews_json=$(printf '%s' "$detail_json" | jq -c '.reviews // []' 2>/dev/null || echo '[]')
-  requested_reviewers_json=$(printf '%s' "$detail_json" | jq -c '.reviewRequests // []' 2>/dev/null || echo '[]')
-  commits_json=$(printf '%s' "$detail_json" | jq -c '.commits // []' 2>/dev/null || echo '[]')
-  assignees_json=$(printf '%s' "$detail_json" | jq -c '.assignees // []' 2>/dev/null || echo '[]')
-  threads_json=$(cat "$THREAD_CACHE_DIR/$number.json" 2>/dev/null || echo '[]')
-  review_comments_json=$(cat "$REVIEW_COMMENT_CACHE_DIR/$number.json" 2>/dev/null || echo '[]')
-  review_url_map_json=$(cat "$REVIEW_URL_CACHE_DIR/$number.json" 2>/dev/null || echo '{}')
-  viewed_files_stats_json=$(cat "$FILES_CACHE_DIR/$number.json" 2>/dev/null || echo '{}')
-  ci_merge_json=$(cat "$CI_MERGE_CACHE_DIR/$number.json" 2>/dev/null || echo '{}')
-
-  build_pr_source_fingerprint_value \
-    "$detail_json" \
-    "$comments_json" \
-    "$reviews_json" \
-    "$requested_reviewers_json" \
-    "$commits_json" \
-    "$assignees_json" \
-    "$threads_json" \
-    "$review_comments_json" \
-    "$review_url_map_json" \
-    "$viewed_files_stats_json" \
-    "$ci_merge_json"
 }
 
 sanitize_detail_path_token() {
@@ -3344,7 +3297,7 @@ pr_updated_at_matches_cache() {
 
 # Cheap "did it change" check used by --quick-check: compares the just-listed
 # updatedAt against the cached row's sourceUpdatedAt directly, independent of
-# the full-fetch caching gate (VIEW_PRS_SKIP_UNCHANGED, off by default) and
+# the full run's row reuse (get_cached_row_json_for_pr, VIEW_PRS_SKIP_UNCHANGED) and
 # without requiring every other detail field to already be populated.
 collect_quick_check_pending_numbers() {
   local b64_lines="$1"
@@ -3929,7 +3882,6 @@ main() {
   review_url_cache_tmp=0
   review_comment_cache_tmp=0
   ci_merge_cache_tmp=0
-  viewed_files_fresh_cache_tmp=0
   if [[ -z "$DETAIL_CACHE_DIR" ]]; then
     DETAIL_CACHE_DIR=$(mktemp -d)
     detail_cache_tmp=1
@@ -3954,12 +3906,8 @@ main() {
     CI_MERGE_CACHE_DIR=$(mktemp -d)
     ci_merge_cache_tmp=1
   fi
-  if [[ -z "$VIEWED_FILES_FRESH_CACHE_DIR" ]]; then
-    VIEWED_FILES_FRESH_CACHE_DIR=$(mktemp -d)
-    viewed_files_fresh_cache_tmp=1
-  fi
 
-  if [[ "$detail_cache_tmp" -eq 1 || "$thread_cache_tmp" -eq 1 || "$files_cache_tmp" -eq 1 || "$review_url_cache_tmp" -eq 1 || "$review_comment_cache_tmp" -eq 1 || "$ci_merge_cache_tmp" -eq 1 || "$viewed_files_fresh_cache_tmp" -eq 1 ]]; then
+  if [[ "$detail_cache_tmp" -eq 1 || "$thread_cache_tmp" -eq 1 || "$files_cache_tmp" -eq 1 || "$review_url_cache_tmp" -eq 1 || "$review_comment_cache_tmp" -eq 1 || "$ci_merge_cache_tmp" -eq 1 ]]; then
     cleanup_cmd=''
     if [[ "$detail_cache_tmp" -eq 1 ]]; then
       cleanup_cmd+=' "$DETAIL_CACHE_DIR"'
@@ -3979,9 +3927,6 @@ main() {
     if [[ "$ci_merge_cache_tmp" -eq 1 ]]; then
       cleanup_cmd+=' "$CI_MERGE_CACHE_DIR"'
     fi
-    if [[ "$viewed_files_fresh_cache_tmp" -eq 1 ]]; then
-      cleanup_cmd+=' "$VIEWED_FILES_FRESH_CACHE_DIR"'
-    fi
     trap "rm -rf${cleanup_cmd}" EXIT
   fi
 
@@ -3999,6 +3944,12 @@ main() {
   CACHE_STALE_COUNT=$(printf '%s\n' "$STALE_ALL_PR_NUMBERS" | awk 'NF' | wc -l | tr -d '[:space:]')
   debug_log "cache stale=$CACHE_STALE_COUNT total=$CACHE_TOTAL_COUNT staleOpenDraft=$(printf '%s\n' \"$STALE_OPEN_DRAFT_PR_NUMBERS\" | awk 'NF' | wc -l | tr -d '[:space:]') staleClosed=$(printf '%s\n' \"$STALE_CLOSED_PR_NUMBERS\" | awk 'NF' | wc -l | tr -d '[:space:]') staleMerged=$(printf '%s\n' \"$STALE_MERGED_PR_NUMBERS\" | awk 'NF' | wc -l | tr -d '[:space:]')"
 
+  # Open/draft rows reused as they are (not stale) still get their CI and
+  # mergeability as they are now; the stale ones get both with their
+  # details.
+  local reused_open_numbers
+  reused_open_numbers=$(printf '%s\n' "$current_open_numbers" | awk 'NF' | grep -vxF -f <(printf '%s\n' "$STALE_OPEN_DRAFT_PR_NUMBERS" | awk 'NF') || true)
+
   # Prioritize data needed for open/draft rows so visible updates land sooner in the UI.
   run_prefetch_tasks_concurrently "$VIEW_PRS_PREFETCH_GROUP_CONCURRENCY" \
     prefetch_pr_details "$STALE_OPEN_DRAFT_PR_NUMBERS" \
@@ -4006,12 +3957,7 @@ main() {
     prefetch_review_comments "$STALE_OPEN_DRAFT_PR_NUMBERS" \
     prefetch_review_urls "$STALE_OPEN_DRAFT_PR_NUMBERS" \
     prefetch_viewed_files_stats "$STALE_OPEN_DRAFT_PR_NUMBERS" \
-    prefetch_ci_merge_stats "$current_open_numbers"
-
-  if [[ "${VIEW_PRS_SKIP_UNCHANGED:-0}" == '1' ]]; then
-    run_prefetch_tasks_concurrently "$VIEW_PRS_PREFETCH_GROUP_CONCURRENCY" \
-      prefetch_viewed_files_stats_fresh "$current_open_numbers"
-  fi
+    prefetch_ci_merge_stats "$reused_open_numbers"
 
   deferred_prefetch_pid=''
   closed_merged_stale_numbers=$(
@@ -4021,30 +3967,15 @@ main() {
     } | awk 'NF' | sort -u
   )
 
-  if [[ -n "$closed_merged_stale_numbers" || "${VIEW_PRS_SKIP_UNCHANGED:-0}" == '1' ]]; then
+  # Merged/closed: only the ones that changed (the rest are reused), and
+  # not their viewed files - see compute_pr_state_json.
+  if [[ -n "$closed_merged_stale_numbers" ]]; then
     (
       run_prefetch_tasks_concurrently "$VIEW_PRS_PREFETCH_GROUP_CONCURRENCY" \
         prefetch_pr_details "$closed_merged_stale_numbers" \
         prefetch_review_threads "$closed_merged_stale_numbers" \
         prefetch_review_comments "$closed_merged_stale_numbers" \
-        prefetch_review_urls "$closed_merged_stale_numbers" \
-        prefetch_viewed_files_stats "$closed_merged_stale_numbers"
-
-      if [[ "${VIEW_PRS_SKIP_UNCHANGED:-0}" == '1' ]]; then
-        run_prefetch_tasks_concurrently "$VIEW_PRS_PREFETCH_GROUP_CONCURRENCY" \
-          prefetch_pr_details "$current_closed_numbers" \
-          prefetch_review_threads "$current_closed_numbers" \
-          prefetch_review_comments "$current_closed_numbers" \
-          prefetch_review_urls "$current_closed_numbers" \
-          prefetch_viewed_files_stats "$current_closed_numbers" \
-          prefetch_ci_merge_stats "$current_closed_numbers" \
-          prefetch_pr_details "$current_merged_numbers" \
-          prefetch_review_threads "$current_merged_numbers" \
-          prefetch_review_comments "$current_merged_numbers" \
-          prefetch_review_urls "$current_merged_numbers" \
-          prefetch_viewed_files_stats "$current_merged_numbers" \
-          prefetch_ci_merge_stats "$current_merged_numbers"
-      fi
+        prefetch_review_urls "$closed_merged_stale_numbers"
     ) &
     deferred_prefetch_pid="$!"
   fi

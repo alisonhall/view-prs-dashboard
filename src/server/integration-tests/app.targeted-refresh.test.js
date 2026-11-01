@@ -309,6 +309,19 @@ describe("the manual cooldown, per repo", () => {
       expect(appModule.getManualFullRunAtForRepo(REPO)).toBeNull();
     });
 
+    test("fetches every PR in full - none reused as stored, as the background sweep does", async () => {
+      const calls = [];
+      appModule.runViewPrsScript = async (args, _maxBuffer, options) => {
+        calls.push({ args, options });
+        return { stdout: "", stderr: "" };
+      };
+
+      const res = await supertest(server).post("/run").send({ repo: REPO, openMode: "none" });
+
+      expect(res.status).toBe(200);
+      expect(calls[0].options.env).toEqual({ VIEW_PRS_SKIP_UNCHANGED: "0" });
+    });
+
     test("of a whole repo clears its queue and starts its cooldown", async () => {
       setPendingForRepo(REPO, { open: [12], mergedClosed: [] });
 

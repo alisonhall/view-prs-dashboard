@@ -65,7 +65,7 @@ Each `byPrNumber[prNumber]` value is an object with this shape:
 | `repo` | string | yes | retrieval | `owner/name` |
 | `section` | string | yes | retrieval | One of `open`, `draft`, `merged` |
 | `updatedAt` | string | yes | retrieval | Run timestamp (the run's start, the same for every row it writes). A run of chosen PRs (`-p/--pr`, `--prs`) keeps an existing row's, and gives a row it adds `lastFullRun`'s, so it marks the last full run's rows (`Last run rows`) |
-| `fetchedAt` | string | no | retrieval | When this row was written (ISO-8601 UTC); missing on rows written before 2026-10-31. The live summary only replaces a row's values when listed after this (or after `updatedAt` without it) |
+| `fetchedAt` | string | no | retrieval | When this row's details were last fetched from GitHub (ISO-8601 UTC); missing on rows written before 2026-10-31. A full run that reuses the row unchanged keeps it; an open/draft row is fetched again once it's `VIEW_PRS_OPEN_REVALIDATE_SECONDS` old. The live summary only replaces a row's values when listed after this (or after `updatedAt` without it) |
 | `rowOrder` | number | yes | retrieval | Preserved across later upserts once first set |
 | `data` | object | yes | retrieval | Current PR snapshot and derived metrics |
 
@@ -83,7 +83,8 @@ The `data` object is written by `compute_pr_state_json()` during retrieval.
 | `url` | string | yes | PR URL |
 | `mergedAt` | string | yes | ISO timestamp or empty string |
 | `sourceUpdatedAt` | string | yes | Head/source branch updated timestamp |
-| `sourceFingerprint` | string | no | Cached source fingerprint token (for example `fp:v2:sha256:<hex>`) used to detect unchanged rows |
+| `sourceFingerprint` | string | no | Digest of the fetched inputs the row was computed from (for example `fp:v2:sha256:<hex>`); not used to reuse rows since 2026-11-01 |
+| `localStateKey` | string | no | Checksum of the local state the row's status was computed from (the PR's ack, re-verify and in-review marks, the change filters and merge-commit rules, a row-format version). A full run reuses the row only while it matches, with the same `sourceUpdatedAt`; missing on rows computed before 2026-11-01 |
 | `detailRef` | object | no | Optional pointer to externalized heavy PR detail payload (for future split storage) |
 | `sourceBranch` | string | yes | PR head branch |
 | `targetBranch` | string | yes | PR base branch |

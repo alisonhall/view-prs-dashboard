@@ -250,26 +250,19 @@ Optional for date formatting fallback:
 
 - `gdate` / GNU `date -d` / macOS `date -j`
 
-## Performance Toggle
+## Reusing unchanged rows
 
-Set `VIEW_PRS_SKIP_UNCHANGED=1` to enable updated-at based row reuse for unchanged open/draft PRs.
+A full run (not a run of chosen PRs, or one that acks) reuses a stored row as it is, instead of fetching the PR's details again (about 6 `gh` calls), when the PR hasn't changed on GitHub - its listed `updatedAt` is the row's `sourceUpdatedAt` (since 2026-11-01; before, every PR was fetched every run unless `VIEW_PRS_SKIP_UNCHANGED=1`, and even then reuse rarely happened). The row also has to be:
 
-- Unchanged PR rows are reused from local state when source `updatedAt` matches.
-- Cache reuse is viewer-specific (`viewerLogin` must match), preventing cross-user stale rows.
-- Fresh CI/check and mergeability data is still prefetched each run and merged into cached rows.
-- Fresh viewed-files progress (`viewed/changed`) is also refreshed for open/draft PRs and merged into cached rows.
-- Closed and merged rows reuse the same skip shortcut, but only when the full prefetched source fingerprint still matches, so the table stays fresh without forcing a full recompute.
-- Prefetch and row recompute now prioritize open/draft PRs first; closed/merged prefetch runs in a deferred phase so active review rows update earlier in long runs.
-- This keeps `CHK`/`MRG` values current while reducing full recomputation and API volume.
+- for the same section, the same viewer (`viewerLogin`), and the same local state (`localStateKey`: the PR's ack, re-verify and in-review marks, the change filters and merge-commit rules, and a version the script bumps when it changes what it computes) - acking a PR or changing a filter computes its row again;
+- complete (every field a row has);
+- for an **open/draft** PR, fetched in full within `VIEW_PRS_OPEN_REVALIDATE_SECONDS` (default 14400, 4 hours), since CI, mergeability, viewed files and resolved threads change without moving `updatedAt`. A **merged/closed** PR's row is reused for as long as the PR doesn't change.
+
+A reused row still takes the listing's title, URL, labels and size, and a reused open/draft row this run's CI and mergeability (one call each). It keeps its `fetchedAt` - it wasn't fetched - so the live summary (see the automatic background refresh) keeps its CI, mergeability, viewed files and open threads current in between. A merged/closed PR that has changed is fetched without its viewed files when its stored row was already merged/closed: those counts stand. Its first row after merging or closing fetches them, since files pushed or viewed after the open row was fetched would otherwise never be counted.
+
+`VIEW_PRS_SKIP_UNCHANGED=0` fetches every PR in full. A `Run script` from Settings always does.
 
 The UI also polls scheduler state independently of `dataVersion`, so the Activity popover's scheduled jobs update even when the underlying PR data file has not changed.
-
-Example:
-
-```bash
-cd view-prs
-VIEW_PRS_SKIP_UNCHANGED=1 ./run-prs --open none
-```
 
 ## Development Servers
 
@@ -412,7 +405,7 @@ When localhost is running, the server starts an automatic background refresh for
   - `Last skip` on the quick check's row in the Activity popover (and `lastQuickCheckSkipReason` in the scheduler API) shows why the most recent quick check didn't run, if it didn't - useful for spotting exactly this kind of delay.
 - **Live summary** (with each quick check): one paginated GraphQL listing of the repo's open PRs (`gh api graphql`, 25 a page) with what a collapsed table row shows - title, labels, draft state, CI state, mergeability, viewed files, open threads, size, assignees and requested reviewers. It's saved in `data/check-open-pr-updates.live-summary.json` (`VIEW_PRS_LIVE_SUMMARY_FILE`) and laid over the rows when the server reads them, so these stay current between full refreshes - including what GitHub changes without moving a PR's `updatedAt` (CI finishing, mergeability as the target branch moves, files marked viewed, threads resolved), which the quick check can't see. A listing only replaces a row's values when it's newer than the row's last full refresh (each row's `fetchedAt`, when the script wrote it). Open/draft rows get `data.live` (whether GitHub has activity the full refresh hasn't fetched yet, or the PR is no longer open - the latter only from a complete listing, not one stopped at its 500-PR limit); when each repo was listed, and its last listing error, are in the data meta (`dataMeta.liveSummary`). A failed listing keeps the last good one and is logged; it doesn't fail the quick check. A quick check of entered PR numbers doesn't list. `VIEW_PRS_DISABLE_LIVE_SUMMARY=1` turns it off (the test setups do). The data version the page polls includes the listing and the PRs queued for update, so both reach the page on its next poll.
 - **Merged/closed drain** (every 30 minutes per repo, configurable via `VIEW_PRS_MERGED_FULL_SWEEP_INTERVAL_MS`): refreshes whatever the quick check queued for merged/closed PRs - just those PRs (`--prs`), or the whole repo when more than 25 are queued. If nothing was queued, it does nothing - no fetch runs.
-- **Full sweep** (every 15 minutes per repo, configurable via `VIEW_PRS_AUTO_INTERVAL_MS`): runs regardless of the quick check, as a safety net.
+- **Full sweep** (every 15 minutes per repo, configurable via `VIEW_PRS_AUTO_INTERVAL_MS`): runs regardless of the quick check, as a safety net. It fetches only the PRs that changed (and open ones not fetched in full for 4 hours), reusing the other rows - see [Reusing unchanged rows](#reusing-unchanged-rows).
 - A repo's full refresh (the sweep, or a fast-follow or drain with too many PRs queued) waits if a manual `Run script` of that whole repo completed in the previous 15 minutes (`manualFullRunAtByRepo` in the scheduler state; a run with no repo counts for every repo). A refresh of just the queued PRs doesn't wait - they changed since - and nor does another repo's. A manual run of one PR doesn't start the wait, and takes that PR off the queue. (Before 2026-10-31 any manual run, even of one PR, held off every automatic refresh in every repo.)
 - A quick check of entered PR numbers settles only those: the ones it finds unchanged leave the queue, and the repo's other queued PRs stay.
 - Settings › `Background updates` sets each repo's cadence and priority (leave a field empty for its default; a change is saved once typing pauses or the field is left - not a keystroke at a time, so "1" on the way to "15" never schedules a check - and applies on the dispatcher's next tick, a few seconds, without a restart). A saved value outside the form's range (a hand-edited file) is shown as still applying, not as an error. They're saved in `user-defaults.json` as `schedulerRepoConfig`, only what differs from the defaults, e.g. `{"schedulerRepoConfig": {"owner/repo": {"priority": 2, "quickCheckIntervalMs": 120000}}}`:
@@ -1162,7 +1155,7 @@ Behavior:
 - Each run updates (upserts) entries for PRs processed in that run.
 - PR IDs not processed in a run are **not removed** from the file.
 - Display filters do not trim what is stored in this file.
-- Open, draft, and merged rows are recomputed on each run by default so activity/comments/conversation details and derived metrics stay current. See [Performance Toggle](#performance-toggle) (`VIEW_PRS_SKIP_UNCHANGED`) to re-enable per-row cache reuse within a full run - this is separate from the `--quick-check` listing pass described in [Usage](#usage), which only ever compares `updatedAt` to decide whether a PR needs a full run *at all*.
+- A full run reuses the rows of PRs that haven't changed on GitHub, and fetches the rest; open/draft rows are fetched in full again at least every 4 hours. See [Reusing unchanged rows](#reusing-unchanged-rows) - this is separate from the `--quick-check` listing pass described in [Usage](#usage), which only ever compares `updatedAt` to decide whether a PR needs a full run *at all*.
 
 Top-level structure:
 

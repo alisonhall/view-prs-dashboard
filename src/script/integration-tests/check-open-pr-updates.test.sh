@@ -1536,6 +1536,88 @@ JSON
   assert_contains "$prs_err" 'cannot be combined with --quick-check' '--prs combined with --quick-check should say why'
 }
 
+run_row_reuse_tests() {
+  local mock_bin="$TEST_TMP/reuse-mock-bin"
+  local log_bin="$TEST_TMP/reuse-log-bin"
+  local mock_data="$TEST_TMP/reuse-mock-data"
+  local reuse_state="$TEST_TMP/reuse-state.json"
+  local gh_log="$TEST_TMP/reuse-gh.log"
+  mkdir -p "$mock_data/details" "$mock_data/threads" "$log_bin"
+  make_mock_gh "$mock_bin"
+  # Logs every gh call, then answers as the mock does.
+  cat >"$log_bin/gh" <<SH
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >>"$gh_log"
+exec "$mock_bin/gh" "\$@"
+SH
+  chmod +x "$log_bin/gh"
+
+  write_listings() {
+    cat >"$mock_data/open.json" <<JSON
+[{"number":1,"title":"Open one","url":"https://example.com/1","labels":[],"isDraft":false,"author":{"login":"other","name":"Other"},"mergedBy":null,"createdAt":"2026-03-01T00:00:00Z","updatedAt":"$1","headRefName":"a","baseRefName":"main","additions":1,"deletions":1}]
+JSON
+    cat >"$mock_data/merged.json" <<'JSON'
+[{"number":10,"title":"Merged ten","url":"https://example.com/10","labels":[],"author":{"login":"other","name":"Other"},"mergedAt":"2026-03-02T00:00:00Z","closedAt":"2026-03-02T00:00:00Z","mergedBy":{"login":"other"},"createdAt":"2026-03-01T00:00:00Z","updatedAt":"2026-03-02T00:00:00Z","headRefName":"b","baseRefName":"main","additions":1,"deletions":1}]
+JSON
+    printf '%s' '[]' >"$mock_data/closed.json"
+  }
+
+  # A full run; $@ are extra env assignments.
+  run_full() {
+    : >"$gh_log"
+    env "$@" PATH="$log_bin:$PATH" DATA_DIR="$TEST_TMP/reuse-data" MOCK_OPEN_JSON="$mock_data/open.json" MOCK_CLOSED_JSON="$mock_data/closed.json" MOCK_MERGED_JSON="$mock_data/merged.json" MOCK_DETAILS_DIR="$mock_data/details" MOCK_THREADS_DIR="$mock_data/threads" PR_STATE_FILE="$reuse_state" PR_STATE_LOCK_DIR="$TEST_TMP/reuse-state.lock" JOBS=2 sh "$SCRIPT_PATH" --open none --quiet --repo owner/repo >"$mock_data/run.log" 2>&1 || {
+      cat "$mock_data/run.log"
+      echo 'FAIL: full run failed'
+      exit 1
+    }
+  }
+  # Whether the last run fetched PR $1's details.
+  fetched_details() {
+    grep -Eq "^pr view $1 .*--json comments," "$gh_log"
+  }
+
+  printf '%s' '{"byPrNumber":{}}' >"$reuse_state"
+  write_listings '2026-03-05T00:00:00Z'
+  run_full
+  assert_true 'fetched_details 1' 'a PR with no stored row should be fetched'
+  assert_true 'fetched_details 10' 'a merged PR with no stored row should be fetched'
+  assert_true "[[ -n \"$(jq -r '.byPrNumber["1"].data.localStateKey // ""' "$reuse_state")\" ]]" 'a computed row should record the local state it was computed from'
+  local open_fetched_at merged_fetched_at
+  open_fetched_at=$(jq -r '.byPrNumber["1"].fetchedAt' "$reuse_state")
+  merged_fetched_at=$(jq -r '.byPrNumber["10"].fetchedAt' "$reuse_state")
+
+  # Unchanged on GitHub: reused, not fetched, and keeps when it was fetched.
+  # The open one still gets its CI and mergeability.
+  run_full
+  assert_true '! fetched_details 1' 'an unchanged open PR fetched recently should be reused'
+  assert_true '! fetched_details 10' 'an unchanged merged PR should be reused'
+  assert_true 'grep -Eq "^pr view 1 .*--json statusCheckRollup" "$gh_log"' 'a reused open row should still get its CI and mergeability'
+  assert_true '! grep -Eq "^pr view 10 .*--json statusCheckRollup" "$gh_log"' 'a reused merged row should not fetch CI'
+  assert_eq "$(jq -r '.byPrNumber["1"].fetchedAt' "$reuse_state")" "$open_fetched_at" 'a reused row should keep its fetchedAt'
+  assert_eq "$(jq -r '.byPrNumber["10"].fetchedAt' "$reuse_state")" "$merged_fetched_at" 'a reused merged row should keep its fetchedAt'
+  assert_eq "$(jq -r '.byPrNumber["1"].data | has("__reused")' "$reuse_state")" 'false' 'the reuse marker should not be saved'
+
+  # Changed on GitHub: fetched.
+  write_listings '2026-03-06T00:00:00Z'
+  run_full
+  assert_true 'fetched_details 1' 'an open PR whose updatedAt moved should be fetched'
+  assert_true '! fetched_details 10' 'the unchanged merged PR should still be reused'
+
+  # Past the revalidation window: the open row is fetched, the merged one
+  # isn't.
+  run_full VIEW_PRS_OPEN_REVALIDATE_SECONDS=0
+  assert_true 'fetched_details 1' 'an open row older than VIEW_PRS_OPEN_REVALIDATE_SECONDS should be fetched'
+  assert_true '! fetched_details 10' 'a merged row should be reused however old'
+
+  # Acked since: its status depends on that, so it's computed again.
+  jq '.ackByRepo = {"owner/repo": {"10": "2026-03-07T00:00:00Z"}}' "$USER_STATE_FILE" >"$USER_STATE_FILE.tmp" && command mv -f "$USER_STATE_FILE.tmp" "$USER_STATE_FILE"
+  run_full
+  assert_true 'fetched_details 10' 'a PR acked since its row was computed should be computed again'
+
+  run_full VIEW_PRS_SKIP_UNCHANGED=0
+  assert_true 'fetched_details 1 && fetched_details 10' 'VIEW_PRS_SKIP_UNCHANGED=0 should fetch every PR'
+}
+
 setup_tmp
 run_all_tests() {
   setup_tmp
@@ -1559,6 +1641,7 @@ run_all_tests() {
   run_quick_check_numbers_tests
   run_row_order_stability_tests
   run_targeted_prs_tests
+  run_row_reuse_tests
   run_main_integration_tests
 }
 

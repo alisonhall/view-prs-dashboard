@@ -25,44 +25,12 @@ runShell(`printf '%s' '{}' > "${isolatedUserStateFile}"`);
 const runScriptFn = (expression) =>
   runShell(`source "${scriptPath}"; USER_STATE_FILE="${isolatedUserStateFile}"; ${expression}`);
 
-const seedCacheFingerprint = () => {
-  const detailDir = runShell("mktemp -d");
-  const threadDir = runShell("mktemp -d");
-  const reviewCommentDir = runShell("mktemp -d");
-  const reviewUrlDir = runShell("mktemp -d");
-  const filesDir = runShell("mktemp -d");
-  const ciMergeDir = runShell("mktemp -d");
-
-  runShell(
-    `cat > "${detailDir}/123.json" <<'EOF'\n{"comments":[],"reviews":[],"reviewRequests":[],"commits":[],"assignees":[],"statusCheckRollup":[],"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN"}\nEOF`,
-  );
-  runShell(`printf '%s' '[]' > "${threadDir}/123.json"`);
-  runShell(`printf '%s' '[]' > "${reviewCommentDir}/123.json"`);
-  runShell(`printf '%s' '{}' > "${reviewUrlDir}/123.json"`);
-  runShell(`printf '%s' '{"changedFiles":0,"viewedFiles":0}' > "${filesDir}/123.json"`);
-  runShell(
-    `printf '%s' '{"statusCheckRollup":[],"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN"}' > "${ciMergeDir}/123.json"`,
-  );
-
-  const fingerprint = runShell(
-    `source "${scriptPath}"; USER_STATE_FILE="${isolatedUserStateFile}";DETAIL_CACHE_DIR="${detailDir}"; THREAD_CACHE_DIR="${threadDir}"; REVIEW_COMMENT_CACHE_DIR="${reviewCommentDir}"; REVIEW_URL_CACHE_DIR="${reviewUrlDir}"; FILES_CACHE_DIR="${filesDir}"; CI_MERGE_CACHE_DIR="${ciMergeDir}"; build_pr_source_fingerprint "123"`,
-  );
-
-  return {
-    detailDir,
-    threadDir,
-    reviewCommentDir,
-    reviewUrlDir,
-    filesDir,
-    ciMergeDir,
-    fingerprint,
-  };
-};
-
 describe("check-open-pr-updates shell helper behavior", () => {
-  test("returns a versioned SHA-256 digest when build_pr_source_fingerprint is called", () => {
-    const caches = seedCacheFingerprint();
-    expect(caches.fingerprint).toMatch(/^fp:v2:sha256:[a-f0-9]{64}$/);
+  test("returns a versioned SHA-256 digest when build_pr_source_fingerprint_value is called", () => {
+    const output = runScriptFn(
+      `build_pr_source_fingerprint_value '{}' '[]' '[]' '[]' '[]' '[]' '[]' '[]' '{}' '{"changedFiles":0,"viewedFiles":0}' '{}'`,
+    );
+    expect(output).toMatch(/^fp:v2:sha256:[a-f0-9]{64}$/);
   });
 
   test("returns First Last when normalize_author_name receives Last, First input", () => {
@@ -298,16 +266,16 @@ describe("check-open-pr-updates shell helper behavior", () => {
 
   describe("cache_shortcut_allowed_for_section behavior", () => {
     test.each([
-      ["open section is disabled by default", "open", 0, "", "1"],
-      ["open section is enabled when skip flag is set", "open", 0, "1", "0"],
-      ["open section is blocked during ack mode even when skip flag is set", "open", 1, "1", "1"],
-      ["closed section is enabled when skip flag is set", "closed", 0, "1", "0"],
-      ["merged section is enabled when skip flag is set", "merged", 0, "1", "0"],
+      ["open section is enabled by default", "open", 0, "", "0"],
+      ["VIEW_PRS_SKIP_UNCHANGED=0 turns it off", "open", 0, "0", "1"],
+      ["open section is blocked during ack mode", "open", 1, "1", "1"],
+      ["closed section is enabled by default", "closed", 0, "", "0"],
+      ["merged section is enabled by default", "merged", 0, "", "0"],
     ])(
       "%s",
       (_label, section, ackEnabled, skipUnchanged, expectedResult) => {
         const output = runScriptFn(
-          `ACK_ENABLED=${ackEnabled}; ACK_CLEAR_ENABLED=0; ACK_CHANGED=0; TARGET_PR_NUMBER=''; VIEW_PRS_SKIP_UNCHANGED='${skipUnchanged}'; if cache_shortcut_allowed_for_section ${section} >/dev/null 2>&1; then echo 0; else echo 1; fi`,
+          `ACK_ENABLED=${ackEnabled}; ACK_CLEAR_ENABLED=0; ACK_CHANGED=0; TARGET_PR_NUMBER=''; ${skipUnchanged ? `VIEW_PRS_SKIP_UNCHANGED='${skipUnchanged}';` : "unset VIEW_PRS_SKIP_UNCHANGED;"} if cache_shortcut_allowed_for_section ${section} >/dev/null 2>&1; then echo 0; else echo 1; fi`,
         );
 
         expect(output).toBe(expectedResult);
@@ -356,130 +324,44 @@ describe("check-open-pr-updates shell helper behavior", () => {
     expect(row.titleDisplay).toContain("[CHK:PASS][MRG:YES]");
   });
 
-  test("falls back to NA and UNK when enrich_cached_row_with_ci_merge cannot find cached CI data", () => {
+  test("keeps the row's own check and merge state when enrich_cached_row_with_ci_merge has no fresh CI data", () => {
     const cacheDir = runShell("mktemp -d");
+    const row = '{"number":456,"title":"Another PR","checkState":"RUN","mergeState":"YES","titleDisplay":"Another PR [CHK:RUN][MRG:YES]"}';
     const output = runShell(
-      `source "${scriptPath}"; USER_STATE_FILE="${isolatedUserStateFile}";CI_MERGE_CACHE_DIR="${cacheDir}"; enrich_cached_row_with_ci_merge '{"number":456,"title":"Another PR","checkState":"RUN","mergeState":"YES","titleDisplay":"Another PR [CHK:RUN][MRG:YES]"}' "456"`,
+      `source "${scriptPath}"; USER_STATE_FILE="${isolatedUserStateFile}";CI_MERGE_CACHE_DIR="${cacheDir}"; enrich_cached_row_with_ci_merge '${row}' "456"`,
     );
 
-    const row = JSON.parse(output);
-    expect(row.checkState).toBe("NA");
-    expect(row.mergeState).toBe("UNK");
-    expect(row.titleDisplay).toContain("[CHK:NA][MRG:UNK]");
+    expect(JSON.parse(output)).toEqual(JSON.parse(row));
   });
 
-  test("returns no cached row when get_cached_row_json_for_pr receives a different viewer", () => {
-    const stateFile = runShell("mktemp");
-    const prJson = '{"number":123,"updatedAt":"2026-05-26T12:00:00Z"}';
-    const caches = seedCacheFingerprint();
-    const statePayload = {
-      byPrNumber: {
-        123: {
-          repo: "owner/repo",
-          section: "open",
-          data: {
-            number: "123",
-            viewerLogin: "alice",
-            sourceUpdatedAt: "2026-05-26T12:00:00Z",
-            sourceFingerprint: caches.fingerprint,
-            sourceBranch: "feature/x",
-            targetBranch: "main",
-            approvers: [],
-            openConversationCount: "0",
-            viewedFilesCount: "0",
-            changedFilesCount: "0",
-            viewedFilesSummary: "0/0 viewed",
-            comments: [],
-            reviews: [],
-            commits: [],
-            reviewThreads: [],
-            commentEvents: [],
-            activityEvents: [],
-            metrics: {},
-            activityTimeline: [],
-            activityTimelineSummary: "-",
-          },
-        },
-      },
-    };
-
-    runShell(`printf '%s' '${JSON.stringify(statePayload)}' > "${stateFile}"`);
-
-    const output = runShell(
-      `source "${scriptPath}"; USER_STATE_FILE="${isolatedUserStateFile}";VIEW_PRS_SKIP_UNCHANGED=1; PR_STATE_FILE="${stateFile}"; REPO='owner/repo'; VIEWER_LOGIN='bob'; DETAIL_CACHE_DIR="${caches.detailDir}"; THREAD_CACHE_DIR="${caches.threadDir}"; REVIEW_COMMENT_CACHE_DIR="${caches.reviewCommentDir}"; REVIEW_URL_CACHE_DIR="${caches.reviewUrlDir}"; FILES_CACHE_DIR="${caches.filesDir}"; CI_MERGE_CACHE_DIR="${caches.ciMergeDir}"; get_cached_row_json_for_pr '${prJson}' 'open'`,
-    );
-
-    expect(output).toBe("");
-  });
-
-  test("returns cached row data when get_cached_row_json_for_pr receives the same viewer", () => {
-    const stateFile = runShell("mktemp");
-    const prJson = '{"number":123,"updatedAt":"2026-05-26T12:00:00Z"}';
-    const caches = seedCacheFingerprint();
-    const statePayload = {
-      byPrNumber: {
-        123: {
-          repo: "owner/repo",
-          section: "open",
-          data: {
-            number: "123",
-            viewerLogin: "alice",
-            sourceUpdatedAt: "2026-05-26T12:00:00Z",
-            sourceFingerprint: caches.fingerprint,
-            sourceBranch: "feature/x",
-            targetBranch: "main",
-            approvers: [],
-            openConversationCount: "0",
-            viewedFilesCount: "0",
-            changedFilesCount: "0",
-            viewedFilesSummary: "0/0 viewed",
-            comments: [],
-            reviews: [],
-            commits: [],
-            reviewThreads: [],
-            commentEvents: [],
-            activityEvents: [],
-            metrics: {},
-            activityTimeline: [],
-            activityTimelineSummary: "-",
-          },
-        },
-      },
-    };
-
-    runShell(`printf '%s' '${JSON.stringify(statePayload)}' > "${stateFile}"`);
-
-    const output = runShell(
-      `source "${scriptPath}"; USER_STATE_FILE="${isolatedUserStateFile}";VIEW_PRS_SKIP_UNCHANGED=1; PR_STATE_FILE="${stateFile}"; REPO='owner/repo'; VIEWER_LOGIN='alice'; DETAIL_CACHE_DIR="${caches.detailDir}"; THREAD_CACHE_DIR="${caches.threadDir}"; REVIEW_COMMENT_CACHE_DIR="${caches.reviewCommentDir}"; REVIEW_URL_CACHE_DIR="${caches.reviewUrlDir}"; FILES_CACHE_DIR="${caches.filesDir}"; CI_MERGE_CACHE_DIR="${caches.ciMergeDir}"; get_cached_row_json_for_pr '${prJson}' 'open'`,
-    );
-
-    expect(output).toContain('"number":"123"');
-    expect(output).toContain('"viewerLogin":"alice"');
-  });
-
-  test("reuses cached row via bounded fallback when fingerprint caches are unavailable", () => {
-    const stateFile = runShell("mktemp");
-    const detailDir = runShell("mktemp -d");
-    const threadDir = runShell("mktemp -d");
-    const reviewCommentDir = runShell("mktemp -d");
-    const reviewUrlDir = runShell("mktemp -d");
-    const filesDir = runShell("mktemp -d");
-    const ciMergeDir = runShell("mktemp -d");
+  // A full run reuses a stored row whose PR hasn't changed (step 3 of the
+  // data-freshness plan in ROADMAP.md).
+  describe("reusing a stored row in a full run", () => {
     const sourceUpdatedAt = "2026-05-26T12:00:00Z";
-    const cachedAt = new Date(Date.now() - 60 * 1000).toISOString();
-    const prJson = JSON.stringify({ number: 123, updatedAt: sourceUpdatedAt });
+    const minutesAgo = (minutes) => new Date(Date.now() - minutes * 60 * 1000).toISOString();
+    // For the empty user state every lookup here uses.
+    const localStateKey = runScriptFn("REPO='owner/repo'; build_row_local_state_key 123");
 
-    const statePayload = {
+    // A stored row that can be reused - every field a row has, the listed
+    // updatedAt, this viewer and local state, fetched a minute ago; each
+    // test changes one thing.
+    const storedState = ({ entry = {}, data = {} } = {}) => ({
       byPrNumber: {
         123: {
           repo: "owner/repo",
           section: "open",
+          fetchedAt: minutesAgo(1),
+          ...entry,
           data: {
             number: "123",
+            title: "Stored title",
+            titleDisplay: "Stored title [CHK:PASS][MRG:YES]",
+            labels: ["old-label"],
+            checkState: "PASS",
+            mergeState: "YES",
             viewerLogin: "alice",
             sourceUpdatedAt,
-            sourceFingerprint: "stale-or-missing-fingerprint-ok-in-fallback",
-            updatedAt: cachedAt,
+            localStateKey,
             sourceBranch: "feature/x",
             targetBranch: "main",
             approvers: [],
@@ -496,148 +378,132 @@ describe("check-open-pr-updates shell helper behavior", () => {
             metrics: {},
             activityTimeline: [],
             activityTimelineSummary: "-",
+            ...data,
           },
         },
       },
+    });
+    const writeState = (state) => {
+      const stateFile = runShell("mktemp");
+      runShell(`printf '%s' '${JSON.stringify(state)}' > "${stateFile}"`);
+      return stateFile;
     };
+    const listed = (overrides = {}) => JSON.stringify({ number: 123, updatedAt: sourceUpdatedAt, ...overrides });
+    const setup = (stateFile, { viewer = "alice", env = "" } = {}) =>
+      `${env} PR_STATE_FILE="${stateFile}"; REPO='owner/repo'; VIEWER_LOGIN='${viewer}'; ACK_ENABLED=0; ACK_CLEAR_ENABLED=0; ACK_CHANGED=0; TARGET_PR_NUMBER=''; TARGET_PRS='';`;
+    const lookUp = (state, { section = "open", pr = listed(), ...options } = {}) =>
+      runScriptFn(`${setup(writeState(state), options)} get_cached_row_json_for_pr '${pr}' '${section}'`);
 
-    runShell(`printf '%s' '${JSON.stringify(statePayload)}' > "${stateFile}"`);
+    test("reuses an unchanged open row fetched within the revalidation window", () => {
+      expect(JSON.parse(lookUp(storedState()))).toMatchObject({ number: "123", viewerLogin: "alice" });
+    });
 
-    const output = runShell(
-      `source "${scriptPath}"; USER_STATE_FILE="${isolatedUserStateFile}";VIEW_PRS_SKIP_UNCHANGED=1; VIEW_PRS_CACHE_REVALIDATE_SECONDS=1800; PR_STATE_FILE="${stateFile}"; REPO='owner/repo'; VIEWER_LOGIN='alice'; DETAIL_CACHE_DIR="${detailDir}"; THREAD_CACHE_DIR="${threadDir}"; REVIEW_COMMENT_CACHE_DIR="${reviewCommentDir}"; REVIEW_URL_CACHE_DIR="${reviewUrlDir}"; FILES_CACHE_DIR="${filesDir}"; CI_MERGE_CACHE_DIR="${ciMergeDir}"; get_cached_row_json_for_pr '${prJson}' 'open'`,
-    );
+    test.each([
+      ["the PR changed on GitHub", {}, { pr: listed({ updatedAt: "2026-05-27T00:00:00Z" }) }],
+      ["another viewer", {}, { viewer: "bob" }],
+      ["it was computed from other local state (an ack, a filter)", { data: { localStateKey: "other" } }, {}],
+      ["rows from before localStateKey", { data: { localStateKey: undefined } }, {}],
+      ["the PR moved section", {}, { section: "draft" }],
+      ["an open row's last full fetch is past the revalidation window", { entry: { fetchedAt: minutesAgo(5) } }, { env: "VIEW_PRS_OPEN_REVALIDATE_SECONDS=60;" }],
+      ["an open row never fully fetched (no fetchedAt)", { entry: { fetchedAt: undefined } }, {}],
+      ["a field rows have is missing", { data: { metrics: null } }, {}],
+      ["VIEW_PRS_SKIP_UNCHANGED=0", {}, { env: "VIEW_PRS_SKIP_UNCHANGED=0;" }],
+    ])("doesn't reuse it when %s", (_label, stateOverrides, options) => {
+      expect(lookUp(storedState(stateOverrides), options)).toBe("");
+    });
 
-    expect(output).toContain('"number":"123"');
-    expect(output).toContain('"viewerLogin":"alice"');
-  });
+    test("reuses a merged row however long ago it was fetched, while its PR doesn't change", () => {
+      const state = storedState({ entry: { section: "merged", fetchedAt: "2020-01-01T00:00:00Z" } });
+      expect(lookUp(state, { section: "merged" })).toContain('"number":"123"');
+      expect(lookUp(state, { section: "merged", pr: listed({ updatedAt: "2026-05-27T00:00:00Z" }) })).toBe("");
+    });
 
-  test("emits progress markers when cached rows are reused", () => {
-    const stateFile = runShell("mktemp");
-    const detailDir = runShell("mktemp -d");
-    const threadDir = runShell("mktemp -d");
-    const reviewCommentDir = runShell("mktemp -d");
-    const reviewUrlDir = runShell("mktemp -d");
-    const filesDir = runShell("mktemp -d");
-    const ciMergeDir = runShell("mktemp -d");
-    const freshViewedDir = runShell("mktemp -d");
-    const sourceUpdatedAt = "2026-05-26T12:00:00Z";
-    const cachedAt = new Date(Date.now() - 60 * 1000).toISOString();
-    const prJson = JSON.stringify({ number: 123, updatedAt: sourceUpdatedAt });
+    test("the local state key changes with the PR's ack, and with the change filters", () => {
+      const ackedState = runShell("mktemp");
+      runShell(`printf '%s' '{"ackByRepo":{"owner/repo":{"123":"2026-05-26T13:00:00Z"}}}' > "${ackedState}"`);
+      const ackedKey = runShell(
+        `source "${scriptPath}"; USER_STATE_FILE="${ackedState}"; REPO='owner/repo'; build_row_local_state_key 123`,
+      );
+      const filteredKey = runScriptFn("REPO='owner/repo'; CHANGE_FILTER_IGNORE_COMMENT_AUTHORS='bot'; build_row_local_state_key 123");
 
-    const statePayload = {
-      byPrNumber: {
-        123: {
-          repo: "owner/repo",
-          section: "open",
-          data: {
-            number: "123",
-            title: "Cached PR",
-            titleDisplay: "Cached PR [CHK:NA][MRG:UNK]",
-            viewerLogin: "alice",
-            sourceUpdatedAt,
-            sourceFingerprint: "stale-or-missing-fingerprint-ok-in-fallback",
-            updatedAt: cachedAt,
-            sourceBranch: "feature/x",
-            targetBranch: "main",
-            approvers: [],
-            openConversationCount: "0",
-            viewedFilesCount: "0",
-            changedFilesCount: "0",
-            viewedFilesSummary: "0/0 viewed",
-            comments: [],
-            reviews: [],
-            commits: [],
-            reviewThreads: [],
-            commentEvents: [],
-            activityEvents: [],
-            metrics: {},
-            activityTimeline: [],
-            activityTimelineSummary: "-",
-          },
-        },
-      },
-    };
+      expect(ackedKey).not.toBe(localStateKey);
+      expect(filteredKey).not.toBe(localStateKey);
+      expect(runScriptFn("REPO='owner/repo'; build_row_local_state_key 123")).toBe(localStateKey);
+    });
 
-    runShell(`printf '%s' '${JSON.stringify(statePayload)}' > "${stateFile}"`);
-    runShell(
-      `printf '%s' '{"changedFiles":0,"viewedFiles":0}' > "${freshViewedDir}/123.json"`,
-    );
+    describe("get_pr_row_json", () => {
+      const rowFor = (state, { section = "open", pr, env = "" } = {}) =>
+        runScriptFn(`${setup(writeState(state), { env })} get_pr_row_json '${pr}' '${section}' 2>&1`);
 
-    const output = runShell(
-      `source "${scriptPath}"; USER_STATE_FILE="${isolatedUserStateFile}";VIEW_PRS_SKIP_UNCHANGED=1; VIEW_PRS_PROGRESS_MARKERS=1; VIEW_PRS_CACHE_REVALIDATE_SECONDS=1800; PR_STATE_FILE="${stateFile}"; REPO='owner/repo'; VIEWER_LOGIN='alice'; DETAIL_CACHE_DIR="${detailDir}"; THREAD_CACHE_DIR="${threadDir}"; REVIEW_COMMENT_CACHE_DIR="${reviewCommentDir}"; REVIEW_URL_CACHE_DIR="${reviewUrlDir}"; FILES_CACHE_DIR="${filesDir}"; CI_MERGE_CACHE_DIR="${ciMergeDir}"; VIEWED_FILES_FRESH_CACHE_DIR="${freshViewedDir}"; get_pr_row_json '${prJson}' 'open' 2>&1`,
-    );
+      test("a reused row emits progress markers, takes the listing's own fields, and is marked __reused", () => {
+        const output = rowFor(storedState(), {
+          pr: listed({ title: "Renamed", labels: [{ name: "new-label" }], additions: 7, deletions: 2 }),
+          env: "VIEW_PRS_PROGRESS_MARKERS=1;",
+        });
 
-    expect(output).toContain("__VIEW_PRS_PROGRESS__:START:123");
-    expect(output).toContain("__VIEW_PRS_PROGRESS__:END:123");
-    expect(output).toContain('"number":"123"');
-  });
+        expect(output).toContain("__VIEW_PRS_PROGRESS__:START:123");
+        expect(output).toContain("__VIEW_PRS_PROGRESS__:END:123");
+        const row = JSON.parse(output.split("\n").find((line) => line.startsWith("{")));
+        expect(row).toMatchObject({
+          title: "Renamed",
+          titleDisplay: "Renamed [CHK:PASS][MRG:YES]",
+          labels: ["new-label"],
+          additions: "7",
+          deletions: "2",
+          __reused: true,
+        });
+      });
 
-  test("does not reuse fallback cached row when revalidation age is exceeded", () => {
-    const stateFile = runShell("mktemp");
-    const detailDir = runShell("mktemp -d");
-    const threadDir = runShell("mktemp -d");
-    const reviewCommentDir = runShell("mktemp -d");
-    const reviewUrlDir = runShell("mktemp -d");
-    const filesDir = runShell("mktemp -d");
-    const ciMergeDir = runShell("mktemp -d");
-    const sourceUpdatedAt = "2026-05-26T12:00:00Z";
-    const prJson = JSON.stringify({ number: 123, updatedAt: sourceUpdatedAt });
+      test("a reused open row takes the run's fresh CI and mergeability; without any, keeps its own", () => {
+        const ciMergeDir = runShell("mktemp -d");
+        runShell(
+          `printf '%s' '{"statusCheckRollup":[{"__typename":"CheckRun","status":"COMPLETED","conclusion":"FAILURE"}],"mergeable":"CONFLICTING"}' > "${ciMergeDir}/123.json"`,
+        );
 
-    const statePayload = {
-      byPrNumber: {
-        123: {
-          repo: "owner/repo",
-          section: "open",
-          data: {
-            number: "123",
-            viewerLogin: "alice",
-            sourceUpdatedAt,
-            sourceFingerprint: "stale-or-missing-fingerprint-ok-in-fallback",
-            updatedAt: "2020-01-01T00:00:00Z",
-            sourceBranch: "feature/x",
-            targetBranch: "main",
-            approvers: [],
-            openConversationCount: "0",
-            viewedFilesCount: "0",
-            changedFilesCount: "0",
-            viewedFilesSummary: "0/0 viewed",
-            comments: [],
-            reviews: [],
-            commits: [],
-            reviewThreads: [],
-            commentEvents: [],
-            activityEvents: [],
-            metrics: {},
-            activityTimeline: [],
-            activityTimelineSummary: "-",
-          },
-        },
-      },
-    };
+        const fresh = JSON.parse(rowFor(storedState(), { pr: listed(), env: `CI_MERGE_CACHE_DIR="${ciMergeDir}";` }));
+        expect(fresh).toMatchObject({ checkState: "FAIL", mergeState: "NO" });
 
-    runShell(`printf '%s' '${JSON.stringify(statePayload)}' > "${stateFile}"`);
+        const withoutCi = JSON.parse(rowFor(storedState(), { pr: listed(), env: `CI_MERGE_CACHE_DIR="$(mktemp -d)";` }));
+        expect(withoutCi).toMatchObject({ checkState: "PASS", mergeState: "YES" });
+      });
 
-    const output = runShell(
-      `source "${scriptPath}"; USER_STATE_FILE="${isolatedUserStateFile}";VIEW_PRS_SKIP_UNCHANGED=1; VIEW_PRS_CACHE_REVALIDATE_SECONDS=60; PR_STATE_FILE="${stateFile}"; REPO='owner/repo'; VIEWER_LOGIN='alice'; DETAIL_CACHE_DIR="${detailDir}"; THREAD_CACHE_DIR="${threadDir}"; REVIEW_COMMENT_CACHE_DIR="${reviewCommentDir}"; REVIEW_URL_CACHE_DIR="${reviewUrlDir}"; FILES_CACHE_DIR="${filesDir}"; CI_MERGE_CACHE_DIR="${ciMergeDir}"; get_cached_row_json_for_pr '${prJson}' 'open'`,
-    );
+      test("a reused merged row isn't given CI data at all", () => {
+        const ciMergeDir = runShell("mktemp -d");
+        runShell(`printf '%s' '{"statusCheckRollup":[],"mergeable":"UNKNOWN"}' > "${ciMergeDir}/123.json"`);
+        const state = storedState({ entry: { section: "merged" } });
 
-    expect(output).toBe("");
-  });
+        const row = JSON.parse(rowFor(state, { section: "merged", pr: listed(), env: `CI_MERGE_CACHE_DIR="${ciMergeDir}";` }));
+        expect(row).toMatchObject({ checkState: "PASS", mergeState: "YES" });
+      });
+    });
 
-  test("refreshes viewed-file progress when enrich_cached_row_with_viewed_files receives fresh cache data", () => {
-    const freshViewedDir = runShell("mktemp -d");
-    runShell(
-      `cat > "${freshViewedDir}/789.json" <<'EOF'\n{"changedFiles":20,"viewedFiles":13}\nEOF`,
-    );
+    test("upsert_pr_state keeps a reused row's fetchedAt, and stamps a fetched one", () => {
+      const fetchedAt = "2026-05-26T12:30:00Z";
+      const stateFile = writeState(storedState({ entry: { fetchedAt } }));
+      const upsert = (row) =>
+        runScriptFn(
+          `${setup(stateFile)} STATE_BACKUP_DIR="$(mktemp -d)"; RUN_TS='2026-05-26T13:00:00Z'; RUN_ROW_INDEX=1; upsert_pr_state_unlocked '${JSON.stringify(row)}' open; jq -c '.byPrNumber["123"] | {fetchedAt, reused: (.data | has("__reused"))}' "${stateFile}"`,
+        );
 
-    const output = runShell(
-      `source "${scriptPath}"; USER_STATE_FILE="${isolatedUserStateFile}";VIEWED_FILES_FRESH_CACHE_DIR="${freshViewedDir}"; enrich_cached_row_with_viewed_files '{"number":789,"title":"Viewed files","viewedFilesCount":"1","changedFilesCount":"2","viewedFilesSummary":"1/2 viewed"}' "789"`,
-    );
+      expect(JSON.parse(upsert({ number: "123", __reused: true }))).toEqual({ fetchedAt, reused: false });
+      expect(JSON.parse(upsert({ number: "123" })).fetchedAt).not.toBe(fetchedAt);
+    });
 
-    const row = JSON.parse(output);
-    expect(row.viewedFilesCount).toBe("13");
-    expect(row.changedFilesCount).toBe("20");
-    expect(row.viewedFilesSummary).toBe("13/20 viewed");
+    test("a changed merged PR keeps its stored viewed-files counts instead of fetching them", () => {
+      const stateFile = writeState(storedState({ entry: { section: "merged" }, data: { viewedFilesCount: "3", changedFilesCount: "4" } }));
+
+      expect(JSON.parse(runScriptFn(`${setup(stateFile)} get_stored_viewed_files_stats_json 123`))).toEqual({
+        viewedFiles: 3,
+        changedFiles: 4,
+      });
+      // None stored (or "0" changed files - likely a failed fetch): fetched.
+      const zeroState = writeState(storedState({ entry: { section: "merged" }, data: { changedFilesCount: "0" } }));
+      expect(runScriptFn(`${setup(zeroState)} get_stored_viewed_files_stats_json 123`)).toBe("");
+      // Stored while still open (just merged): files pushed or viewed since
+      // that fetch would never be counted, so fetched once.
+      const openState = writeState(storedState({ data: { viewedFilesCount: "3", changedFilesCount: "4" } }));
+      expect(runScriptFn(`${setup(openState)} get_stored_viewed_files_stats_json 123`)).toBe("");
+    });
   });
 
   // Regression coverage for a broken `jq` expression in both
