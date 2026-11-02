@@ -57,7 +57,13 @@ assert_contains() {
 }
 
 setup_tmp() {
+  # One folder at a time: a retry's setup removes the last attempt's (the
+  # EXIT trap only knows the current one).
+  [[ -n "${TEST_TMP:-}" ]] && rm -rf "$TEST_TMP"
   TEST_TMP=$(mktemp -d)
+  # The data folder too, so the PR detail files and state backups the
+  # script writes stay out of the real data/.
+  export DATA_DIR="$TEST_TMP/data"
   export PR_STATE_FILE="$TEST_TMP/pr-state.json"
   export PR_STATE_LOCK_DIR="$TEST_TMP/pr-state.lock"
   export USER_STATE_FILE="$TEST_TMP/user-state.json"
@@ -376,10 +382,10 @@ JSON
 {"comments":[],"reviews":[{"author":{"login":"me_user"},"state":"APPROVED","submittedAt":"2026-03-01T00:00:00Z"},{"author":{"login":"me_user"},"state":"COMMENTED","submittedAt":"2026-03-02T00:00:00Z"}],"commits":[]}
 JSON
         ;;
-            109)
+      109)
         cat <<'JSON'
-      {"comments":[],"reviews":[{"author":{"login":"me_user"},"state":"APPROVED","submittedAt":"2026-03-01T00:00:00Z"}],"reviewRequests":[{"requestedReviewer":{"login":"me_user","name":"User, Me"}}],"commits":[]}
-      JSON
+{"comments":[],"reviews":[{"author":{"login":"me_user"},"state":"APPROVED","submittedAt":"2026-03-01T00:00:00Z"}],"reviewRequests":[{"requestedReviewer":{"login":"me_user","name":"User, Me"}}],"commits":[]}
+JSON
         ;;
       200)
         cat <<'JSON'
@@ -416,10 +422,10 @@ JSON
 {"comments":[],"reviews":[{"author":{"login":"me_user"},"state":"APPROVED","submittedAt":"2026-03-02T00:30:00Z"},{"author":{"login":"rev2"},"state":"APPROVED","submittedAt":"2026-03-02T01:00:00Z"}],"commits":[]}
 JSON
         ;;
-            210)
+      210)
         cat <<'JSON'
-      {"comments":[],"reviews":[{"author":{"login":"rev1"},"state":"APPROVED","submittedAt":"2026-03-02T00:00:00Z"},{"author":{"login":"rev2"},"state":"APPROVED","submittedAt":"2026-03-02T01:00:00Z"}],"reviewRequests":[{"requestedReviewer":{"login":"rev2","name":"Reviewer Two"}}],"commits":[]}
-      JSON
+{"comments":[],"reviews":[{"author":{"login":"rev1"},"state":"APPROVED","submittedAt":"2026-03-02T00:00:00Z"},{"author":{"login":"rev2"},"state":"APPROVED","submittedAt":"2026-03-02T01:00:00Z"}],"reviewRequests":[{"requestedReviewer":{"login":"rev2","name":"Reviewer Two"}}],"commits":[]}
+JSON
         ;;
       207)
         cat <<'JSON'
@@ -537,6 +543,15 @@ JSON
   seed_ack_entry 106 '2026-03-04T00:00:00Z'
   seed_ack_entry 111 '2026-03-01T00:00:00Z'
 
+  # A computed row keeps its timeline, activity, review threads and comment
+  # events in its PR detail file (detailRef); this puts them back.
+  with_pr_detail() {
+    local row_json="$1"
+    local detail_file
+    detail_file=$(printf '%s' "$row_json" | jq -r '.detailRef.file // ""')
+    printf '%s' "$row_json" | jq -c --slurpfile detail "$detail_file" '. + $detail[0]'
+  }
+
   make_pr_json() {
     local n="$1"
     local author_login="$2"
@@ -636,7 +651,7 @@ JSON
   reason=$(printf '%s' "$row" | jq -r '.reason')
   assert_true "[[ \"$reason\" == *comment* ]]" 'authored reason should include comment'
 
-  row=$(compute_pr_state_json "$(make_pr_json 202 'me_user' 'User, Me')")
+  row=$(with_pr_detail "$(compute_pr_state_json "$(make_pr_json 202 'me_user' 'User, Me')")")
   assert_eq "$(printf '%s' "$row" | jq -r '.status')" 'CHANGED' 'authored thread reply should mark changed'
   reason=$(printf '%s' "$row" | jq -r '.reason')
   assert_true "[[ \"$reason\" == *thread-reply* ]]" 'authored reason should include thread-reply'
@@ -672,7 +687,7 @@ JSON
   assert_eq "$(printf '%s' "$row" | jq -r '.metrics.approvalSummary.approvalsWithCommitsAfter')" '0' 'merge-main-only commits after approval should not count as approvalsWithCommitsAfter'
   assert_eq "$(printf '%s' "$row" | jq -r '.metrics.approvals[0].commitCountAfterApproval')" '0' 'merge-main-only commits after approval should not increment commitCountAfterApproval'
 
-  row=$(compute_pr_state_json "$(make_pr_json 107 'other' 'Other, User')")
+  row=$(with_pr_detail "$(compute_pr_state_json "$(make_pr_json 107 'other' 'Other, User')")")
   assert_eq "$(printf '%s' "$row" | jq -r '[.activityTimeline[] | select(.actor == "alice" and .type == "comment")] | length')" '2' 'timeline should keep separate comment groups when a different activity happens in between'
   assert_eq "$(printf '%s' "$row" | jq -r '[.activityTimeline[] | select(.actor == "alice" and .type == "comment")][0].count')" '1' 'latest separated comment group should only contain the post-interruption event'
   assert_eq "$(printf '%s' "$row" | jq -r '[.activityTimeline[] | select(.actor == "alice" and .type == "comment")][1].count')" '2' 'earlier contiguous comment group should still collapse consecutive identical events'
@@ -776,97 +791,6 @@ run_cache_freshness_tests() {
         "number": "2",
         "sourceUpdatedAt": "2026-03-10T01:00:00Z"
       }
-    },
-    "4": {
-      "prNumber": "4",
-      "repo": "owner/repo",
-      "section": "merged",
-      "data": {
-        "number": "4",
-        "sourceUpdatedAt": "2026-03-10T01:00:00Z",
-        "sourceBranch": "feature/test",
-        "targetBranch": "main",
-        "approvers": [],
-        "openConversationCount": "0",
-        "viewedFilesCount": "5",
-        "changedFilesCount": "5",
-        "viewedFilesSummary": "5/5 viewed",
-        "comments": [],
-        "reviews": [],
-        "commits": [],
-        "reviewThreads": [],
-        "commentEvents": [],
-        "activityEvents": [
-          {
-            "sourceId": "opened",
-            "occurredAt": "2026-03-10T01:00:00Z",
-            "date": "2026-03-10",
-            "actor": "owner",
-            "type": "opened",
-            "channel": "system"
-          }
-        ],
-        "metrics": {
-          "counts": {
-            "topLevelComments": 0,
-            "threadComments": 0,
-            "totalComments": 0,
-            "reviews": 0,
-            "approvals": 0,
-            "commits": 0,
-            "conversations": 0,
-            "openConversations": 0
-          },
-          "commentsByActor": [],
-          "reviewsByActor": [],
-          "approvals": [],
-          "approvalSummary": {
-            "totalApprovals": 0,
-            "riskyApprovals": 0,
-            "approvalsWithChangeRequestsAfter": 0,
-            "approvalsWithCommentsAfter": 0,
-            "approvalsWithCommitsAfter": 0,
-            "averageMergeLeadMinutes": null
-          },
-          "conversationSummary": {
-            "totalThreads": 0,
-            "openThreads": 0,
-            "resolvedThreads": 0,
-            "totalThreadComments": 0
-          }
-        },
-        "activityTimeline": [
-          {
-            "date": "2026-03-10",
-            "type": "opened",
-            "actor": "owner",
-            "earliestAt": "2026-03-10T01:00:00Z",
-            "count": 1,
-            "latestAt": "2026-03-10T01:00:00Z",
-            "channels": ["system"],
-            "events": [
-              {
-                "sourceId": "opened",
-                "occurredAt": "2026-03-10T01:00:00Z",
-                "date": "2026-03-10",
-                "actor": "owner",
-                "type": "opened",
-                "channel": "system"
-              }
-            ]
-          }
-        ],
-        "activityTimelineSummary": "2026-03-10: owner opened PR"
-      }
-    },
-    "5": {
-      "prNumber": "5",
-      "repo": "owner/repo",
-      "section": "merged",
-      "data": {
-        "number": "5",
-        "sourceUpdatedAt": "2026-03-10T01:00:00Z"
-      }
     }
   },
   "ackByRepo": {}
@@ -877,25 +801,6 @@ JSON
   pr1_draft=$(jq -cn '{number:1,isDraft:true,updatedAt:"2026-03-10T01:00:00Z"}')
   pr2_draft=$(jq -cn '{number:2,isDraft:true,updatedAt:"2026-03-10T01:00:00Z"}')
   pr3_open_new=$(jq -cn '{number:3,isDraft:false,updatedAt:"2026-03-10T02:00:00Z"}')
-
-  cached_open=$(get_cached_row_json_for_pr "$pr1_open" 'open')
-  assert_eq "$cached_open" '' 'open rows should bypass cache reuse to keep CHK/status fresh'
-
-  pr4_merged=$(jq -cn '{number:4,updatedAt:"2026-03-10T01:00:00Z"}')
-  cached_merged=$(get_cached_row_json_for_pr "$pr4_merged" 'merged')
-  assert_eq "$cached_merged" '' 'merged rows should be recomputed by default so activity/metrics stay fresh'
-
-  pr5_merged_legacy=$(jq -cn '{number:5,updatedAt:"2026-03-10T01:00:00Z"}')
-  cached_merged_legacy=$(get_cached_row_json_for_pr "$pr5_merged_legacy" 'merged')
-  assert_eq "$cached_merged_legacy" '' 'merged rows with legacy schema should be treated as stale and recomputed'
-
-  cached_wrong_section=$(get_cached_row_json_for_pr "$pr1_open" 'draft')
-  assert_eq "$cached_wrong_section" '' 'cache row should not be reused across different sections'
-
-  TARGET_PR_NUMBER='1'
-  cached_single_pr=$(get_cached_row_json_for_pr "$pr1_open" 'open')
-  assert_eq "$cached_single_pr" '' 'single-PR mode should bypass cache reuse so latest CHK/status data is recomputed'
-  TARGET_PR_NUMBER=''
 
   DETAIL_CACHE_DIR="$TEST_TMP/cache-details"
   mkdir -p "$DETAIL_CACHE_DIR"
@@ -918,16 +823,16 @@ JSON
   TARGET_PR_NUMBER=''
 
   b64_lines=$(printf '%s\n%s\n%s\n%s\n' \
-    "$(printf '%s' "$pr1_open" | base64)" \
-    "$(printf '%s' "$pr1_draft" | base64)" \
-    "$(printf '%s' "$pr2_draft" | base64)" \
-    "$(printf '%s' "$pr3_open_new" | base64)")
+    "$(printf '%s' "$pr1_open" | base64 | tr -d '\n')" \
+    "$(printf '%s' "$pr1_draft" | base64 | tr -d '\n')" \
+    "$(printf '%s' "$pr2_draft" | base64 | tr -d '\n')" \
+    "$(printf '%s' "$pr3_open_new" | base64 | tr -d '\n')")
 
   stale_open=$(collect_stale_numbers_from_b64 "$b64_lines" 'open' | tr -d '\r')
-  assert_eq "$stale_open" $'1\n3' 'open stale collection should include all open rows because open cache reuse is disabled'
+  assert_eq "$stale_open" $'1\n3' 'open stale collection should include every open PR with no reusable stored row'
 
   stale_draft=$(collect_stale_numbers_from_b64 "$b64_lines" 'draft' | tr -d '\r')
-  assert_eq "$stale_draft" $'1\n2' 'draft stale collection should include all draft rows because draft cache reuse is disabled'
+  assert_eq "$stale_draft" $'1\n2' 'draft stale collection should include every draft PR with no reusable stored row'
 }
 
 run_quick_check_tests() {
@@ -999,8 +904,8 @@ JSON
   pr1_unchanged=$(jq -cn '{number:1,isDraft:false,updatedAt:"2026-03-10T01:00:00Z"}')
   pr2_new=$(jq -cn '{number:2,isDraft:false,updatedAt:"2026-03-10T02:00:00Z"}')
   open_b64=$(printf '%s\n%s\n' \
-    "$(printf '%s' "$pr1_unchanged" | base64)" \
-    "$(printf '%s' "$pr2_new" | base64)")
+    "$(printf '%s' "$pr1_unchanged" | base64 | tr -d '\n')" \
+    "$(printf '%s' "$pr2_new" | base64 | tr -d '\n')")
 
   pending_open=$(collect_quick_check_pending_numbers "$open_b64" 'open' | tr -d '\r')
   assert_eq "$pending_open" '2' 'collect_quick_check_pending_numbers should only report the PR whose updatedAt actually changed'
@@ -1008,8 +913,8 @@ JSON
   pr4_unchanged=$(jq -cn '{number:4,updatedAt:"2026-03-10T01:00:00Z"}')
   pr5_new_merge=$(jq -cn '{number:5,updatedAt:"2026-03-10T05:00:00Z"}')
   merged_b64=$(printf '%s\n%s\n' \
-    "$(printf '%s' "$pr4_unchanged" | base64)" \
-    "$(printf '%s' "$pr5_new_merge" | base64)")
+    "$(printf '%s' "$pr4_unchanged" | base64 | tr -d '\n')" \
+    "$(printf '%s' "$pr5_new_merge" | base64 | tr -d '\n')")
 
   pending_merged=$(collect_quick_check_pending_numbers "$merged_b64" 'merged' | tr -d '\r')
   assert_eq "$pending_merged" '5' 'collect_quick_check_pending_numbers should flag a never-seen merged PR while leaving an unchanged one alone'
@@ -1144,7 +1049,7 @@ MOCK
 JSON
 
   local e2e_out
-  e2e_out=$(PATH="$mock_bin:$PATH" PR_STATE_FILE="$numbers_state" PR_STATE_LOCK_DIR="$numbers_state_lock" JOBS=2 sh "$SCRIPT_PATH" --quick-check --quick-check-numbers 501,502 --repo owner/repo --quiet)
+  e2e_out=$(PATH="$mock_bin:$PATH" PR_STATE_FILE="$numbers_state" PR_STATE_LOCK_DIR="$numbers_state_lock" JOBS=2 bash "$SCRIPT_PATH" --quick-check --quick-check-numbers 501,502 --repo owner/repo --quiet)
 
   assert_eq "$(printf '%s' "$e2e_out" | jq -c '.pendingMergedClosed')" '[501]' '--quick-check-numbers should report an old merged PR as pending when its cached updatedAt has drifted, bypassing the day-window entirely'
   assert_eq "$(printf '%s' "$e2e_out" | jq -c '.pendingOpen')" '[]' '--quick-check-numbers should not report an entered PR whose updatedAt is unchanged'
@@ -1152,7 +1057,7 @@ JSON
   # -p/--pr and --quick-check-numbers are mutually exclusive.
   local mutual_exclusion_err
   set +e
-  mutual_exclusion_err=$(sh "$SCRIPT_PATH" --quick-check -p 5 --quick-check-numbers 6 --repo owner/repo --quiet 2>&1)
+  mutual_exclusion_err=$(bash "$SCRIPT_PATH" --quick-check -p 5 --quick-check-numbers 6 --repo owner/repo --quiet 2>&1)
   local mutual_exclusion_status=$?
   set -e
   assert_true "[[ $mutual_exclusion_status -ne 0 ]]" '-p combined with --quick-check-numbers should fail'
@@ -1162,7 +1067,7 @@ JSON
   # silently falling through into the full (non-quick-check) report path.
   local missing_quick_check_err
   set +e
-  missing_quick_check_err=$(sh "$SCRIPT_PATH" --quick-check-numbers 501 --repo owner/repo --quiet 2>&1)
+  missing_quick_check_err=$(bash "$SCRIPT_PATH" --quick-check-numbers 501 --repo owner/repo --quiet 2>&1)
   local missing_quick_check_status=$?
   set -e
   assert_true "[[ $missing_quick_check_status -ne 0 ]]" '--quick-check-numbers without --quick-check should fail'
@@ -1344,7 +1249,7 @@ JSON
 JSON
   done
 
-  out_default=$(PATH="$mock_bin:$PATH" MOCK_OPEN_JSON="$mock_data/open.json" MOCK_CLOSED_JSON="$mock_data/closed.json" MOCK_MERGED_JSON="$mock_data/merged.json" MOCK_DETAILS_DIR="$mock_data/details" MOCK_THREADS_DIR="$mock_data/threads" PR_STATE_FILE="$integration_state" PR_STATE_LOCK_DIR="$integration_state_lock" ACK_FILE="$integration_ack" ACK_LOCK_DIR="$integration_ack_lock" DETAIL_CACHE_DIR="$integration_details" THREAD_CACHE_DIR="$integration_threads" sh "$SCRIPT_PATH" --open none --limit 5 --quiet)
+  out_default=$(PATH="$mock_bin:$PATH" MOCK_OPEN_JSON="$mock_data/open.json" MOCK_CLOSED_JSON="$mock_data/closed.json" MOCK_MERGED_JSON="$mock_data/merged.json" MOCK_DETAILS_DIR="$mock_data/details" MOCK_THREADS_DIR="$mock_data/threads" PR_STATE_FILE="$integration_state" PR_STATE_LOCK_DIR="$integration_state_lock" ACK_FILE="$integration_ack" ACK_LOCK_DIR="$integration_ack_lock" DETAIL_CACHE_DIR="$integration_details" THREAD_CACHE_DIR="$integration_threads" bash "$SCRIPT_PATH" --repo owner/repo --open none --limit 5 --quiet)
   closed_rows_default=$(printf '%s\n' "$out_default" | awk '/Latest Closed PRs:/{f=1;next} /Latest Merged PRs:/{f=0} f && $1 ~ /^#/{c++} END{print c+0}')
   assert_eq "$closed_rows_default" '5' 'default mode should include latest 7 close-days'
   assert_true "printf '%s\n' \"$out_default\" | awk '/Latest Closed PRs:/{f=1;next} /Latest Merged PRs:/{f=0} f' | grep -q '^#24'" 'default closed-day mode should include the oldest fixture close day when within 7-day window'
@@ -1352,7 +1257,7 @@ JSON
   assert_eq "$merged_rows_default" '5' 'default mode should include latest 7 merge-days'
   assert_true "printf '%s\n' \"$out_default\" | awk '/Latest Merged PRs:/{f=1;next} /Summary:/{f=0} f' | grep -q '^#14'" 'default merged-day mode should include the oldest fixture merge day when within 7-day window'
 
-  out_limit=$(PATH="$mock_bin:$PATH" MOCK_OPEN_JSON="$mock_data/open.json" MOCK_CLOSED_JSON="$mock_data/closed.json" MOCK_MERGED_JSON="$mock_data/merged.json" MOCK_DETAILS_DIR="$mock_data/details" MOCK_THREADS_DIR="$mock_data/threads" PR_STATE_FILE="$integration_state" PR_STATE_LOCK_DIR="$integration_state_lock" ACK_FILE="$integration_ack" ACK_LOCK_DIR="$integration_ack_lock" DETAIL_CACHE_DIR="$integration_details" THREAD_CACHE_DIR="$integration_threads" sh "$SCRIPT_PATH" --open none --limit 5 --merged-limit 2 --quiet)
+  out_limit=$(PATH="$mock_bin:$PATH" MOCK_OPEN_JSON="$mock_data/open.json" MOCK_CLOSED_JSON="$mock_data/closed.json" MOCK_MERGED_JSON="$mock_data/merged.json" MOCK_DETAILS_DIR="$mock_data/details" MOCK_THREADS_DIR="$mock_data/threads" PR_STATE_FILE="$integration_state" PR_STATE_LOCK_DIR="$integration_state_lock" ACK_FILE="$integration_ack" ACK_LOCK_DIR="$integration_ack_lock" DETAIL_CACHE_DIR="$integration_details" THREAD_CACHE_DIR="$integration_threads" bash "$SCRIPT_PATH" --repo owner/repo --open none --limit 5 --merged-limit 2 --quiet)
   closed_rows_limit=$(printf '%s\n' "$out_limit" | awk '/Latest Closed PRs:/{f=1;next} /Latest Merged PRs:/{f=0} f && $1 ~ /^#/{c++} END{print c+0}')
   assert_eq "$closed_rows_limit" '2' 'merged-limit mode should cap closed rows too'
   first_closed_row=$(printf '%s\n' "$out_limit" | awk '/Latest Closed PRs:/{f=1;next} /Latest Merged PRs:/{f=0} f && $1 ~ /^#/{print $1; exit}')
@@ -1362,10 +1267,10 @@ JSON
   first_merged_row=$(printf '%s\n' "$out_limit" | awk '/Latest Merged PRs:/{f=1;next} /Summary:/{f=0} f && $1 ~ /^#/{print $1; exit}')
   assert_eq "$first_merged_row" '#10' 'merged-limit mode should keep merged rows sorted newest-first'
 
-  out_hide=$(PATH="$mock_bin:$PATH" MOCK_OPEN_JSON="$mock_data/open.json" MOCK_CLOSED_JSON="$mock_data/closed.json" MOCK_MERGED_JSON="$mock_data/merged.json" MOCK_DETAILS_DIR="$mock_data/details" MOCK_THREADS_DIR="$mock_data/threads" PR_STATE_FILE="$integration_state" PR_STATE_LOCK_DIR="$integration_state_lock" ACK_FILE="$integration_ack" ACK_LOCK_DIR="$integration_ack_lock" DETAIL_CACHE_DIR="$integration_details" THREAD_CACHE_DIR="$integration_threads" sh "$SCRIPT_PATH" --open none --limit 5 --merged-limit 2 --hide-reason --quiet)
+  out_hide=$(PATH="$mock_bin:$PATH" MOCK_OPEN_JSON="$mock_data/open.json" MOCK_CLOSED_JSON="$mock_data/closed.json" MOCK_MERGED_JSON="$mock_data/merged.json" MOCK_DETAILS_DIR="$mock_data/details" MOCK_THREADS_DIR="$mock_data/threads" PR_STATE_FILE="$integration_state" PR_STATE_LOCK_DIR="$integration_state_lock" ACK_FILE="$integration_ack" ACK_LOCK_DIR="$integration_ack_lock" DETAIL_CACHE_DIR="$integration_details" THREAD_CACHE_DIR="$integration_threads" bash "$SCRIPT_PATH" --repo owner/repo --open none --limit 5 --merged-limit 2 --hide-reason --quiet)
   assert_true "[[ -n \"$out_hide\" ]]" 'hide-reason run should produce output'
 
-  out_label_filter=$(PATH="$mock_bin:$PATH" MOCK_OPEN_JSON="$mock_data/open.json" MOCK_CLOSED_JSON="$mock_data/closed.json" MOCK_MERGED_JSON="$mock_data/merged.json" MOCK_DETAILS_DIR="$mock_data/details" MOCK_THREADS_DIR="$mock_data/threads" PR_STATE_FILE="$integration_state" PR_STATE_LOCK_DIR="$integration_state_lock" ACK_FILE="$integration_ack" ACK_LOCK_DIR="$integration_ack_lock" DETAIL_CACHE_DIR="$integration_details" THREAD_CACHE_DIR="$integration_threads" sh "$SCRIPT_PATH" --open none --limit 5 --merged-limit 5 --label include-me,other-label --exclude-label blocked,deprecated --quiet)
+  out_label_filter=$(PATH="$mock_bin:$PATH" MOCK_OPEN_JSON="$mock_data/open.json" MOCK_CLOSED_JSON="$mock_data/closed.json" MOCK_MERGED_JSON="$mock_data/merged.json" MOCK_DETAILS_DIR="$mock_data/details" MOCK_THREADS_DIR="$mock_data/threads" PR_STATE_FILE="$integration_state" PR_STATE_LOCK_DIR="$integration_state_lock" ACK_FILE="$integration_ack" ACK_LOCK_DIR="$integration_ack_lock" DETAIL_CACHE_DIR="$integration_details" THREAD_CACHE_DIR="$integration_threads" bash "$SCRIPT_PATH" --repo owner/repo --open none --limit 5 --merged-limit 5 --label include-me,other-label --exclude-label blocked,deprecated --quiet)
   closed_rows_label_filter=$(printf '%s\n' "$out_label_filter" | awk '/Latest Closed PRs:/{f=1;next} /Latest Merged PRs:/{f=0} f && $1 ~ /^#/{c++} END{print c+0}')
   assert_eq "$closed_rows_label_filter" '1' 'label include/exclude filters should keep only matching closed PR rows'
   assert_true "printf '%s\n' \"$out_label_filter\" | awk '/Latest Closed PRs:/{f=1;next} /Latest Merged PRs:/{f=0} f' | grep -q '^#20'" 'label filters should retain include-me closed row'
@@ -1403,6 +1308,11 @@ run_reconcile_missing_open_rows_tests() {
   cat >"$mock_bin/gh" <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
+# As in make_mock_gh: drop the sourced script's exported jq() wrapper.
+unset -f jq 2>/dev/null || true
+if [[ -n "${MOCK_JQ_BIN:-}" ]]; then
+  jq() { "$MOCK_JQ_BIN" "$@"; }
+fi
 
 if [[ "$1" == "pr" && "$2" == "view" && "$3" == "967" ]]; then
   jq_expr=''
@@ -1484,7 +1394,7 @@ JSON
 JSON
 
   run_prs() {
-    PATH="$mock_bin:$PATH" MOCK_OPEN_JSON="$mock_data/unlisted.json" MOCK_CLOSED_JSON="$mock_data/unlisted.json" MOCK_MERGED_JSON="$mock_data/unlisted.json" MOCK_PR_VIEW_DIR="$mock_data/view" MOCK_DETAILS_DIR="$mock_data/details" MOCK_THREADS_DIR="$mock_data/threads" PR_STATE_FILE="$prs_state" PR_STATE_LOCK_DIR="$prs_state_lock" JOBS=2 sh "$SCRIPT_PATH" --open none --quiet --repo owner/repo --prs "$1" >"$mock_data/run.log" 2>&1 || {
+    PATH="$mock_bin:$PATH" MOCK_OPEN_JSON="$mock_data/unlisted.json" MOCK_CLOSED_JSON="$mock_data/unlisted.json" MOCK_MERGED_JSON="$mock_data/unlisted.json" MOCK_PR_VIEW_DIR="$mock_data/view" MOCK_DETAILS_DIR="$mock_data/details" MOCK_THREADS_DIR="$mock_data/threads" PR_STATE_FILE="$prs_state" PR_STATE_LOCK_DIR="$prs_state_lock" JOBS=2 bash "$SCRIPT_PATH" --open none --quiet --repo owner/repo --prs "$1" >"$mock_data/run.log" 2>&1 || {
       cat "$mock_data/run.log"
       echo "FAIL: --prs $1 run failed"
       exit 1
@@ -1515,21 +1425,21 @@ JSON
   # fails, so the server keeps them queued.
   jq '.byPrNumber["1"].data.title = "Stale again"' "$prs_state" >"$prs_state.tmp" && command mv -f "$prs_state.tmp" "$prs_state"
   set +e
-  prs_err=$(PATH="$mock_bin:$PATH" MOCK_OPEN_JSON="$mock_data/unlisted.json" MOCK_CLOSED_JSON="$mock_data/unlisted.json" MOCK_MERGED_JSON="$mock_data/unlisted.json" MOCK_PR_VIEW_DIR="$mock_data/view" MOCK_DETAILS_DIR="$mock_data/details" MOCK_THREADS_DIR="$mock_data/threads" PR_STATE_FILE="$prs_state" PR_STATE_LOCK_DIR="$prs_state_lock" JOBS=2 GH_COMMAND_TIMEOUT_SECONDS=5 sh "$SCRIPT_PATH" --open none --quiet --repo owner/repo --prs 1,999 2>&1 >/dev/null)
+  prs_err=$(PATH="$mock_bin:$PATH" MOCK_OPEN_JSON="$mock_data/unlisted.json" MOCK_CLOSED_JSON="$mock_data/unlisted.json" MOCK_MERGED_JSON="$mock_data/unlisted.json" MOCK_PR_VIEW_DIR="$mock_data/view" MOCK_DETAILS_DIR="$mock_data/details" MOCK_THREADS_DIR="$mock_data/threads" PR_STATE_FILE="$prs_state" PR_STATE_LOCK_DIR="$prs_state_lock" JOBS=2 GH_COMMAND_TIMEOUT_SECONDS=5 bash "$SCRIPT_PATH" --open none --quiet --repo owner/repo --prs 1,999 2>&1 >/dev/null)
   prs_status=$?
   set -e
   assert_true "[[ $prs_status -ne 0 ]]" '--prs should fail when a chosen PR could not be fetched'
   assert_contains "$prs_err" 'Could not fetch PR(s): 999' '--prs should name the PR it could not fetch'
   assert_eq "$(jq -r '.byPrNumber["1"].data.title' "$prs_state")" 'Open A, renamed' '--prs should still refresh the chosen PRs it could fetch'
   set +e
-  prs_err=$(sh "$SCRIPT_PATH" --prs 1 -p 2 --repo owner/repo --quiet 2>&1)
+  prs_err=$(bash "$SCRIPT_PATH" --prs 1 -p 2 --repo owner/repo --quiet 2>&1)
   prs_status=$?
   set -e
   assert_true "[[ $prs_status -ne 0 ]]" '--prs combined with -p should fail'
   assert_contains "$prs_err" 'cannot be combined with -p' '--prs combined with -p should say why'
 
   set +e
-  prs_err=$(sh "$SCRIPT_PATH" --prs 1 --quick-check --repo owner/repo --quiet 2>&1)
+  prs_err=$(bash "$SCRIPT_PATH" --prs 1 --quick-check --repo owner/repo --quiet 2>&1)
   prs_status=$?
   set -e
   assert_true "[[ $prs_status -ne 0 ]]" '--prs combined with --quick-check should fail'
@@ -1565,7 +1475,7 @@ JSON
   # A full run; $@ are extra env assignments.
   run_full() {
     : >"$gh_log"
-    env "$@" PATH="$log_bin:$PATH" DATA_DIR="$TEST_TMP/reuse-data" MOCK_OPEN_JSON="$mock_data/open.json" MOCK_CLOSED_JSON="$mock_data/closed.json" MOCK_MERGED_JSON="$mock_data/merged.json" MOCK_DETAILS_DIR="$mock_data/details" MOCK_THREADS_DIR="$mock_data/threads" PR_STATE_FILE="$reuse_state" PR_STATE_LOCK_DIR="$TEST_TMP/reuse-state.lock" JOBS=2 sh "$SCRIPT_PATH" --open none --quiet --repo owner/repo >"$mock_data/run.log" 2>&1 || {
+    env "$@" PATH="$log_bin:$PATH" DATA_DIR="$TEST_TMP/reuse-data" MOCK_OPEN_JSON="$mock_data/open.json" MOCK_CLOSED_JSON="$mock_data/closed.json" MOCK_MERGED_JSON="$mock_data/merged.json" MOCK_DETAILS_DIR="$mock_data/details" MOCK_THREADS_DIR="$mock_data/threads" PR_STATE_FILE="$reuse_state" PR_STATE_LOCK_DIR="$TEST_TMP/reuse-state.lock" JOBS=2 bash "$SCRIPT_PATH" --open none --quiet --repo owner/repo >"$mock_data/run.log" 2>&1 || {
       cat "$mock_data/run.log"
       echo 'FAIL: full run failed'
       exit 1
@@ -1618,14 +1528,19 @@ JSON
   assert_true 'fetched_details 1 && fetched_details 10' 'VIEW_PRS_SKIP_UNCHANGED=0 should fetch every PR'
 }
 
-setup_tmp
 run_all_tests() {
   setup_tmp
-  # ONLY_TESTS="run_a_tests run_b_tests" runs just those (check-open-pr-
-  # updates.sh-tests.test.js runs the ones known to pass this way).
+  # ONLY_TESTS="run_a_tests run_b_tests" runs just those
+  # (check-open-pr-updates.sh-tests.*.test.js run each group this way).
   if [[ -n "${ONLY_TESTS:-}" ]]; then
     local test_fn
     for test_fn in $ONLY_TESTS; do
+      # set -e is off inside `if run_all_tests`, so a misspelled name would
+      # otherwise pass.
+      if ! declare -F "$test_fn" >/dev/null; then
+        echo "FAIL: no test function named $test_fn"
+        exit 1
+      fi
       "$test_fn"
     done
     return 0

@@ -390,7 +390,7 @@ describe("check-open-pr-updates shell helper behavior", () => {
     };
     const listed = (overrides = {}) => JSON.stringify({ number: 123, updatedAt: sourceUpdatedAt, ...overrides });
     const setup = (stateFile, { viewer = "alice", env = "" } = {}) =>
-      `${env} PR_STATE_FILE="${stateFile}"; REPO='owner/repo'; VIEWER_LOGIN='${viewer}'; ACK_ENABLED=0; ACK_CLEAR_ENABLED=0; ACK_CHANGED=0; TARGET_PR_NUMBER=''; TARGET_PRS='';`;
+      `PR_STATE_FILE="${stateFile}"; REPO='owner/repo'; VIEWER_LOGIN='${viewer}'; ACK_ENABLED=0; ACK_CLEAR_ENABLED=0; ACK_CHANGED=0; TARGET_PR_NUMBER=''; TARGET_PRS=''; ${env}`;
     const lookUp = (state, { section = "open", pr = listed(), ...options } = {}) =>
       runScriptFn(`${setup(writeState(state), options)} get_cached_row_json_for_pr '${pr}' '${section}'`);
 
@@ -408,6 +408,8 @@ describe("check-open-pr-updates shell helper behavior", () => {
       ["an open row never fully fetched (no fetchedAt)", { entry: { fetchedAt: undefined } }, {}],
       ["a field rows have is missing", { data: { metrics: null } }, {}],
       ["VIEW_PRS_SKIP_UNCHANGED=0", {}, { env: "VIEW_PRS_SKIP_UNCHANGED=0;" }],
+      ["it's a run of one PR (-p)", {}, { env: "TARGET_PR_NUMBER='123';" }],
+      ["it's a run of chosen PRs (--prs)", {}, { env: "TARGET_PRS='123';" }],
     ])("doesn't reuse it when %s", (_label, stateOverrides, options) => {
       expect(lookUp(storedState(stateOverrides), options)).toBe("");
     });

@@ -1,25 +1,13 @@
-// Runs some of check-open-pr-updates.test.sh's own test functions, which
-// nothing else runs: as a whole that file doesn't pass (found 2026-10-31 -
-// run_compute_state_tests' "later external non-approved review" check
-// fails), so these are the ones known to, picked with its ONLY_TESTS.
-const { execFileSync } = require("child_process");
-const path = require("path");
+// check-open-pr-updates.test.sh's quicker groups (see
+// check-open-pr-updates.sh-tests.helpers.js); full runs are in
+// check-open-pr-updates.sh-tests.runs.test.js and .main.test.js.
+const { defineShellTestGroups } = require("./check-open-pr-updates.sh-tests.helpers");
 
-const testScript = path.join(__dirname, "check-open-pr-updates.test.sh");
-
-const runShellTests = (testFunctions) =>
-  execFileSync("bash", [testScript], {
-    cwd: path.join(__dirname, ".."),
-    encoding: "utf8",
-    env: { ...process.env, BASH_ENV: "", ONLY_TESTS: testFunctions.join(" ") },
-  });
-
-test("upserts keep a row's order and stamp when it was written; --prs refreshes only the chosen PRs", () => {
-  const output = runShellTests(["run_row_order_stability_tests", "run_targeted_prs_tests"]);
-  expect(output).toContain("All tests passed");
-}, 180000);
-
-test("a full run reuses rows whose PR hasn't changed, and fetches the rest", () => {
-  const output = runShellTests(["run_row_reuse_tests"]);
-  expect(output).toContain("All tests passed");
-}, 360000);
+defineShellTestGroups([
+  ["helpers, and the ack and user-state stores", ["run_helper_tests", "run_ack_store_tests"]],
+  ["a row's status, reasons, approvals and activity", ["run_compute_state_tests"]],
+  ["review threads page; an ack with new activity reruns", ["run_fetch_threads_pagination_tests", "run_ack_changed_rerun_tests"]],
+  ["stored open rows no longer listed are reclassified", ["run_reconcile_missing_open_rows_tests"]],
+  ["the stale collections split open from draft; cached details are reused unless the run targets the PR", ["run_cache_freshness_tests"]],
+  ["the quick check reports only changed PRs", ["run_quick_check_tests", "run_quick_check_numbers_tests"]],
+]);

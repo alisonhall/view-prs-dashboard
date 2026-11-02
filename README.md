@@ -1005,10 +1005,17 @@ An automatic update says so in the header's status line once per new run (`Auto-
 
 ### Debugging flaky runs
 
-If shell tests fail intermittently, rerun with retries enabled:
+The script's shell tests (`src/script/integration-tests/check-open-pr-updates.test.sh`) run in Jest, one group of test functions per test, spread over three files so they run in parallel (`check-open-pr-updates.sh-tests*.test.js`; the full-run group alone takes about 4.5 minutes). A failing group shows the end of the script's output. They run the script with `bash` (on Linux `sh` is often dash, which can't run it), use the bundled jq, and keep everything they write in a temporary folder, removed afterwards. To run them directly, or just some groups:
 
 ```bash
-TEST_RETRIES=2 bash view-prs/src/script/tests/check-open-pr-updates.test.sh
+bash src/script/integration-tests/check-open-pr-updates.test.sh
+ONLY_TESTS="run_compute_state_tests run_quick_check_tests" bash src/script/integration-tests/check-open-pr-updates.test.sh
+```
+
+If they fail intermittently, rerun with retries enabled:
+
+```bash
+TEST_RETRIES=2 bash src/script/integration-tests/check-open-pr-updates.test.sh
 ```
 
 `TEST_RETRIES=N` performs up to `N+1` total attempts and prints run context when an attempt fails.
