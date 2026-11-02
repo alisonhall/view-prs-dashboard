@@ -8533,6 +8533,10 @@ describe("index page rendering with Testing Library", () => {
           },
           lastRun: { repo: "owner/repo", updatedAt: "2026-06-16T10:00:00Z" },
         }),
+        // A saved selection to clear: a save that changes nothing isn't
+        // written (checking and unchecking within the debounce no longer
+        // saves at all).
+        userDefaultsOverrides: { changeFilters: { ignoreReviewsFromAuthors: ["reviewer1"] } },
       });
 
       const user = userEvent.setup();
@@ -8541,11 +8545,14 @@ describe("index page rendering with Testing Library", () => {
           throw new Error("not populated yet");
         }
       });
+      await waitFor(() =>
+        expect(
+          document.querySelector('#change-filter-ignore-review-authors-list input[value="reviewer1"]')?.checked,
+        ).toBe(true),
+      );
 
-      // Saves only happen on a change (the debounce never fires on mount), so
-      // check and uncheck a reviewer: the final state has every list empty.
+      // Unchecking the only reviewer leaves every list empty.
       fetchMock.mockClear();
-      await clickMultiSelectCheckbox("change-filter-ignore-review-authors-list", "reviewer1", user);
       await clickMultiSelectCheckbox("change-filter-ignore-review-authors-list", "reviewer1", user);
 
       await waitForPersistedViewFilterOverrides((savedOverrides) => {

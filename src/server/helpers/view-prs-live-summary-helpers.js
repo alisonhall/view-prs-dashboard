@@ -14,12 +14,16 @@
 // 25 PRs a page keeps a page's nested connections (100 threads and 100
 // files per PR) well inside GitHub's per-query node limit.
 const LIVE_SUMMARY_PAGE_SIZE = 25;
-// 500 open PRs; a repo with more lists only its most recently updated ones.
+// 500 open PRs; a repo with more lists only its newest ones.
 const LIVE_SUMMARY_MAX_PAGES = 20;
 
+// Pages in order of creation, which never changes: GitHub's cursors mark a
+// place in the order, so with UPDATED_AT a PR updated while the pages were
+// read moved ahead of the cursor and was skipped - and a complete listing
+// without it marked its row "No longer open".
 const LIVE_SUMMARY_QUERY = `query($owner: String!, $name: String!, $after: String) {
   repository(owner: $owner, name: $name) {
-    pullRequests(states: OPEN, first: ${LIVE_SUMMARY_PAGE_SIZE}, after: $after, orderBy: {field: UPDATED_AT, direction: DESC}) {
+    pullRequests(states: OPEN, first: ${LIVE_SUMMARY_PAGE_SIZE}, after: $after, orderBy: {field: CREATED_AT, direction: DESC}) {
       pageInfo { hasNextPage endCursor }
       nodes {
         number title url isDraft updatedAt additions deletions changedFiles mergeable
@@ -234,6 +238,41 @@ const applyLiveSummaryToEntry = (entry, repoSummary) => {
   };
 };
 
+// The repo's open rows whose review threads changed since they were
+// fetched: their unresolved-thread count differs from a listing newer than
+// the fetch. Resolving a thread doesn't move a PR's updatedAt, so the quick
+// check (which compares updatedAt) doesn't see it, and a full run reuses
+// the row - threads, status reason and all - for up to 4 hours. Compares
+// the script's own count of unresolved threads (metrics), the same count
+// the listing makes, so a refreshed row matches and isn't queued again.
+const findPrsWithChangedThreads = (entries, repo, repoSummary) => {
+  const checkedAtMs = toMs(repoSummary?.checkedAt);
+  if (!repoSummary?.prs || !Number.isFinite(checkedAtMs)) {
+    return [];
+  }
+  return asArray(entries)
+    .filter((entry) => {
+      const section = asString(entry?.section);
+      if (asString(entry?.repo) !== repo || (section !== "open" && section !== "draft")) {
+        return false;
+      }
+      if (!(checkedAtMs > toMs(entry.fetchedAt || entry.updatedAt))) {
+        return false;
+      }
+      const listed = repoSummary.prs[asString(entry.prNumber || entry.data?.number)];
+      const stored = entry.data?.metrics?.conversationSummary?.openThreads;
+      return (
+        listed?.openConversationCount !== null &&
+        listed?.openConversationCount !== undefined &&
+        stored !== null &&
+        stored !== undefined &&
+        String(stored) !== String(listed.openConversationCount)
+      );
+    })
+    .map((entry) => Number(entry.prNumber || entry.data?.number))
+    .filter((number) => Number.isInteger(number) && number > 0);
+};
+
 const createViewPrsLiveSummaryHelpers = ({
   fs,
   liveSummaryFile,
@@ -365,5 +404,6 @@ module.exports = {
   toMergeState,
   normalizeLiveSummaryPr,
   applyLiveSummaryToEntry,
+  findPrsWithChangedThreads,
   createViewPrsLiveSummaryHelpers,
 };

@@ -120,4 +120,40 @@ describe("pr-ui-option-persistence helpers", () => {
     expect(fetchFn).toHaveBeenCalledTimes(1);
     expect(fetchFn.mock.calls.some(([, init]) => init?.method === "PUT")).toBe(false);
   });
+
+  test("writeUiSessionOverrides writes nothing when nothing differs from what they were built from", async () => {
+    // Every save writes back all the overrides, so one that changes nothing
+    // (each page load's restore triggers one) could only put back a value
+    // another tab just changed.
+    const fetchFn = jest.fn(async () => ({ ok: true }));
+    const { writeUiSessionOverrides } = createPrUiOptionPersistenceHelpers({ fetch: fetchFn });
+    const read = { theme: "dark", label: ["bug"], prSections: { flagged: { hidden: true }, open: { open: true } } };
+
+    // The same, in another key order, and with an empty list dropped either way.
+    await writeUiSessionOverrides(
+      { prSections: { open: { open: true }, flagged: { hidden: true } }, label: ["bug"], theme: "dark", author: [] },
+      { unchangedFrom: read },
+    );
+    expect(fetchFn).not.toHaveBeenCalled();
+
+    await writeUiSessionOverrides({ ...read, theme: "light" }, { unchangedFrom: read });
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(fetchFn.mock.calls[0][1].body).theme).toBe("light");
+
+    // Without unchangedFrom, as before: always written.
+    await writeUiSessionOverrides(read);
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+  });
+
+  test("updateUiSessionOverride writes nothing when the value is already saved", async () => {
+    const fetchFn = jest.fn(async (_url, init) =>
+      init?.method === "PUT" ? { ok: true } : { ok: true, json: async () => ({ overrides: { theme: "dark" } }) },
+    );
+    const { updateUiSessionOverride } = createPrUiOptionPersistenceHelpers({ fetch: fetchFn });
+
+    await updateUiSessionOverride("theme", "dark");
+    await updateUiSessionOverride("prSections", undefined);
+
+    expect(fetchFn.mock.calls.some(([, init]) => init?.method === "PUT")).toBe(false);
+  });
 });

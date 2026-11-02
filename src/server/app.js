@@ -61,6 +61,7 @@ const {
 const { mergePrDetailFields } = require("./helpers/view-prs-pr-detail-storage");
 const {
   applyLiveSummaryToEntry,
+  findPrsWithChangedThreads,
   createViewPrsLiveSummaryHelpers,
 } = require("./helpers/view-prs-live-summary-helpers");
 const {
@@ -2413,12 +2414,23 @@ const runViewPrsQuickCheck = async ({
       // view-prs-live-summary-helpers.js) - not for a check of entered
       // numbers, which may not be open. A failure keeps the last listing
       // and doesn't fail the check.
+      // Open PRs whose review threads changed since their rows were fetched
+      // (findPrsWithChangedThreads): queued with the ones the script finds,
+      // so the targeted refresh fetches them.
+      let threadChangedNumbers = [];
       if (!extraArgs.includes("--quick-check-numbers") && !isLiveSummaryDisabled()) {
         const liveSummaryResult = await callRefreshRepoLiveSummary(repo);
         if (!liveSummaryResult?.ok) {
           console.warn(
             `[view-prs] live summary failed for ${repo}: ${liveSummaryResult?.error || "unknown error"}`,
           );
+        } else {
+          try {
+            const rawEntries = Object.values(JSON.parse(fs.readFileSync(viewPrsDataFile, "utf8"))?.byPrNumber || {});
+            threadChangedNumbers = findPrsWithChangedThreads(rawEntries, repo, readLiveSummary().byRepo[repo]);
+          } catch (_error) {
+            // No data file yet, or unreadable: nothing to compare.
+          }
         }
       }
       try {
@@ -2428,7 +2440,9 @@ const runViewPrsQuickCheck = async ({
           { timeoutMs: scriptTimeoutMs, trackSchedulerPrProgress: false },
         );
         const parsed = JSON.parse(String(result?.stdout || "").trim() || "{}");
-        const pendingOpen = Array.isArray(parsed.pendingOpen) ? parsed.pendingOpen : [];
+        const pendingOpen = [
+          ...new Set([...(Array.isArray(parsed.pendingOpen) ? parsed.pendingOpen : []), ...threadChangedNumbers]),
+        ];
         const pendingMergedClosed = Array.isArray(parsed.pendingMergedClosed)
           ? parsed.pendingMergedClosed
           : [];

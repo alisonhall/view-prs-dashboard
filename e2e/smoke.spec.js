@@ -832,6 +832,27 @@ test("Settings › Appearance: a hidden section never shows while the page loads
   }
 });
 
+test("loading the page doesn't write the saved settings back", async ({ page }) => {
+  // Each save writes back every setting it read. A load's restore used to
+  // trigger one that changed nothing, and its stale write could land after
+  // another tab's change - or a test's cleanup, which left Flagged hidden
+  // for later tests on CI.
+  const { overrides = {} } = await (await page.request.get("/view-prs/user-defaults")).json();
+  await page.request.put("/view-prs/user-defaults", { data: { ...overrides, limit: "50", theme: "dark" } });
+  try {
+    const saves = [];
+    page.on("request", (request) => {
+      if (request.url().includes("/view-prs/user-defaults") && request.method() === "PUT") saves.push(request);
+    });
+    await page.goto("/");
+    await waitForPrTable(page);
+    await waitForFilterPersist(page);
+    expect(saves).toHaveLength(0);
+  } finally {
+    await clearSavedSettings(page.request, ["limit", "theme"]);
+  }
+});
+
 test("in a window too narrow for the table, a section still scrolls sideways", async ({ page }) => {
   // Below 900px the pane is a drawer, so the table has the window's width.
   await page.setViewportSize({ width: 820, height: 700 });
@@ -2091,11 +2112,13 @@ test("React-owned Run Script options (text inputs, select, checkboxes) survive a
 
   // Reset back to defaults so this test's persisted state doesn't affect
   // whatever unrelated test happens to load next against this suite's one
-  // shared webServer. Wait for the restore's own debounced save to land
-  // first: it reads the overrides (still holding this test's values) and
-  // writes them back merged, so if its read raced ahead of the reset below
-  // and its write landed after, it would put "pr-numbers": "912,921" back -
-  // seen leaking into the bulk-select PR-numbers test.
+  // shared webServer. Wait for any save of the page's first: each save
+  // writes back every setting it read, so one whose read raced ahead of the
+  // reset below and whose write landed after would put "pr-numbers":
+  // "912,921" back - seen leaking into the bulk-select PR-numbers test. (A
+  // restore that changes nothing no longer saves at all - it used to, and
+  // its stale write also wiped this test's values before the reload,
+  // failing it on CI.)
   await waitForFilterPersist(page);
   await page.evaluate(async () => {
     const current = await (await fetch("/view-prs/user-defaults")).json();

@@ -6,6 +6,7 @@ const {
   toMergeState,
   normalizeLiveSummaryPr,
   applyLiveSummaryToEntry,
+  findPrsWithChangedThreads,
   createViewPrsLiveSummaryHelpers,
 } = require("./view-prs-live-summary-helpers");
 
@@ -246,6 +247,47 @@ describe("applyLiveSummaryToEntry", () => {
   });
 });
 
+describe("findPrsWithChangedThreads", () => {
+  const summary = {
+    checkedAt: "2026-10-31T10:00:00Z",
+    prs: {
+      12: { openConversationCount: "1" },
+      13: { openConversationCount: "2" },
+      14: { openConversationCount: null },
+      15: { openConversationCount: "0" },
+      16: { openConversationCount: "3" },
+    },
+  };
+  const row = (number, openThreads, overrides = {}) => ({
+    prNumber: String(number),
+    repo: "acme/api",
+    section: "open",
+    fetchedAt: "2026-10-31T09:00:00Z",
+    data: { number: String(number), metrics: { conversationSummary: { openThreads } } },
+    ...overrides,
+  });
+
+  test("open rows whose unresolved-thread count differs from a newer listing", () => {
+    const entries = [
+      row(12, 2), // resolved one since: queued
+      row(13, 2), // unchanged
+      row(14, 1), // the listing couldn't count (over 100 threads): left alone
+      row(15, 1, { section: "draft" }), // drafts too
+      row(16, 1, { fetchedAt: "2026-10-31T10:01:00Z" }), // fetched after the listing: its own count is newer
+      row(17, 1), // not listed
+      row(12, 5, { repo: "acme/web" }), // another repo
+      row(13, 0, { section: "merged" }), // not open
+      { prNumber: "18", repo: "acme/api", section: "open", data: {} }, // no stored count
+    ];
+    expect(findPrsWithChangedThreads(entries, "acme/api", summary)).toEqual([12, 15]);
+  });
+
+  test("nothing without a listing", () => {
+    expect(findPrsWithChangedThreads([row(12, 2)], "acme/api", undefined)).toEqual([]);
+    expect(findPrsWithChangedThreads([row(12, 2)], "acme/api", { prs: summary.prs })).toEqual([]);
+  });
+});
+
 describe("createViewPrsLiveSummaryHelpers", () => {
   let dir;
   let liveSummaryFile;
@@ -280,6 +322,12 @@ describe("createViewPrsLiveSummaryHelpers", () => {
     expect(firstArgs).toEqual(expect.arrayContaining(["api", "graphql", "owner=acme", "name=api"]));
     expect(firstArgs.some((arg) => arg.startsWith("after="))).toBe(false);
     expect(run.mock.calls[1][1]).toContain("after=cursor-1");
+    // Paged in creation order, which can't change while the pages are read:
+    // in update order, a PR updated meanwhile moved ahead of the cursor and
+    // was skipped, so a complete listing marked it no longer open.
+    const query = firstArgs.find((arg) => arg.startsWith("query="));
+    expect(query).toContain("orderBy: {field: CREATED_AT, direction: DESC}");
+    expect(query).not.toContain("UPDATED_AT");
 
     const saved = helpers.readLiveSummary().byRepo["acme/api"];
     expect(saved.checkedAt).toBe("2026-10-31T10:05:00.000Z");

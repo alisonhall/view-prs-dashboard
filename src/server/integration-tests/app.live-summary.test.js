@@ -227,6 +227,44 @@ describe("quick checks list each repo's open PRs", () => {
     expect(listed).toEqual([]);
   });
 
+  test("a PR whose review threads changed since its row was fetched is queued for update", async () => {
+    // Resolving a thread doesn't move updatedAt, so the script finds nothing.
+    const row = (number, openThreads) => ({
+      prNumber: String(number),
+      repo: "acme/api",
+      section: "open",
+      fetchedAt: "2026-10-31T09:00:00Z",
+      updatedAt: "2026-10-31T09:00:00Z",
+      data: { number: String(number), metrics: { conversationSummary: { openThreads } } },
+    });
+    fs.writeFileSync(dataFile, JSON.stringify({ byPrNumber: { 12: row(12, 2), 13: row(13, 1) } }));
+    fs.writeFileSync(
+      liveSummaryFile,
+      JSON.stringify({
+        byRepo: {
+          "acme/api": {
+            checkedAt: "2026-10-31T10:00:00.000Z",
+            complete: true,
+            prs: { 12: { number: "12", openConversationCount: "1" }, 13: { number: "13", openConversationCount: "1" } },
+          },
+        },
+      }),
+    );
+    viewPrsSchedulerState.pendingByRepo = {};
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+    let result;
+    try {
+      result = await runViewPrsQuickCheck({ repo: "acme/api" });
+    } finally {
+      warn.mockRestore();
+      writeData();
+      fs.rmSync(liveSummaryFile, { force: true });
+    }
+    // Only 12 (13's count hasn't changed). The dispatcher tick it starts
+    // may already have refreshed it off the queue.
+    expect(result).toMatchObject({ newPendingOpenCount: 1, reposWithPendingOpen: ["acme/api"] });
+  });
+
   test("VIEW_PRS_DISABLE_LIVE_SUMMARY turns it off", async () => {
     process.env.VIEW_PRS_DISABLE_LIVE_SUMMARY = "1";
     await runViewPrsQuickCheck();

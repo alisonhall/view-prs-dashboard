@@ -98,10 +98,10 @@ const createPrUiOptionPersistenceHelpers = ({ fetch: fetchFn }: PrUiOptionPersis
 
   // Empty arrays are dropped (so a cleared list falls back to its default)
   // unless their key is in preserveEmptyArrayKeys.
-  const writeUiSessionOverrides = async (
+  const toWrittenOverrides = (
     overrides: UiOptionOverrides | null | undefined,
-    { preserveEmptyArrayKeys = [] }: { preserveEmptyArrayKeys?: string[] } = {},
-  ): Promise<void> => {
+    preserveEmptyArrayKeys: string[],
+  ): UiOptionOverrides => {
     const preserveSet = new Set(
       Array.isArray(preserveEmptyArrayKeys) ? preserveEmptyArrayKeys : [],
     );
@@ -111,8 +111,32 @@ const createPrUiOptionPersistenceHelpers = ({ fetch: fetchFn }: PrUiOptionPersis
       }
       return value !== undefined;
     });
+    return Object.fromEntries(entries);
+  };
 
-    const data = Object.fromEntries(entries);
+  // JSON with object keys sorted, so key order doesn't count as a change.
+  const stableJson = (value: unknown): string =>
+    JSON.stringify(value, (_key, inner) =>
+      inner && typeof inner === "object" && !Array.isArray(inner)
+        ? Object.fromEntries(Object.keys(inner).sort().map((key) => [key, inner[key]]))
+        : inner,
+    );
+
+  // `unchangedFrom`: the overrides these were built from. When nothing
+  // differs, nothing is written: every save writes back all of them, so a
+  // save that changes nothing (each page load's restore triggers one) would
+  // only risk putting back a value another tab, or a test, just changed.
+  const writeUiSessionOverrides = async (
+    overrides: UiOptionOverrides | null | undefined,
+    {
+      preserveEmptyArrayKeys = [],
+      unchangedFrom,
+    }: { preserveEmptyArrayKeys?: string[]; unchangedFrom?: UiOptionOverrides } = {},
+  ): Promise<void> => {
+    const data = toWrittenOverrides(overrides, preserveEmptyArrayKeys);
+    if (unchangedFrom && stableJson(data) === stableJson(toWrittenOverrides(unchangedFrom, preserveEmptyArrayKeys))) {
+      return;
+    }
 
     try {
       await (fetchFn as NonNullable<typeof fetchFn>)("/view-prs/user-defaults", {
@@ -138,7 +162,7 @@ const createPrUiOptionPersistenceHelpers = ({ fetch: fetchFn }: PrUiOptionPersis
     } else {
       overrides[key] = value;
     }
-    await writeUiSessionOverrides(overrides);
+    await writeUiSessionOverrides(overrides, { unchangedFrom: existing });
   };
 
   return {

@@ -430,7 +430,8 @@ export function FilterStateProvider({
   }, [rowFilterSelection, authorThreadResolutionSelection, changeFilterActorSelection]);
 
   // Both read the saved overrides and write them back with these options
-  // changed - not when they can't be read, which would lose the rest.
+  // changed - not when they can't be read, which would lose the rest, and
+  // not when nothing changed (see writeUiSessionOverrides).
   const persistRunScriptOptions = useCallback(async () => {
     const existingOverrides = await readUiSessionOverridesOrNull();
     if (!existingOverrides) return;
@@ -438,7 +439,7 @@ export function FilterStateProvider({
       ['repo', 'limit', 'merged-limit', 'jobs', 'pr-numbers', 'open-mode', 'ack-changed', 'show-reason', 'quiet'],
       existingOverrides,
     );
-    await writeUiSessionOverrides(overrides);
+    await writeUiSessionOverrides(overrides, { unchangedFrom: existingOverrides });
   }, [buildOverrides]);
 
   const persistViewFilterOptions = useCallback(async () => {
@@ -479,7 +480,7 @@ export function FilterStateProvider({
     // with/without values don't carry over.
     delete overrides['filter-rally-stories'];
     delete overrides['filter-rally-links'];
-    await writeUiSessionOverrides(overrides);
+    await writeUiSessionOverrides(overrides, { unchangedFrom: existingOverrides });
   }, [buildOverrides]);
 
   // Saves the view/filter options 150ms after `values` or any list

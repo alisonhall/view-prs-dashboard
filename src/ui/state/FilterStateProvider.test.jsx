@@ -4,6 +4,7 @@ const { render, screen, act, waitFor } = require('@testing-library/react');
 const userEvent = require('@testing-library/user-event').default;
 require('@testing-library/jest-dom');
 const { FilterStateProvider: RealFilterStateProvider } = require('./FilterStateProvider');
+const { buildFilterStateInitialValues } = require('./filterStateInitialValues');
 const {
   useFilterState,
   useFilterFieldValue,
@@ -256,6 +257,27 @@ describe('FilterStateProvider', () => {
 
       expect(putBody).not.toHaveProperty('mergeCommitRules');
       expect(putBody.changeFilters).toEqual({ ignoreCommitPatterns: ['^docs:'] });
+    });
+
+    test('given saved settings restored on mount, when the persist debounce fires with nothing changed, then nothing is written', async () => {
+      // The restore changes the values, which schedules a save; writing all
+      // the settings back unchanged could only put back a value another tab
+      // (or an e2e test's cleanup) changed meanwhile.
+      mockUserDefaults({
+        theme: 'dark',
+        prSections: { flagged: { hidden: true } },
+        mergeCommitRules: { headlinePatterns: ['^Sync'], logins: ['bot[bot]'] },
+      });
+      // The page's own starting values (every field's default).
+      render(
+        <FilterStateProviderWithSelectionContexts initialValues={buildFilterStateInitialValues()}>
+          <MergeRulesProbe />
+        </FilterStateProviderWithSelectionContexts>,
+      );
+      await waitFor(() => expect(screen.getByTestId('merge-patterns').textContent).toBe(JSON.stringify('^Sync')));
+      await flushPersist();
+
+      expect(putBody).toBeNull();
     });
 
     test("given the saved settings can't be read, when the persist debounce fires, then nothing is written (it would lose them)", async () => {
