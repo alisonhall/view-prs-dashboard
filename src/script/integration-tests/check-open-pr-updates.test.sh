@@ -203,7 +203,6 @@ run_helper_tests() {
 
   assert_eq "$(normalize_author_name 'kshar280_uhg' 'Sharma, Karan')" 'Karan Sharma' 'normalize_author_name should reorder Last, First'
   assert_eq "$(normalize_author_name 'ahall236_uhg' '')" 'ahall236_uhg' 'normalize_author_name should fall back to login'
-  assert_eq "$(build_reasons 'comment' 0 'review' 2 'commit' 1)" 'review|commit' 'build_reasons should include active labels only'
 
   dt=$(format_iso_datetime '2026-03-05T13:46:48Z')
   assert_true "[[ \"$dt\" =~ ^[A-Z][a-z]{2}[[:space:]][0-9]{1,2},[[:space:]][0-9]{4}[[:space:]][0-9]{1,2}:[0-9]{2}[[:space:]](AM|PM)$ ]]" 'format_iso_datetime format mismatch'
@@ -297,9 +296,6 @@ run_helper_tests() {
   assert_true "! recover_stale_lock_dir \"$live_lock_dir\" \"test lock\"" 'recover_stale_lock_dir should not reclaim a live lock owner'
   assert_true "[[ -d \"$live_lock_dir\" ]]" 'live lock directory should remain in place'
 
-  normalized_commits=$(normalize_pr_commits_json '{"commits":[{"oid":"a1","committedDate":"2026-03-03T00:00:00Z","messageHeadline":"Merge branch '\''main'\'' into feature/test","messageBody":"","authors":[{"login":"other","name":"Other","email":"other@example.com"}]},{"oid":"a2","committedDate":"2026-03-03T01:00:00Z","messageHeadline":"feat: keep this commit","messageBody":"","authors":[{"login":"other","name":"Other","email":"other@example.com"}]}]}')
-  assert_eq "$(printf '%s' "$normalized_commits" | jq -r 'length')" '1' 'normalize_pr_commits_json should drop merge-main commits'
-  assert_eq "$(printf '%s' "$normalized_commits" | jq -r '.[0].oid')" 'a2' 'normalize_pr_commits_json should preserve non-merge commits'
 }
 
 run_ack_store_tests() {

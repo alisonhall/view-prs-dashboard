@@ -22,15 +22,16 @@ const runShell = (command) =>
 const isolatedUserStateFile = runShell("mktemp");
 runShell(`printf '%s' '{}' > "${isolatedUserStateFile}"`);
 
+// The row's computation (compute_pr_state_json's, before it moved there).
+const { computePrRow, buildReasons, buildActivityEvents, buildActivityTimelineSummary, normalizeCommits } = require("../compute-pr-row");
+
 const runScriptFn = (expression) =>
   runShell(`source "${scriptPath}"; USER_STATE_FILE="${isolatedUserStateFile}"; ${expression}`);
 
 describe("check-open-pr-updates shell helper behavior", () => {
-  test("returns a versioned SHA-256 digest when build_pr_source_fingerprint_value is called", () => {
-    const output = runScriptFn(
-      `build_pr_source_fingerprint_value '{}' '[]' '[]' '[]' '[]' '[]' '[]' '[]' '{}' '{"changedFiles":0,"viewedFiles":0}' '{}'`,
-    );
-    expect(output).toMatch(/^fp:v2:sha256:[a-f0-9]{64}$/);
+  test("a row's source fingerprint is a versioned SHA-256 digest", () => {
+    const { row } = computePrRow({ pr: { number: 1 }, viewedFilesStats: { changedFiles: 0, viewedFiles: 0 } });
+    expect(row.sourceFingerprint).toMatch(/^fp:v2:sha256:[a-f0-9]{64}$/);
   });
 
   test("returns First Last when normalize_author_name receives Last, First input", () => {
@@ -92,12 +93,32 @@ describe("check-open-pr-updates shell helper behavior", () => {
     expect(output).toBe("cli-wins/repo");
   });
 
-  test("returns active reasons when build_reasons receives mixed change flags", () => {
-    const output = runScriptFn(
-      `build_reasons "comment" 0 "review" 2 "commit" 1`,
-    );
+  test("a row's commits leave out merges of main", () => {
+    const commits = normalizeCommits({
+      commits: [
+        { oid: "a1", committedDate: "2026-03-03T00:00:00Z", messageHeadline: "Merge branch 'main' into feature/test", authors: [{ login: "other" }] },
+        { oid: "a2", committedDate: "2026-03-03T01:00:00Z", messageHeadline: "feat: keep this commit", authors: [{ login: "other" }] },
+      ],
+    });
+    expect(commits.map((commit) => commit.oid)).toEqual(["a2"]);
+  });
 
-    expect(output).toBe("review|commit");
+  test("the viewer's own commit counts as their last activity, so earlier comments aren't new", () => {
+    const { row } = computePrRow({
+      pr: { number: 1 },
+      viewerLogin: "me",
+      detail: {
+        comments: [{ author: { login: "other" }, createdAt: "2026-03-02T00:00:00Z" }],
+        commits: [{ oid: "a1", committedDate: "2026-03-03T00:00:00Z", messageHeadline: "feat: mine", authors: [{ login: "other" }, { login: "me" }] }],
+      },
+      viewedFilesStats: { changedFiles: 0, viewedFiles: 0 },
+    });
+    expect(row.baseline).toBe("2026-03-03T00:00:00Z");
+    expect(row.status).toBe("NO_CHANGE");
+  });
+
+  test("a row's reason lists the kinds of change with any count", () => {
+    expect(buildReasons([["comment", 0], ["review", 2], ["commit", 1]])).toBe("review|commit");
   });
 
   test("returns newline-separated PR numbers when parse_number_list receives comma-separated input", () => {
@@ -135,7 +156,7 @@ describe("check-open-pr-updates shell helper behavior", () => {
     });
 
     const output = runShell(
-      `source "${scriptPath}"; USER_STATE_FILE="${isolatedUserStateFile}";VIEWER_LOGIN='alice'; REPO='owner/repo'; emit_pr_progress_marker(){ :; }; get_pr_detail_json(){ printf '%s' '{"comments":[],"reviews":[],"reviewRequests":[],"commits":[],"assignees":[],"statusCheckRollup":[],"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN"}'; }; fetch_review_threads_json(){ printf '%s' '[]'; }; fetch_pr_review_comments_json(){ printf '%s' '[]'; }; fetch_pr_review_url_map_json(){ printf '%s' '{}'; }; build_comment_events_json(){ printf '%s' '[]'; }; build_activity_events_json(){ printf '%s' '[]'; }; build_activity_timeline_json(){ printf '%s' '[]'; }; build_activity_timeline_summary(){ printf '%s' '-'; }; build_pr_metrics_json(){ printf '%s' '{"conversationSummary":{"estimatedOpenConversations":0}}'; }; fetch_pr_viewed_files_stats_json(){ printf '%s' '{"viewedFiles":0,"changedFiles":0}'; }; compute_pr_state_json '${prJson}'`,
+      `source "${scriptPath}"; USER_STATE_FILE="${isolatedUserStateFile}";VIEWER_LOGIN='alice'; REPO='owner/repo'; emit_pr_progress_marker(){ :; }; get_pr_detail_json(){ printf '%s' '{"comments":[],"reviews":[],"reviewRequests":[],"commits":[],"assignees":[],"statusCheckRollup":[],"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN"}'; }; fetch_review_threads_json(){ printf '%s' '[]'; }; fetch_pr_review_comments_json(){ printf '%s' '[]'; }; fetch_pr_review_url_map_json(){ printf '%s' '{}'; }; fetch_pr_viewed_files_stats_json(){ printf '%s' '{"viewedFiles":0,"changedFiles":0}'; }; compute_pr_state_json '${prJson}'`,
     );
 
     const parsed = JSON.parse(output);
@@ -691,7 +712,7 @@ describe("check-open-pr-updates shell helper behavior", () => {
   describe("Given a PR with external commits, when compute_pr_state_json evaluates commit-based change detection", () => {
     const runComputePrStateJson = (prJson, detailJson) => {
       const output = runShell(
-        `source "${scriptPath}"; USER_STATE_FILE="${isolatedUserStateFile}";VIEWER_LOGIN='alice'; REPO='owner/repo'; emit_pr_progress_marker(){ :; }; get_pr_detail_json(){ printf '%s' '${detailJson}'; }; fetch_review_threads_json(){ printf '%s' '[]'; }; fetch_pr_review_comments_json(){ printf '%s' '[]'; }; fetch_pr_review_url_map_json(){ printf '%s' '{}'; }; build_comment_events_json(){ printf '%s' '[]'; }; build_activity_events_json(){ printf '%s' '[]'; }; build_activity_timeline_json(){ printf '%s' '[]'; }; build_activity_timeline_summary(){ printf '%s' '-'; }; build_pr_metrics_json(){ printf '%s' '{"conversationSummary":{"estimatedOpenConversations":0}}'; }; fetch_pr_viewed_files_stats_json(){ printf '%s' '{"viewedFiles":0,"changedFiles":0}'; }; compute_pr_state_json '${prJson}'`,
+        `source "${scriptPath}"; USER_STATE_FILE="${isolatedUserStateFile}";VIEWER_LOGIN='alice'; REPO='owner/repo'; emit_pr_progress_marker(){ :; }; get_pr_detail_json(){ printf '%s' '${detailJson}'; }; fetch_review_threads_json(){ printf '%s' '[]'; }; fetch_pr_review_comments_json(){ printf '%s' '[]'; }; fetch_pr_review_url_map_json(){ printf '%s' '{}'; }; fetch_pr_viewed_files_stats_json(){ printf '%s' '{"viewedFiles":0,"changedFiles":0}'; }; compute_pr_state_json '${prJson}'`,
       );
       return JSON.parse(output);
     };
@@ -787,7 +808,7 @@ describe("check-open-pr-updates shell helper behavior", () => {
       });
 
       const output = runShell(
-        `source "${scriptPath}"; USER_STATE_FILE="${isolatedUserStateFile}";VIEWER_LOGIN='alice'; REPO='owner/repo'; CHANGE_FILTER_IGNORE_COMMIT_PATTERNS='^Automated:'; emit_pr_progress_marker(){ :; }; get_pr_detail_json(){ printf '%s' '${detailJson}'; }; fetch_review_threads_json(){ printf '%s' '[]'; }; fetch_pr_review_comments_json(){ printf '%s' '[]'; }; fetch_pr_review_url_map_json(){ printf '%s' '{}'; }; build_comment_events_json(){ printf '%s' '[]'; }; build_activity_events_json(){ printf '%s' '[]'; }; build_activity_timeline_json(){ printf '%s' '[]'; }; build_activity_timeline_summary(){ printf '%s' '-'; }; build_pr_metrics_json(){ printf '%s' '{"conversationSummary":{"estimatedOpenConversations":0}}'; }; fetch_pr_viewed_files_stats_json(){ printf '%s' '{"viewedFiles":0,"changedFiles":0}'; }; compute_pr_state_json '${basePr()}'`,
+        `source "${scriptPath}"; USER_STATE_FILE="${isolatedUserStateFile}";VIEWER_LOGIN='alice'; REPO='owner/repo'; CHANGE_FILTER_IGNORE_COMMIT_PATTERNS='^Automated:'; emit_pr_progress_marker(){ :; }; get_pr_detail_json(){ printf '%s' '${detailJson}'; }; fetch_review_threads_json(){ printf '%s' '[]'; }; fetch_pr_review_comments_json(){ printf '%s' '[]'; }; fetch_pr_review_url_map_json(){ printf '%s' '{}'; }; fetch_pr_viewed_files_stats_json(){ printf '%s' '{"viewedFiles":0,"changedFiles":0}'; }; compute_pr_state_json '${basePr()}'`,
       );
       const row = JSON.parse(output);
 
@@ -800,13 +821,18 @@ describe("check-open-pr-updates shell helper behavior", () => {
   // which silently removed commits from external/corporate authors who
   // commit with a name+email but no linked GitHub account from the Activity
   // Timeline.
-  describe("Given a commit author with no GitHub login, when build_activity_events_json builds commit events", () => {
+  describe("Given a commit author with no GitHub login, when a row's activity events are built", () => {
     const runBuildActivityEvents = (commitsJson) =>
-      JSON.parse(
-        runScriptFn(
-          `build_activity_events_json '[]' '[]' '${commitsJson}' "" "" "" ""`,
-        ),
-      );
+      buildActivityEvents({
+        commentEvents: [],
+        reviews: [],
+        commits: JSON.parse(commitsJson),
+        createdAt: "",
+        authorLogin: "",
+        mergedAt: "",
+        mergedByLogin: "",
+        closedAt: "",
+      });
 
     test("falls back to the commit author's name when login is empty", () => {
       const commitsJson = JSON.stringify([
@@ -867,13 +893,9 @@ describe("check-open-pr-updates shell helper behavior", () => {
   // when it was closed (without merging) - closed_at was already threaded
   // through to the PR row's own `closedAt` field, but never into
   // build_activity_events_json, so no "closed" entry was ever synthesized.
-  describe("Given a PR's closed_at/merged_at, when build_activity_events_json builds the 'closed' system event", () => {
+  describe("Given a PR's closedAt/mergedAt, when a row's activity events get the 'closed' system event", () => {
     const runBuildActivityEvents = (closedAt, mergedAt) =>
-      JSON.parse(
-        runScriptFn(
-          `build_activity_events_json '[]' '[]' '[]' "" "" "${mergedAt}" "" "${closedAt}"`,
-        ),
-      );
+      buildActivityEvents({ commentEvents: [], reviews: [], commits: [], createdAt: "", authorLogin: "", mergedAt, mergedByLogin: "", closedAt });
 
     test("given closed_at set and merged_at empty, when built, then includes a 'closed' entry with actor 'unknown'", () => {
       const events = runBuildActivityEvents("2026-06-10T00:00:00Z", "");
@@ -902,12 +924,12 @@ describe("check-open-pr-updates shell helper behavior", () => {
     });
   });
 
-  describe("Given a 'closed' bucket, when build_activity_timeline_summary renders its label", () => {
+  describe("Given a 'closed' bucket, when a row's timeline summary renders its label", () => {
     test("renders 'closed PR', not generic pluralization", () => {
       const timelineJson = JSON.stringify([
         { date: "2026-06-10", actor: "unknown", type: "closed", count: 1, earliestAt: "2026-06-10T00:00:00Z", latestAt: "2026-06-10T00:00:00Z", channels: ["system"], events: [] },
       ]);
-      const summary = runScriptFn(`build_activity_timeline_summary '${timelineJson}'`);
+      const summary = buildActivityTimelineSummary(JSON.parse(timelineJson));
       expect(summary).toContain("closed PR");
     });
   });
@@ -927,7 +949,7 @@ describe("check-open-pr-updates shell helper behavior", () => {
   describe("Given a non-author viewer whose only activity is a review-thread reply, when compute_pr_state_json evaluates status and baseline", () => {
     const runComputePrStateJsonWithThreads = (prJson, detailJson, threadsJson) => {
       const output = runShell(
-        `source "${scriptPath}"; USER_STATE_FILE="${isolatedUserStateFile}";VIEWER_LOGIN='alice'; REPO='owner/repo'; emit_pr_progress_marker(){ :; }; get_pr_detail_json(){ printf '%s' '${detailJson}'; }; fetch_review_threads_json(){ printf '%s' '${threadsJson}'; }; fetch_pr_review_comments_json(){ printf '%s' '[]'; }; fetch_pr_review_url_map_json(){ printf '%s' '{}'; }; build_comment_events_json(){ printf '%s' '[]'; }; build_activity_events_json(){ printf '%s' '[]'; }; build_activity_timeline_json(){ printf '%s' '[]'; }; build_activity_timeline_summary(){ printf '%s' '-'; }; build_pr_metrics_json(){ printf '%s' '{"conversationSummary":{"estimatedOpenConversations":1}}'; }; fetch_pr_viewed_files_stats_json(){ printf '%s' '{"viewedFiles":0,"changedFiles":0}'; }; compute_pr_state_json '${prJson}'`,
+        `source "${scriptPath}"; USER_STATE_FILE="${isolatedUserStateFile}";VIEWER_LOGIN='alice'; REPO='owner/repo'; emit_pr_progress_marker(){ :; }; get_pr_detail_json(){ printf '%s' '${detailJson}'; }; fetch_review_threads_json(){ printf '%s' '${threadsJson}'; }; fetch_pr_review_comments_json(){ printf '%s' '[]'; }; fetch_pr_review_url_map_json(){ printf '%s' '{}'; }; fetch_pr_viewed_files_stats_json(){ printf '%s' '{"viewedFiles":0,"changedFiles":0}'; }; compute_pr_state_json '${prJson}'`,
       );
       return JSON.parse(output);
     };
