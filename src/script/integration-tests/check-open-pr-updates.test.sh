@@ -1112,15 +1112,25 @@ JSON
 
   updated_row=$(jq -cn '{number:"123", title:"Updated"}')
   upsert_pr_state "$updated_row" 'open'
-  assert_eq "$(jq -r '.byPrNumber["123"].rowOrder' "$PR_STATE_FILE")" '3' 'existing PR rowOrder should remain stable on upsert'
+  assert_eq "$(jq -r '.byPrNumber["owner/repo#123"].rowOrder' "$PR_STATE_FILE")" '3' 'existing PR rowOrder should remain stable on upsert'
   # When the row was written, not the run's start (RUN_TS, in the past here).
-  fetched_at=$(jq -r '.byPrNumber["123"].fetchedAt' "$PR_STATE_FILE")
+  fetched_at=$(jq -r '.byPrNumber["owner/repo#123"].fetchedAt' "$PR_STATE_FILE")
   assert_true "[[ \"$fetched_at\" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\$ && \"$fetched_at\" > '2026-03-12T22:00:00Z' ]]" 'upsert should stamp the row with when it was written'
 
   RUN_ROW_INDEX=25
   new_row=$(jq -cn '{number:"456", title:"New"}')
   upsert_pr_state "$new_row" 'open'
-  assert_eq "$(jq -r '.byPrNumber["456"].rowOrder' "$PR_STATE_FILE")" '25' 'new PR row should use current run rowOrder'
+  assert_eq "$(jq -r '.byPrNumber["owner/repo#456"].rowOrder' "$PR_STATE_FILE")" '25' 'new PR row should use current run rowOrder'
+  # The row stored under its bare number (before rows were keyed by repo)
+  # moved to its repo's key, keeping its rowOrder (above).
+  assert_eq "$(jq -r '.byPrNumber | has("123")' "$PR_STATE_FILE")" 'false' 'upsert should drop the row'"'"'s old bare-number key'
+
+  # Another repo's PR with the same number is a row of its own.
+  REPO='other/repo'
+  upsert_pr_state "$(jq -cn '{number:"123", title:"Other repo"}')" 'open'
+  assert_eq "$(jq -r '.byPrNumber["other/repo#123"].data.title' "$PR_STATE_FILE")" 'Other repo' 'a PR in another repo should get its own row'
+  assert_eq "$(jq -r '.byPrNumber["owner/repo#123"].data.title' "$PR_STATE_FILE")" 'Updated' 'a PR in another repo should not replace this repo'"'"'s PR with the same number'
+  REPO='owner/repo'
 }
 
 run_fetch_threads_pagination_tests() {
@@ -1357,10 +1367,10 @@ MOCK
 
   reconcile_missing_open_rows $'100\n101'
 
-  updated_section=$(jq -r '.byPrNumber["967"].section' "$PR_STATE_FILE")
+  updated_section=$(jq -r '.byPrNumber["owner/repo#967"].section' "$PR_STATE_FILE")
   assert_eq "$updated_section" 'closed' 'reconcile_missing_open_rows should reclassify stale open rows when they are now closed'
 
-  updated_closed_at=$(jq -r '.byPrNumber["967"].data.closedAt' "$PR_STATE_FILE")
+  updated_closed_at=$(jq -r '.byPrNumber["owner/repo#967"].data.closedAt' "$PR_STATE_FILE")
   assert_eq "$updated_closed_at" '2026-04-23T20:00:00Z' 'reconcile_missing_open_rows should persist refreshed closedAt timestamp'
 
   PATH="$old_path"
@@ -1406,46 +1416,46 @@ JSON
   }
 
   run_prs '1,10'
-  assert_eq "$(jq -r '.byPrNumber["1"].data.title' "$prs_state")" 'Open A, renamed' '--prs should refresh each chosen PR'
-  assert_eq "$(jq -r '.byPrNumber["10"].section' "$prs_state")" 'merged' '--prs should move a chosen PR to the section it is in now'
-  assert_eq "$(jq -r '.byPrNumber["10"].data.title' "$prs_state")" 'Now merged' '--prs should refresh a chosen PR that has merged'
-  assert_eq "$(jq -c '.byPrNumber["30"]' "$prs_state")" '{"prNumber":"30","repo":"owner/repo","section":"open","updatedAt":"2026-03-05T00:00:00Z","rowOrder":3,"data":{"number":"30","title":"Untouched"}}' '--prs should leave other rows alone - no reconcile of open rows it did not list'
-  assert_eq "$(jq -r '[.byPrNumber["1"].updatedAt, .byPrNumber["10"].updatedAt] | join(",")' "$prs_state")" '2026-03-05T00:00:00Z,2026-03-05T00:00:00Z' '--prs should keep refreshed rows in the last full run'
+  assert_eq "$(jq -r '.byPrNumber["owner/repo#1"].data.title' "$prs_state")" 'Open A, renamed' '--prs should refresh each chosen PR'
+  assert_eq "$(jq -r '.byPrNumber["owner/repo#10"].section' "$prs_state")" 'merged' '--prs should move a chosen PR to the section it is in now'
+  assert_eq "$(jq -r '.byPrNumber["owner/repo#10"].data.title' "$prs_state")" 'Now merged' '--prs should refresh a chosen PR that has merged'
+  assert_eq "$(jq -c '.byPrNumber["owner/repo#30"]' "$prs_state")" '{"prNumber":"30","repo":"owner/repo","section":"open","updatedAt":"2026-03-05T00:00:00Z","rowOrder":3,"data":{"number":"30","title":"Untouched"}}' '--prs should leave other rows alone - no reconcile of open rows it did not list'
+  assert_eq "$(jq -r '[.byPrNumber["owner/repo#1"].updatedAt, .byPrNumber["owner/repo#10"].updatedAt] | join(",")' "$prs_state")" '2026-03-05T00:00:00Z,2026-03-05T00:00:00Z' '--prs should keep refreshed rows in the last full run'
   # lastRun is any run's (the header's "updated N minutes ago"); a run of
   # chosen PRs leaves lastFullRun - here taken from lastRun, as data from
   # before lastFullRun has none.
   assert_eq "$(jq -c '.lastFullRun' "$prs_state")" '{"repo":"owner/repo","updatedAt":"2026-03-05T00:00:00Z"}' '--prs should keep the last full run'
   assert_true "[[ \"$(jq -r '.lastRun.updatedAt' "$prs_state")\" > '2026-03-05T00:00:00Z' ]]" '--prs should still move lastRun'
-  assert_true "[[ \"$(jq -r '.byPrNumber["1"].fetchedAt' "$prs_state")\" > '2026-03-05T00:00:00Z' ]]" '--prs should stamp refreshed rows with when they were written'
+  assert_true "[[ \"$(jq -r '.byPrNumber["owner/repo#1"].fetchedAt' "$prs_state")\" > '2026-03-05T00:00:00Z' ]]" '--prs should stamp refreshed rows with when they were written'
 
   run_prs '2'
-  assert_eq "$(jq -r '.byPrNumber["2"].section' "$prs_state")" 'draft' '--prs should add a chosen PR not saved yet'
-  assert_eq "$(jq -r '.byPrNumber["2"].updatedAt' "$prs_state")" '2026-03-05T00:00:00Z' 'a row --prs adds should join the last full run, so "Last run rows" shows it'
+  assert_eq "$(jq -r '.byPrNumber["owner/repo#2"].section' "$prs_state")" 'draft' '--prs should add a chosen PR not saved yet'
+  assert_eq "$(jq -r '.byPrNumber["owner/repo#2"].updatedAt' "$prs_state")" '2026-03-05T00:00:00Z' 'a row --prs adds should join the last full run, so "Last run rows" shows it'
   assert_eq "$(jq -c '.lastFullRun' "$prs_state")" '{"repo":"owner/repo","updatedAt":"2026-03-05T00:00:00Z"}' 'a second --prs run should keep the last full run too'
 
   local prs_err prs_status
   # One chosen PR that can't be fetched (999 has no summary file, so the
   # mock says it's not found): the others are still refreshed, and the run
   # fails, so the server keeps them queued.
-  jq '.byPrNumber["1"].data.title = "Stale again"' "$prs_state" >"$prs_state.tmp" && command mv -f "$prs_state.tmp" "$prs_state"
+  jq '.byPrNumber["owner/repo#1"].data.title = "Stale again"' "$prs_state" >"$prs_state.tmp" && command mv -f "$prs_state.tmp" "$prs_state"
   set +e
   prs_err=$(PATH="$mock_bin:$PATH" MOCK_OPEN_JSON="$mock_data/unlisted.json" MOCK_CLOSED_JSON="$mock_data/unlisted.json" MOCK_MERGED_JSON="$mock_data/unlisted.json" MOCK_PR_VIEW_DIR="$mock_data/view" MOCK_DETAILS_DIR="$mock_data/details" MOCK_THREADS_DIR="$mock_data/threads" PR_STATE_FILE="$prs_state" PR_STATE_LOCK_DIR="$prs_state_lock" JOBS=2 GH_COMMAND_TIMEOUT_SECONDS=5 bash "$SCRIPT_PATH" --open none --quiet --repo owner/repo --prs 1,999 2>&1 >/dev/null)
   prs_status=$?
   set -e
   assert_true "[[ $prs_status -ne 0 ]]" '--prs should fail when a chosen PR could not be fetched'
   assert_contains "$prs_err" 'Could not fetch PR(s): 999' '--prs should name the PR it could not fetch'
-  assert_eq "$(jq -r '.byPrNumber["1"].data.title' "$prs_state")" 'Open A, renamed' '--prs should still refresh the chosen PRs it could fetch'
+  assert_eq "$(jq -r '.byPrNumber["owner/repo#1"].data.title' "$prs_state")" 'Open A, renamed' '--prs should still refresh the chosen PRs it could fetch'
 
   # A chosen PR whose review threads can't be fetched: its stored row stays
   # as it was (not rewritten without threads), and the run fails naming it.
-  jq '.byPrNumber["1"].data.title = "Kept as stored"' "$prs_state" >"$prs_state.tmp" && command mv -f "$prs_state.tmp" "$prs_state"
+  jq '.byPrNumber["owner/repo#1"].data.title = "Kept as stored"' "$prs_state" >"$prs_state.tmp" && command mv -f "$prs_state.tmp" "$prs_state"
   set +e
   prs_err=$(PATH="$mock_bin:$PATH" MOCK_THREADS_FAIL=1 MOCK_OPEN_JSON="$mock_data/unlisted.json" MOCK_CLOSED_JSON="$mock_data/unlisted.json" MOCK_MERGED_JSON="$mock_data/unlisted.json" MOCK_PR_VIEW_DIR="$mock_data/view" MOCK_DETAILS_DIR="$mock_data/details" MOCK_THREADS_DIR="$mock_data/threads" PR_STATE_FILE="$prs_state" PR_STATE_LOCK_DIR="$prs_state_lock" JOBS=2 GH_COMMAND_TIMEOUT_SECONDS=5 bash "$SCRIPT_PATH" --open none --quiet --repo owner/repo --prs 1,2 2>&1 >/dev/null)
   prs_status=$?
   set -e
   assert_true "[[ $prs_status -ne 0 ]]" '--prs should fail when a chosen PR'"'"'s threads could not be fetched'
   assert_contains "$prs_err" 'Could not fetch PR(s): 1' '--prs should name the PR whose threads it could not fetch'
-  assert_eq "$(jq -r '.byPrNumber["1"].data.title' "$prs_state")" 'Kept as stored' '--prs should keep the stored row of a PR whose threads it could not fetch'
+  assert_eq "$(jq -r '.byPrNumber["owner/repo#1"].data.title' "$prs_state")" 'Kept as stored' '--prs should keep the stored row of a PR whose threads it could not fetch'
   set +e
   prs_err=$(bash "$SCRIPT_PATH" --prs 1 -p 2 --repo owner/repo --quiet 2>&1)
   prs_status=$?
@@ -1485,8 +1495,8 @@ JSON
   set -e
   assert_eq "$run_status" '0' "a full run should still succeed when one PR's threads could not be fetched: $run_err"
   assert_contains "$run_err" 'Could not fetch the details of PR(s), kept as stored: 2' 'a full run should say which PRs it kept as stored'
-  assert_eq "$(jq -r '.byPrNumber["2"].data.title' "$state")" 'Two, as stored' 'a full run should keep the stored row of a PR whose threads it could not fetch'
-  assert_eq "$(jq -r '.byPrNumber["1"].data.title' "$state")" 'One, listed' 'a full run should still write the PRs it could fetch'
+  assert_eq "$(jq -r '.byPrNumber["owner/repo#2"].data.title' "$state")" 'Two, as stored' 'a full run should keep the stored row of a PR whose threads it could not fetch'
+  assert_eq "$(jq -r '.byPrNumber["owner/repo#1"].data.title' "$state")" 'One, listed' 'a full run should still write the PRs it could fetch'
 }
 
 run_row_reuse_tests() {
@@ -1534,10 +1544,10 @@ JSON
   run_full
   assert_true 'fetched_details 1' 'a PR with no stored row should be fetched'
   assert_true 'fetched_details 10' 'a merged PR with no stored row should be fetched'
-  assert_true "[[ -n \"$(jq -r '.byPrNumber["1"].data.localStateKey // ""' "$reuse_state")\" ]]" 'a computed row should record the local state it was computed from'
+  assert_true "[[ -n \"$(jq -r '.byPrNumber["owner/repo#1"].data.localStateKey // ""' "$reuse_state")\" ]]" 'a computed row should record the local state it was computed from'
   local open_fetched_at merged_fetched_at
-  open_fetched_at=$(jq -r '.byPrNumber["1"].fetchedAt' "$reuse_state")
-  merged_fetched_at=$(jq -r '.byPrNumber["10"].fetchedAt' "$reuse_state")
+  open_fetched_at=$(jq -r '.byPrNumber["owner/repo#1"].fetchedAt' "$reuse_state")
+  merged_fetched_at=$(jq -r '.byPrNumber["owner/repo#10"].fetchedAt' "$reuse_state")
 
   # Unchanged on GitHub: reused, not fetched, and keeps when it was fetched.
   # The open one still gets its CI and mergeability.
@@ -1546,9 +1556,9 @@ JSON
   assert_true '! fetched_details 10' 'an unchanged merged PR should be reused'
   assert_true 'grep -Eq "^pr view 1 .*--json statusCheckRollup" "$gh_log"' 'a reused open row should still get its CI and mergeability'
   assert_true '! grep -Eq "^pr view 10 .*--json statusCheckRollup" "$gh_log"' 'a reused merged row should not fetch CI'
-  assert_eq "$(jq -r '.byPrNumber["1"].fetchedAt' "$reuse_state")" "$open_fetched_at" 'a reused row should keep its fetchedAt'
-  assert_eq "$(jq -r '.byPrNumber["10"].fetchedAt' "$reuse_state")" "$merged_fetched_at" 'a reused merged row should keep its fetchedAt'
-  assert_eq "$(jq -r '.byPrNumber["1"].data | has("__reused")' "$reuse_state")" 'false' 'the reuse marker should not be saved'
+  assert_eq "$(jq -r '.byPrNumber["owner/repo#1"].fetchedAt' "$reuse_state")" "$open_fetched_at" 'a reused row should keep its fetchedAt'
+  assert_eq "$(jq -r '.byPrNumber["owner/repo#10"].fetchedAt' "$reuse_state")" "$merged_fetched_at" 'a reused merged row should keep its fetchedAt'
+  assert_eq "$(jq -r '.byPrNumber["owner/repo#1"].data | has("__reused")' "$reuse_state")" 'false' 'the reuse marker should not be saved'
 
   # Changed on GitHub: fetched.
   write_listings '2026-03-06T00:00:00Z'

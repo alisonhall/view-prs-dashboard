@@ -8,6 +8,25 @@ const getPerPrUserStateFromPayload = (payload, entry, prNumber, repo) => ({
 });
 
 describe("pr export helpers", () => {
+  test("buildExportPayload exports each repo's PR with a visible number (rows are keyed by repo#number)", () => {
+    const helpers = createPrExportHelpers({ getPerPrUserStateFromPayload });
+    const exported = helpers.buildExportPayload({
+      payload: {
+        byPrNumber: {
+          "acme/api#12": { repo: "acme/api", prNumber: "12", data: { title: "API" } },
+          "acme/web#12": { repo: "acme/web", prNumber: "12", data: { title: "Web" } },
+          "acme/api#13": { repo: "acme/api", prNumber: "13", data: { title: "Not visible" } },
+        },
+      },
+      visiblePrNumbers: ["12"],
+      selectedDataPaths: ["data.title"],
+    });
+    expect(exported.prs.map((item) => [item.repo, item.prNumber, item.data.data.title]).sort()).toEqual([
+      ["acme/api", "12", "API"],
+      ["acme/web", "12", "Web"],
+    ]);
+  });
+
   test("getFieldCatalog tracks nested object fields and treats arrays as leaf fields", () => {
     const helpers = createPrExportHelpers({ getPerPrUserStateFromPayload });
     const payload = {

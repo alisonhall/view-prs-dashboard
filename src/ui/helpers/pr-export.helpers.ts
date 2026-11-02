@@ -1,6 +1,7 @@
 import type { PrDataPayload, PrEntry } from "../types/pr-data.ts";
 import type { PerPrUserState, UserStatePayload } from "./pr-per-pr-user-state.helpers.ts";
 import { asArray } from "./pr-as-array.helpers.ts";
+import { findPrEntriesByNumber } from "./pr-entry-keys.helpers.ts";
 
 // Settings › Export's "Export Visible PR JSON": the field catalog (every
 // dotted leaf path in the PR data and user state), which PRs are visible,
@@ -177,9 +178,14 @@ const createPrExportHelpers = ({ getPerPrUserStateFromPayload }: PrExportDeps) =
     const byPrNumber = payload?.byPrNumber || {};
     const selectedPrNumbers = toSortedUnique(visiblePrNumbers);
 
+    // Each row with a visible number, whatever its repo: the numbers carry
+    // no repo, and two repos can each have a PR with one.
     const items = selectedPrNumbers
-      .map((prNumber) => {
-        const entryRaw = byPrNumber?.[prNumber] || byPrNumber?.[String(prNumber)] || {};
+      .flatMap((prNumber) => {
+        const rows = findPrEntriesByNumber(byPrNumber, prNumber);
+        return (rows.length > 0 ? rows : [{}]).map((entryRaw) => ({ prNumber, entryRaw }));
+      })
+      .map(({ prNumber, entryRaw }) => {
         const entry: PrEntry = isPlainObject(entryRaw) ? entryRaw : {};
         const repo = String(entry?.repo || payload?.lastRun?.repo || "").trim();
         const data = pickByPaths(buildDataSourceEntry(entry), selectedDataPaths);

@@ -4,6 +4,13 @@ const {
 const {
   createViewPrsPrRouteHelpers,
 } = require("../helpers/view-prs-pr-route-helpers");
+const {
+  buildPrEntryKey,
+  findPrEntryKey,
+  migrateNotesKeys,
+  normalizePrEntryKeys,
+  prNumberFromKey,
+} = require("../helpers/view-prs-pr-keys");
 
 const NOTE_TONES = ["Positive", "Negative", "Neutral"];
 const validIsoOrNull = (value) => {
@@ -147,7 +154,14 @@ const registerViewPrsPrRoutes = ({
         data = JSON.parse(fs.readFileSync(viewPrsDataFile, "utf8"));
       }
 
-      if (!data.byPrNumber || !data.byPrNumber[prNumber]) {
+      // The PR by repo and number (two repos can each have a PR with this
+      // number); without a repo (an older page), the row with this number.
+      const repo = String(body.repo || "").trim();
+      const rows = normalizePrEntryKeys(data.byPrNumber || {});
+      const rowKey = repo
+        ? findPrEntryKey(rows, repo, prNumber)
+        : Object.keys(rows).find((key) => prNumberFromKey(key) === String(prNumber));
+      if (!rowKey || !rows[rowKey]) {
         sendErrorStatus({
           res,
           statusCode: 404,
@@ -155,13 +169,23 @@ const registerViewPrsPrRoutes = ({
         });
         return;
       }
+      const rowRepo = String(rows[rowKey].repo || repo || "").trim();
+      const notesKey = rowRepo ? buildPrEntryKey(rowRepo, prNumber) : String(prNumber);
 
       const userState = normalizeViewPrsUserState(
         readJsonFileIfExists(viewPrsUserStateFile, {}),
       );
+      // Notes still keyed by a bare number go to their repo keys first, as
+      // when the data is read - one may be another repo's PR #N.
+      userState.notesByPrNumber = migrateNotesKeys(
+        userState.notesByPrNumber,
+        rows,
+        String(data.lastFullRun?.repo || data.lastRun?.repo || ""),
+      );
+      const previousNotes = userState.notesByPrNumber[notesKey];
       const comments = buildSavedNoteComments(
         rawComments,
-        userState.notesByPrNumber[prNumber]?.comments,
+        previousNotes?.comments,
         new Date().toISOString(),
       );
       const notes = normalizeNotes({
@@ -174,7 +198,7 @@ const registerViewPrsPrRoutes = ({
         rallyLinks: body.rallyLinks,
         analysisOfPr: String(body.analysisOfPr ?? ""),
       });
-      userState.notesByPrNumber[prNumber] = notes;
+      userState.notesByPrNumber[notesKey] = notes;
       writeViewPrsUserState(userState);
 
       appendActionLogEntry({
@@ -182,7 +206,7 @@ const registerViewPrsPrRoutes = ({
         triggeredAt: notesStartedAt,
         durationMs: Date.now() - notesTriggerMs,
         ok: true,
-        detail: { prNumber, commentCount: comments.length },
+        detail: { prNumber, repo: rowRepo, commentCount: comments.length },
       });
       sendSuccessPayload({ res, payload: { ok: true, prData: readViewPrsData() } });
     } catch (error) {

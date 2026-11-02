@@ -566,7 +566,8 @@ const createViewPrsMutationRouteHelpers = ({ formatScriptFailureMessage }) => {
     new Set(
       Object.entries(currentData?.byPrNumber || {})
         .filter(([, entry]) => entry?.repo === repo)
-        .map(([prNumber]) => String(prNumber).trim())
+        // The PR's number, not its key (repo#number).
+        .map(([key, entry]) => String(entry?.prNumber || key.split("#").pop()).trim())
         .filter((prNumber) => /^\d+$/.test(prNumber)),
     );
 

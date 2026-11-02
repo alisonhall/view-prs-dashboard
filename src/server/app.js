@@ -1,6 +1,12 @@
 const express = require("express");
 const crypto = require("crypto");
 const fs = require("fs");
+const {
+  buildPrEntryKey,
+  normalizePrEntryKeys,
+  findPrEntryKey,
+  prNumberFromKey,
+} = require("./helpers/view-prs-pr-keys");
 const path = require("path");
 const { spawn, spawnSync } = require("child_process");
 const { enforceProtectedWritePolicy } = require("./state-write-policy");
@@ -622,7 +628,12 @@ const collectMissingPrsFromDiffCache = (existingByPrNumber = {}, fallbackRepo = 
     return [];
   }
 
-  const existingPrNumbers = new Set(Object.keys(existingByPrNumber || {}));
+  // By repo and number: another repo's PR with the same number is another PR.
+  const existingKeys = new Set(
+    Object.entries(existingByPrNumber || {}).map(([key, entry]) =>
+      buildPrEntryKey(entry?.repo || fallbackRepo, entry?.prNumber || prNumberFromKey(key)),
+    ),
+  );
   const collected = [];
 
   fileNames
@@ -637,17 +648,19 @@ const collectMissingPrsFromDiffCache = (existingByPrNumber = {}, fallbackRepo = 
       const prNumberFromPayload = String(parsed.prNumber || "").trim();
       const prNumberFromName = String(fileName || "").match(/__pr-(\d+)\.json$/i)?.[1] || "";
       const prNumber = prNumberFromPayload || prNumberFromName;
-      if (!/^\d+$/.test(prNumber) || existingPrNumbers.has(prNumber)) {
+      const repo = isRepoSlug(parsed.repo) ? parsed.repo : fallbackRepo;
+      const key = buildPrEntryKey(repo, prNumber);
+      if (!/^\d+$/.test(prNumber) || existingKeys.has(key)) {
         return;
       }
 
-      const repo = isRepoSlug(parsed.repo) ? parsed.repo : fallbackRepo;
       collected.push({
+        key,
         prNumber,
         repo,
         fetchedAt: toTrimmedString(parsed.fetchedAt),
       });
-      existingPrNumbers.add(prNumber);
+      existingKeys.add(key);
     });
 
   return collected;
@@ -1356,7 +1369,7 @@ const patchStoredPrLabels = async ({ repo, prNumber, labels }) => {
   await acquirePrStateLockForPatch();
   try {
     const current = readJsonFileIfExists(viewPrsDataFile, {});
-    const entry = current?.byPrNumber?.[safePrNumber];
+    const entry = current?.byPrNumber?.[findPrEntryKey(current?.byPrNumber, safeRepo, safePrNumber)];
     if (!isObject(entry) || entry.repo !== safeRepo || !isObject(entry.data)) {
       return false;
     }
@@ -1562,7 +1575,9 @@ const readViewPrsData = () => {
       parsed,
       normalizedUserState,
     );
-    const byPrNumberRaw = parsed.byPrNumber || {};
+    // Rows by repo and number (see view-prs-pr-keys.js): a file the script
+    // hasn't migrated yet is read as if it had.
+    const byPrNumberRaw = normalizePrEntryKeys(parsed.byPrNumber || {});
     const fallbackRepo = inferFallbackRepoForNotesOnlyEntries(
       byPrNumberRaw,
       parsed.lastRun,
@@ -1572,24 +1587,24 @@ const readViewPrsData = () => {
     const byPrNumber = Object.fromEntries(
       Object.entries(byPrNumberRaw)
         .filter(([, entry]) => !isViewPrsFixtureRow(entry))
-        .map(([prNumber, entry]) => {
+        .map(([key, entry]) => {
           if (!isObject(entry)) {
-            return [prNumber, entry];
+            return [key, entry];
           }
           const hydratedEntry = applyLiveSummaryToEntry(
             hydrateViewPrsEntryWithDetail(entry),
             liveSummaryByRepo[toTrimmedString(entry.repo)],
           );
-          const notes = mergedUserState.notesByPrNumber[prNumber];
+          const notes = mergedUserState.notesByPrNumber[key];
           const withNotes = notes ? { ...hydratedEntry, notes } : hydratedEntry;
           const isUpdatePending = pendingUpdateKeys.has(
-            `${toTrimmedString(withNotes?.repo)}#${prNumber}`,
+            buildPrEntryKey(withNotes?.repo, withNotes?.prNumber || prNumberFromKey(key)),
           );
           if (!isUpdatePending) {
-            return [prNumber, withNotes];
+            return [key, withNotes];
           }
           return [
-            prNumber,
+            key,
             {
               ...withNotes,
               data: { ...(withNotes.data || {}), updatePending: true },
@@ -1598,24 +1613,26 @@ const readViewPrsData = () => {
         }),
     );
     collectMissingPrsFromDiffCache(byPrNumber, fallbackRepo).forEach(
-      ({ prNumber, repo, fetchedAt }) => {
-        const notes = mergedUserState.notesByPrNumber[prNumber] || null;
+      ({ key, prNumber, repo, fetchedAt }) => {
+        const notes = mergedUserState.notesByPrNumber[key] || null;
         const diffOnlyEntry = buildGitDiffOnlyMergedEntry(prNumber, repo, fetchedAt);
-        byPrNumber[prNumber] = notes
+        byPrNumber[key] = notes
           ? { ...diffOnlyEntry, notes }
           : diffOnlyEntry;
       },
     );
+    // Notes for a PR with no row: a row of its own, under its notes' key
+    // (its repo from that key; a bare number - notes the migration couldn't
+    // place - the fallback repo).
     Object.entries(mergedUserState.notesByPrNumber).forEach(
-      ([prNumber, notes]) => {
-        if (byPrNumber[prNumber]) {
+      ([notesKey, notes]) => {
+        const prNumber = prNumberFromKey(notesKey);
+        const repo = notesKey.includes("#") ? notesKey.slice(0, notesKey.lastIndexOf("#")) : fallbackRepo;
+        const key = findPrEntryKey(byPrNumber, repo, prNumber);
+        if (byPrNumber[key]) {
           return;
         }
-        byPrNumber[prNumber] = buildNotesOnlyMergedEntry(
-          prNumber,
-          notes,
-          fallbackRepo,
-        );
+        byPrNumber[key] = buildNotesOnlyMergedEntry(prNumber, notes, repo);
       },
     );
     return {

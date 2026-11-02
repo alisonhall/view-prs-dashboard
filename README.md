@@ -346,7 +346,7 @@ Use `backfill-missing-data.js` to find PR rows with schema-missing data and opti
 - Safe with active localhost usage: writes are serialized via the same state-file lock used by `src/script/check-open-pr-updates.sh`.
 - Candidate processing is prioritized by section for faster visible wins: `open` -> `draft` -> `closed` -> `merged`.
 - Backfill refreshes can run with a bounded worker pool (`--concurrency`) while keeping each PR update independent.
-- Before refreshing, it converts notes saved in the old stories format (separate `rallyStories`/`rallyLinks` lists, paired by position) to `stories: [{ name, url }]` in both the user state and data files. Each changed file is written through the server's state storage (its protected-write policy, plus a backup in `data/backups/` named `*.stories-migration.*.bak`) under the same lock as the refresh script. The dashboard's own notes saves don't take that lock, so the file is re-read just before writing and the conversion redone if it changed; it is still safest to run while you aren't saving notes. The conversion covers every note whatever `--repo` is (notes are stored by PR number, not repo). `--dry-run` only reports what would change, and `--migrate-only` skips the refresh. The app reads the old format either way (and any notes save rewrites the whole user state in the new format), so this only tidies the files.
+- Before refreshing, it converts notes saved in the old stories format (separate `rallyStories`/`rallyLinks` lists, paired by position) to `stories: [{ name, url }]` in both the user state and data files. Each changed file is written through the server's state storage (its protected-write policy, plus a backup in `data/backups/` named `*.stories-migration.*.bak`) under the same lock as the refresh script. The dashboard's own notes saves don't take that lock, so the file is re-read just before writing and the conversion redone if it changed; it is still safest to run while you aren't saving notes. The conversion covers every note whatever `--repo` is (notes are stored by repo and PR number - see `DATA_SCHEMA.md`). `--dry-run` only reports what would change, and `--migrate-only` skips the refresh. The app reads the old format either way (and any notes save rewrites the whole user state in the new format), so this only tidies the files.
 - `--data`/`--user-state`/`--schema`/`--script`/`--backup-dir` override paths are relative to the current directory.
 
 Common commands:
@@ -1176,7 +1176,7 @@ The script now persists retrieved/calculated PR state to a local JSON file next 
 
 Behavior:
 
-- Data is grouped by PR number under `byPrNumber`.
+- Data is grouped by repo and PR number under `byPrNumber` (`owner/repo#123`: two repos can each have a PR #123; before 2026-11-02 rows were keyed by the bare number, and one replaced the other - see `DATA_SCHEMA.md`).
 - Each run updates (upserts) entries for PRs processed in that run.
 - PR IDs not processed in a run are **not removed** from the file.
 - Display filters do not trim what is stored in this file.

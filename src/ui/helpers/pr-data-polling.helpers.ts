@@ -62,8 +62,11 @@ const computePrDataMetaFingerprint = (payload: PrDataPayload | null | undefined)
 const computePrDataManifest = (payload: PrDataPayload | null | undefined): PrManifest => {
   const byPrNumber = payload?.byPrNumber || {};
   const manifest: PrManifest = {};
+  // Keyed as the rows are (repo#number), in PR number order - as the
+  // server's buildViewPrsDataManifest.
+  const numberOf = (key: string) => Number(key.split("#").pop());
   Object.keys(byPrNumber)
-    .sort((a, b) => Number(a) - Number(b))
+    .sort((a, b) => numberOf(a) - numberOf(b) || (a < b ? -1 : a > b ? 1 : 0))
     .forEach((prNumber) => {
       const entry = byPrNumber[prNumber] || {};
       manifest[prNumber] = {

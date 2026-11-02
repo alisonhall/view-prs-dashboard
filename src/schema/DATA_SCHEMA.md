@@ -24,7 +24,7 @@ Source of truth for writes:
 ```json
 {
   "byPrNumber": {
-    "923": {
+    "owner/name#923": {
       "prNumber": "923",
       "repo": "owner/name",
       "section": "open",
@@ -44,7 +44,7 @@ Source of truth for writes:
 
 | Field | Type | Required | Written by | Notes |
 | --- | --- | --- | --- | --- |
-| `byPrNumber` | object | yes | retrieval | PR rows keyed by PR number string |
+| `byPrNumber` | object | yes | retrieval | PR rows keyed by `repo#number` (e.g. `owner/name#923`) - see below |
 | `lastRun` | object or null | no | retrieval | The last retrieval run of any kind, including a run of chosen PRs |
 | `lastFullRun` | object or null | no | retrieval | The last full run (of a whole repo): a run of chosen PRs (`-p/--pr`, `--prs`) leaves it. `Last run rows` shows the rows with its `updatedAt`. Missing in data from before 2026-10-31, where the server reports `lastRun` as it |
 
@@ -57,7 +57,9 @@ Source of truth for writes:
 
 ## `byPrNumber` entry schema
 
-Each `byPrNumber[prNumber]` value is an object with this shape:
+Rows are keyed by repo and number - `owner/name#923` - since two repos can each have a PR #923. Before 2026-11-02 they were keyed by the bare number, so such PRs replaced each other's rows; the script moves a bare-number row to its repo's key at the start of each run (`ensure_pr_state_store`; an existing repo key, the newer row, wins), and the server reads either kind. A row without a `repo` keeps its number. Look a row up by its `repo` and `prNumber`, not by the number alone.
+
+Each `byPrNumber[key]` value is an object with this shape:
 
 | Field | Type | Required | Written by | Notes |
 | --- | --- | --- | --- | --- |
@@ -453,13 +455,13 @@ Top-level user-state fields:
 
 | Field | Type | Notes |
 | --- | --- | --- |
-| `notesByPrNumber` | object | Per-PR notes keyed by PR number |
+| `notesByPrNumber` | object | Per-PR notes keyed by `repo#number`, as the data file's rows (bare-number keys from before 2026-11-02 move to their PR's repo key when the data is read: the repo of the row with that number - the last run's repo when several repos have one - or the last run's repo when none does) |
 | `ackByRepo` | object | Repo-scoped ack timestamps |
 | `reverifyByRepo` | object | Repo-scoped reverify flags |
 | `inReviewByRepo` | object | Repo-scoped in-review flags |
 | `flaggedByRepo` | object | Repo-scoped flagged toggles |
 
-`notesByPrNumber[prNumber]` shape:
+`notesByPrNumber[key]` shape:
 
 | Field | Type | Required |
 | --- | --- | --- |

@@ -112,7 +112,7 @@ describe("integration behavior", () => {
     const persistedUserState = JSON.parse(
       fs.readFileSync(viewPrsUserStateFile, "utf8"),
     );
-    expect(persistedUserState.notesByPrNumber[prNumber]).toMatchObject({
+    expect(persistedUserState.notesByPrNumber[`owner/repo#${prNumber}`]).toMatchObject({
       comments: [
         expect.objectContaining({
           author: "a",
@@ -129,7 +129,7 @@ describe("integration behavior", () => {
       ],
       analysisOfPr: "Looks moderate overall",
     });
-    expect(persistedUserState.notesByPrNumber[prNumber]).not.toHaveProperty("rallyStories");
+    expect(persistedUserState.notesByPrNumber[`owner/repo#${prNumber}`]).not.toHaveProperty("rallyStories");
   });
 
   // The Notes tab sends only id, author, tone and note. Saving used to
@@ -169,7 +169,7 @@ describe("integration behavior", () => {
     });
     expect(res.status).toBe(200);
 
-    const saved = JSON.parse(fs.readFileSync(viewPrsUserStateFile, "utf8")).notesByPrNumber[prNumber].comments;
+    const saved = JSON.parse(fs.readFileSync(viewPrsUserStateFile, "utf8")).notesByPrNumber[`owner/repo#${prNumber}`].comments;
     const byId = Object.fromEntries(saved.map((comment) => [comment.id, comment]));
     expect(byId["comment-1"]).toMatchObject({ createdAt: "2026-01-02T03:04:05Z", updatedAt: "2026-01-03T03:04:05Z" });
     expect(byId["comment-2"].createdAt).toBe("2026-01-02T03:04:05Z");
@@ -229,19 +229,59 @@ describe("integration behavior", () => {
     const persistedUserState = JSON.parse(
       fs.readFileSync(viewPrsUserStateFile, "utf8"),
     );
-    expect(persistedUserState.notesByPrNumber[existingPrNumber]).toMatchObject({
+    expect(persistedUserState.notesByPrNumber[`owner/repo#${existingPrNumber}`]).toMatchObject({
       otherNotes: "keep me",
       prDifficulty: "4",
       stories: [{ name: "US1", url: "https://stories.example/US1" }],
       analysisOfPr: "retain",
     });
-    expect(persistedUserState.notesByPrNumber[clearedPrNumber]).toEqual({
+    expect(persistedUserState.notesByPrNumber[`owner/repo#${clearedPrNumber}`]).toEqual({
       comments: [],
       otherNotes: "",
       prDifficulty: "",
       stories: [],
       analysisOfPr: "",
     });
+  });
+
+  test("two repos' PRs with the same number keep their own rows and notes", async () => {
+    // Before rows and notes were keyed by repo, one replaced the other.
+    writeViewPrsData({
+      byPrNumber: {
+        "acme/api#12": { prNumber: "12", repo: "acme/api", section: "open", data: { number: "12", title: "API twelve" } },
+        // Not migrated by the script yet: read as acme/web's.
+        12: { prNumber: "12", repo: "acme/web", section: "open", data: { number: "12", title: "Web twelve" } },
+      },
+      lastRun: { repo: "acme/api", updatedAt: "2026-11-02T10:00:00Z" },
+    });
+    // Notes from before, keyed by the bare number: the last run's repo's.
+    writeViewPrsUserState({ ...EMPTY_USER_STATE, notesByPrNumber: { 12: { otherNotes: "older notes" } } });
+
+    const res = await request.post("/notes").send({ prNumber: "12", repo: "acme/web", otherNotes: "web notes" });
+    expect(res.status).toBe(200);
+
+    const { notesByPrNumber } = JSON.parse(fs.readFileSync(viewPrsUserStateFile, "utf8"));
+    expect(Object.keys(notesByPrNumber).sort()).toEqual(["acme/api#12", "acme/web#12"]);
+    expect(notesByPrNumber["acme/api#12"].otherNotes).toBe("older notes");
+    expect(notesByPrNumber["acme/web#12"].otherNotes).toBe("web notes");
+
+    const data = (await request.get("/data")).body;
+    expect(data.byPrNumber["acme/api#12"]).toMatchObject({ data: { title: "API twelve" }, notes: { otherNotes: "older notes" } });
+    expect(data.byPrNumber["acme/web#12"]).toMatchObject({ data: { title: "Web twelve" }, notes: { otherNotes: "web notes" } });
+  });
+
+  test("notes still keyed by the bare number move to their PR's repo key when the data is read", async () => {
+    writeViewPrsData({
+      byPrNumber: { "acme/web#30": { prNumber: "30", repo: "acme/web", section: "open", data: { number: "30" } } },
+      lastRun: { repo: "acme/api", updatedAt: "2026-11-02T10:00:00Z" },
+    });
+    writeViewPrsUserState({ ...EMPTY_USER_STATE, notesByPrNumber: { 30: { otherNotes: "thirty" } } });
+
+    expect((await request.get("/data")).status).toBe(200);
+
+    const { notesByPrNumber } = JSON.parse(fs.readFileSync(viewPrsUserStateFile, "utf8"));
+    // The only row with #30 is acme/web's, whatever the last run was.
+    expect(notesByPrNumber).toEqual({ "acme/web#30": expect.objectContaining({ otherNotes: "thirty" }) });
   });
 
   test("returns cached diff data when GET /diff receives an unchanged commit fingerprint", async () => {
@@ -578,7 +618,7 @@ describe("integration behavior", () => {
       expect(res.status).toBe(200);
       expect(res.body.ok).toBe(true);
 
-      const row = res.body?.byPrNumber?.[prNumber]?.data;
+      const row = res.body?.byPrNumber?.[`owner/repo#${prNumber}`]?.data;
       expect(Array.isArray(row?.activityTimeline)).toBe(true);
       expect(Array.isArray(row?.activityEvents)).toBe(true);
       expect(Array.isArray(row?.reviewThreads)).toBe(true);
@@ -1086,7 +1126,7 @@ describe("integration behavior", () => {
       const res = await request.get("/data");
       expect(res.status).toBe(200);
       expect(res.body.ok).toBe(true);
-      const row = res.body?.byPrNumber?.["901"]?.data;
+      const row = res.body?.byPrNumber?.["owner/repo#901"]?.data;
       expect(Array.isArray(row?.activityTimeline)).toBe(true);
       expect(Array.isArray(row?.activityEvents)).toBe(true);
       expect(Array.isArray(row?.reviewThreads)).toBe(true);

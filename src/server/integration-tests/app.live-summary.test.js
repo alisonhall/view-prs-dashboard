@@ -89,11 +89,11 @@ afterAll(() => {
 
 describe("the live summary laid over the rows", () => {
   test("a listing newer than the row's refresh shows the current CI state", () => {
-    expect(readViewPrsData().byPrNumber["12"].data.checkState).toBe("RUN");
+    expect(readViewPrsData().byPrNumber["acme/api#12"].data.checkState).toBe("RUN");
 
     writeLiveSummary("PASS");
 
-    const { data } = readViewPrsData().byPrNumber["12"];
+    const { data } = readViewPrsData().byPrNumber["acme/api#12"];
     expect(data.checkState).toBe("PASS");
     expect(data.titleDisplay).toBe("Add widgets [CHK:PASS][MRG:YES]");
     expect(data.live).toEqual({ updatedAt: "2026-10-31T08:00:00Z", detailsBehind: false, stillOpen: true });
@@ -158,7 +158,7 @@ describe("the live summary laid over the rows", () => {
     data.byPrNumber["12"].ciFetchedAt = "2026-10-31T10:02:00Z";
     fs.writeFileSync(dataFile, JSON.stringify(data));
     writeLiveSummary("PASS");
-    expect(readViewPrsData().byPrNumber["12"].data.checkState).toBe("RUN");
+    expect(readViewPrsData().byPrNumber["acme/api#12"].data.checkState).toBe("RUN");
   });
 
   test("the data version the page polls changes with a new listing and with a newly queued PR", () => {
@@ -169,7 +169,7 @@ describe("the live summary laid over the rows", () => {
 
     setPendingForRepo("acme/api", { open: [12], mergedClosed: [] });
     expect(getViewPrsDataMeta().dataVersion).not.toBe(afterListing);
-    expect(readViewPrsData().byPrNumber["12"].data.updatePending).toBe(true);
+    expect(readViewPrsData().byPrNumber["acme/api#12"].data.updatePending).toBe(true);
   });
 });
 

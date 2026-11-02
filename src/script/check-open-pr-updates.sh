@@ -32,6 +32,15 @@ TARGET_PRS_MISSING=''
 # PRs whose details or review threads couldn't be fetched this run (see
 # note_unfetched_pr): their stored rows are kept.
 UNFETCHED_PR_NUMBERS=''
+# Rows in the data file are keyed by repo#number: two repos can each have a
+# PR #12. pr_row looks one up, also under its bare number for a file not
+# migrated yet (ensure_pr_state_store migrates it).
+PR_KEY_JQ='
+  def pr_key($repo; $number): ($repo + "#" + ($number | tostring));
+  def pr_row($repo; $number):
+    (.byPrNumber // {}) as $rows
+    | ($rows[pr_key($repo; $number)] // ($rows[$number | tostring] | select(. != null and (.repo // "") == $repo)) // empty);
+'
 STATUS_COL_WIDTH=28
 APPROVED_COL_WIDTH=14
 GH_COMMAND_TIMEOUT_SECONDS="${GH_COMMAND_TIMEOUT_SECONDS:-45}"
@@ -725,13 +734,30 @@ ensure_pr_state_store() {
 
   # Rewritten (and backed up) only when there's something to fix - not with
   # every quick check. A run that writes rows backs it up itself (main).
-  if jq -e '(.byPrNumber | type) == "object" and ([has("ackByRepo", "reverifyByRepo", "inReviewByRepo", "flaggedByRepo")] | any | not)' "$PR_STATE_FILE" >/dev/null 2>&1; then
+  if jq -e '(.byPrNumber | type) == "object" and ([has("ackByRepo", "reverifyByRepo", "inReviewByRepo", "flaggedByRepo")] | any | not) and ([.byPrNumber | to_entries[] | select((.key | test("^[0-9]+$")) and ((.value.repo // "") != ""))] | length == 0)' "$PR_STATE_FILE" >/dev/null 2>&1; then
     return 0
   fi
 
   local tmp
   tmp=$(mktemp)
-  jq '.byPrNumber //= {} | del(.ackByRepo, .reverifyByRepo, .inReviewByRepo, .flaggedByRepo)' "$PR_STATE_FILE" >"$tmp"
+  # Rows are keyed by repo#number (see PR_KEY_JQ); a row keyed by its bare
+  # number (before 2026-11-02, when two repos' PRs with the same number
+  # replaced each other) moves to its repo's key - unless that key already
+  # has a row, the newer one. A row without a repo keeps its number.
+  jq "$PR_KEY_JQ"'
+    .byPrNumber //= {}
+    | del(.ackByRepo, .reverifyByRepo, .inReviewByRepo, .flaggedByRepo)
+    | .byPrNumber = (
+        (.byPrNumber | to_entries) as $entries
+        | ([$entries[] | select(.key | test("^[0-9]+$") | not) | .key]) as $keyed
+        | reduce $entries[] as $e ({};
+            if ($e.key | test("^[0-9]+$")) and (($e.value.repo // "") != "") then
+              pr_key($e.value.repo; $e.key) as $k
+              | if ($keyed | index($k)) != null then . else .[$k] = $e.value end
+            else .[$e.key] = $e.value
+            end)
+      )
+  ' "$PR_STATE_FILE" >"$tmp"
   replace_state_file "$tmp" "$PR_STATE_FILE" 'pr-data'
 }
 
@@ -986,14 +1012,16 @@ upsert_pr_state_unlocked() {
     --argjson rowOrder "$RUN_ROW_INDEX" \
     --argjson targeted "$targeted" \
     --slurpfile row_file "$row_file" \
-    '
+    "$PR_KEY_JQ"'
       ($row_file[0] // {}) as $row |
       ($row.number | tostring) as $number |
+      pr_key($repo; $number) as $key |
       (now | todate) as $now |
       .byPrNumber //= {} |
-      (.byPrNumber[$number] // {}) as $existing |
+      ([pr_row($repo; $number)] | first // {}) as $existing |
+      (if ((.byPrNumber[$number].repo // "") == $repo) then del(.byPrNumber[$number]) else . end) |
       ($existing.updatedAt // (.lastFullRun // .lastRun).updatedAt // null) as $existingUpdatedAt |
-      .byPrNumber[$number] = (($existing | del(.notes)) + {
+      .byPrNumber[$key] = (($existing | del(.notes)) + {
         prNumber: $number,
         repo: $repo,
         section: $section,
@@ -2248,9 +2276,9 @@ row_passes_display_filters() {
 get_stored_viewed_files_stats_json() {
   local number="$1"
   [[ -n "${PR_STATE_FILE:-}" && -f "$PR_STATE_FILE" ]] || return 0
-  jq -c --arg number "$number" --arg repo "$REPO" '
-    .byPrNumber[$number] // empty
-    | select(.repo == $repo and (.section == "merged" or .section == "closed"))
+  jq -c --arg number "$number" --arg repo "$REPO" "$PR_KEY_JQ"'
+    pr_row($repo; $number)
+    | select(.section == "merged" or .section == "closed")
     | .data
     | select(.viewedFilesCount != null and .changedFilesCount != null)
     | select((.changedFilesCount | tostring) != "0")
@@ -2948,7 +2976,7 @@ reconcile_missing_open_rows() {
       | to_entries[]
       | select(.value.repo == $repo)
       | select((.value.section // "") == "open" or (.value.section // "") == "draft")
-      | .key
+      | (.value.prNumber // (.key | split("#") | last) | tostring)
     ' "$PR_STATE_FILE" 2>/dev/null | awk 'NF' | sort -u >"$stale_tmp"
 
   stale_count=$(wc -l <"$stale_tmp" | tr -d '[:space:]')
@@ -3074,10 +3102,12 @@ build_row_reuse_snapshot() {
   while IFS=$'\t' read -r number entry_json; do
     [[ -n "$number" && -n "$entry_json" ]] || continue
     printf '%s' "$entry_json" >"$ROW_REUSE_SNAPSHOT_DIR/$number.json"
-  done < <(jq -r --arg repo "$REPO" '
+  done < <(jq -r --arg repo "$REPO" "$PR_KEY_JQ"'
     (.byPrNumber // {}) | to_entries[]
-    | select(.value.repo == $repo and (.key | test("^[0-9]+$")))
-    | "\(.key)\t\({byPrNumber: {(.key): .value}} | tojson)"
+    | select(.value.repo == $repo)
+    | (.value.prNumber // (.key | split("#") | last) | tostring) as $number
+    | select($number | test("^[0-9]+$"))
+    | "\($number)\t\({byPrNumber: {(pr_key($repo; $number)): .value}} | tojson)"
   ' "$PR_STATE_FILE" 2>/dev/null || true)
 }
 
@@ -3124,15 +3154,15 @@ get_cached_row_json_for_pr() {
     --arg sharedKey "$(row_local_state_shared_key)" \
     --slurpfile user "$(user_state_file_or_empty)" \
     --argjson maxAgeSeconds "$max_age_seconds" \
-    "$ROW_LOCAL_STATE_MARKS_JQ"'
+    "$ROW_LOCAL_STATE_MARKS_JQ$PR_KEY_JQ"'
       ($sharedKey + "|" + local_state_marks($user[0] // {}; $repo; $number)) as $localStateKey |
       def to_epoch($ts):
         (($ts | fromdateiso8601?) //
         (($ts | sub("\\.[0-9]+Z$"; "Z")) | fromdateiso8601?) //
         0);
 
-      .byPrNumber[$number] // empty
-      | select(.repo == $repo and .section == $section)
+      pr_row($repo; $number)
+      | select(.section == $section)
       | select(($maxAgeSeconds < 0) or ((now - to_epoch(.fetchedAt // "")) <= $maxAgeSeconds))
       | .data
       | select((.viewerLogin // "") == $viewerLogin)
@@ -3478,7 +3508,7 @@ pr_updated_at_matches_cache() {
       --arg number "$number" \
       --arg repo "$REPO" \
       --arg section "$section" \
-      '.byPrNumber[$number] // empty | select(.repo == $repo and .section == $section) | (.data.sourceUpdatedAt // empty)' \
+      "$PR_KEY_JQ"'pr_row($repo; $number) | select(.section == $section) | (.data.sourceUpdatedAt // empty)' \
       "$PR_STATE_FILE" 2>/dev/null
   )
 

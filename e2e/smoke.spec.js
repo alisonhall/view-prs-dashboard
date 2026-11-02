@@ -155,7 +155,10 @@ const changeServerData = async (page) => {
   const original = fs.readFileSync(dataFile, "utf8");
   pendingServerDataRestores.push(() => fs.writeFileSync(dataFile, original));
   const data = JSON.parse(original);
-  data.byPrNumber["3"].data = { ...data.byPrNumber["3"].data, e2eDataChangeMarker: Date.now() };
+  // PR #3, under its repo key once a script run has migrated the file
+  // (rows are keyed repo#number), else its bare number.
+  const key = Object.keys(data.byPrNumber).find((candidate) => candidate === "3" || candidate.endsWith("#3"));
+  data.byPrNumber[key].data = { ...data.byPrNumber[key].data, e2eDataChangeMarker: Date.now() };
   const before = await readVersion();
   fs.writeFileSync(dataFile, JSON.stringify(data, null, 2));
   expect(await readVersion()).not.toBe(before);

@@ -1,4 +1,10 @@
 const path = require("path");
+const {
+  isLegacyPrEntryKey,
+  prNumberFromKey,
+  normalizePrEntryKeys,
+  migrateNotesKeys,
+} = require("../helpers/view-prs-pr-keys");
 
 const createViewPrsStateStorage = ({
   fs,
@@ -164,9 +170,19 @@ const createViewPrsStateStorage = ({
 
     const existing = normalizeViewPrsUserState(existingRead.value || {});
 
-    for (const [prNumber, notes] of Object.entries(existing.notesByPrNumber)) {
-      if (!incoming.notesByPrNumber[prNumber]) {
-        incoming.notesByPrNumber[prNumber] = notes;
+    // Notes keyed by a bare number that the incoming state already has under
+    // a repo key (migrated - see view-prs-pr-keys.js) aren't brought back.
+    const incomingKeyedNumbers = new Set(
+      Object.keys(incoming.notesByPrNumber)
+        .filter((key) => !isLegacyPrEntryKey(key))
+        .map((key) => prNumberFromKey(key)),
+    );
+    for (const [prKey, notes] of Object.entries(existing.notesByPrNumber)) {
+      if (isLegacyPrEntryKey(prKey) && incomingKeyedNumbers.has(prKey)) {
+        continue;
+      }
+      if (!incoming.notesByPrNumber[prKey]) {
+        incoming.notesByPrNumber[prKey] = notes;
       }
     }
 
@@ -227,6 +243,18 @@ const createViewPrsStateStorage = ({
         delete entry.notes;
         dataFileChanged = true;
       }
+    }
+
+    // Notes keyed by a bare number move to their PR's repo key (see
+    // view-prs-pr-keys.js): two repos can each have a PR with that number.
+    const migratedNotes = migrateNotesKeys(
+      migrated.notesByPrNumber,
+      normalizePrEntryKeys(byPrNumber),
+      String(main.lastFullRun?.repo || main.lastRun?.repo || ""),
+    );
+    if (migratedNotes !== migrated.notesByPrNumber) {
+      migrated.notesByPrNumber = migratedNotes;
+      userStateChanged = true;
     }
 
     const legacyAckByRepo = normalizePerRepoMap(main.ackByRepo, "string");

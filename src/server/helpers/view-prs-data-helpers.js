@@ -260,7 +260,9 @@ const normalizeViewPrsUserState = (raw) => {
     : {};
 
   for (const [prNumber, notes] of Object.entries(rawNotesMap)) {
-    if (!/^\d+$/.test(String(prNumber))) {
+    // repo#number (see view-prs-pr-keys.js), or a bare number from before -
+    // dropping repo keys here would lose every migrated note.
+    if (!/^\d+$/.test(String(prNumber)) && !/^[\w.-]+\/[\w.-]+#\d+$/.test(String(prNumber))) {
       continue;
     }
     const normalized = normalizeNotes(notes);
@@ -456,12 +458,15 @@ const buildViewPrsDataManifest = (data = {}) => {
   const byPrNumber = isObject(data?.byPrNumber) ? data.byPrNumber : {};
   const manifest = {};
 
+  // Keyed as the rows are (repo#number - see view-prs-pr-keys.js), in PR
+  // number order.
+  const numberOf = (key) => Number(String(key).split("#").pop());
   Object.keys(byPrNumber)
-    .sort((a, b) => Number(a) - Number(b))
-    .forEach((prNumber) => {
-      const entry = byPrNumber[prNumber] || {};
-      manifest[String(prNumber)] = {
-        rowVersion: computeViewPrsRowVersion(entry, prNumber),
+    .sort((a, b) => numberOf(a) - numberOf(b) || (a < b ? -1 : a > b ? 1 : 0))
+    .forEach((prKey) => {
+      const entry = byPrNumber[prKey] || {};
+      manifest[String(prKey)] = {
+        rowVersion: computeViewPrsRowVersion(entry, prKey),
         repo: String(entry?.repo || ""),
         section: String(entry?.section || ""),
         updatedAt: String(entry?.updatedAt || ""),

@@ -347,7 +347,7 @@ describe("check-open-pr-updates shell helper behavior", () => {
     // test changes one thing.
     const storedState = ({ entry = {}, data = {} } = {}) => ({
       byPrNumber: {
-        123: {
+        "owner/repo#123": {
           repo: "owner/repo",
           section: "open",
           fetchedAt: minutesAgo(1),
@@ -452,14 +452,15 @@ describe("check-open-pr-updates shell helper behavior", () => {
 
     test("the run's snapshot holds each of this repo's rows in its own file, and the lookup reads that instead", () => {
       const state = storedState();
-      state.byPrNumber[456] = { ...state.byPrNumber[123], repo: "other/repo" };
+      // Another repo's PR with the same number: not this repo's row.
+      state.byPrNumber["other/repo#123"] = { ...state.byPrNumber["owner/repo#123"], repo: "other/repo" };
       const stateFile = writeState(state);
       const snapshotDir = runShell("mktemp -d");
 
       runScriptFn(`${setup(stateFile)} ROW_REUSE_SNAPSHOT_DIR="${snapshotDir}"; build_row_reuse_snapshot`);
 
       expect(runShell(`ls "${snapshotDir}"`).split("\n")).toEqual(["123.json"]);
-      expect(JSON.parse(runShell(`cat "${snapshotDir}/123.json"`))).toEqual({ byPrNumber: { 123: state.byPrNumber[123] } });
+      expect(JSON.parse(runShell(`cat "${snapshotDir}/123.json"`))).toEqual({ byPrNumber: { "owner/repo#123": state.byPrNumber["owner/repo#123"] } });
 
       const lookUpIn = (dir, pr = listed()) =>
         runScriptFn(`${setup(stateFile)} ROW_REUSE_SNAPSHOT_DIR="${dir}"; get_cached_row_json_for_pr '${pr}' open`);
@@ -534,7 +535,7 @@ describe("check-open-pr-updates shell helper behavior", () => {
       const stateFile = writeState(storedState({ entry: { fetchedAt } }));
       const upsert = (row) =>
         runScriptFn(
-          `${setup(stateFile)} STATE_BACKUP_DIR="$(mktemp -d)"; RUN_TS='2026-05-26T13:00:00Z'; RUN_ROW_INDEX=1; upsert_pr_state_unlocked '${JSON.stringify(row)}' open; jq -c '.byPrNumber["123"] | {fetchedAt, reused: (.data | has("__reused"))}' "${stateFile}"`,
+          `${setup(stateFile)} STATE_BACKUP_DIR="$(mktemp -d)"; RUN_TS='2026-05-26T13:00:00Z'; RUN_ROW_INDEX=1; upsert_pr_state_unlocked '${JSON.stringify(row)}' open; jq -c '.byPrNumber["owner/repo#123"] | {fetchedAt, reused: (.data | has("__reused"))}' "${stateFile}"`,
         );
 
       expect(JSON.parse(upsert({ number: "123", __reused: true }))).toEqual({ fetchedAt, reused: false });
@@ -547,7 +548,7 @@ describe("check-open-pr-updates shell helper behavior", () => {
         const stateFile = writeState(storedState({ entry }));
         return JSON.parse(
           runScriptFn(
-            `${setup(stateFile)} RUN_TS='2026-05-26T13:00:00Z'; RUN_ROW_INDEX=1; upsert_pr_state_unlocked '${JSON.stringify(row)}' open; jq -c '.byPrNumber["123"] | {fetchedAt, ciFetchedAt, marked: (.data | has("__ciFetched"))}' "${stateFile}"`,
+            `${setup(stateFile)} RUN_TS='2026-05-26T13:00:00Z'; RUN_ROW_INDEX=1; upsert_pr_state_unlocked '${JSON.stringify(row)}' open; jq -c '.byPrNumber["owner/repo#123"] | {fetchedAt, ciFetchedAt, marked: (.data | has("__ciFetched"))}' "${stateFile}"`,
           ),
         );
       };
@@ -572,7 +573,7 @@ describe("check-open-pr-updates shell helper behavior", () => {
       const env = `${setup(stateFile)} STATE_BACKUP_DIR="${backupDir}"; RUN_TS='2026-05-26T13:00:00Z'; RUN_ROW_INDEX=1;`;
 
       runScriptFn(`${env} upsert_pr_state_unlocked '{"number":456,"title":"New"}' open`);
-      expect(JSON.parse(runShell(`cat "${stateFile}"`)).byPrNumber["456"].data.title).toBe("New");
+      expect(JSON.parse(runShell(`cat "${stateFile}"`)).byPrNumber["owner/repo#456"].data.title).toBe("New");
       expect(runShell(`ls -A "${backupDir}"`)).toBe("");
       expect(runShell(`ls -A "$(dirname "${stateFile}")" | grep -cF "$(basename "${stateFile}").tmp-" || true`)).toBe("0");
 
@@ -593,6 +594,32 @@ describe("check-open-pr-updates shell helper behavior", () => {
       const legacy = writeState({ ...storedState(), ackByRepo: {} });
       expect(JSON.parse(ensure(legacy))).not.toHaveProperty("ackByRepo");
       expect(runShell(`ls -A "${backupDir}"`)).not.toBe("");
+
+      // Rows keyed by their bare number (before 2026-11-02) move to their
+      // repo's key; one without a repo keeps its number, and an existing
+      // repo key (the newer row) wins.
+      const row = storedState().byPrNumber["owner/repo#123"];
+      const numeric = writeState({
+        byPrNumber: {
+          123: row,
+          7: { ...row, repo: undefined, data: { number: "7" } },
+          9: { ...row, data: { ...row.data, number: "9", title: "older" } },
+          "owner/repo#9": { ...row, data: { ...row.data, number: "9", title: "newer" } },
+        },
+      });
+      const migrated = JSON.parse(ensure(numeric)).byPrNumber;
+      expect(Object.keys(migrated).sort()).toEqual(["7", "owner/repo#123", "owner/repo#9"]);
+      expect(migrated["owner/repo#9"].data.title).toBe("newer");
+    });
+
+    test("a row still keyed by its bare number is found until it's migrated - only for its own repo", () => {
+      const row = storedState().byPrNumber["owner/repo#123"];
+      const stateFile = writeState({ byPrNumber: { 123: row } });
+      expect(runScriptFn(`${setup(stateFile)} get_cached_row_json_for_pr '${listed()}' open`)).toContain('"number":"123"');
+      const otherRepo = runScriptFn(
+        `PR_STATE_FILE="${stateFile}"; REPO='other/repo'; VIEWER_LOGIN='alice'; ACK_ENABLED=0; ACK_CLEAR_ENABLED=0; ACK_CHANGED=0; TARGET_PR_NUMBER=''; TARGET_PRS=''; get_cached_row_json_for_pr '${listed()}' open`,
+      );
+      expect(otherRepo).toBe("");
     });
 
     test("a changed merged PR keeps its stored viewed-files counts instead of fetching them", () => {
