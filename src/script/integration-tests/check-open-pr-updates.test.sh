@@ -119,6 +119,10 @@ if [[ "$1" == "api" && "$2" == "graphql" ]]; then
   else
     number=$(find_arg_value -F "$@" || true)
     number=${number#number=}
+    if [[ ",${MOCK_THREADS_FAIL:-}," == *",$number,"* ]]; then
+      printf '%s' '{"errors":[{"message":"Something went wrong"}]}'
+      exit 1
+    fi
     thread_file="${MOCK_THREADS_DIR}/$number.json"
     if [[ -f "$thread_file" ]]; then
       nodes=$(cat "$thread_file")
@@ -1431,6 +1435,17 @@ JSON
   assert_true "[[ $prs_status -ne 0 ]]" '--prs should fail when a chosen PR could not be fetched'
   assert_contains "$prs_err" 'Could not fetch PR(s): 999' '--prs should name the PR it could not fetch'
   assert_eq "$(jq -r '.byPrNumber["1"].data.title' "$prs_state")" 'Open A, renamed' '--prs should still refresh the chosen PRs it could fetch'
+
+  # A chosen PR whose review threads can't be fetched: its stored row stays
+  # as it was (not rewritten without threads), and the run fails naming it.
+  jq '.byPrNumber["1"].data.title = "Kept as stored"' "$prs_state" >"$prs_state.tmp" && command mv -f "$prs_state.tmp" "$prs_state"
+  set +e
+  prs_err=$(PATH="$mock_bin:$PATH" MOCK_THREADS_FAIL=1 MOCK_OPEN_JSON="$mock_data/unlisted.json" MOCK_CLOSED_JSON="$mock_data/unlisted.json" MOCK_MERGED_JSON="$mock_data/unlisted.json" MOCK_PR_VIEW_DIR="$mock_data/view" MOCK_DETAILS_DIR="$mock_data/details" MOCK_THREADS_DIR="$mock_data/threads" PR_STATE_FILE="$prs_state" PR_STATE_LOCK_DIR="$prs_state_lock" JOBS=2 GH_COMMAND_TIMEOUT_SECONDS=5 bash "$SCRIPT_PATH" --open none --quiet --repo owner/repo --prs 1,2 2>&1 >/dev/null)
+  prs_status=$?
+  set -e
+  assert_true "[[ $prs_status -ne 0 ]]" '--prs should fail when a chosen PR'"'"'s threads could not be fetched'
+  assert_contains "$prs_err" 'Could not fetch PR(s): 1' '--prs should name the PR whose threads it could not fetch'
+  assert_eq "$(jq -r '.byPrNumber["1"].data.title' "$prs_state")" 'Kept as stored' '--prs should keep the stored row of a PR whose threads it could not fetch'
   set +e
   prs_err=$(bash "$SCRIPT_PATH" --prs 1 -p 2 --repo owner/repo --quiet 2>&1)
   prs_status=$?
@@ -1444,6 +1459,34 @@ JSON
   set -e
   assert_true "[[ $prs_status -ne 0 ]]" '--prs combined with --quick-check should fail'
   assert_contains "$prs_err" 'cannot be combined with --quick-check' '--prs combined with --quick-check should say why'
+}
+
+run_unfetched_pr_tests() {
+  local mock_bin="$TEST_TMP/unfetched-mock-bin"
+  local mock_data="$TEST_TMP/unfetched-mock-data"
+  local state="$TEST_TMP/unfetched-state.json"
+  local run_err run_status
+  mkdir -p "$mock_data/details" "$mock_data/threads"
+  make_mock_gh "$mock_bin"
+  cat >"$mock_data/open.json" <<'JSON'
+[
+  {"number":1,"title":"One, listed","url":"https://example.com/1","labels":[],"isDraft":false,"author":{"login":"other","name":"Other, User"},"updatedAt":"2026-03-07T00:00:00Z"},
+  {"number":2,"title":"Two, listed","url":"https://example.com/2","labels":[],"isDraft":false,"author":{"login":"other","name":"Other, User"},"updatedAt":"2026-03-07T00:00:00Z"}
+]
+JSON
+  printf '%s' '[]' >"$mock_data/none.json"
+  cat >"$state" <<'JSON'
+{"byPrNumber":{"2":{"prNumber":"2","repo":"owner/repo","section":"open","updatedAt":"2026-03-05T00:00:00Z","rowOrder":1,"data":{"number":"2","title":"Two, as stored"}}}}
+JSON
+
+  set +e
+  run_err=$(PATH="$mock_bin:$PATH" MOCK_THREADS_FAIL=2 MOCK_OPEN_JSON="$mock_data/open.json" MOCK_CLOSED_JSON="$mock_data/none.json" MOCK_MERGED_JSON="$mock_data/none.json" MOCK_DETAILS_DIR="$mock_data/details" MOCK_THREADS_DIR="$mock_data/threads" PR_STATE_FILE="$state" PR_STATE_LOCK_DIR="$state.lock" JOBS=2 GH_COMMAND_TIMEOUT_SECONDS=5 bash "$SCRIPT_PATH" --open none --quiet --repo owner/repo 2>&1 >/dev/null)
+  run_status=$?
+  set -e
+  assert_eq "$run_status" '0' "a full run should still succeed when one PR's threads could not be fetched: $run_err"
+  assert_contains "$run_err" 'Could not fetch the details of PR(s), kept as stored: 2' 'a full run should say which PRs it kept as stored'
+  assert_eq "$(jq -r '.byPrNumber["2"].data.title' "$state")" 'Two, as stored' 'a full run should keep the stored row of a PR whose threads it could not fetch'
+  assert_eq "$(jq -r '.byPrNumber["1"].data.title' "$state")" 'One, listed' 'a full run should still write the PRs it could fetch'
 }
 
 run_row_reuse_tests() {
@@ -1556,6 +1599,7 @@ run_all_tests() {
   run_quick_check_numbers_tests
   run_row_order_stability_tests
   run_targeted_prs_tests
+  run_unfetched_pr_tests
   run_row_reuse_tests
   run_main_integration_tests
 }

@@ -29,6 +29,9 @@ QUICK_CHECK_NUMBERS=''
 TARGET_PRS_RAW_INPUT=''
 TARGET_PRS=''
 TARGET_PRS_MISSING=''
+# PRs whose details or review threads couldn't be fetched this run (see
+# note_unfetched_pr): their stored rows are kept.
+UNFETCHED_PR_NUMBERS=''
 STATUS_COL_WIDTH=28
 APPROVED_COL_WIDTH=14
 GH_COMMAND_TIMEOUT_SECONDS="${GH_COMMAND_TIMEOUT_SECONDS:-45}"
@@ -97,6 +100,10 @@ PR_DETAIL_DIR="${PR_DETAIL_DIR:-$DATA_DIR/pr-details}"
 LOCK_STALE_SECONDS="${LOCK_STALE_SECONDS:-900}"
 STATE_BACKUP_DIR="${STATE_BACKUP_DIR:-$DATA_DIR/backups}"
 STATE_BACKUP_RETENTION="${STATE_BACKUP_RETENTION:-50}"
+# Beyond those, the newest backup of each of this many days (the most
+# recent days with backups): runs every few minutes would otherwise leave
+# only the last few hours.
+STATE_BACKUP_DAILY_DAYS="${STATE_BACKUP_DAILY_DAYS:-7}"
 
 LEGACY_ACK_FILE="$HOME/.cache/check-open-pr-updates/ack.json"
 ACK_RAW_INPUT=''
@@ -371,7 +378,7 @@ format_iso_datetime() {
 create_state_backup() {
   local target_file="$1"
   local tag="$2"
-  local ts suffix backup_file pattern retention
+  local ts suffix backup_file pattern retention daily_days
 
   [[ -f "$target_file" ]] || return 0
 
@@ -392,7 +399,24 @@ create_state_backup() {
       # propagate that failure through the whole pipeline and abort the
       # entire script — silently dropping whatever ack/flag/clear operation
       # was in progress. `|| true` keeps that race from being fatal.
-      ls -1t $pattern 2>/dev/null | awk -v keep="$retention" 'NR > keep { print }' | while IFS= read -r old_file; do
+      # Keeps the newest $retention, and the newest one of each day (from
+      # the name's UTC timestamp) until $daily_days days have one.
+      daily_days="$STATE_BACKUP_DAILY_DAYS"
+      [[ "$daily_days" =~ ^[0-9]+$ ]] || daily_days=7
+      ls -1t $pattern 2>/dev/null | awk -v keep="$retention" -v days="$daily_days" '
+        function day_of(name) {
+          return match(name, /\.[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]T/) ? substr(name, RSTART + 1, 8) : ""
+        }
+        {
+          day = day_of($0)
+          if (NR <= keep) {
+            if (day != "" && !(day in seen)) { seen[day] = 1; day_count++ }
+            next
+          }
+          if (day != "" && !(day in seen) && day_count < days) { seen[day] = 1; day_count++; next }
+          print
+        }
+      ' | while IFS= read -r old_file; do
         [[ -n "$old_file" ]] || continue
         rm -f "$old_file" 2>/dev/null || true
       done || true
@@ -1359,15 +1383,19 @@ fetch_review_threads_json() {
         -f owner="$REPO_OWNER" \
         -f name="$REPO_NAME" \
         -F number="$number" \
-        -f after="$cursor")
+        -f after="$cursor") || return 1
     else
       response=$(gh_with_retry gh api graphql \
         -f query='query($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { reviewThreads(first: 100) { nodes { id isResolved isOutdated resolvedBy { login } comments(first: 100) { totalCount pageInfo { hasNextPage endCursor } nodes { id author { login } authorAssociation body createdAt publishedAt url replyTo { id } path line originalLine state } } } pageInfo { hasNextPage endCursor } } } } }' \
         -f owner="$REPO_OWNER" \
         -f name="$REPO_NAME" \
-        -F number="$number")
+        -F number="$number") || return 1
     fi
 
+    # A failed request, or a response without the threads (a GraphQL
+    # error): fail, rather than return no threads - an empty list would
+    # replace the row's threads (the prefetch caches what this returns).
+    printf '%s' "$response" | jq -e '.data.repository.pullRequest.reviewThreads.nodes | type == "array"' >/dev/null 2>&1 || return 1
     printf '%s' "$response" | jq -c '.data.repository.pullRequest.reviewThreads.nodes[]?' >>"$tmp_nodes"
     has_next=$(printf '%s' "$response" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage')
     cursor=$(printf '%s' "$response" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.endCursor // ""')
@@ -1409,7 +1437,11 @@ fetch_review_threads_json() {
         latestCommentAt: ([.comments[]?.createdAt | select(. != "")] | sort | last // "")
       })
     | sort_by(.latestCommentAt, .id)
-  ' "$tmp_nodes" >"$cache_file"
+  ' "$tmp_nodes" >"$cache_file.tmp-$$" || {
+    rm -f "$cache_file.tmp-$$"
+    return 1
+  }
+  command mv -f "$cache_file.tmp-$$" "$cache_file"
   cat "$cache_file"
 }
 
@@ -2266,7 +2298,13 @@ compute_pr_state_json() {
   author_is_viewer=0
   [[ "$author_login" == "$VIEWER_LOGIN" ]] && author_is_viewer=1
 
-  detail_json=$(get_pr_detail_json "$number")
+  # Details or review threads that couldn't be fetched: no row, rather than
+  # one computed from nothing (no reviews, threads or activity). The run
+  # keeps the stored row and reports the PR (note_unfetched_pr).
+  if ! detail_json=$(get_pr_detail_json "$number") || ! printf '%s' "$detail_json" | jq -e 'type == "object"' >/dev/null 2>&1; then
+    emit_pr_progress_marker 'END' "$number"
+    return 1
+  fi
   comments_json=$(normalize_pr_comments_json "$detail_json")
   reviews_json=$(normalize_pr_reviews_json "$detail_json")
   requested_reviewers_json=$(printf '%s' "$detail_json" | jq -c '
@@ -2298,7 +2336,10 @@ compute_pr_state_json() {
       | select(.login != "")
     ]
   ')
-  threads_json=$(fetch_review_threads_json "$number")
+  if ! threads_json=$(fetch_review_threads_json "$number"); then
+    emit_pr_progress_marker 'END' "$number"
+    return 1
+  fi
   local review_comments_json
   review_comments_json=$(fetch_pr_review_comments_json "$number") || review_comments_json='[]'
   local review_url_map_json
@@ -2935,7 +2976,10 @@ reconcile_missing_open_rows() {
 
     fresh_pr_json=$(printf '%s' "$fresh_pr_b64" | base64 --decode)
     fresh_section=$(classify_pr_section "$fresh_pr_json")
-    row_json=$(get_pr_row_json "$fresh_pr_json" "$fresh_section")
+    if ! row_json=$(get_pr_row_json "$fresh_pr_json" "$fresh_section"); then
+      note_unfetched_pr "$fresh_pr_json"
+      continue
+    fi
 
     RUN_ROW_INDEX=$((RUN_ROW_INDEX + 1))
     upsert_pr_state "$row_json" "$fresh_section"
@@ -3171,6 +3215,16 @@ enrich_cached_row_with_ci_merge() {
     '.checkState = $check_state | .mergeState = $merge_state | .titleDisplay = (.title + " [CHK:" + $check_state + "][MRG:" + $merge_state + "]") | .__ciFetched = true'
 }
 
+# A PR whose details or review threads couldn't be fetched (after
+# retries): its stored row stays as it was, and the run reports it at the
+# end - a run of chosen PRs then fails, so they stay queued.
+note_unfetched_pr() {
+  local number
+  number=$(printf '%s' "$1" | jq -r '.number // ""' 2>/dev/null || true)
+  [[ -n "$number" ]] && UNFETCHED_PR_NUMBERS+="$number"$'\n'
+  return 0
+}
+
 get_pr_row_json() {
   local pr_json="$1"
   local section="$2"
@@ -3182,7 +3236,7 @@ get_pr_row_json() {
     # Before computing: the state the row is computed from (computing may
     # clear the ack, which then recomputes it once more next run).
     local_state_key=$(build_row_local_state_key "$number")
-    row_json=$(compute_pr_state_json "$pr_json")
+    row_json=$(compute_pr_state_json "$pr_json") || return 1
     printf '%s' "$row_json" | jq -c --arg localStateKey "$local_state_key" '.localStateKey = $localStateKey' 2>/dev/null || printf '%s' "$row_json"
     return
   fi
@@ -4140,7 +4194,10 @@ main() {
     is_draft=$(printf '%s' "$pr_json" | jq -r '.isDraft')
     [[ "$is_draft" == 'true' ]] && continue
 
-    row_json=$(get_pr_row_json "$pr_json" 'open')
+    if ! row_json=$(get_pr_row_json "$pr_json" 'open'); then
+      note_unfetched_pr "$pr_json"
+      continue
+    fi
     status=$(printf '%s' "$row_json" | jq -r '.status')
     baseline=$(printf '%s' "$row_json" | jq -r '.baseline')
 
@@ -4190,7 +4247,10 @@ main() {
     is_draft=$(printf '%s' "$pr_json" | jq -r '.isDraft')
     [[ "$is_draft" != 'true' ]] && continue
 
-    row_json=$(get_pr_row_json "$pr_json" 'draft')
+    if ! row_json=$(get_pr_row_json "$pr_json" 'draft'); then
+      note_unfetched_pr "$pr_json"
+      continue
+    fi
     status=$(printf '%s' "$row_json" | jq -r '.status')
     baseline=$(printf '%s' "$row_json" | jq -r '.baseline')
 
@@ -4230,7 +4290,10 @@ main() {
     [[ -z "$pr_item" ]] && continue
     pr_json=$(printf '%s' "$pr_item" | base64 --decode)
 
-    row_json=$(get_pr_row_json "$pr_json" 'closed')
+    if ! row_json=$(get_pr_row_json "$pr_json" 'closed'); then
+      note_unfetched_pr "$pr_json"
+      continue
+    fi
 
     RUN_ROW_INDEX=$((RUN_ROW_INDEX + 1))
     upsert_pr_state "$row_json" 'closed'
@@ -4253,7 +4316,10 @@ main() {
     [[ -z "$pr_item" ]] && continue
     pr_json=$(printf '%s' "$pr_item" | base64 --decode)
 
-    row_json=$(get_pr_row_json "$pr_json" 'merged')
+    if ! row_json=$(get_pr_row_json "$pr_json" 'merged'); then
+      note_unfetched_pr "$pr_json"
+      continue
+    fi
 
     RUN_ROW_INDEX=$((RUN_ROW_INDEX + 1))
     upsert_pr_state "$row_json" 'merged'
@@ -4275,6 +4341,14 @@ main() {
   echo "  NO_CHANGE   : $no_change_count"
   echo "  NO_ACTIVITY : $no_activity_count"
   debug_log "summary changed=$changed_count no_change=$no_change_count no_activity=$no_activity_count"
+
+  if [[ -n "$UNFETCHED_PR_NUMBERS" ]]; then
+    if is_targeted_run; then
+      TARGET_PRS_MISSING=$(printf '%s\n%s\n' "$TARGET_PRS_MISSING" "$UNFETCHED_PR_NUMBERS" | awk 'NF' | sort -u)
+    else
+      echo "Could not fetch the details of PR(s), kept as stored: $(printf '%s' "$UNFETCHED_PR_NUMBERS" | awk 'NF' | sort -u | tr '\n' ',' | sed 's/,$//')" >&2
+    fi
+  fi
 
   if [[ -n "$TARGET_PRS_MISSING" ]]; then
     echo "Could not fetch PR(s): $(printf '%s' "$TARGET_PRS_MISSING" | tr '\n' ',' | sed 's/,$//')" >&2

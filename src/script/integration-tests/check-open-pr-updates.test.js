@@ -1046,3 +1046,104 @@ describe("check-open-pr-updates shell helper behavior", () => {
     });
   });
 });
+
+// A failed fetch used to read as "nothing there": a thread request that
+// failed (bash clears set -e inside $(...)) returned no threads, the
+// prefetch cached that, and the row was written without its threads - kept
+// that way while full runs reused it.
+describe("a PR whose threads or details couldn't be fetched", () => {
+  const threadsResponse = JSON.stringify({
+    data: {
+      repository: {
+        pullRequest: {
+          reviewThreads: {
+            nodes: [{ id: "t1", isResolved: false, comments: { nodes: [] } }],
+            pageInfo: { hasNextPage: false, endCursor: null },
+          },
+        },
+      },
+    },
+  });
+  const fetchThreads = (cacheDir, ghBody) =>
+    runScriptFn(
+      `THREAD_CACHE_DIR="${cacheDir}"; REPO_OWNER=owner; REPO_NAME=repo; gh_with_retry() { ${ghBody}; }; fetch_review_threads_json 5`,
+    );
+
+  test("fetch_review_threads_json fails and caches nothing when the request fails or GitHub answers with an error", () => {
+    const cacheDir = runShell("mktemp -d");
+    expect(() => fetchThreads(cacheDir, "return 1")).toThrow();
+    expect(() => fetchThreads(cacheDir, `printf '%s' '{"errors":[{"message":"Something went wrong"}]}'`)).toThrow();
+    expect(runShell(`ls -A "${cacheDir}"`)).toBe("");
+
+    const threads = JSON.parse(fetchThreads(cacheDir, `printf '%s' '${threadsResponse}'`));
+    expect(threads).toEqual([expect.objectContaining({ id: "t1", isResolved: false })]);
+    expect(runShell(`ls -A "${cacheDir}"`)).toBe("5.json");
+  });
+
+  const computeRow = ({ detail = `printf '%s' '{"comments":[],"reviews":[],"commits":[]}'`, threads = "printf '%s' '[]'" }) =>
+    runScriptFn(
+      `VIEWER_LOGIN='alice'; REPO='owner/repo'; PR_DETAIL_DIR="$(mktemp -d)"; emit_pr_progress_marker(){ :; }; get_pr_detail_json(){ ${detail}; }; fetch_review_threads_json(){ ${threads}; }; fetch_pr_review_comments_json(){ printf '%s' '[]'; }; fetch_pr_review_url_map_json(){ printf '%s' '{}'; }; fetch_pr_viewed_files_stats_json(){ printf '%s' '{"viewedFiles":0,"changedFiles":0}'; }; get_pr_row_json '{"number":5,"title":"T","url":"u","author":{"login":"bob"},"updatedAt":"2026-01-01T00:00:00Z"}' open`,
+    );
+
+  test("gives no row (so the run keeps the stored one) when its threads or details can't be fetched", () => {
+    expect(JSON.parse(computeRow({})).number).toBe("5");
+    expect(() => computeRow({ threads: "return 1" })).toThrow();
+    expect(() => computeRow({ detail: "return 1" })).toThrow();
+    expect(() => computeRow({ detail: "printf ''" })).toThrow();
+  });
+
+  // What a run then does with them: run_unfetched_pr_tests in check-open-pr-updates.test.sh.
+  test("note_unfetched_pr collects the PRs a run couldn't fetch", () => {
+    const noted = runScriptFn(
+      `note_unfetched_pr '{"number":7}'; note_unfetched_pr '{"number":9}'; printf '%s' "$UNFETCHED_PR_NUMBERS" | tr '\n' ','`,
+    );
+    expect(noted).toBe("7,9,");
+  });
+});
+
+describe("create_state_backup keeps the newest backups, and one a day for a week", () => {
+  const fs = require("fs");
+  const os = require("os");
+  // Backups named and timed as the script names them: day + time, newest last.
+  const backupsByDay = [
+    ["20261020", ["090000"]],
+    ["20261025", ["090000"]],
+    ["20261027", ["080000", "120000"]],
+    ["20261028", ["080000", "120000"]],
+    ["20261030", ["070000", "080000", "090000"]],
+  ];
+  const name = (day, time) => `data.json.pr-data.${day}T${time}Z-1-1.bak`;
+
+  test("the newest STATE_BACKUP_RETENTION, then the newest of each older day until STATE_BACKUP_DAILY_DAYS days have one", () => {
+    // Made here, not with mktemp: Node on Windows can't open bash's /tmp paths.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "state-backup-")).replace(/\\/g, "/");
+    const backupDir = `${dir}/backups`;
+    fs.mkdirSync(backupDir);
+    fs.writeFileSync(`${dir}/data.json`, "{}");
+    backupsByDay.forEach(([day, times]) =>
+      times.forEach((time) => {
+        const file = `${backupDir}/${name(day, time)}`;
+        fs.writeFileSync(file, "{}");
+        const at = new Date(`${day.slice(0, 4)}-${day.slice(4, 6)}-${day.slice(6)}T${time.slice(0, 2)}:${time.slice(2, 4)}:00Z`);
+        fs.utimesSync(file, at, at);
+      }),
+    );
+
+    // A new backup (today), keeping the newest 3, and days until 4 have one.
+    runScriptFn(`STATE_BACKUP_DIR="${backupDir}"; STATE_BACKUP_RETENTION=3; STATE_BACKUP_DAILY_DAYS=4; create_state_backup "${dir}/data.json" pr-data`);
+
+    const kept = fs.readdirSync(backupDir).sort();
+    const today = kept.filter((file) => !backupsByDay.some(([day]) => file.includes(`.${day}T`)));
+    expect(today).toHaveLength(1);
+    // The newest 3: today's, and 10-30's two latest. Then one a day, newest
+    // first, until 4 days have one: 10-28's latest and 10-27's latest.
+    expect(kept.filter((file) => !today.includes(file))).toEqual(
+      [
+        name("20261027", "120000"),
+        name("20261028", "120000"),
+        name("20261030", "080000"),
+        name("20261030", "090000"),
+      ].sort(),
+    );
+  });
+});
