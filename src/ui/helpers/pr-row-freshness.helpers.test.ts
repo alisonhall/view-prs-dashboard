@@ -1,4 +1,5 @@
 import {
+  backgroundUpdatesFor,
   describeRepoListing,
   describeReposChecked,
   describeRowFreshness,
@@ -115,6 +116,67 @@ describe("describeRowFreshness", () => {
     expect(olderRow).toMatchObject({ summaryConfirmedAt: ago(4), isStale: false });
   });
 
+  test("a reused row whose CI fetch failed isn't confirmed by the run's stamp", () => {
+    // The run moved updatedAt, but not ciFetchedAt (still its last fetch).
+    const freshness = describeRowFreshness({
+      entry: { section: "open", fetchedAt: ago(120), ciFetchedAt: ago(120), updatedAt: ago(4), data: {} },
+      listing,
+      nowMs: NOW,
+    });
+    expect(freshness).toMatchObject({ summaryConfirmedAt: ago(120), isStale: true });
+  });
+
+  test("a repo whose background updates are paused: its rows say until when, and why", () => {
+    const pausedUntil = new Date(NOW + 10 * 60000).toISOString();
+    const paused = describeRepoListing(
+      { checkedAt: ago(30) },
+      { nowMs: NOW, background: { quickCheckIntervalMs: 300000, pausedUntil } },
+    );
+    expect(paused).toMatchObject({ isPaused: true, pausedUntil, isStale: true, isScheduled: true });
+    const freshness = describeRowFreshness({
+      entry: { section: "open", fetchedAt: ago(30), data: { live: { stillOpen: true } } },
+      listing: paused,
+      nowMs: NOW,
+    });
+    expect(freshness.isStale).toBe(true);
+    expect(freshness.lines.at(-1)).toMatch(/^Stale: background updates for its repo are paused until .+, after repeated failures\.$/);
+
+    // Recently confirmed: paused, not stale yet.
+    const recent = describeRowFreshness({
+      entry: { section: "open", fetchedAt: ago(1), data: {} },
+      listing: describeRepoListing({ checkedAt: ago(1) }, { nowMs: NOW, background: { quickCheckIntervalMs: 300000, pausedUntil } }),
+      nowMs: NOW,
+    });
+    expect(recent.isStale).toBe(false);
+    expect(recent.lines.at(-1)).toMatch(/^Background updates for its repo are paused until /);
+
+    // A pause that has ended isn't one.
+    const ended = describeRepoListing(
+      { checkedAt: ago(1) },
+      { nowMs: NOW, background: { quickCheckIntervalMs: 300000, pausedUntil: ago(1) } },
+    );
+    expect(ended).toMatchObject({ isPaused: false, pausedUntil: "" });
+  });
+
+  test("background updates the server sends: their interval, and a repo missing from them isn't checked", () => {
+    const backgroundUpdates = { "a/one": { quickCheckIntervalMs: 30 * 60000, pausedUntil: null } };
+    // Not listed (the live summary off), but checked every 30 minutes.
+    const unlisted = describeRepoListing(undefined, { nowMs: NOW, background: backgroundUpdatesFor(backgroundUpdates, "a/one") });
+    expect(unlisted).toMatchObject({ isScheduled: true, staleAfterMs: 61 * 60000 });
+    const row = describeRowFreshness({ entry: { section: "open", fetchedAt: ago(20), data: {} }, listing: unlisted, nowMs: NOW });
+    expect(row.isStale).toBe(false);
+
+    const missing = describeRepoListing({ checkedAt: ago(1), quickCheckIntervalMs: 300000 }, {
+      nowMs: NOW,
+      background: backgroundUpdatesFor(backgroundUpdates, "b/two"),
+    });
+    expect(missing.isScheduled).toBe(false);
+
+    // Older servers send none: the listing's own interval.
+    expect(backgroundUpdatesFor(undefined, "a/one")).toBeUndefined();
+    expect(describeRepoListing({ checkedAt: ago(1), quickCheckIntervalMs: null }, { nowMs: NOW, background: undefined }).isScheduled).toBe(false);
+  });
+
   test("a repo with no background updates: its rows say so rather than go stale", () => {
     const unscheduled = describeRepoListing({ checkedAt: ago(60 * 24), quickCheckIntervalMs: null }, { nowMs: NOW });
     expect(unscheduled).toMatchObject({ isScheduled: false, isStale: false });
@@ -221,6 +283,17 @@ describe("describeReposChecked", () => {
       nowMs: NOW,
     });
     expect(onlyOld).toMatchObject({ label: "Checked 3d ago", isStale: false });
+  });
+
+  test("a paused repo says until when", () => {
+    const pausedUntil = new Date(NOW + 10 * 60000).toISOString();
+    const checked = describeReposChecked({
+      repos: ["a/one"],
+      liveSummary: { "a/one": { checkedAt: ago(2) } },
+      backgroundUpdates: { "a/one": { quickCheckIntervalMs: 300000, pausedUntil } },
+      nowMs: NOW,
+    });
+    expect(checked.title).toMatch(/^a\/one: checked 2m ago \(.+\); paused until .+, after repeated failures$/);
   });
 
   test("only the repos shown; none listed yet gives no label", () => {

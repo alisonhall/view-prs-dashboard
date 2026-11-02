@@ -315,9 +315,20 @@ export interface RepoLiveSummaryMeta {
   quickCheckIntervalMs?: number | null;
 }
 
+// A repo checked in the background: its quick check's interval, and until
+// when its background updates are paused (its circuit breaker is open
+// after repeated failures; null when not).
+export interface RepoBackgroundUpdatesMeta {
+  quickCheckIntervalMs?: number | null;
+  pausedUntil?: string | null;
+}
+
 export interface PrDataMeta {
   dataVersion?: string;
   liveSummary?: Record<string, RepoLiveSummaryMeta | undefined>;
+  // Every repo checked in the background (listed or not); a repo missing
+  // from it isn't. Absent from older servers.
+  backgroundUpdates?: Record<string, RepoBackgroundUpdatesMeta | undefined>;
 }
 
 // What polling compares to find changed PRs: per PR, a version string of

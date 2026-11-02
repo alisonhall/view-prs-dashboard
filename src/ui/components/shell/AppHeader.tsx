@@ -48,17 +48,26 @@ function LastUpdatePill({
   loaded,
   repos,
   liveSummary,
+  backgroundUpdates,
   defaultIntervalMs,
 }: {
   updatedAt: unknown;
   loaded: boolean;
   repos: string[];
   liveSummary: PrDataMeta['liveSummary'];
+  backgroundUpdates: PrDataMeta['backgroundUpdates'];
   defaultIntervalMs: number;
 }) {
   const now = useNow();
   if (!loaded) return <span className="app-header-status">Loading…</span>;
-  const checked = describeReposChecked({ repos, liveSummary, defaultIntervalMs, lastRunAt: updatedAt, nowMs: now });
+  const checked = describeReposChecked({
+    repos,
+    liveSummary,
+    backgroundUpdates,
+    defaultIntervalMs,
+    lastRunAt: updatedAt,
+    nowMs: now,
+  });
   const lastUpdate = describeLastUpdate(updatedAt, now);
   const { label, title, isStale } = checked.label
     ? { label: checked.label, title: checked.title, isStale: checked.isStale || lastUpdate.isStale }
@@ -121,6 +130,7 @@ export function AppHeader({ onQuickCheckAll }: AppHeaderProps) {
               loaded={Boolean(payload?.ok)}
               repos={repos.all}
               liveSummary={payload?.dataMeta?.liveSummary}
+              backgroundUpdates={payload?.dataMeta?.backgroundUpdates}
               defaultIntervalMs={readDefaultQuickCheckIntervalMs(payload?.scheduler)}
             />
           </NowProvider>

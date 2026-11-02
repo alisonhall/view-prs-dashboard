@@ -393,6 +393,18 @@ const createViewPrsDispatcherHelpers = ({
     return entry && Number.isFinite(entry.intervalMs) ? entry.intervalMs : null;
   };
 
+  // Every repo with an entry of this task type, and its interval: the repos
+  // checked in the background. Read-only, as getEntryIntervalMs.
+  const getEntryIntervalsByRepo = (taskType) => {
+    const result = {};
+    Object.values(viewPrsSchedulerState.dispatcher?.entries || {}).forEach((entry) => {
+      if (entry?.taskType === taskType && Number.isFinite(entry.intervalMs)) {
+        result[entry.repo] = entry.intervalMs;
+      }
+    });
+    return result;
+  };
+
   const latestFinishedAtAcrossEntries = (taskType) => {
     let latestMs = null;
     getAllEntries().forEach((entry) => {
@@ -521,6 +533,7 @@ const createViewPrsDispatcherHelpers = ({
     getDispatcherQueueSnapshot,
     isAnyEntryRunning,
     getEntryIntervalMs,
+    getEntryIntervalsByRepo,
     latestFinishedAtAcrossEntries,
     getPublicStateFields,
     getRepoSettingsDefaults,

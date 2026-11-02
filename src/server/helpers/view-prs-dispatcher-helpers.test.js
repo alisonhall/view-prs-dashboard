@@ -603,6 +603,23 @@ describe("View Prs Dispatcher Helpers", () => {
     });
   });
 
+  describe("Given getEntryIntervalsByRepo", () => {
+    test("When repos have entries, Then each one's interval for that task type", () => {
+      helpers = makeHelpers({ getViewPrsAutoRefreshRepos: () => ["owner/repoA", "owner/repoB"] });
+      schedulerRepoConfig = { "owner/repoB": { quickCheckIntervalMs: 120000 } };
+      helpers.getOrInitRegistry();
+      expect(helpers.getEntryIntervalsByRepo("quickCheck")).toEqual({
+        "owner/repoA": DEFAULT_INTERVALS.quickCheck,
+        "owner/repoB": 120000,
+      });
+    });
+
+    test("When there are no entries, Then none, without creating the dispatcher state", () => {
+      expect(helpers.getEntryIntervalsByRepo("quickCheck")).toEqual({});
+      expect(viewPrsSchedulerState.dispatcher).toBeUndefined();
+    });
+  });
+
   describe("Given getPublicStateFields", () => {
     test("When called, Then it bundles the derived isXInProgress/lastXAt fields and the dispatcherQueue snapshot in one object", () => {
       helpers = makeHelpers({

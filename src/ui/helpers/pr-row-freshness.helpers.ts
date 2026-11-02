@@ -1,4 +1,4 @@
-import type { PrEntry, RepoLiveSummaryMeta } from "../types/pr-data.ts";
+import type { PrEntry, RepoBackgroundUpdatesMeta, RepoLiveSummaryMeta } from "../types/pr-data.ts";
 import { createPrFormattingHelpers } from "./pr-formatting.helpers.ts";
 
 // How current a row is (ROADMAP.md, Data freshness step 5). An open/draft
@@ -13,10 +13,11 @@ import { createPrFormattingHelpers } from "./pr-formatting.helpers.ts";
 //   (`fetchedAt`).
 // It's stale when its summary hasn't been confirmed for about two of its
 // repo's quick-check intervals, or its repo's listing is failing. A repo
-// with no background updates (the data meta's interval is null) isn't
-// expected to be checked, so its rows say so rather than go stale. Merged
-// and closed rows only change when GitHub says they did, so they're never
-// stale.
+// with no background updates (not in the data meta's `backgroundUpdates`)
+// isn't expected to be checked, so its rows say so rather than go stale; a
+// repo whose background updates are paused (its circuit breaker) says that
+// too. Merged and closed rows only change when GitHub says they did, so
+// they're never stale.
 
 const { formatIsoDatetime } = createPrFormattingHelpers();
 
@@ -62,20 +63,40 @@ export interface RepoListing {
   lastError: string;
   // Not listed for about two intervals, or failing.
   isStale: boolean;
-  // false when the repo has no background updates (its interval is null):
-  // nothing checks it, so it isn't stale for that.
+  // false when the repo has no background updates: nothing checks it, so
+  // it isn't stale for that.
   isScheduled: boolean;
+  // Its background updates are paused until pausedUntil (its circuit
+  // breaker, after repeated failures).
+  isPaused: boolean;
+  pausedUntil: string;
   // How long before a confirmation counts as stale.
   staleAfterMs: number;
 }
 
+// A repo's entry in the data meta's `backgroundUpdates`: undefined when the
+// server doesn't send them (older ones), null when the repo isn't checked
+// in the background.
+export const backgroundUpdatesFor = (
+  backgroundUpdates: Record<string, RepoBackgroundUpdatesMeta | undefined> | null | undefined,
+  repo: string,
+): RepoBackgroundUpdatesMeta | null | undefined => (backgroundUpdates ? (backgroundUpdates[repo] ?? null) : undefined);
+
 export const describeRepoListing = (
   meta: RepoLiveSummaryMeta | null | undefined,
-  { nowMs, defaultIntervalMs = DEFAULT_QUICK_CHECK_INTERVAL_MS }: { nowMs: number; defaultIntervalMs?: number },
+  {
+    nowMs,
+    defaultIntervalMs = DEFAULT_QUICK_CHECK_INTERVAL_MS,
+    background,
+  }: { nowMs: number; defaultIntervalMs?: number; background?: RepoBackgroundUpdatesMeta | null },
 ): RepoListing => {
+  // The repo's background updates when the server sends them; otherwise
+  // the listing's own interval (older servers).
+  const configuredIntervalMs =
+    background !== undefined ? (background?.quickCheckIntervalMs ?? null) : meta?.quickCheckIntervalMs;
   const intervalMs =
-    Number.isFinite(meta?.quickCheckIntervalMs) && Number(meta?.quickCheckIntervalMs) > 0
-      ? Number(meta?.quickCheckIntervalMs)
+    Number.isFinite(configuredIntervalMs) && Number(configuredIntervalMs) > 0
+      ? Number(configuredIntervalMs)
       : defaultIntervalMs;
   const staleAfterMs = 2 * intervalMs + STALE_GRACE_MS;
   const checkedAt = String(meta?.checkedAt || "");
@@ -84,7 +105,9 @@ export const describeRepoListing = (
   const isFailing = Number.isFinite(errorMs) && (!Number.isFinite(checkedMs) || errorMs >= checkedMs);
   const isOld = !Number.isFinite(checkedMs) || nowMs - checkedMs > staleAfterMs;
   // Only an explicit null: older data meta without the field is scheduled.
-  const isScheduled = meta?.quickCheckIntervalMs !== null;
+  const isScheduled = configuredIntervalMs !== null;
+  const pausedUntil = String(background?.pausedUntil || "");
+  const isPaused = isScheduled && toMs(pausedUntil) > nowMs;
   return {
     checkedAt,
     isFailing,
@@ -92,6 +115,8 @@ export const describeRepoListing = (
     isStale: isScheduled && (isFailing || isOld),
     staleAfterMs,
     isScheduled,
+    isPaused,
+    pausedUntil: isPaused ? pausedUntil : "",
   };
 };
 
@@ -123,12 +148,14 @@ export const describeRowFreshness = ({
   const isOpen = section === "open" || section === "draft";
   const detailsFetchedAt = String(entry?.fetchedAt || entry?.updatedAt || "");
   const isListed = isOpen && data.live?.stillOpen === true && Boolean(listing?.checkedAt);
-  // The latest of what refreshed the summary.
+  // The latest of what refreshed the summary. The run's stamp only for rows
+  // from before `ciFetchedAt`: a run that reused a row but couldn't fetch
+  // its CI still moves the stamp, not `ciFetchedAt`.
   const summaryConfirmedAt = [
     isListed ? String(listing?.checkedAt) : "",
     String(entry?.ciFetchedAt || ""),
     String(entry?.fetchedAt || ""),
-    String(entry?.updatedAt || ""),
+    entry?.ciFetchedAt ? "" : String(entry?.updatedAt || ""),
   ].reduce(laterOf, "");
   const noLongerOpen = isOpen && data.live?.stillOpen === false;
   const detailsBehind =
@@ -154,6 +181,10 @@ export const describeRowFreshness = ({
   }
   if (isOpen && isUnscheduled) {
     lines.push("Not checked automatically: its repo has no background updates.");
+  } else if (isOpen && listing?.isPaused) {
+    lines.push(
+      `${isStale ? "Stale: b" : "B"}ackground updates for its repo are paused until ${formatIsoDatetime(listing.pausedUntil)}, after repeated failures.`,
+    );
   } else if (isOpen && listing?.isFailing) {
     lines.push(`Stale: checking its repo is failing${listing.lastError ? ` (${listing.lastError})` : ""}.`);
   } else if (isStale) {
@@ -176,19 +207,26 @@ export interface ReposChecked {
 export const describeReposChecked = ({
   repos,
   liveSummary,
+  backgroundUpdates,
   defaultIntervalMs,
   lastRunAt,
   nowMs,
 }: {
   repos: string[];
   liveSummary: Record<string, RepoLiveSummaryMeta | undefined> | null | undefined;
+  backgroundUpdates?: Record<string, RepoBackgroundUpdatesMeta | undefined> | null;
   defaultIntervalMs?: number;
   lastRunAt?: unknown;
   nowMs: number;
 }): ReposChecked => {
-  const listed = repos
-    .filter((repo) => liveSummary?.[repo])
-    .map((repo) => ({ repo, listing: describeRepoListing(liveSummary?.[repo], { nowMs, defaultIntervalMs }) }));
+  const listed = repos.filter((repo) => liveSummary?.[repo]).map((repo) => ({
+    repo,
+    listing: describeRepoListing(liveSummary?.[repo], {
+      nowMs,
+      defaultIntervalMs,
+      background: backgroundUpdatesFor(backgroundUpdates, repo),
+    }),
+  }));
   const lastRunLine = formatAgo(lastRunAt, nowMs) ? `Last run ${describeAt(lastRunAt, nowMs)}.` : "";
   if (listed.length === 0) {
     return { label: "", title: lastRunLine, isStale: false };
@@ -203,6 +241,7 @@ export const describeReposChecked = ({
   const lines = listed.map(({ repo, listing }) => {
     const checked = listing.checkedAt ? `checked ${describeAt(listing.checkedAt, nowMs)}` : "not checked yet";
     if (!listing.isScheduled) return `${repo}: ${checked}; not checked automatically`;
+    if (listing.isPaused) return `${repo}: ${checked}; paused until ${formatIsoDatetime(listing.pausedUntil)}, after repeated failures`;
     if (listing.isFailing) return `${repo}: ${checked}; failing${listing.lastError ? ` (${listing.lastError})` : ""}`;
     return `${repo}: ${checked}${listing.isStale ? " (stale)" : ""}`;
   });

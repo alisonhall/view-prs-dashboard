@@ -300,10 +300,10 @@ describe('JobEventsProvider', () => {
     expect(pollForDataChanges).toHaveBeenCalledTimes(2);
   });
 
-  test('polls on a reconnect snapshot, not the first', () => {
+  test('polls on every snapshot once the data has loaded: changes before a connection opens are not pushed', async () => {
     const pollForDataChanges = jest.fn();
     render(
-      <PrDataContext.Provider value={{ pollForDataChanges }}>
+      <PrDataContext.Provider value={{ pollForDataChanges, payload: { ok: true } }}>
         <JobEventsProvider>
           <Probe />
         </JobEventsProvider>
@@ -311,14 +311,39 @@ describe('JobEventsProvider', () => {
     );
     const instance = FakeEventSource.instances[0];
 
+    await act(async () => {
+      instance.emit('snapshot', { scheduler: {}, at: '2026-01-01T00:00:00.000Z' });
+    });
+    expect(pollForDataChanges).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      instance.emit('snapshot', { scheduler: {}, at: '2026-01-01T00:01:00.000Z' });
+    });
+    expect(pollForDataChanges).toHaveBeenCalledTimes(2);
+  });
+
+  test("a snapshot before the page's first data load polls once that load finishes, not before", () => {
+    const pollForDataChanges = jest.fn();
+    const tree = (payload) => (
+      <PrDataContext.Provider value={{ pollForDataChanges, payload }}>
+        <JobEventsProvider>
+          <Probe />
+        </JobEventsProvider>
+      </PrDataContext.Provider>
+    );
+    const { rerender } = render(tree(null));
+    const instance = FakeEventSource.instances[0];
+
     act(() => {
       instance.emit('snapshot', { scheduler: {}, at: '2026-01-01T00:00:00.000Z' });
     });
     expect(pollForDataChanges).not.toHaveBeenCalled();
 
-    act(() => {
-      instance.emit('snapshot', { scheduler: {}, at: '2026-01-01T00:01:00.000Z' });
-    });
+    rerender(tree({ ok: true }));
+    expect(pollForDataChanges).toHaveBeenCalledTimes(1);
+
+    // Only once: a later payload doesn't poll again.
+    rerender(tree({ ok: true, lastRun: {} }));
     expect(pollForDataChanges).toHaveBeenCalledTimes(1);
   });
 

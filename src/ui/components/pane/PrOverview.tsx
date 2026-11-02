@@ -5,7 +5,7 @@ import { LinesChangedInsight } from '../insights/LinesChangedInsight';
 import { ApprovalRiskSection } from '../insights/ApprovalRiskSection';
 import { usePrInsightsDisplay } from '../../state/PrInsightsDisplayContext';
 import { createPrFormattingHelpers } from '../../helpers/pr-formatting.helpers.ts';
-import { describeRepoListing, describeRowFreshness } from '../../helpers/pr-row-freshness.helpers.ts';
+import { backgroundUpdatesFor, describeRepoListing, describeRowFreshness } from '../../helpers/pr-row-freshness.helpers.ts';
 import { useNow } from '../../state/NowContext';
 import { useRepoFreshness } from '../../state/RepoFreshnessContext';
 
@@ -61,11 +61,15 @@ function Rows({ rows }: { rows: Row[] }) {
 
 export function PrOverview({ entry, pr, actorsMap }: PrOverviewProps) {
   const now = useNow();
-  const { liveSummary, defaultIntervalMs } = useRepoFreshness();
+  const { liveSummary, backgroundUpdates, defaultIntervalMs } = useRepoFreshness();
   // The row's Activity tooltip has the same (README's Freshness).
   const rowFreshness = describeRowFreshness({
     entry: { ...entry, data: pr },
-    listing: describeRepoListing(liveSummary[String(entry?.repo || '')], { nowMs: now, defaultIntervalMs }),
+    listing: describeRepoListing(liveSummary[String(entry?.repo || '')], {
+      nowMs: now,
+      defaultIntervalMs,
+      background: backgroundUpdatesFor(backgroundUpdates, String(entry?.repo || '')),
+    }),
     nowMs: now,
   });
   const isOpen = entry?.section === 'open' || entry?.section === 'draft';

@@ -1070,6 +1070,7 @@ export function PrTableApp() {
     <NowProvider>
       <RepoFreshnessProvider
         liveSummary={payload?.dataMeta?.liveSummary}
+        backgroundUpdates={payload?.dataMeta?.backgroundUpdates}
         defaultIntervalMs={readDefaultQuickCheckIntervalMs(payload?.scheduler)}
       >
         <div className="pr-workspace-toolbar">

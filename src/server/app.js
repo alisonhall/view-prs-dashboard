@@ -1705,11 +1705,30 @@ const getViewPrsDataMeta = () => {
       ]),
     );
 
+    // Every repo checked in the background, listed or not (the live summary
+    // can be off, or not have run yet): its quick check's interval, and
+    // until when its background updates are paused (its circuit breaker is
+    // open after repeated failures; null when not). A repo missing here
+    // isn't checked in the background.
+    const openCircuitRepos = new Set(getOpenAutoCircuitRepos());
+    const backgroundUpdates = Object.fromEntries(
+      Object.entries(callDispatcherHelpers().getEntryIntervalsByRepo?.("quickCheck") || {}).map(([repo, intervalMs]) => [
+        repo,
+        {
+          quickCheckIntervalMs: intervalMs,
+          pausedUntil: openCircuitRepos.has(repo)
+            ? viewPrsSchedulerState.autoCircuitByRepo?.[repo]?.circuitOpenUntil ?? null
+            : null,
+        },
+      ]),
+    );
+
     return {
       dataVersion,
       lastModifiedAt: mtimeMs > 0 ? new Date(mtimeMs).toISOString() : null,
       sizeBytes,
       liveSummary,
+      backgroundUpdates,
     };
   } catch (error) {
     return {

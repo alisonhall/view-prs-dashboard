@@ -124,6 +124,34 @@ describe("the live summary laid over the rows", () => {
     }
   });
 
+  test("the data meta gives every repo checked in the background its interval and pause, listed or not", () => {
+    const savedDispatcher = viewPrsSchedulerState.dispatcher;
+    const savedCircuits = viewPrsSchedulerState.autoCircuitByRepo;
+    const pausedUntil = new Date(Date.now() + 10 * 60000).toISOString();
+    try {
+      viewPrsSchedulerState.dispatcher = {
+        entries: {
+          "acme/api::quickCheck": { repo: "acme/api", taskType: "quickCheck", intervalMs: 120000 },
+          "acme/web::quickCheck": { repo: "acme/web", taskType: "quickCheck", intervalMs: 1800000 },
+          "acme/web::autoRefresh": { repo: "acme/web", taskType: "autoRefresh", intervalMs: 900000 },
+        },
+        reservedGhSlots: 0,
+      };
+      viewPrsSchedulerState.autoCircuitByRepo = {
+        "acme/web": { consecutiveFailures: 3, circuitOpenUntil: pausedUntil },
+        // An old breaker that has closed again isn't a pause.
+        "acme/api": { consecutiveFailures: 0, circuitOpenUntil: "2020-01-01T00:00:00.000Z" },
+      };
+      expect(getViewPrsDataMeta().backgroundUpdates).toEqual({
+        "acme/api": { quickCheckIntervalMs: 120000, pausedUntil: null },
+        "acme/web": { quickCheckIntervalMs: 1800000, pausedUntil },
+      });
+    } finally {
+      viewPrsSchedulerState.dispatcher = savedDispatcher;
+      viewPrsSchedulerState.autoCircuitByRepo = savedCircuits;
+    }
+  });
+
   test("a row whose CI a run fetched after the listing keeps that CI", () => {
     const data = JSON.parse(fs.readFileSync(dataFile, "utf8"));
     data.byPrNumber["12"].fetchedAt = "2026-10-31T09:00:00Z";

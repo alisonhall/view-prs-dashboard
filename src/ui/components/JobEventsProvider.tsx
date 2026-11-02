@@ -41,7 +41,8 @@ type JobEventsFrame = JobEventEnvelope & { type?: string };
  * wrote to the stored PR data file, and by the server's data watcher when
  * the data version moves), it calls PrDataContext's pollForDataChanges
  * immediately - one at a time - rather than waiting for that poll's own
- * next tick, and again on reconnecting. The interval itself stays as a
+ * next tick, and on each connection's snapshot (the server only pushes
+ * changes from when a connection opens). The interval itself stays as a
  * slower safety net (PrDataPolling slows it while this connection is open).
  */
 export function JobEventsProvider({ children }: { children?: ReactNode }) {
@@ -64,6 +65,13 @@ export function JobEventsProvider({ children }: { children?: ReactNode }) {
   renderSchedulerStatusRef.current = useRequestActivity().renderSchedulerStatus;
   const [jobEventsState, setJobEventsState] = useState<JobEventsState>(getInitialJobEventsState);
   const [isStale, setIsStale] = useState(false);
+  // The first snapshot's poll waits for the page's first data load: a poll
+  // before it would load all the data a second time.
+  const isPayloadLoaded = Boolean(payload?.ok);
+  const isPayloadLoadedRef = useRef(isPayloadLoaded);
+  isPayloadLoadedRef.current = isPayloadLoaded;
+  const pollWhenLoadedRef = useRef(false);
+  const requestDataPollRef = useRef<(() => void) | null>(null);
   const lastEventAtRef = useRef<string | null>(null);
   lastEventAtRef.current = jobEventsState.lastEventAt;
 
@@ -77,7 +85,6 @@ export function JobEventsProvider({ children }: { children?: ReactNode }) {
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let reconnectDelayMs = RECONNECT_BASE_DELAY_MS;
     let stopped = false;
-    let snapshotCount = 0;
 
     // One data poll at a time: frames can come every few seconds during a
     // run (the server's data watcher), and a poll can take longer than that.
@@ -100,6 +107,7 @@ export function JobEventsProvider({ children }: { children?: ReactNode }) {
           }
         });
     };
+    requestDataPollRef.current = requestDataPoll;
 
     const applySchedulerSideEffects = (scheduler: SchedulerSnapshot | undefined) => {
       renderSchedulerStatusRef.current?.(scheduler);
@@ -114,11 +122,12 @@ export function JobEventsProvider({ children }: { children?: ReactNode }) {
       }
       setJobEventsState((previous) => applyJobEventsSnapshot(previous, payload));
       applySchedulerSideEffects(payload?.scheduler);
-      // A reconnect: whatever changed while disconnected wasn't pushed. (The
-      // first connection's page is loading the data itself.)
-      snapshotCount += 1;
-      if (snapshotCount > 1) {
+      // Whatever changed before this connection opened wasn't pushed: while
+      // disconnected, or, on the first one, since the page's data load began.
+      if (isPayloadLoadedRef.current) {
         requestDataPoll();
+      } else {
+        pollWhenLoadedRef.current = true;
       }
     };
 
@@ -188,6 +197,7 @@ export function JobEventsProvider({ children }: { children?: ReactNode }) {
 
     return () => {
       stopped = true;
+      requestDataPollRef.current = null;
       if (reconnectTimer) {
         clearTimeout(reconnectTimer);
       }
@@ -198,6 +208,13 @@ export function JobEventsProvider({ children }: { children?: ReactNode }) {
     // and closing/reopening it on every tab switch would just cause
     // reconnect churn for no benefit.
   }, []);
+
+  useEffect(() => {
+    if (isPayloadLoaded && pollWhenLoadedRef.current) {
+      pollWhenLoadedRef.current = false;
+      requestDataPollRef.current?.();
+    }
+  }, [isPayloadLoaded]);
 
   useEffect(() => {
     const watchdog = setInterval(() => {

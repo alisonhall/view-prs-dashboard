@@ -3,7 +3,7 @@ import { useMemo } from 'react';
 import { describeActivity, describeSize, findLastActivityAt } from '../../helpers/pr-row-signals.helpers.ts';
 import { useActorIdentity } from '../../state/ActorIdentityContext';
 import { usePrInsightsDisplay } from '../../state/PrInsightsDisplayContext';
-import { describeRepoListing, describeRowFreshness } from '../../helpers/pr-row-freshness.helpers.ts';
+import { backgroundUpdatesFor, describeRepoListing, describeRowFreshness } from '../../helpers/pr-row-freshness.helpers.ts';
 import { Tooltip } from '../ui/Tooltip';
 import { useNow } from '../../state/NowContext';
 import { useRepoFreshness } from '../../state/RepoFreshnessContext';
@@ -54,8 +54,12 @@ export function PrActivityCell({ pr, entry }: PrActivityCellProps) {
     [buildActivityEvents, normalizeActorLogin, pr],
   );
   const activity = describeActivity(pr, now, authorActivityAt);
-  const { liveSummary, defaultIntervalMs } = useRepoFreshness();
-  const listing = describeRepoListing(liveSummary[String(entry?.repo || '')], { nowMs: now, defaultIntervalMs });
+  const { liveSummary, backgroundUpdates, defaultIntervalMs } = useRepoFreshness();
+  const listing = describeRepoListing(liveSummary[String(entry?.repo || '')], {
+    nowMs: now,
+    defaultIntervalMs,
+    background: backgroundUpdatesFor(backgroundUpdates, String(entry?.repo || '')),
+  });
   const freshness = describeRowFreshness({ entry, listing, nowMs: now });
   const label = [activity.label, ...freshness.lines].join('\n');
   return (
