@@ -864,6 +864,35 @@ recover_stale_lock_dir() {
   return 1
 }
 
+# A run that's stopped (the server sends a timed-out run SIGTERM) lets go
+# of the locks it holds, rather than leaving them for the next run to find
+# stale - meanwhile every write waits on them and fails. Each lock records
+# the shell holding it (BASHPID): a lock can be taken in a $(...) subshell,
+# which has its own traps, so taking one sets this shell's (when run as a
+# script - main sets MAIN_SHELL_PID - not when sourced by the tests). Only
+# the main shell removes main's temporary caches (EXIT_CLEANUP_PATHS). A
+# process killed outright (Windows ends a timed-out run that way) runs no
+# trap: the next run recovers its locks as before.
+PR_STATE_LOCK_HOLDER=''
+USER_STATE_LOCK_HOLDER=''
+EXIT_CLEANUP_PATHS=()
+
+on_script_exit() {
+  [[ "$PR_STATE_LOCK_HOLDER" == "$BASHPID" ]] && release_pr_state_lock
+  [[ "$USER_STATE_LOCK_HOLDER" == "$BASHPID" ]] && release_user_state_lock
+  if [[ "$BASHPID" == "${MAIN_SHELL_PID:-}" && ${#EXIT_CLEANUP_PATHS[@]} -gt 0 ]]; then
+    rm -rf "${EXIT_CLEANUP_PATHS[@]}"
+  fi
+  return 0
+}
+
+set_exit_traps() {
+  [[ -n "${MAIN_SHELL_PID:-}" ]] || return 0
+  trap on_script_exit EXIT
+  trap 'exit 143' TERM
+  trap 'exit 130' INT
+}
+
 acquire_pr_state_lock() {
   local lock_label='PR state'
   local attempts=0
@@ -877,12 +906,15 @@ acquire_pr_state_lock() {
     sleep 0.05
   done
   write_lock_metadata "$PR_STATE_LOCK_DIR"
+  PR_STATE_LOCK_HOLDER=$BASHPID
+  set_exit_traps
   return 0
 }
 
 release_pr_state_lock() {
   rm -f "$PR_STATE_LOCK_DIR/lock-info" 2>/dev/null || true
   rmdir "$PR_STATE_LOCK_DIR" 2>/dev/null || true
+  PR_STATE_LOCK_HOLDER=''
 }
 
 with_pr_state_lock() {
@@ -908,12 +940,15 @@ acquire_user_state_lock() {
     sleep 0.05
   done
   write_lock_metadata "$USER_STATE_LOCK_DIR"
+  USER_STATE_LOCK_HOLDER=$BASHPID
+  set_exit_traps
   return 0
 }
 
 release_user_state_lock() {
   rm -f "$USER_STATE_LOCK_DIR/lock-info" 2>/dev/null || true
   rmdir "$USER_STATE_LOCK_DIR" 2>/dev/null || true
+  USER_STATE_LOCK_HOLDER=''
 }
 
 with_user_state_lock() {
@@ -2705,6 +2740,8 @@ parse_args() {
 }
 
 main() {
+  MAIN_SHELL_PID=$BASHPID
+  set_exit_traps
   debug_log "start args=$*"
   parse_args "$@"
 
@@ -3102,26 +3139,14 @@ main() {
   ROW_REUSE_SNAPSHOT_DIR=$(mktemp -d)
   build_row_reuse_snapshot
 
-  cleanup_cmd=' "$ROW_REUSE_SNAPSHOT_DIR"'
-  if [[ "$detail_cache_tmp" -eq 1 ]]; then
-    cleanup_cmd+=' "$DETAIL_CACHE_DIR"'
-  fi
-  if [[ "$thread_cache_tmp" -eq 1 ]]; then
-    cleanup_cmd+=' "$THREAD_CACHE_DIR"'
-  fi
-  if [[ "$files_cache_tmp" -eq 1 ]]; then
-    cleanup_cmd+=' "$FILES_CACHE_DIR"'
-  fi
-  if [[ "$review_url_cache_tmp" -eq 1 ]]; then
-    cleanup_cmd+=' "$REVIEW_URL_CACHE_DIR"'
-  fi
-  if [[ "$review_comment_cache_tmp" -eq 1 ]]; then
-    cleanup_cmd+=' "$REVIEW_COMMENT_CACHE_DIR"'
-  fi
-  if [[ "$ci_merge_cache_tmp" -eq 1 ]]; then
-    cleanup_cmd+=' "$CI_MERGE_CACHE_DIR"'
-  fi
-  trap "rm -rf${cleanup_cmd}" EXIT
+  # Removed when the run ends, however it ends (on_script_exit).
+  EXIT_CLEANUP_PATHS+=("$ROW_REUSE_SNAPSHOT_DIR")
+  [[ "$detail_cache_tmp" -eq 1 ]] && EXIT_CLEANUP_PATHS+=("$DETAIL_CACHE_DIR")
+  [[ "$thread_cache_tmp" -eq 1 ]] && EXIT_CLEANUP_PATHS+=("$THREAD_CACHE_DIR")
+  [[ "$files_cache_tmp" -eq 1 ]] && EXIT_CLEANUP_PATHS+=("$FILES_CACHE_DIR")
+  [[ "$review_url_cache_tmp" -eq 1 ]] && EXIT_CLEANUP_PATHS+=("$REVIEW_URL_CACHE_DIR")
+  [[ "$review_comment_cache_tmp" -eq 1 ]] && EXIT_CLEANUP_PATHS+=("$REVIEW_COMMENT_CACHE_DIR")
+  [[ "$ci_merge_cache_tmp" -eq 1 ]] && EXIT_CLEANUP_PATHS+=("$CI_MERGE_CACHE_DIR")
 
   collect_prioritized_stale_number_sets "$prs_b64" "$closed_prs_b64" "$merged_prs_b64"
 
