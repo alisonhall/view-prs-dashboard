@@ -1562,6 +1562,7 @@ const readViewPrsData = () => {
       actorsMap: {},
       actorLoginAliases: readViewPrsActorLoginAliases(),
       ackByRepo: normalizedUserState.ackByRepo,
+      ackHistoryByRepo: normalizedUserState.ackHistoryByRepo,
       reverifyByRepo: normalizedUserState.reverifyByRepo,
       inReviewByRepo: normalizedUserState.inReviewByRepo,
       flaggedByRepo: normalizedUserState.flaggedByRepo,
@@ -1649,6 +1650,7 @@ const readViewPrsData = () => {
       actorsMap: buildViewPrsActorsMap(byPrNumber),
       actorLoginAliases: readViewPrsActorLoginAliases(),
       ackByRepo: mergedUserState.ackByRepo,
+      ackHistoryByRepo: mergedUserState.ackHistoryByRepo,
       reverifyByRepo: mergedUserState.reverifyByRepo,
       inReviewByRepo: mergedUserState.inReviewByRepo,
       flaggedByRepo: mergedUserState.flaggedByRepo,
@@ -1663,6 +1665,7 @@ const readViewPrsData = () => {
       actorsMap: {},
       actorLoginAliases: readViewPrsActorLoginAliases(),
       ackByRepo: normalizedUserState.ackByRepo,
+      ackHistoryByRepo: normalizedUserState.ackHistoryByRepo,
       reverifyByRepo: normalizedUserState.reverifyByRepo,
       inReviewByRepo: normalizedUserState.inReviewByRepo,
       flaggedByRepo: normalizedUserState.flaggedByRepo,
@@ -1690,8 +1693,13 @@ const readViewPrsDataVersion = () => {
   const pendingVersion = pendingKeys
     ? crypto.createHash("sha1").update(pendingKeys).digest("hex").slice(0, 12)
     : "none";
+  // So does the user state: an Ack the script clears (or makes, or one
+  // from another tab) reaches the page with its next poll - the manifest
+  // carries the user state's per-repo maps (buildDataManifestPayload).
+  const userStateStats = fs.existsSync(viewPrsUserStateFile) ? fs.statSync(viewPrsUserStateFile) : null;
+  const userStateVersion = userStateStats ? `${Math.trunc(userStateStats.mtimeMs) || 0}-${userStateStats.size}` : "none";
   return {
-    dataVersion: `${mtimeMs}:${stats.size}:${getLiveSummaryVersion()}:${pendingVersion}`,
+    dataVersion: `${mtimeMs}:${stats.size}:${getLiveSummaryVersion()}:${pendingVersion}:${userStateVersion}`,
     mtimeMs,
     sizeBytes: Number.isFinite(stats.size) ? stats.size : 0,
   };

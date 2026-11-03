@@ -2,11 +2,13 @@ import type { PrActivityEvent } from '../types/pr-data.ts';
 import {
   ACTIVITY_KINDS,
   activityKindOf,
+  buildAckEvents,
   buildActivityFeed,
   dayKeyOf,
   describeDay,
   formatTimeOfDay,
   getLastLookedAt,
+  withAckEvents,
   type ActivityFeedOptions,
 } from './pr-activity-feed.helpers.ts';
 
@@ -215,5 +217,28 @@ describe('describeDay', () => {
     expect(describeDay('2026-10-21', now, 'UTC')).toBe('Wed · Oct 21');
     expect(describeDay('2025-12-30', now, 'UTC')).toBe('Tue · Dec 30, 2025');
     expect(describeDay('', now, 'UTC')).toBe('Unknown date');
+  });
+});
+
+describe('your Acks among the events', () => {
+  test('every Ack in the history and the current one, newest first, the current one marked', () => {
+    const acks = buildAckEvents(['2026-01-02T00:00:00Z', '2026-01-05T00:00:00Z'], '2026-01-05T00:00:00Z', 'me');
+    expect(acks.map((ack) => [ack.occurredAt, ack.state, ack.type, ack.actor])).toEqual([
+      ['2026-01-05T00:00:00Z', 'current', 'ack', 'me'],
+      ['2026-01-02T00:00:00Z', '', 'ack', 'me'],
+    ]);
+    expect(activityKindOf(acks[0])).toBe('event');
+  });
+
+  test('an Ack from before the history, and one cleared by a change since', () => {
+    expect(buildAckEvents(undefined, '2026-01-01T00:00:00Z', 'me').map((ack) => ack.state)).toEqual(['current']);
+    // Cleared by new activity: still there, not current.
+    expect(buildAckEvents(['2026-01-03T00:00:00Z'], '', 'me').map((ack) => [ack.occurredAt, ack.state])).toEqual([['2026-01-03T00:00:00Z', '']]);
+    expect(buildAckEvents([], '', 'me')).toEqual([]);
+  });
+
+  test('merged into the feed in time order', () => {
+    const merged = withAckEvents([commit('c2', '2026-01-04T00:00:00Z'), commit('c1', '2026-01-01T00:00:00Z')], buildAckEvents(['2026-01-02T00:00:00Z'], '', 'me'));
+    expect(merged.map((item) => item.sourceId)).toEqual(['c2', 'ack-2026-01-02T00:00:00Z', 'c1']);
   });
 });

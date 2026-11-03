@@ -158,6 +158,28 @@ describe("integration behavior", () => {
     expect(stored().threadChecksByRepo).toEqual({});
   });
 
+  test("the Ack history (written by the script) survives a notes save and reaches the page", async () => {
+    writeViewPrsData({ byPrNumber: { "owner/repo#7": { repo: "owner/repo", prNumber: "7" } }, lastRun: null });
+    const ackHistoryByRepo = { "owner/repo": { 7: ["2026-01-01T00:00:00Z", "2026-01-03T00:00:00Z"] } };
+    writeViewPrsUserState({ ...EMPTY_USER_STATE, ackHistoryByRepo });
+
+    const notes = await request.post("/notes").send({ prNumber: "7", repo: "owner/repo", comments: [], otherNotes: "x" });
+    expect(notes.status).toBe(200);
+    expect(JSON.parse(fs.readFileSync(viewPrsUserStateFile, "utf8")).ackHistoryByRepo).toEqual(ackHistoryByRepo);
+    expect(notes.body.prData.ackHistoryByRepo).toEqual(ackHistoryByRepo);
+  });
+
+  test("a server write keeps the file's Ack history, not an older copy read before the script recorded an Ack", () => {
+    const latest = { "owner/repo": { 7: ["2026-01-01T00:00:00Z", "2026-01-03T00:00:00Z"] } };
+    writeViewPrsUserState({ ...EMPTY_USER_STATE, ackHistoryByRepo: latest });
+
+    appModule.writeViewPrsUserState({
+      ...EMPTY_USER_STATE,
+      ackHistoryByRepo: { "owner/repo": { 7: ["2026-01-01T00:00:00Z"] } },
+    });
+    expect(JSON.parse(fs.readFileSync(viewPrsUserStateFile, "utf8")).ackHistoryByRepo).toEqual(latest);
+  });
+
   test("POST /thread-checks rejects a request without a repo, PR number, thread or signature", async () => {
     const send = (body) => request.post("/thread-checks").send(body);
     expect((await send({ prNumber: "7", threadId: "T1", signature: "s" })).status).toBe(400);

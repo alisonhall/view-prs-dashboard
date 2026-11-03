@@ -223,6 +223,22 @@ describe("pr data polling helpers", () => {
     expect(afterFullRun.lastFullRun).toEqual({ updatedAt: "2026-01-01T00:15:00Z" });
   });
 
+  test("mergeDataDeltaPayload takes the manifest's user state (an Ack cleared by a run), or keeps the stored one", () => {
+    const basePayload = {
+      byPrNumber: {},
+      ackByRepo: { "o/r": { 1: "2026-01-02T00:00:00Z" } },
+      ackHistoryByRepo: { "o/r": { 1: ["2026-01-02T00:00:00Z"] } },
+    };
+    const nextUserState = { ackByRepo: {}, ackHistoryByRepo: basePayload.ackHistoryByRepo };
+
+    const merged = mergeDataDeltaPayload({ basePayload, nextUserState });
+    expect(merged.ackByRepo).toEqual({});
+    expect(merged.ackHistoryByRepo).toEqual(basePayload.ackHistoryByRepo);
+    expect(mergeDataDeltaPayload({ basePayload }).ackByRepo).toEqual(basePayload.ackByRepo);
+    // So the poll renders it.
+    expect(computePrDataMetaFingerprint(merged)).not.toBe(computePrDataMetaFingerprint(basePayload));
+  });
+
   test("computePrDataFingerprint returns an empty string for empty payloads", () => {
     expect(computePrDataFingerprint(null)).toBe("");
     expect(computePrDataFingerprint({ byPrNumber: {} })).toBe("");

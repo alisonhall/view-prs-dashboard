@@ -457,6 +457,7 @@ Top-level user-state fields:
 | --- | --- | --- |
 | `notesByPrNumber` | object | Per-PR notes keyed by `repo#number`, as the data file's rows (bare-number keys from before 2026-11-02 move to their PR's repo key when the data is read: the repo of the row with that number - the last run's repo when several repos have one - or the last run's repo when none does) |
 | `ackByRepo` | object | Repo-scoped ack timestamps |
+| `ackHistoryByRepo` | object | Optional. Every Ack of a PR, oldest first: repo -> PR number -> times. The current Ack (`ackByRepo`) is the last; Clear Ack takes it back out, new activity clearing it keeps it |
 | `reverifyByRepo` | object | Repo-scoped reverify flags |
 | `inReviewByRepo` | object | Repo-scoped in-review flags |
 | `flaggedByRepo` | object | Repo-scoped flagged toggles |

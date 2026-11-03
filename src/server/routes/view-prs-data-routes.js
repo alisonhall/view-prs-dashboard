@@ -268,6 +268,7 @@ const registerViewPrsDataRoutes = ({
         res,
         payload: buildDataManifestPayload({
           manifest: getViewPrsDataManifest(data),
+          data,
         }),
       });
       },

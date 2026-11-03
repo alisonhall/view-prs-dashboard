@@ -665,12 +665,33 @@ clear_flagged_required() {
   with_user_state_lock clear_flagged_required_unlocked "$number"
 }
 
+# Every Ack of a PR, kept for its Activity tab (ackHistoryByRepo: repo ->
+# PR number -> times, oldest first) - the current one (ackByRepo) is the
+# last. An Ack adds its time; clearing it with Clear Ack takes that time
+# back out; new activity clearing it leaves the time, so you can see you'd
+# looked before it changed. ACK_HISTORY_JQ's record_ack puts the current
+# Ack in the history (an Ack from before there was one isn't there yet).
+ACK_HISTORY_JQ='
+  def record_ack:
+    (.ackByRepo[$repo][$number] // "") as $ack
+    | if $ack == "" then .
+      else (.ackHistoryByRepo //= {}) | (.ackHistoryByRepo[$repo] //= {})
+        | .ackHistoryByRepo[$repo][$number] = ((.ackHistoryByRepo[$repo][$number] // []) + [$ack] | unique)
+      end;
+  def unrecord_ack:
+    (.ackByRepo[$repo][$number] // "") as $ack
+    | if $ack == "" or (.ackHistoryByRepo[$repo][$number] == null) then .
+      else .ackHistoryByRepo[$repo][$number] |= map(select(. != $ack))
+        | if .ackHistoryByRepo[$repo][$number] == [] then del(.ackHistoryByRepo[$repo][$number]) else . end
+      end;
+'
+
 set_ack_ts_unlocked() {
   local number="$1"
   local ts="$2"
   local tmp
   tmp=$(mktemp)
-  jq --arg repo "$REPO" --arg number "$number" --arg ts "$ts" '(.ackByRepo //= {}) | (.ackByRepo[$repo] //= {}) | .ackByRepo[$repo][$number] = $ts | if .reverifyByRepo[$repo] then del(.reverifyByRepo[$repo][$number]) else . end' "$USER_STATE_FILE" >"$tmp"
+  jq --arg repo "$REPO" --arg number "$number" --arg ts "$ts" "$ACK_HISTORY_JQ"'record_ack | (.ackByRepo //= {}) | (.ackByRepo[$repo] //= {}) | .ackByRepo[$repo][$number] = $ts | record_ack | if .reverifyByRepo[$repo] then del(.reverifyByRepo[$repo][$number]) else . end' "$USER_STATE_FILE" >"$tmp"
   replace_state_file "$tmp" "$USER_STATE_FILE" 'user-state'
 }
 
@@ -688,13 +709,15 @@ clear_ack_ts_unlocked() {
   # compute_pr_state_json) passes false: status is already CHANGED for a
   # real reason there, and forcing reverifyByRepo too would keep pinning it
   # to CHANGED forever once that real activity ages out of effective_last.
+  # The manual path also takes its time out of the Ack history (an Ack
+  # undone); the automatic one keeps it (ACK_HISTORY_JQ).
   local set_reverify="${2:-true}"
   local tmp
   tmp=$(mktemp)
   if [[ "$set_reverify" == 'true' ]]; then
-    jq --arg repo "$REPO" --arg number "$number" 'if .ackByRepo[$repo] then del(.ackByRepo[$repo][$number]) else . end | (.reverifyByRepo //= {}) | (.reverifyByRepo[$repo] //= {}) | .reverifyByRepo[$repo][$number] = true' "$USER_STATE_FILE" >"$tmp"
+    jq --arg repo "$REPO" --arg number "$number" "$ACK_HISTORY_JQ"'unrecord_ack | if .ackByRepo[$repo] then del(.ackByRepo[$repo][$number]) else . end | (.reverifyByRepo //= {}) | (.reverifyByRepo[$repo] //= {}) | .reverifyByRepo[$repo][$number] = true' "$USER_STATE_FILE" >"$tmp"
   else
-    jq --arg repo "$REPO" --arg number "$number" 'if .ackByRepo[$repo] then del(.ackByRepo[$repo][$number]) else . end' "$USER_STATE_FILE" >"$tmp"
+    jq --arg repo "$REPO" --arg number "$number" "$ACK_HISTORY_JQ"'record_ack | if .ackByRepo[$repo] then del(.ackByRepo[$repo][$number]) else . end' "$USER_STATE_FILE" >"$tmp"
   fi
   replace_state_file "$tmp" "$USER_STATE_FILE" 'user-state'
 }

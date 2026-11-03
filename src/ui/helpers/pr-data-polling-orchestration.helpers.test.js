@@ -161,6 +161,45 @@ describe("pr data polling orchestration helpers", () => {
     expect(calls.renderPrData[0][0]).toMatchObject({ byPrNumber: { 1: { prNumber: "1" } }, dataMeta: nextDataMeta });
   });
 
+  // A run that clears an Ack changes only the user state for the page.
+  test("given a manifest with the user state, when polling, then the page gets its Acks (and Ack history) without a full reload", async () => {
+    const userState = {
+      ackByRepo: {},
+      ackHistoryByRepo: { "o/r": { 1: ["2026-01-02T00:00:00Z"] } },
+      reverifyByRepo: {},
+      inReviewByRepo: {},
+      flaggedByRepo: {},
+      threadChecksByRepo: {},
+    };
+    const fetchFn = jest.fn(async (url) => {
+      if (url === "/view-prs/data-meta") {
+        return jsonResponse({ dataVersion: "v2", supportsDataManifest: true });
+      }
+      if (url === "/view-prs/data-manifest") {
+        return jsonResponse({ manifest: { 1: { rowVersion: "a" } }, dataMeta: { dataVersion: "v2" }, userState });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    const { helpers, calls } = buildHarness({
+      fetchFn,
+      getManifestDelta: jest.fn(() => ({ changedPrNumbers: [], removedPrNumbers: [], hasChanges: false })),
+      mergeDataDeltaPayload: createPrDataPollingHelpers().mergeDataDeltaPayload,
+      initialState: {
+        lastSeenDataVersion: "v1",
+        latestStoredPayload: {
+          byPrNumber: { 1: { prNumber: "1" } },
+          dataMeta: { dataVersion: "v1" },
+          ackByRepo: { "o/r": { 1: "2026-01-02T00:00:00Z" } },
+        },
+      },
+    });
+
+    await helpers.pollForDataChanges();
+
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+    expect(calls.renderPrData[0][0]).toMatchObject({ byPrNumber: { 1: { prNumber: "1" } }, ...userState });
+  });
+
   test("given a manifest delta with changes, when polling, then it merges the delta and renders the merged payload", async () => {
     const mergedPayload = { byPrNumber: { 1: { updated: true } } };
     const fetchFn = jest.fn(async (url) => {

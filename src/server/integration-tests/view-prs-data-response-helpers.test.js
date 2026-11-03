@@ -97,6 +97,30 @@ describe("view-prs data response helpers", () => {
     });
   });
 
+  test("the data-manifest payload carries the user state's per-repo maps, so a poll picks up an Ack cleared or made elsewhere", () => {
+    const helpers = createViewPrsDataResponseHelpers({
+      getViewPrsDataMeta: () => ({ rows: 3 }),
+      getViewPrsSchedulerPublicState: () => ({ running: false }),
+      viewPrsBackfillLogFile: "/tmp/backfill.log",
+      viewPrsBackfillPidFile: "/tmp/backfill.pid",
+    });
+    const data = {
+      byPrNumber: { "o/r#1": {} },
+      ackByRepo: { "o/r": { 1: "2026-01-02T00:00:00Z" } },
+      ackHistoryByRepo: { "o/r": { 1: ["2026-01-02T00:00:00Z"] } },
+      flaggedByRepo: { "o/r": { 1: true } },
+    };
+
+    expect(helpers.buildDataManifestPayload({ manifest: {}, data }).userState).toEqual({
+      ackByRepo: data.ackByRepo,
+      ackHistoryByRepo: data.ackHistoryByRepo,
+      reverifyByRepo: {},
+      inReviewByRepo: {},
+      flaggedByRepo: data.flaggedByRepo,
+      threadChecksByRepo: {},
+    });
+  });
+
   test("given scheduler state, when building the scheduler payload, then the route contract includes ok and scheduler fields", () => {
     const helpers = createViewPrsDataResponseHelpers({
       getViewPrsDataMeta: () => ({ rows: 3 }),

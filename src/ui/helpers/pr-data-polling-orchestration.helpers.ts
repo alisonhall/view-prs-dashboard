@@ -4,6 +4,7 @@ import type {
   DataPollRenderInput,
   ManifestDelta,
   MergeDataDeltaInput,
+  PollUserState,
 } from "./pr-data-polling.helpers.ts";
 
 // PrDataProvider's data poll (pollForDataChanges): checks the data version
@@ -31,6 +32,7 @@ interface ManifestResult {
   ok?: boolean;
   manifest?: PrManifest;
   dataMeta?: PrDataPayload["dataMeta"];
+  userState?: PollUserState;
 }
 
 interface DeltaResult {
@@ -241,6 +243,7 @@ const createPrDataPollingOrchestrationHelpers = ({
                 basePayload: getLatestStoredPayloadSafe(),
                 nextDataMeta: manifestResult?.dataMeta || null,
                 nextManifest,
+                nextUserState: manifestResult?.userState || null,
               });
               setLatestPrManifestSafe(nextManifest);
             } else {
@@ -260,6 +263,7 @@ const createPrDataPollingOrchestrationHelpers = ({
                   nextLastRun: deltaResult?.lastRun || null,
                   nextLastFullRun: deltaResult?.lastFullRun || null,
                   nextManifest,
+                  nextUserState: manifestResult?.userState || null,
                 });
                 setLatestPrManifestSafe(nextManifest);
               }

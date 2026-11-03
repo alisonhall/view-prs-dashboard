@@ -277,8 +277,8 @@ export interface LastRun {
   updatedAt?: string;
 }
 
-// repo -> PR number -> value (PrDataPayload's ackByRepo/flaggedByRepo/
-// inReviewByRepo).
+// repo -> PR number -> value (PrDataPayload's ackByRepo/reverifyByRepo/
+// flaggedByRepo/inReviewByRepo).
 export type PrFlagsByRepo = Record<string, Record<string, string | boolean | undefined> | undefined>;
 
 // The /view-prs/data response: the data file plus the server's additions.
@@ -304,8 +304,13 @@ export interface PrDataPayload {
   // The user state's per-repo maps, repo -> PR number -> value: ack
   // values are strings, flagged/in review are booleans.
   ackByRepo?: PrFlagsByRepo;
+  reverifyByRepo?: PrFlagsByRepo;
   flaggedByRepo?: PrFlagsByRepo;
   inReviewByRepo?: PrFlagsByRepo;
+  // Every Ack of a PR, oldest first: repo -> PR number -> times. The
+  // current Ack (ackByRepo) is the last; Clear Ack takes it back out, new
+  // activity clearing it keeps it.
+  ackHistoryByRepo?: Record<string, Record<string, string[] | undefined> | undefined>;
   // Threads you confirmed were handled after someone else resolved them:
   // repo -> PR number -> thread id -> the thread's signature then
   // (threadCheckSignature).

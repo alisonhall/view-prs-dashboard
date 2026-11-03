@@ -307,6 +307,31 @@ describe("check-open-pr-updates shell helper behavior", () => {
     });
   });
 
+  test("the Ack history: every Ack kept, Clear Ack takes back only the current one, new activity clearing it keeps it", () => {
+    const fs = require("fs");
+    const os = require("os");
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ack-history-"));
+    const stateFile = path.join(dir, "user-state.json").replace(/\\/g, "/");
+    // An Ack from before there was a history.
+    fs.writeFileSync(stateFile, JSON.stringify({ notesByPrNumber: {}, ackByRepo: { "o/r": { 5: "2026-01-01T00:00:00Z" } }, reverifyByRepo: {}, inReviewByRepo: {}, flaggedByRepo: {} }));
+    const step = (command) =>
+      JSON.parse(
+        runShell(
+          `source "${scriptPath}"; USER_STATE_FILE="${stateFile}"; STATE_BACKUP_DIR="${dir.replace(/\\/g, "/")}/backups"; REPO=o/r; ${command}; jq -c '{ack: .ackByRepo["o/r"]["5"], history: .ackHistoryByRepo["o/r"]["5"]}' "$USER_STATE_FILE"`,
+        ),
+      );
+    try {
+      expect(step("set_ack_ts 5 2026-01-02T00:00:00Z")).toEqual({ ack: "2026-01-02T00:00:00Z", history: ["2026-01-01T00:00:00Z", "2026-01-02T00:00:00Z"] });
+      expect(step("clear_ack_ts 5")).toEqual({ ack: null, history: ["2026-01-01T00:00:00Z"] });
+      expect(step("set_ack_ts 5 2026-01-03T00:00:00Z")).toEqual({ ack: "2026-01-03T00:00:00Z", history: ["2026-01-01T00:00:00Z", "2026-01-03T00:00:00Z"] });
+      expect(step("clear_ack_ts 5 false")).toEqual({ ack: null, history: ["2026-01-01T00:00:00Z", "2026-01-03T00:00:00Z"] });
+      // Nothing current to take back.
+      expect(step("clear_ack_ts 5")).toEqual({ ack: null, history: ["2026-01-01T00:00:00Z", "2026-01-03T00:00:00Z"] });
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("a row's reason lists the kinds of change with any count", () => {
     expect(buildReasons([["comment", 0], ["review", 2], ["commit", 1]])).toBe("review|commit");
   });

@@ -181,6 +181,12 @@ const userStateValidationPayload = {
     userState.flaggedByRepo !== null
       ? userState.flaggedByRepo
       : {},
+  ackHistoryByRepo:
+    userState &&
+    typeof userState.ackHistoryByRepo === "object" &&
+    userState.ackHistoryByRepo !== null
+      ? userState.ackHistoryByRepo
+      : {},
   threadChecksByRepo:
     userState &&
     typeof userState.threadChecksByRepo === "object" &&

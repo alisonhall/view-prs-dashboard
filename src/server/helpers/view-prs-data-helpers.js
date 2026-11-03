@@ -236,6 +236,14 @@ const normalizePerRepoMap = (value, valueType = "string") => {
         if (typeof raw === "boolean") {
           perPrOut[prNumber] = raw;
         }
+      } else if (valueType === "stringList") {
+        // ackHistoryByRepo: the times, oldest first.
+        const items = Array.isArray(raw)
+          ? raw.map((item) => String(item || "").trim()).filter(Boolean)
+          : [];
+        if (items.length > 0) {
+          perPrOut[prNumber] = items;
+        }
       } else if (valueType === "stringMap") {
         // threadChecksByRepo: thread id -> signature.
         const entries = isObject(raw)
@@ -284,6 +292,7 @@ const normalizeViewPrsUserState = (raw) => {
   return {
     notesByPrNumber,
     ackByRepo: normalizePerRepoMap(source.ackByRepo, "string"),
+    ackHistoryByRepo: normalizePerRepoMap(source.ackHistoryByRepo, "stringList"),
     reverifyByRepo: normalizePerRepoMap(source.reverifyByRepo, "boolean"),
     inReviewByRepo: normalizePerRepoMap(source.inReviewByRepo, "boolean"),
     flaggedByRepo: normalizePerRepoMap(source.flaggedByRepo, "boolean"),

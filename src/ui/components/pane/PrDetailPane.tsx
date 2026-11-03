@@ -14,11 +14,12 @@ import { PrNotesTab } from './PrNotesTab';
 import { InsightsHookContent, useInsightsHookHtml } from '../insights/InsightsHook';
 import { PrOverview } from './PrOverview';
 import { DEFAULT_ACTIVITY_FILTERS, PrActivityTab, type ActivityFilters } from './PrActivityTab';
-import { getLastLookedAt } from '../../helpers/pr-activity-feed.helpers.ts';
+import { buildAckEvents, getLastLookedAt } from '../../helpers/pr-activity-feed.helpers.ts';
 import { useRepoLabels } from '../../state/RepoLabelsContext';
 import { usePrInsightsDisplay } from '../../state/PrInsightsDisplayContext';
 import { useActorIdentity } from '../../state/ActorIdentityContext';
 import { useNotesDirty } from '../../state/NotesDirtyContext';
+import { useOptionalPrData } from '../../state/PrDataContext';
 import { useFocusTrap } from '../../state/useFocusTrap';
 import { getLabelName } from '../../helpers/pr-filter-label-extraction.helpers.ts';
 import { createPrStatusDisplayHelpers } from '../../helpers/pr-status-display.helpers.ts';
@@ -180,8 +181,15 @@ function PaneContent({
   const ref = { prNumber, repo };
   const url = pr.url || `https://github.com/${repo}/pull/${prNumber}`;
   const { labels: repoLabels } = useRepoLabels();
-  const { buildRowActorsMap } = useActorIdentity();
+  const { buildRowActorsMap, getEffectiveViewerLogin } = useActorIdentity();
   const { buildActivityEvents, getOpenConversationCountWithMe } = usePrInsightsDisplay();
+  // Every Ack of the PR (the user state's history, and the current one),
+  // for the Activity tab: one cleared by a change since still shows you'd
+  // looked, and is when you last did.
+  const ackHistory = useOptionalPrData()?.payload?.ackHistoryByRepo?.[repo]?.[prNumber];
+  const viewerLogin = String(getEffectiveViewerLogin(pr) || '');
+  const ackEvents = useMemo(() => buildAckEvents(ackHistory, ackedAt || '', viewerLogin), [ackHistory, ackedAt, viewerLogin]);
+  const lastAckedAt = String(ackEvents[0]?.occurredAt || '');
   const { dirtyPrNumbers } = useNotesDirty();
   const hookHtml = useInsightsHookHtml(repo, prNumber, String(pr.sourceUpdatedAt || entry.updatedAt || ''));
   const rowActorsMap = buildRowActorsMap(pr, actorsMap);
@@ -199,7 +207,10 @@ function PaneContent({
     : undefined;
   // Every event, not the feed's first 60. Built again only when the PR
   // changes, not on every pane render.
-  const eventCount = useMemo(() => buildActivityEvents(pr, Number.POSITIVE_INFINITY).length, [buildActivityEvents, pr]);
+  const eventCount = useMemo(
+    () => buildActivityEvents(pr, Number.POSITIVE_INFINITY).length + ackEvents.length,
+    [buildActivityEvents, pr, ackEvents],
+  );
   const notesUnsaved = dirtyPrNumbers.includes(prNumber);
 
   const tabs: TabItem[] = [
@@ -292,7 +303,8 @@ function PaneContent({
           <PrActivityTab
             pr={pr}
             actorsMap={rowActorsMap}
-            lastLookedAt={getLastLookedAt(pr.baseline, ackedAt)}
+            lastLookedAt={getLastLookedAt(pr.baseline, lastAckedAt)}
+            ackEvents={ackEvents}
             filters={activityFilters}
             onFiltersChange={onActivityFiltersChange}
           />

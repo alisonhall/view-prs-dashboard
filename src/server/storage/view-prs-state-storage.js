@@ -190,6 +190,11 @@ const createViewPrsStateStorage = ({
     mergeMissingPerRepoMap(incoming.reverifyByRepo, existing.reverifyByRepo);
     mergeMissingPerRepoMap(incoming.inReviewByRepo, existing.inReviewByRepo);
     mergeMissingPerRepoMap(incoming.flaggedByRepo, existing.flaggedByRepo);
+    // Only the script changes the Ack history (ACK_HISTORY_JQ in
+    // check-open-pr-updates.sh), so the file's is always the latest: a write
+    // here keeps it, rather than an older copy read before the script
+    // recorded an Ack.
+    incoming.ackHistoryByRepo = existing.ackHistoryByRepo;
 
     writeJsonFileWithBackup(viewPrsUserStateFile, incoming, "user-state");
   };

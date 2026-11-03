@@ -36,7 +36,17 @@ export interface MergeDataDeltaInput {
   nextLastRun?: PrDataPayload["lastRun"] | null;
   nextLastFullRun?: PrDataPayload["lastFullRun"] | null;
   nextManifest?: PrManifest | null;
+  // The user state's per-repo maps (the manifest's userState): replace the
+  // stored ones when given.
+  nextUserState?: PollUserState | null;
 }
+
+// The user state's per-repo maps a poll's manifest carries (the server's
+// buildDataManifestPayload).
+export type PollUserState = Pick<
+  PrDataPayload,
+  "ackByRepo" | "ackHistoryByRepo" | "reverifyByRepo" | "inReviewByRepo" | "flaggedByRepo" | "threadChecksByRepo"
+>;
 
 // Something with a tagName, like document.activeElement.
 type FocusedElement = { tagName?: string } | null | undefined;
@@ -57,6 +67,14 @@ const computePrDataMetaFingerprint = (payload: PrDataPayload | null | undefined)
     lastFullRun: payload?.lastFullRun || null,
     dataMeta: payload?.dataMeta || null,
     scheduler: payload?.scheduler || null,
+    // Not the rows', but shown in them and the pane (Ack'd, the Activity
+    // tab's Acks, flags): a poll that changes only these still renders.
+    ackByRepo: payload?.ackByRepo || null,
+    ackHistoryByRepo: payload?.ackHistoryByRepo || null,
+    reverifyByRepo: payload?.reverifyByRepo || null,
+    inReviewByRepo: payload?.inReviewByRepo || null,
+    flaggedByRepo: payload?.flaggedByRepo || null,
+    threadChecksByRepo: payload?.threadChecksByRepo || null,
   });
 
 const computePrDataManifest = (payload: PrDataPayload | null | undefined): PrManifest => {
@@ -135,6 +153,7 @@ const mergeDataDeltaPayload = ({
   nextLastRun = null,
   nextLastFullRun = null,
   nextManifest = null,
+  nextUserState = null,
 }: MergeDataDeltaInput = {}): PrDataPayload => {
   const mergedByPrNumber: Record<string, PrEntry> = {
     ...(basePayload?.byPrNumber || {}),
@@ -149,6 +168,7 @@ const mergeDataDeltaPayload = ({
 
   return {
     ...basePayload,
+    ...(nextUserState || {}),
     byPrNumber: mergedByPrNumber,
     dataMeta: nextDataMeta || basePayload?.dataMeta || null,
     scheduler: nextScheduler || basePayload?.scheduler || null,

@@ -38,6 +38,33 @@ export const getLastLookedAt = (baseline: unknown, ackedAt: unknown): string => 
   return candidates.reduce((latest, value) => (parseTime(value) > parseTime(latest) ? value : latest));
 };
 
+// Your Acks of the PR as activity events, newest first (as the feed is):
+// each time in its Ack history (ackHistoryByRepo) and the current Ack
+// (ackByRepo) - an Ack from before there was a history is only there. The
+// current one is marked (state "current"); the others were taken back by a
+// later Ack or cleared by a change since, and still show that you looked.
+export const buildAckEvents = (history: readonly string[] | null | undefined, currentAck: string, viewerLogin: string): PrActivityEvent[] => {
+  const current = String(currentAck || "").trim();
+  const times = Array.from(new Set([...(history || []), current].map((time) => String(time || "").trim())))
+    .filter((time) => Number.isFinite(parseTime(time)))
+    .sort((a, b) => parseTime(b) - parseTime(a));
+  return times.map((time) => ({
+    sourceId: `ack-${time}`,
+    occurredAt: time,
+    date: time.slice(0, 10),
+    actor: viewerLogin,
+    type: "ack",
+    channel: "system",
+    state: time === current ? "current" : "",
+  }));
+};
+
+// The feed's events with your Acks among them, newest first.
+export const withAckEvents = (events: readonly PrActivityEvent[], ackEvents: readonly PrActivityEvent[]): PrActivityEvent[] =>
+  ackEvents.length
+    ? [...events, ...ackEvents].sort((a, b) => String(b?.occurredAt || "").localeCompare(String(a?.occurredAt || "")))
+    : events.slice();
+
 export type FeedItem =
   | { kind: "event"; event: PrActivityEvent }
   // Two or more commits in a row (newest first) by one person on one day.
