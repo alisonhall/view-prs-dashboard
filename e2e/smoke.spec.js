@@ -1366,7 +1366,8 @@ test("editing a PR Notes field in the real React-owned row holds back a real dat
   await notesTextarea.fill(`${originalValue}a note left during this test`);
   await changeServerData(page);
   await expect(indicator).toBeVisible();
-  await expect(page.getByRole("button", { name: `#${prNumber}`, exact: true })).toBeVisible();
+  // Named by repo and number (fixtures/data.json's PRs are all one repo's).
+  await expect(page.getByRole("button", { name: `octocat/hello-world#${prNumber}`, exact: true })).toBeVisible();
 
   // Undo the edit (notes are only saved by an explicit Save) and blur the
   // field: the held-back poll applies and the indicator goes away.
@@ -1536,7 +1537,7 @@ test("clicking an 'Auto update paused' chip for a PR switches back to the PR dat
   await page.getByRole("tab", { name: "Authors" }).click();
   await expect(page.getByRole("tabpanel", { name: "Authors", exact: true, includeHidden: true })).toBeVisible();
 
-  const chip = page.getByRole("button", { name: "#1", exact: true });
+  const chip = page.getByRole("button", { name: "octocat/hello-world#1", exact: true });
   await expect(chip).toBeVisible();
   await chip.click();
 
