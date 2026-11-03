@@ -1331,15 +1331,29 @@ const fetchGithubPrLabels = async ({ repo, prNumber }) => {
 // ack) and this direct patch never interleave their read-modify-write.
 const viewPrsDataFileLockDir = viewPrsDataFile.replace(/\.json$/, ".lock");
 
+// The script holds it for one row's write; one older than a minute was
+// left by a run killed mid-write (a timed-out script has no trap to let it
+// go), and is passed over - not removed - rather than failing every label
+// patch until the next run recovers it. Resolves whether it was taken.
+const PR_STATE_LOCK_ABANDONED_MS = 60000;
 const acquirePrStateLockForPatch = async ({ maxWaitMs = 5000 } = {}) => {
   const deadlineMs = Date.now() + maxWaitMs;
   for (;;) {
     try {
       fs.mkdirSync(viewPrsDataFileLockDir);
-      return;
+      return true;
     } catch (error) {
       if (error.code !== "EEXIST") {
         throw error;
+      }
+      let lockAgeMs = 0;
+      try {
+        lockAgeMs = Date.now() - fs.statSync(viewPrsDataFileLockDir).mtimeMs;
+      } catch (_statError) {
+        // Gone since: try again.
+      }
+      if (lockAgeMs > PR_STATE_LOCK_ABANDONED_MS) {
+        return false;
       }
       if (Date.now() >= deadlineMs) {
         throw new Error("Unable to acquire PR state lock for label patch", {
@@ -1367,7 +1381,7 @@ const patchStoredPrLabels = async ({ repo, prNumber, labels }) => {
   const safeRepo = toTrimmedString(repo);
   const safePrNumber = toTrimmedString(prNumber);
 
-  await acquirePrStateLockForPatch();
+  const lockHeld = await acquirePrStateLockForPatch();
   try {
     const current = readJsonFileIfExists(viewPrsDataFile, {});
     const entry = current?.byPrNumber?.[findPrEntryKey(current?.byPrNumber, safeRepo, safePrNumber)];
@@ -1379,7 +1393,7 @@ const patchStoredPrLabels = async ({ repo, prNumber, labels }) => {
     writeJsonFileWithBackup(viewPrsDataFile, current, "labels-patch");
     return true;
   } finally {
-    releasePrStateLockForPatch();
+    if (lockHeld) releasePrStateLockForPatch();
   }
 };
 

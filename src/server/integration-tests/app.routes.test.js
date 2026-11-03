@@ -2397,6 +2397,46 @@ describe("route behavior", () => {
     }
   });
 
+  test("POST /labels/apply still patches the stored labels past a PR-data lock left by a killed script run (over a minute old), and leaves it", async () => {
+    const dataFilePath = appModule.viewPrsDataFile;
+    const lockDir = dataFilePath.replace(/\.json$/, ".lock");
+    const dataFileExisted = fs.existsSync(dataFilePath);
+    const originalDataRaw = dataFileExisted ? fs.readFileSync(dataFilePath, "utf8") : "";
+    const originalBash = appModule.runViewPrsBashCommand;
+
+    fs.mkdirSync(path.dirname(dataFilePath), { recursive: true });
+    fs.writeFileSync(
+      dataFilePath,
+      JSON.stringify({ byPrNumber: { 704: { repo: "owner/repo", data: { number: 704, labels: [] } } }, lastRun: null }),
+      "utf8",
+    );
+    fs.mkdirSync(lockDir, { recursive: true });
+    const old = new Date(Date.now() - 5 * 60 * 1000);
+    fs.utimesSync(lockDir, old, old);
+    appModule.runViewPrsBashCommand = async (bashArgs) =>
+      String(bashArgs?.[1] || "").includes("gh pr view")
+        ? { stdout: JSON.stringify(["bug"]), stderr: "" }
+        : { stdout: "", stderr: "" };
+
+    try {
+      const { response, payload } = await postJson(server, "/labels/apply", { repo: "owner/repo", label: "bug", prNumbers: "704" });
+
+      expect(response.status).toBe(200);
+      expect(payload.refreshErrors).toEqual([]);
+      expect(JSON.parse(fs.readFileSync(dataFilePath, "utf8")).byPrNumber["704"].data.labels).toEqual(["bug"]);
+      // Not this patch's to remove: the script recovers it.
+      expect(fs.existsSync(lockDir)).toBe(true);
+    } finally {
+      appModule.runViewPrsBashCommand = originalBash;
+      fs.rmSync(lockDir, { recursive: true, force: true });
+      if (dataFileExisted) {
+        fs.writeFileSync(dataFilePath, originalDataRaw, "utf8");
+      } else {
+        fs.rmSync(dataFilePath, { force: true });
+      }
+    }
+  });
+
   test("collects a refresh error without failing the whole request when POST /labels/apply's post-apply label lookup fails", async () => {
     const dataFilePath = appModule.viewPrsDataFile;
     const dataFileExisted = fs.existsSync(dataFilePath);
