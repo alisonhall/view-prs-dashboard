@@ -867,8 +867,8 @@ recover_stale_lock_dir() {
 # A run that's stopped (the server sends a timed-out run SIGTERM) lets go
 # of the locks it holds, rather than leaving them for the next run to find
 # stale - meanwhile every write waits on them and fails. Each lock records
-# the shell holding it (BASHPID): a lock can be taken in a $(...) subshell,
-# which has its own traps, so taking one sets this shell's (when run as a
+# the shell holding it (set_current_shell_pid): a lock can be taken in a
+# $(...) subshell, which has its own traps, so taking one sets this shell's (when run as a
 # script - main sets MAIN_SHELL_PID - not when sourced by the tests). Only
 # the main shell removes main's temporary caches (EXIT_CLEANUP_PATHS). A
 # process killed outright (Windows ends a timed-out run that way) runs no
@@ -876,11 +876,27 @@ recover_stale_lock_dir() {
 PR_STATE_LOCK_HOLDER=''
 USER_STATE_LOCK_HOLDER=''
 EXIT_CLEANUP_PATHS=()
+CURRENT_SHELL_PID=''
+
+# Sets CURRENT_SHELL_PID to this shell's PID - a $(...) subshell's own,
+# which $$ isn't. A variable, not output: read through $(...), it would be
+# that substitution's subshell's. BASHPID is bash 4+; bash 3.2 (macOS's
+# /bin/bash) has no BASHPID, and set -u fails on it, so there it's the
+# parent of a process this shell starts (exec keeps the substitution from
+# adding a shell in between).
+set_current_shell_pid() {
+  if [[ -n "${BASHPID:-}" ]]; then
+    CURRENT_SHELL_PID=$BASHPID
+  else
+    CURRENT_SHELL_PID=$(exec sh -c 'printf "%s" "$PPID"')
+  fi
+}
 
 on_script_exit() {
-  [[ "$PR_STATE_LOCK_HOLDER" == "$BASHPID" ]] && release_pr_state_lock
-  [[ "$USER_STATE_LOCK_HOLDER" == "$BASHPID" ]] && release_user_state_lock
-  if [[ "$BASHPID" == "${MAIN_SHELL_PID:-}" && ${#EXIT_CLEANUP_PATHS[@]} -gt 0 ]]; then
+  set_current_shell_pid
+  [[ "$PR_STATE_LOCK_HOLDER" == "$CURRENT_SHELL_PID" ]] && release_pr_state_lock
+  [[ "$USER_STATE_LOCK_HOLDER" == "$CURRENT_SHELL_PID" ]] && release_user_state_lock
+  if [[ "$CURRENT_SHELL_PID" == "${MAIN_SHELL_PID:-}" && ${#EXIT_CLEANUP_PATHS[@]} -gt 0 ]]; then
     rm -rf "${EXIT_CLEANUP_PATHS[@]}"
   fi
   return 0
@@ -906,7 +922,8 @@ acquire_pr_state_lock() {
     sleep 0.05
   done
   write_lock_metadata "$PR_STATE_LOCK_DIR"
-  PR_STATE_LOCK_HOLDER=$BASHPID
+  set_current_shell_pid
+  PR_STATE_LOCK_HOLDER=$CURRENT_SHELL_PID
   set_exit_traps
   return 0
 }
@@ -940,7 +957,8 @@ acquire_user_state_lock() {
     sleep 0.05
   done
   write_lock_metadata "$USER_STATE_LOCK_DIR"
-  USER_STATE_LOCK_HOLDER=$BASHPID
+  set_current_shell_pid
+  USER_STATE_LOCK_HOLDER=$CURRENT_SHELL_PID
   set_exit_traps
   return 0
 }
@@ -1445,7 +1463,8 @@ run_prefetch_tasks_concurrently() {
     fi
   done
 
-  for pid in "${active_pids[@]}"; do
+  # The +-guard: bash before 4.4 calls an empty array unbound under set -u.
+  for pid in ${active_pids[@]+"${active_pids[@]}"}; do
     wait "$pid"
   done
 }
@@ -2586,7 +2605,9 @@ parse_number_list() {
   local raw="$1"
   local out=''
   IFS=',' read -r -a parts <<<"$raw"
-  for part in "${parts[@]}"; do
+  # Empty input reads as an empty array, which bash before 4.4 calls
+  # unbound under set -u: the +-guard.
+  for part in ${parts[@]+"${parts[@]}"}; do
     num=$(printf '%s' "$part" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
     [[ -z "$num" ]] && continue
     if ! [[ "$num" =~ ^[0-9]+$ ]]; then
@@ -2740,7 +2761,8 @@ parse_args() {
 }
 
 main() {
-  MAIN_SHELL_PID=$BASHPID
+  set_current_shell_pid
+  MAIN_SHELL_PID=$CURRENT_SHELL_PID
   set_exit_traps
   debug_log "start args=$*"
   parse_args "$@"

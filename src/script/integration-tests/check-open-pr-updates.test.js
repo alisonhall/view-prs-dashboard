@@ -332,19 +332,25 @@ describe("check-open-pr-updates shell helper behavior", () => {
     }
   });
 
-  test("a run stopped with SIGTERM lets go of the locks it holds, a subshell's too, and removes its temporary caches", () => {
+  // Also without BASHPID, as on bash 3.2 (macOS's /bin/bash), where set -u
+  // failed on it: unsetting it in bash 4+ takes away its special meaning.
+  test.each([
+    ["", "bash 4+"],
+    ["unset BASHPID; ", "without BASHPID (bash 3.2)"],
+  ])("a run stopped with SIGTERM lets go of the locks it holds, a subshell's too, and removes its temporary caches - %s%s", (unsetBashPid) => {
     const fs = require("fs");
     const os = require("os");
     const { spawnSync } = require("child_process");
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "exit-locks-")).replace(/\\/g, "/");
     // As main does (MAIN_SHELL_PID, set_exit_traps), with the locks and a
     // cache in the temporary folder.
-    const setup = `source "${scriptPath}"; PR_STATE_LOCK_DIR="${dir}/data.lock"; USER_STATE_LOCK_DIR="${dir}/user-state.lock"; MAIN_SHELL_PID=$BASHPID; set_exit_traps; mkdir "${dir}/cache"; EXIT_CLEANUP_PATHS+=("${dir}/cache")`;
+    const setup = `${unsetBashPid}source "${scriptPath}"; PR_STATE_LOCK_DIR="${dir}/data.lock"; USER_STATE_LOCK_DIR="${dir}/user-state.lock"; set_current_shell_pid; MAIN_SHELL_PID=$CURRENT_SHELL_PID; set_exit_traps; mkdir "${dir}/cache"; EXIT_CLEANUP_PATHS+=("${dir}/cache")`;
     const run = (command) =>
       spawnSync("bash", ["-c", `${setup}; ${command}`], { cwd: scriptDir, encoding: "utf8", env: { ...process.env, BASH_ENV: "" } });
+    const killSelf = "set_current_shell_pid; kill -TERM $CURRENT_SHELL_PID";
     try {
       // The main shell, stopped while it holds the PR-data lock.
-      const stopped = run(`acquire_pr_state_lock; kill -TERM $BASHPID; sleep 5`);
+      const stopped = run(`acquire_pr_state_lock; ${killSelf}; sleep 5`);
       expect(stopped.status).toBe(143);
       expect(fs.existsSync(`${dir}/data.lock`)).toBe(false);
       expect(fs.existsSync(`${dir}/cache`)).toBe(false);
@@ -352,12 +358,24 @@ describe("check-open-pr-updates shell helper behavior", () => {
       // A $(...) subshell (as get_pr_row_json's clear_ack_ts is), stopped
       // while it holds the user-state lock: it lets go of that, and leaves
       // main's caches to main, which carries on.
-      const sub = run(`out=$(acquire_user_state_lock; kill -TERM $BASHPID; sleep 5) || true; [[ -d "${dir}/user-state.lock" ]] && echo lock-held; [[ -d "${dir}/cache" ]] && echo cache-kept; true`);
+      const sub = run(`out=$(acquire_user_state_lock; ${killSelf}; sleep 5) || true; [[ -d "${dir}/user-state.lock" ]] && echo lock-held; [[ -d "${dir}/cache" ]] && echo cache-kept; true`);
       expect(sub.stdout.trim()).toBe("cache-kept");
       expect(fs.existsSync(`${dir}/cache`)).toBe(false);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  test("main starts without BASHPID (bash 3.2, macOS's /bin/bash)", () => {
+    const { spawnSync } = require("child_process");
+    const result = spawnSync("bash", ["-c", `unset BASHPID; source "${scriptPath}"; main --help`], {
+      cwd: scriptDir,
+      encoding: "utf8",
+      env: { ...process.env, BASH_ENV: "" },
+    });
+
+    expect(result.stderr).not.toMatch(/unbound variable/);
+    expect(result.status).toBe(0);
   });
 
   test("a row's reason lists the kinds of change with any count", () => {
