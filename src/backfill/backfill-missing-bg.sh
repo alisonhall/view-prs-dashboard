@@ -3,8 +3,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PID_FILE="$SCRIPT_DIR/data/backfill-missing.pid"
-LOG_FILE="$SCRIPT_DIR/data/backfill-missing.log"
+# The same files the server reads for the dashboard's backfill status and
+# log (app-config.js): the project's data/ folder, or the env overrides.
+PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+PID_FILE="${VIEW_PRS_BACKFILL_PID_FILE:-$PROJECT_DIR/data/backfill-missing.pid}"
+LOG_FILE="${VIEW_PRS_BACKFILL_LOG_FILE:-$PROJECT_DIR/data/backfill-missing.log}"
 
 MAX_PRS="${BACKFILL_MAX_PRS:-100}"
 DELAY_MS="${BACKFILL_DELAY_MS:-3000}"
@@ -40,7 +43,7 @@ cleanup_stale_pid_file() {
 }
 
 start_backfill() {
-  mkdir -p "$SCRIPT_DIR/data"
+  mkdir -p "$(dirname "$PID_FILE")" "$(dirname "$LOG_FILE")"
   cleanup_stale_pid_file
 
   local existing_pid
@@ -122,6 +125,8 @@ Environment variables:
   BACKFILL_JOBS       --jobs passed to refresh script (default: 1)
   BACKFILL_CONCURRENCY Number of parallel backfill workers (default: 2)
   BACKFILL_EXTRA_ARGS Extra args passed to backfill-missing-data.js (optional)
+  VIEW_PRS_BACKFILL_PID_FILE  PID file (default: data/backfill-missing.pid)
+  VIEW_PRS_BACKFILL_LOG_FILE  Log file (default: data/backfill-missing.log)
 EOF
 }
 
