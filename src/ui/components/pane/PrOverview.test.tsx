@@ -81,7 +81,7 @@ describe('PrOverview', () => {
   });
 
   test('given viewer-specific open conversations, when rendering, then the label says so', () => {
-    renderOverview({ number: '1' }, { display: { getOpenConversationCountWithMe: () => ({ count: 2, isViewerSpecific: true }) } });
+    renderOverview({ number: '1' }, { display: { getOpenConversationCountWithMe: () => ({ count: 2, isViewerSpecific: true, waitingCount: 0 }) } });
     expect(groupRows('Review')['Open conversations with me']).toBe('2');
   });
 
