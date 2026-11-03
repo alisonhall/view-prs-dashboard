@@ -1112,12 +1112,81 @@ get_pr_detail_json() {
   local number="$1"
   local cache_file="$DETAIL_CACHE_DIR/$number.json"
 
+  local detail_json
   if [[ -f "$cache_file" && "$number" != "$TARGET_PR_NUMBER" ]]; then
-    cat "$cache_file"
-    return
+    detail_json=$(cat "$cache_file")
+  else
+    detail_json=$(gh_with_retry gh pr view "$number" -R "$REPO" --json comments,reviews,reviewRequests,commits,assignees,statusCheckRollup,mergeable,mergeStateStatus) || return 1
   fi
+  # A PR over 100 commits: the rest of them, or no details (the run keeps
+  # its stored row) rather than details missing its newest commits.
+  complete_pr_detail_commits "$detail_json" "$number"
+}
 
-  gh_with_retry gh pr view "$number" -R "$REPO" --json comments,reviews,reviewRequests,commits,assignees,statusCheckRollup,mergeable,mergeStateStatus
+# Every commit of a PR, in gh pr view's shape: gh gives the first 100 only,
+# so a longer PR's newer commits - the ones that matter for what changed -
+# were missing. Pages of 100 through GraphQL, into a file (a page can be past
+# Windows' 32 KB command line). GitHub's API stops at 250 commits a PR,
+# newest included. Status 1 when a page can't be fetched.
+fetch_all_pr_commits_json() {
+  local number="$1"
+  local pages_file response cursor='' has_next
+  pages_file=$(mktemp)
+  while true; do
+    if ! response=$(gh_with_retry gh api graphql \
+      -f query='query($owner: String!, $name: String!, $number: Int!, $after: String) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { commits(first: 100, after: $after) { nodes { commit { oid authoredDate committedDate messageHeadline messageBody authors(first: 100) { nodes { email name user { id login } } } } } pageInfo { hasNextPage endCursor } } } } }' \
+      -f owner="$REPO_OWNER" \
+      -f name="$REPO_NAME" \
+      -F number="$number" \
+      ${cursor:+-f after="$cursor"} 2>/dev/null) ||
+      ! printf '%s' "$response" | jq -e '.data.repository.pullRequest.commits.nodes | type == "array"' >/dev/null 2>&1; then
+      rm -f "$pages_file"
+      return 1
+    fi
+    printf '%s\n' "$response" >>"$pages_file"
+    has_next=$(printf '%s' "$response" | jq -r '.data.repository.pullRequest.commits.pageInfo.hasNextPage')
+    cursor=$(printf '%s' "$response" | jq -r '.data.repository.pullRequest.commits.pageInfo.endCursor // ""')
+    [[ "$has_next" == 'true' && -n "$cursor" ]] || break
+  done
+  jq -cs '
+    [
+      .[].data.repository.pullRequest.commits.nodes[].commit
+      | {
+          authoredDate,
+          authors: [.authors.nodes[] | {email: (.email // ""), id: (.user.id // ""), login: (.user.login // ""), name: (.name // "")}],
+          committedDate,
+          messageBody,
+          messageHeadline,
+          oid
+        }
+    ]
+  ' "$pages_file"
+  local status=$?
+  rm -f "$pages_file"
+  return "$status"
+}
+
+# A PR's details with all its commits: gh's 100 replaced by the full list
+# when there may be more (exactly 100). Through files, not --argjson.
+complete_pr_detail_commits() {
+  local detail_json="$1"
+  local number="$2"
+  local detail_file commits_file
+  if ! printf '%s' "$detail_json" | jq -e '(.commits | type) == "array" and (.commits | length) >= 100' >/dev/null 2>&1; then
+    printf '%s' "$detail_json"
+    return 0
+  fi
+  commits_file=$(mktemp)
+  if ! fetch_all_pr_commits_json "$number" >"$commits_file"; then
+    rm -f "$commits_file"
+    return 1
+  fi
+  detail_file=$(mktemp)
+  printf '%s' "$detail_json" >"$detail_file"
+  jq -c --slurpfile commits "$commits_file" '.commits = $commits[0]' "$detail_file"
+  local status=$?
+  rm -f "$detail_file" "$commits_file"
+  return "$status"
 }
 
 prefetch_pr_details() {

@@ -39,7 +39,7 @@ const withFakePages = (pages, expression) => {
   const bashDir = dir.replace(/\\/g, "/");
   try {
     return runScriptFn(`
-      PAGES="${bashDir}"; REPO_OWNER=o; REPO_NAME=r; REVIEW_COMMENT_CACHE_DIR=$(mktemp -d); FILES_CACHE_DIR=$(mktemp -d)
+      PAGES="${bashDir}"; REPO_OWNER=o; REPO_NAME=r; REVIEW_COMMENT_CACHE_DIR=$(mktemp -d); REVIEW_URL_CACHE_DIR=$(mktemp -d); FILES_CACHE_DIR=$(mktemp -d)
       gh_with_retry() {
         local arg page=1
         for arg in "$@"; do
@@ -61,6 +61,60 @@ describe("fetches too big for a command line", () => {
     const comment = (id) => ({ id, user: { login: "bob" }, body: "x", created_at: "2026-03-01T00:00:00Z", diff_hunk: "@@ -1 +1 @@\n" + "y".repeat(3000), pull_request_review_id: 1 });
     const pages = [Array.from({ length: 100 }, (_, i) => comment(i)), [comment(100), comment(101)]];
     expect(withFakePages(pages, `fetch_pr_review_comments_json 5 | jq 'length'`)).toBe("102");
+  });
+
+  describe("a PR's commits past gh's 100", () => {
+    const gqlCommit = (i) => ({
+      commit: {
+        oid: `c${i}`,
+        authoredDate: "2026-03-01T00:00:00Z",
+        committedDate: "2026-03-01T00:00:00Z",
+        messageHeadline: `commit ${i}`,
+        messageBody: "",
+        authors: { nodes: [{ email: "a@x", name: "Alice", user: { id: "U1", login: "alice" } }, { email: "g@x", name: "Ghost", user: null }] },
+      },
+    });
+    // 250 commits: pages of 100, 100 and 50.
+    const pages = [0, 1, 2].map((p) => ({
+      data: {
+        repository: {
+          pullRequest: {
+            commits: {
+              nodes: Array.from({ length: p < 2 ? 100 : 50 }, (_, i) => gqlCommit(p * 100 + i)),
+              pageInfo: { hasNextPage: p < 2, endCursor: String(p + 2) },
+            },
+          },
+        },
+      },
+    }));
+    const detailWith = (count) => JSON.stringify({ comments: [], commits: Array.from({ length: count }, (_, i) => ({ oid: `c${i}` })) });
+
+    test("are all fetched, in gh pr view's shape", () => {
+      const output = withFakePages(pages, `complete_pr_detail_commits '${detailWith(100)}' 5 | jq -c '{n: (.commits | length), last: .commits[-1].oid, first: .commits[0]}'`);
+      expect(JSON.parse(output)).toEqual({
+        n: 250,
+        last: "c249",
+        first: {
+          authoredDate: "2026-03-01T00:00:00Z",
+          authors: [
+            { email: "a@x", id: "U1", login: "alice", name: "Alice" },
+            { email: "g@x", id: "", login: "", name: "Ghost" },
+          ],
+          committedDate: "2026-03-01T00:00:00Z",
+          messageBody: "",
+          messageHeadline: "commit 0",
+          oid: "c0",
+        },
+      });
+    });
+
+    test("under 100, the details are kept as they are, with no fetch", () => {
+      expect(withFakePages([], `complete_pr_detail_commits '${detailWith(99)}' 5 | jq -c '.commits | length'`)).toBe("99");
+    });
+
+    test("a page that can't be fetched: no details, so the stored row stays", () => {
+      expect(withFakePages([pages[0]], `complete_pr_detail_commits '${detailWith(100)}' 5 >/dev/null && echo ok || echo failed`)).toBe("failed");
+    });
   });
 
   test("viewed files: every file of a PR with over a thousand", () => {
