@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { Fragment, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import type { PrData, PrDataPayload, PrEntry } from '../../types/pr-data.ts';
 import type { ActorsMap } from '../../helpers/pr-actor-identity.helpers.ts';
 import type { PaneTab } from '../../state/PrTableUiStateContext';
@@ -18,6 +18,8 @@ import { buildAckEvents, getLastLookedAt } from '../../helpers/pr-activity-feed.
 import { useRepoLabels } from '../../state/RepoLabelsContext';
 import { usePrInsightsDisplay } from '../../state/PrInsightsDisplayContext';
 import { useActorIdentity } from '../../state/ActorIdentityContext';
+import { useNeedsAttention } from '../../state/NeedsAttentionContext';
+import { createPrAuthorCellHelpers } from '../../helpers/pr-author-cell.helpers.ts';
 import { useNotesDirty } from '../../state/NotesDirtyContext';
 import { useOptionalPrData } from '../../state/PrDataContext';
 import { useFocusTrap } from '../../state/useFocusTrap';
@@ -181,7 +183,16 @@ function PaneContent({
   const ref = { prNumber, repo };
   const url = pr.url || `https://github.com/${repo}/pull/${prNumber}`;
   const { labels: repoLabels } = useRepoLabels();
-  const { buildRowActorsMap, getEffectiveViewerLogin } = useActorIdentity();
+  const { buildRowActorsMap, getEffectiveViewerLogin, getPreferredActorKey } = useActorIdentity();
+  // "by" lists who the row's Who cell does: the author, then anyone else
+  // with non-merge commits (its "+N" and tooltip) - same helper, same
+  // merge-commit rules and alias dedupe.
+  const { mergeCommitRules } = useNeedsAttention().attentionConfig;
+  const { collectPrAuthors } = useMemo(
+    () => createPrAuthorCellHelpers({ getPreferredActorKey, mergeCommitRules }),
+    [getPreferredActorKey, mergeCommitRules],
+  );
+  const otherCommitters = collectPrAuthors(pr).slice(1);
   const { buildActivityEvents, getOpenConversationCountWithMe } = usePrInsightsDisplay();
   // Every Ack of the PR (the user state's history, and the current one),
   // for the Activity tab: one cleared by a change since still shows you'd
@@ -246,6 +257,17 @@ function PaneContent({
         <p className="pr-pane-meta">
           <span>
             by <ActorIdentity row={pr} login={pr.authorLogin} actorsMap={rowActorsMap} fallbackName={pr.author} />
+            {otherCommitters.length > 0 && (
+              <>
+                , with{' '}
+                {otherCommitters.map((committer, index) => (
+                  <Fragment key={committer.key}>
+                    {index > 0 && (index === otherCommitters.length - 1 ? ' and ' : ', ')}
+                    <ActorIdentity row={pr} login={committer.key} actorsMap={rowActorsMap} fallbackName={committer.name} />
+                  </Fragment>
+                ))}
+              </>
+            )}
           </span>
           {sourceBranch && (
             <span className="pr-pane-branch">

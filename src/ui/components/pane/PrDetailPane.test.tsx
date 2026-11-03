@@ -92,6 +92,25 @@ describe('PrDetailPane', () => {
       expect(pane).toHaveTextContent('by The Octocat');
       expect(pane).toHaveTextContent('fix/parser → main');
       expect(within(pane).getByRole('button', { name: 'Copy branch name' })).toBeEnabled();
+      expect(pane).not.toHaveTextContent(', with');
+    });
+
+    // The same people as the row's Who cell (its "+N" and tooltip).
+    test('"by" lists the author, then the others with non-merge commits', () => {
+      const commit = (login: string, name: string) => ({ messageHeadline: 'Change it', authors: [{ login, name }] });
+      const withCommits = (commits: ReturnType<typeof commit>[]): PrEntry => ({
+        ...baseEntry,
+        data: { ...baseEntry.data, commits },
+      });
+
+      const { view } = renderPane({ entry: withCommits([commit('octocat', 'The Octocat'), commit('hubot', 'Hubot')]) });
+      expect(document.querySelector('.pr-pane-meta')).toHaveTextContent('by The Octocat, with Hubot');
+      view.unmount();
+
+      renderPane({
+        entry: withCommits([commit('hubot', 'Hubot'), commit('monalisa', 'Mona Lisa'), commit('defunkt', 'Chris')]),
+      });
+      expect(document.querySelector('.pr-pane-meta')).toHaveTextContent('by The Octocat, with Hubot, Mona Lisa and Chris');
     });
 
     test('previous/next are disabled without a neighbour and call back with one', async () => {
