@@ -17,7 +17,8 @@ const toCount = (value: unknown): number => {
 /**
  * The Review column, in fixed slots:
  * 1. Approvals (green once approved), with the approvers in the tooltip.
- * 2. Open conversations (with you, when that's what's counted).
+ * 2. Open conversations (with you, when that's what's counted), the icon
+ *    filled in when any is waiting on you.
  * 3. Viewed files.
  * 4. Notes, listing the fields that have content.
  *
@@ -64,7 +65,10 @@ export function PrReviewCell({ entry, pr, actorsMap = {} }: PrReviewCellProps) {
 
   const conversations = getOpenConversationCountWithMe(pr);
   const openCount = toCount(conversations?.count);
-  const conversationsLabel = `${openCount} open conversation${openCount === 1 ? '' : 's'}${conversations?.isViewerSpecific ? ' with you' : ''}`;
+  // Filled in when any is waiting on you (the Conversations tab's "Waiting
+  // on me").
+  const waitingCount = toCount(conversations?.waitingCount);
+  const conversationsLabel = `${openCount} open conversation${openCount === 1 ? '' : 's'}${conversations?.isViewerSpecific ? ' with you' : ''}${waitingCount > 0 ? `, ${waitingCount} waiting on you` : ''}`;
 
   const viewedFiles = describeViewedFiles(pr);
   const notes = describeNotes(entry, pr);
@@ -119,7 +123,14 @@ export function PrReviewCell({ entry, pr, actorsMap = {} }: PrReviewCellProps) {
         <span className="pr-signal-slots pr-review-slots">
           <Signal icon="approve" tone={approved ? 'success' : 'muted'} text={String(approvalCount)} label={approvalsLabel} size={14} inGroup />
           {openCount > 0 ? (
-            <Signal icon="chat" tone="attention" text={String(openCount)} label={conversationsLabel} size={14} inGroup />
+            <Signal
+              icon={waitingCount > 0 ? 'chatFilled' : 'chat'}
+              tone="attention"
+              text={String(openCount)}
+              label={conversationsLabel}
+              size={14}
+              inGroup
+            />
           ) : (
             <EmptySignal />
           )}

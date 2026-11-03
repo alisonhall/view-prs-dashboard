@@ -68,7 +68,17 @@ describe('PrReviewCell', () => {
 
   test('shows open conversations "with you" when that\'s what\'s counted, and nothing at zero', () => {
     renderCell({}, { display: { getOpenConversationCountWithMe: () => ({ count: 2, isViewerSpecific: true }) } as never });
-    expect(screen.getByRole('img', { name: '2 open conversations with you' })).toBeInTheDocument();
+    const icon = screen.getByRole('img', { name: '2 open conversations with you' });
+    expect(icon.querySelector('[fill="currentColor"]')).toBeNull();
+  });
+
+  test('fills the conversations icon in when any is waiting on you, and says how many', () => {
+    renderCell({}, {
+      display: { getOpenConversationCountWithMe: () => ({ count: 3, isViewerSpecific: true, waitingCount: 1 }) } as never,
+    });
+    const icon = screen.getByRole('img', { name: '3 open conversations with you, 1 waiting on you' });
+    expect(icon.querySelector('[fill="currentColor"]')).not.toBeNull();
+    expect(icon.closest('.ui-signal')).toHaveAttribute('data-tone', 'attention');
   });
 
   test('omits conversations at zero', () => {
