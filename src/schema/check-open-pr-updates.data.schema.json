@@ -10,7 +10,7 @@
       "type": "object",
       "default": {},
       "patternProperties": {
-        "^[0-9]+$": {
+        "^([^\\s/]+/[^\\s/]+#)?[0-9]+$": {
           "$ref": "#/$defs/byPrEntry"
         }
       },
@@ -95,6 +95,12 @@
         },
         "rowOrder": {
           "type": "number"
+        },
+        "fetchedAt": {
+          "anyOf": [{ "$ref": "#/$defs/isoDateTime" }, { "type": "null" }]
+        },
+        "ciFetchedAt": {
+          "anyOf": [{ "$ref": "#/$defs/isoDateTime" }, { "type": "null" }]
         },
         "data": {
           "$ref": "#/$defs/prData"
@@ -293,6 +299,15 @@
         },
         "baseline": {
           "$ref": "#/$defs/isoDateTimeOrEmpty"
+        },
+        "localStateKey": {
+          "type": "string"
+        },
+        "commitsAfterReview": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         },
         "reason": {
           "type": "string"

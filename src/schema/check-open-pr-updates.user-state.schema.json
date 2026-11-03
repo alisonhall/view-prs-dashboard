@@ -16,7 +16,7 @@
       "type": "object",
       "default": {},
       "patternProperties": {
-        "^[0-9]+$": {
+        "^([^\\s/]+/[^\\s/]+#)?[0-9]+$": {
           "$ref": "#/$defs/notes"
         }
       },

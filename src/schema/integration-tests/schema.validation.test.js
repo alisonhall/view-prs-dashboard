@@ -42,6 +42,44 @@ describe("data schema", () => {
 
     expect(validate(payload)).toBe(false);
   });
+
+  // A row as the script writes it: computed by compute-pr-row.js, its
+  // detail fields moved to their file (attach_pr_detail_ref), under its
+  // "owner/repo#number" key. The schema had fallen behind the rows.
+  test("accepts a row as the script stores it", () => {
+    const { computePrRow } = require("../../script/compute-pr-row");
+    const { row } = computePrRow({
+      pr: { number: 12, title: "Add widgets", url: "https://github.com/o/r/pull/12", author: { login: "alice" }, createdAt: "2026-03-01T00:00:00Z", updatedAt: "2026-03-02T00:00:00Z" },
+      viewerLogin: "me",
+      detail: {
+        reviews: [{ author: { login: "me" }, state: "COMMENTED", submittedAt: "2026-03-01T11:00:00Z", commit: { oid: "a1" } }],
+        commits: [
+          { oid: "a1", committedDate: "2026-03-01T09:00:00Z", messageHeadline: "feat: one", authors: [{ login: "alice" }] },
+          { oid: "a2", committedDate: "2026-03-01T10:00:00Z", messageHeadline: "fix: two", authors: [{ login: "alice" }] },
+        ],
+      },
+      viewedFilesStats: { changedFiles: 3, viewedFiles: 1 },
+    });
+    const { activityTimeline, activityEvents, reviewThreads, commentEvents, ...stored } = row;
+    const payload = {
+      byPrNumber: {
+        "o/r#12": {
+          prNumber: "12",
+          repo: "o/r",
+          section: "open",
+          updatedAt: "2026-03-02T00:00:00Z",
+          rowOrder: 0,
+          fetchedAt: "2026-03-02T00:00:05Z",
+          ciFetchedAt: "2026-03-02T00:00:05Z",
+          data: { ...stored, localStateKey: "1|me|false|false", detailRef: { file: "pr-details/o_r__pr-12.json", version: "v1" } },
+        },
+      },
+      lastRun: { repo: "o/r", updatedAt: "2026-03-02T00:00:00Z" },
+    };
+
+    expect(row.commitsAfterReview).toEqual(["a2"]);
+    expect(validate(payload) ? [] : validate.errors).toEqual([]);
+  });
 });
 
 describe("user-state schema", () => {
@@ -95,6 +133,18 @@ describe("user-state schema", () => {
     };
 
     expect(validate(payload)).toBe(false);
+  });
+
+  test("accepts notes under their PR's \"owner/repo#number\" key", () => {
+    const payload = {
+      notesByPrNumber: { "o/r#12": { comments: [], otherNotes: "" } },
+      ackByRepo: {},
+      reverifyByRepo: {},
+      inReviewByRepo: {},
+      flaggedByRepo: {},
+    };
+
+    expect(validate(payload) ? [] : validate.errors).toEqual([]);
   });
 
   test("accepts PR-linked note comments with createdAt and updatedAt timestamps", () => {
