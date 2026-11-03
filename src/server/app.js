@@ -2027,7 +2027,8 @@ const runViewPrsAutoRefresh = async ({
             ? `Auto refresh timed out after ${Math.round(
               Number(failure?.timeoutMs || viewPrsAutoScriptTimeoutMs) / 1000,
             )}s`
-            : failure?.error?.message || "Auto refresh failed";
+            // With the script's reason (its last stderr line), not just its exit code.
+            : describeFailure(failure);
         const repoFinishedMs = Date.now();
         return {
           ok: false,
@@ -2185,8 +2186,7 @@ const runViewPrsAutoRefresh = async ({
       reposExcludedForManualCooldown,
     };
   } catch (failure) {
-    viewPrsSchedulerState.lastAutoError =
-      failure?.error?.message || "Auto refresh failed";
+    viewPrsSchedulerState.lastAutoError = describeFailure(failure);
     // The whole call threw before any individual repo's own result was
     // known (e.g. a setup error) - attribute the failure to every repo
     // this call was attempting, since there's no finer-grained info here.

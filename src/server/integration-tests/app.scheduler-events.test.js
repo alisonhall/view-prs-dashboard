@@ -84,6 +84,23 @@ describe("scheduler job event emission", () => {
     });
   });
 
+  test("a repo whose refresh script fails is reported with the script's reason, not only its exit code", async () => {
+    const consoleErrorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+    appModule.runViewPrsScript = async () => {
+      throw { error: new Error("Command exited with code 1"), stdout: "", stderr: "Fetching...\nHTTP 401: Bad credentials\n" };
+    };
+    try {
+      const result = await runViewPrsAutoRefresh({ reposOverride: ["owner/repo-one"] });
+
+      const reason = "owner/repo-one: Command exited with code 1: HTTP 401: Bad credentials";
+      expect(result.failedRepoErrors).toEqual({ "owner/repo-one": reason });
+      expect(viewPrsSchedulerState.lastAutoError).toBe(reason);
+    } finally {
+      appModule.runViewPrsScript = async () => ({ stdout: "{}", stderr: "" });
+      consoleErrorSpy.mockRestore();
+    }
+  });
+
   test("a batch spanning a free repo and an already-busy one reports each repo's own outcome, not one shared verdict", async () => {
     viewPrsSchedulerState.autoRefreshInProgressRepos = new Set(["owner/repo-busy"]);
 
