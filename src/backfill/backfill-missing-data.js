@@ -310,9 +310,9 @@ const migrateLegacyStories = ({ userState, data }) => {
 
 // The lock directory check-open-pr-updates.sh uses for a state file (e.g.
 // check-open-pr-updates.data.json -> check-open-pr-updates.data.lock; the
-// server also takes the data one for its label patch), so this never
-// interleaves with their read-modify-write. The server's own user state
-// writes (notes saves) don't take a lock - see migrateLegacyStoriesInFiles.
+// server also takes the data one for its label patch, and the user state
+// one for its writes - notes saves - since 2026-11-03), so this never
+// interleaves with their read-modify-write.
 const getLockDir = (filePath) => filePath.replace(/\.json$/, ".lock");
 
 // Why a lock is still held, for the error: its age and the holder the shell
@@ -404,10 +404,11 @@ const createStateWriter = ({ dataPath, userStatePath, backupDir }) => {
 // and written under its lock; a missing file is skipped). With dryRun,
 // only reports. Returns the PR numbers changed in each file.
 //
-// The lock doesn't cover the dashboard's own notes saves, which write the
-// user state without one. So the file is read again just before writing,
-// and if it changed in the meantime (e.g. a note was saved) the conversion
-// is redone on the fresh copy rather than overwriting that save.
+// Before 2026-11-03 the dashboard's notes saves wrote the user state
+// without the lock (an older server still does). So the file is read again
+// just before writing, and if it changed in the meantime (e.g. a note was
+// saved) the conversion is redone on the fresh copy rather than
+// overwriting that save.
 const MAX_CONVERT_ATTEMPTS = 3;
 
 const migrateLegacyStoriesInFiles = async ({

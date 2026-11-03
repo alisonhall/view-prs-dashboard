@@ -58,11 +58,8 @@ const registerViewPrsPrRoutes = ({
   fs,
   viewPrsDataFile,
   viewPrsAuthorCommentsFile,
-  normalizeViewPrsUserState,
   normalizeViewPrsAuthorComments,
-  readJsonFileIfExists,
-  viewPrsUserStateFile,
-  writeViewPrsUserState,
+  updateViewPrsUserState,
   readViewPrsAuthorComments,
   writeViewPrsAuthorComments,
   appendActionLogEntry,
@@ -172,34 +169,35 @@ const registerViewPrsPrRoutes = ({
       const rowRepo = String(rows[rowKey].repo || repo || "").trim();
       const notesKey = rowRepo ? buildPrEntryKey(rowRepo, prNumber) : String(prNumber);
 
-      const userState = normalizeViewPrsUserState(
-        readJsonFileIfExists(viewPrsUserStateFile, {}),
-      );
-      // Notes still keyed by a bare number go to their repo keys first, as
-      // when the data is read - one may be another repo's PR #N.
-      userState.notesByPrNumber = migrateNotesKeys(
-        userState.notesByPrNumber,
-        rows,
-        String(data.lastFullRun?.repo || data.lastRun?.repo || ""),
-      );
-      const previousNotes = userState.notesByPrNumber[notesKey];
-      const comments = buildSavedNoteComments(
-        rawComments,
-        previousNotes?.comments,
-        new Date().toISOString(),
-      );
-      const notes = normalizeNotes({
-        comments,
-        otherNotes: String(body.otherNotes ?? ""),
-        prDifficulty: String(body.prDifficulty ?? ""),
-        stories: body.stories,
-        // Older clients send these instead of stories.
-        rallyStories: body.rallyStories,
-        rallyLinks: body.rallyLinks,
-        analysisOfPr: String(body.analysisOfPr ?? ""),
+      // Read and written under the script's lock (updateViewPrsUserState),
+      // so a script run's Ack change and this save can't undo each other.
+      let comments = [];
+      updateViewPrsUserState((userState) => {
+        // Notes still keyed by a bare number go to their repo keys first, as
+        // when the data is read - one may be another repo's PR #N.
+        userState.notesByPrNumber = migrateNotesKeys(
+          userState.notesByPrNumber,
+          rows,
+          String(data.lastFullRun?.repo || data.lastRun?.repo || ""),
+        );
+        const previousNotes = userState.notesByPrNumber[notesKey];
+        comments = buildSavedNoteComments(
+          rawComments,
+          previousNotes?.comments,
+          new Date().toISOString(),
+        );
+        userState.notesByPrNumber[notesKey] = normalizeNotes({
+          comments,
+          otherNotes: String(body.otherNotes ?? ""),
+          prDifficulty: String(body.prDifficulty ?? ""),
+          stories: body.stories,
+          // Older clients send these instead of stories.
+          rallyStories: body.rallyStories,
+          rallyLinks: body.rallyLinks,
+          analysisOfPr: String(body.analysisOfPr ?? ""),
+        });
+        return userState;
       });
-      userState.notesByPrNumber[notesKey] = notes;
-      writeViewPrsUserState(userState);
 
       appendActionLogEntry({
         action: "post/notes",
@@ -235,18 +233,17 @@ const registerViewPrsPrRoutes = ({
     }
 
     try {
-      const userState = normalizeViewPrsUserState(
-        readJsonFileIfExists(viewPrsUserStateFile, {}),
-      );
-      const perRepo = { ...(userState.threadChecksByRepo[repo] || {}) };
-      const perPr = { ...(perRepo[prNumber] || {}) };
-      if (confirmed) perPr[threadId] = signature;
-      else delete perPr[threadId];
-      if (Object.keys(perPr).length > 0) perRepo[prNumber] = perPr;
-      else delete perRepo[prNumber];
-      userState.threadChecksByRepo = { ...userState.threadChecksByRepo, [repo]: perRepo };
-      if (Object.keys(perRepo).length === 0) delete userState.threadChecksByRepo[repo];
-      writeViewPrsUserState(userState);
+      updateViewPrsUserState((userState) => {
+        const perRepo = { ...(userState.threadChecksByRepo[repo] || {}) };
+        const perPr = { ...(perRepo[prNumber] || {}) };
+        if (confirmed) perPr[threadId] = signature;
+        else delete perPr[threadId];
+        if (Object.keys(perPr).length > 0) perRepo[prNumber] = perPr;
+        else delete perRepo[prNumber];
+        userState.threadChecksByRepo = { ...userState.threadChecksByRepo, [repo]: perRepo };
+        if (Object.keys(perRepo).length === 0) delete userState.threadChecksByRepo[repo];
+        return userState;
+      });
 
       appendActionLogEntry({
         action: "post/thread-checks",

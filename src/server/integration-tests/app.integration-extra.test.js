@@ -169,6 +169,46 @@ describe("integration behavior", () => {
     expect(notes.body.prData.ackHistoryByRepo).toEqual(ackHistoryByRepo);
   });
 
+  describe("the script's user-state lock", () => {
+    const lockDir = viewPrsUserStateFile.replace(/\.json$/, "") + ".lock";
+    afterEach(() => fs.rmSync(lockDir, { recursive: true, force: true }));
+    const saveNotes = () =>
+      request.post("/notes").send({ prNumber: "7", repo: "owner/repo", comments: [], otherNotes: "saved" });
+    const storedNotes = () => JSON.parse(fs.readFileSync(viewPrsUserStateFile, "utf8")).notesByPrNumber;
+    beforeEach(() => {
+      writeViewPrsData({ byPrNumber: { "owner/repo#7": { repo: "owner/repo", prNumber: "7" } }, lastRun: null });
+      writeViewPrsUserState();
+    });
+
+    test("a notes save waits while the script holds it, then saves, and lets it go", async () => {
+      fs.mkdirSync(lockDir);
+      // The script lets it go shortly - here a worker thread, which runs
+      // while the save holds up this one.
+      const { Worker } = require("worker_threads");
+      const worker = new Worker(
+        `setTimeout(() => require("fs").rmdirSync(${JSON.stringify(lockDir)}), 300)`,
+        { eval: true },
+      );
+      const startedAt = Date.now();
+      const res = await saveNotes();
+      expect(res.status).toBe(200);
+      expect(Date.now() - startedAt).toBeGreaterThanOrEqual(250);
+      expect(storedNotes()["owner/repo#7"].otherNotes).toBe("saved");
+      expect(fs.existsSync(lockDir)).toBe(false);
+      await worker.terminate();
+    });
+
+    test("one left by a script that died (over a minute old) doesn't stop a save", async () => {
+      fs.mkdirSync(lockDir);
+      const old = new Date(Date.now() - 5 * 60 * 1000);
+      fs.utimesSync(lockDir, old, old);
+      expect((await saveNotes()).status).toBe(200);
+      expect(storedNotes()["owner/repo#7"].otherNotes).toBe("saved");
+      // Not ours to remove.
+      expect(fs.existsSync(lockDir)).toBe(true);
+    });
+  });
+
   test("a server write keeps the file's Ack history, not an older copy read before the script recorded an Ack", () => {
     const latest = { "owner/repo": { 7: ["2026-01-01T00:00:00Z", "2026-01-03T00:00:00Z"] } };
     writeViewPrsUserState({ ...EMPTY_USER_STATE, ackHistoryByRepo: latest });

@@ -730,6 +730,7 @@ const hydrateViewPrsEntryWithDetail = (entry) => {
 const {
   writeJsonFileWithBackup,
   writeViewPrsUserState,
+  updateViewPrsUserState,
   writeViewPrsAuthorComments,
   mergeMissingPerRepoMap,
   migrateLegacyViewPrsUserState,
@@ -3416,6 +3417,7 @@ const createViewPrsApp = ({ production = isProductionEnv } = {}) => {
     readJsonFileIfExists,
     viewPrsUserStateFile,
     writeViewPrsUserState,
+    updateViewPrsUserState,
     readViewPrsAuthorComments,
     writeViewPrsAuthorComments,
     appendActionLogEntry,

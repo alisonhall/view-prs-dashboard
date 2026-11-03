@@ -146,7 +146,7 @@ const createViewPrsStateStorage = ({
     }
   };
 
-  const writeViewPrsUserState = (state) => {
+  const writeViewPrsUserStateUnlocked = (state) => {
     const incoming = normalizeViewPrsUserState(state);
 
     let existingRead = readJsonFileIfExistsDetailed(viewPrsUserStateFile);
@@ -198,6 +198,71 @@ const createViewPrsStateStorage = ({
 
     writeJsonFileWithBackup(viewPrsUserStateFile, incoming, "user-state");
   };
+
+  // The script's user-state lock (USER_STATE_LOCK_DIR in
+  // check-open-pr-updates.sh, beside the file), held around a read and its
+  // write so neither side writes over a change the other made in between -
+  // the script's jq, validation, backup and rename take long enough for a
+  // notes save to land in the middle. A bare directory, with no lock-info:
+  // the script then judges it by its age, not a pid (Git Bash's pids aren't
+  // Node's), as the server's PR-data lock (acquirePrStateLockForPatch).
+  // The script holds it for one write; one older than a minute was left by
+  // a script that died, and is passed over (written without, as before
+  // there was this lock) rather than failing every save until the script
+  // recovers it.
+  const userStateLockDir = viewPrsUserStateFile.replace(/\.json$/, "") + ".lock";
+  const USER_STATE_LOCK_WAIT_MS = 3000;
+  const USER_STATE_LOCK_ABANDONED_MS = 60000;
+  const sleepSync = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+  const isLockAbandoned = () => {
+    try {
+      return Date.now() - fs.statSync(userStateLockDir).mtimeMs > USER_STATE_LOCK_ABANDONED_MS;
+    } catch (_error) {
+      return false;
+    }
+  };
+  const withUserStateLock = (fn) => {
+    const deadlineMs = Date.now() + USER_STATE_LOCK_WAIT_MS;
+    let held = false;
+    for (;;) {
+      try {
+        fs.mkdirSync(userStateLockDir);
+        held = true;
+        break;
+      } catch (error) {
+        // No data folder yet (or an fs without mkdirSync): nothing to
+        // race with.
+        if (error?.code !== "EEXIST" || isLockAbandoned()) break;
+        if (Date.now() >= deadlineMs) {
+          throw new Error("Unable to acquire the user state lock", { cause: error });
+        }
+        sleepSync(25);
+      }
+    }
+    try {
+      return fn();
+    } finally {
+      if (held) {
+        try {
+          fs.rmdirSync(userStateLockDir);
+        } catch (_error) {
+          // Best effort.
+        }
+      }
+    }
+  };
+
+  const writeViewPrsUserState = (state) => withUserStateLock(() => writeViewPrsUserStateUnlocked(state));
+
+  // Reads the user state, hands it (normalized) to change, and writes what
+  // that returns - all under the lock, so the change is made to the latest.
+  const updateViewPrsUserState = (change) =>
+    withUserStateLock(() => {
+      const current = normalizeViewPrsUserState(readJsonFileIfExists(viewPrsUserStateFile, {}));
+      const next = change(current) || current;
+      writeViewPrsUserStateUnlocked(next);
+      return next;
+    });
 
   const writeViewPrsAuthorComments = (state) => {
     const incoming = normalizeViewPrsAuthorComments(state);
@@ -338,6 +403,7 @@ const createViewPrsStateStorage = ({
   return {
     writeJsonFileWithBackup,
     writeViewPrsUserState,
+    updateViewPrsUserState,
     writeViewPrsAuthorComments,
     mergeMissingPerRepoMap,
     migrateLegacyViewPrsUserState,
