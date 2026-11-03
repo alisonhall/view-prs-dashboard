@@ -10,6 +10,18 @@
 const fs = require("fs");
 const path = require("path");
 
+// What went wrong, for a log or the page: an Error's message, or for a
+// command's failure (runViewPrsCommand's and runViewPrsScript's rejections,
+// { error, stderr, ... }) its error and the last line it wrote to stderr -
+// gh's own reason - rather than "[object Object]".
+const describeFailure = (failure) => {
+  if (typeof failure === "string") return failure;
+  if (typeof failure?.message === "string" && failure.message) return failure.message;
+  const reason = String(failure?.error?.message || "").trim();
+  const lastStderrLine = String(failure?.stderr || "").trim().split(/\r?\n/).pop().trim();
+  return [reason, lastStderrLine].filter(Boolean).join(": ") || "Unknown error";
+};
+
 /**
  * Creates command execution helper functions.
  * 
@@ -771,4 +783,4 @@ function createCommandExecutionHelpers({
   };
 }
 
-module.exports = { createCommandExecutionHelpers };
+module.exports = { createCommandExecutionHelpers, describeFailure };

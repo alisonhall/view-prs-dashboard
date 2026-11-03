@@ -1375,6 +1375,35 @@ describe("runViewPrsQuickCheck behavior", () => {
     }
   });
 
+  // runViewPrsScript rejects with { error, stdout, stderr, ... }, not an
+  // Error: its reason, not "[object Object]".
+  test("a repo whose quick-check script fails is reported with the script's reason", async () => {
+    const consoleWarnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
+    appModule.runViewPrsScript = async () => {
+      throw {
+        error: new Error("Command exited with code 1"),
+        stdout: "",
+        stderr: "Checking owner/repo-failing...\nHTTP 401: Bad credentials\n",
+      };
+    };
+
+    try {
+      let result;
+      await withAutoRepos("owner/repo-failing", async () => {
+        result = await runViewPrsQuickCheck();
+      });
+
+      expect(result.reposFailed).toEqual([
+        { repo: "owner/repo-failing", error: "Command exited with code 1: HTTP 401: Bad credentials" },
+      ]);
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        "[view-prs] quick-check failed for owner/repo-failing: Command exited with code 1: HTTP 401: Bad credentials",
+      );
+    } finally {
+      consoleWarnSpy.mockRestore();
+    }
+  });
+
   test("treats unparseable script output as no pending changes rather than throwing", async () => {
     appModule.runViewPrsScript = async () => ({ stdout: "not json", stderr: "" });
 

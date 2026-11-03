@@ -78,7 +78,7 @@ const {
 } = require("./helpers/view-prs-actor-helpers");
 const { createAppConfig } = require("./config/app-config");
 const { createFileIoHelpers } = require("./helpers/file-io-helpers");
-const { createCommandExecutionHelpers } = require("./helpers/command-execution-helpers");
+const { createCommandExecutionHelpers, describeFailure } = require("./helpers/command-execution-helpers");
 const { createSchedulerHelpers } = require("./helpers/scheduler-helpers");
 
 // Configuration and constants
@@ -2509,7 +2509,7 @@ const runViewPrsQuickCheck = async ({
           reposWithNewPendingMergedClosed.add(repo);
         }
       } catch (repoError) {
-        const message = repoError?.message || String(repoError);
+        const message = describeFailure(repoError);
         reposFailed.push({ repo, error: message });
         console.warn(`[view-prs] quick-check failed for ${repo}: ${message}`);
       }
@@ -3002,7 +3002,7 @@ const executeTaskTypeGroup = async (dispatcher, taskType, entries) => {
       dispatcher.markEntryFinished(entry, {
         nowMs: finishedAtMs,
         ok: false,
-        error: error?.message || String(error),
+        error: describeFailure(error),
       }),
     );
   }
