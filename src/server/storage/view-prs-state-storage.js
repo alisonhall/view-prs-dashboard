@@ -146,9 +146,9 @@ const createViewPrsStateStorage = ({
     }
   };
 
-  const writeViewPrsUserStateUnlocked = (state) => {
-    const incoming = normalizeViewPrsUserState(state);
-
+  // The user state file as it is, normalized - restored from its latest
+  // backup first when it's malformed (refusing when there's none to restore).
+  const readUserStateRestoringBackup = () => {
     let existingRead = readJsonFileIfExistsDetailed(viewPrsUserStateFile);
     if (existingRead.exists && existingRead.parseError) {
       const restoredFrom = tryRestoreJsonFileFromLatestBackup(
@@ -167,8 +167,12 @@ const createViewPrsStateStorage = ({
         );
       }
     }
+    return normalizeViewPrsUserState(existingRead.value || {});
+  };
 
-    const existing = normalizeViewPrsUserState(existingRead.value || {});
+  const writeViewPrsUserStateUnlocked = (state) => {
+    const incoming = normalizeViewPrsUserState(state);
+    const existing = readUserStateRestoringBackup();
 
     // Notes keyed by a bare number that the incoming state already has under
     // a repo key (migrated - see view-prs-pr-keys.js) aren't brought back.
@@ -255,10 +259,12 @@ const createViewPrsStateStorage = ({
   const writeViewPrsUserState = (state) => withUserStateLock(() => writeViewPrsUserStateUnlocked(state));
 
   // Reads the user state, hands it (normalized) to change, and writes what
-  // that returns - all under the lock, so the change is made to the latest.
+  // that returns - all under the lock, so the change is made to the latest
+  // (a malformed file's backup, not an empty state that would drop what
+  // the merge doesn't bring back, like conversation confirmations).
   const updateViewPrsUserState = (change) =>
     withUserStateLock(() => {
-      const current = normalizeViewPrsUserState(readJsonFileIfExists(viewPrsUserStateFile, {}));
+      const current = readUserStateRestoringBackup();
       const next = change(current) || current;
       writeViewPrsUserStateUnlocked(next);
       return next;

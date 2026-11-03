@@ -209,6 +209,31 @@ describe("integration behavior", () => {
     });
   });
 
+  test("a confirmation saved over a malformed user state is added to its backup, not to an empty state", async () => {
+    writeViewPrsData({ byPrNumber: { "owner/repo#7": { repo: "owner/repo", prNumber: "7" } }, lastRun: null });
+    const backupFile = path.join(viewPrsBackupDir, `${path.basename(viewPrsUserStateFile)}.user-state.malformed-test.bak`);
+    fs.mkdirSync(viewPrsBackupDir, { recursive: true });
+    fs.writeFileSync(
+      backupFile,
+      JSON.stringify({ ...EMPTY_USER_STATE, threadChecksByRepo: { "owner/repo": { 7: { T1: "sig-1" } } } }),
+    );
+    // The newest backup.
+    const later = new Date(Date.now() + 60 * 1000);
+    fs.utimesSync(backupFile, later, later);
+    fs.writeFileSync(viewPrsUserStateFile, "{ not json");
+
+    try {
+      const res = await request.post("/thread-checks").send({ repo: "owner/repo", prNumber: "7", threadId: "T2", signature: "sig-2" });
+      expect(res.status).toBe(200);
+      expect(JSON.parse(fs.readFileSync(viewPrsUserStateFile, "utf8")).threadChecksByRepo).toEqual({
+        "owner/repo": { 7: { T1: "sig-1", T2: "sig-2" } },
+      });
+    } finally {
+      fs.rmSync(backupFile, { force: true });
+      writeViewPrsUserState();
+    }
+  });
+
   test("a server write keeps the file's Ack history, not an older copy read before the script recorded an Ack", () => {
     const latest = { "owner/repo": { 7: ["2026-01-01T00:00:00Z", "2026-01-03T00:00:00Z"] } };
     writeViewPrsUserState({ ...EMPTY_USER_STATE, ackHistoryByRepo: latest });
