@@ -20,6 +20,7 @@ import { asArray } from '../helpers/pr-as-array.helpers.ts';
 import { extractRowLabelNames, normalizeFilterToken } from '../helpers/pr-filter-label-extraction.helpers.ts';
 import { getManualNotesFieldSummary } from '../helpers/pr-manual-notes-summary.helpers.ts';
 import { createEntryDerivedCache, type EntryDerivedCache } from '../helpers/pr-entry-derived-cache.helpers.ts';
+import { countThreadsToCheck, threadConfirmationsFor } from '../helpers/pr-review-threads.helpers.ts';
 import type { PrData } from '../types/pr-data.ts';
 
 const { formatIsoDatetime } = createPrFormattingHelpers();
@@ -88,7 +89,7 @@ export function useFilteredPrRows(): VisiblePrNumbersResult {
   const values = filterState?.values || DEFAULT_FILTER_STATE_VALUES;
   const { attentionConfig, entryNeedsAttention, entryHasYourLastActivity } = useNeedsAttention();
   const { checkedByListId } = useRowFilterSelection();
-  const { normalizeActorLogin, resolveActorDisplayName, getPreferredActorKey } = useActorIdentity();
+  const { normalizeActorLogin, resolveActorDisplayName, getPreferredActorKey, getEffectiveViewerLogin } = useActorIdentity();
   const debouncedFilterPrNumbers = useDebouncedValue(values.filterPrNumbers, FILTER_PR_NUMBERS_DEBOUNCE_MS);
 
   const cacheRef = useRef<EntryDerivedCache | null>(null);
@@ -98,10 +99,22 @@ export function useFilteredPrRows(): VisiblePrNumbersResult {
   // Set just above and never replaced.
   const cache = cacheRef.current;
 
+  const threadChecksByRepo = payload?.threadChecksByRepo;
   const helpers = useMemo(() => {
     const { resolveScopedRows, normalizeSelectedScope } = createPrScopeSelectionHelpers({
       entryNeedsAttention,
       entryHasYourLastActivity,
+      entryHasThreadsToCheck: (entry) => {
+        const pr = entry?.data || {};
+        return (
+          countThreadsToCheck(
+            pr,
+            String(getEffectiveViewerLogin(pr) || ''),
+            getPreferredActorKey(pr?.authorLogin, pr?.author),
+            threadConfirmationsFor(threadChecksByRepo, entry?.repo, entry?.prNumber),
+          ) > 0
+        );
+      },
     });
     const { collectAssignedUsers } = createPrAssignedUsersHelpers({
       asArray,
@@ -141,6 +154,8 @@ export function useFilteredPrRows(): VisiblePrNumbersResult {
     normalizeActorLogin,
     resolveActorDisplayName,
     getPreferredActorKey,
+    getEffectiveViewerLogin,
+    threadChecksByRepo,
   ]);
 
   return useMemo(

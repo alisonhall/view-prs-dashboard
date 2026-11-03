@@ -236,6 +236,16 @@ const normalizePerRepoMap = (value, valueType = "string") => {
         if (typeof raw === "boolean") {
           perPrOut[prNumber] = raw;
         }
+      } else if (valueType === "stringMap") {
+        // threadChecksByRepo: thread id -> signature.
+        const entries = isObject(raw)
+          ? Object.entries(raw)
+              .map(([key, item]) => [String(key).trim(), String(item || "").trim()])
+              .filter(([key, item]) => key && item)
+          : [];
+        if (entries.length > 0) {
+          perPrOut[prNumber] = Object.fromEntries(entries);
+        }
       } else {
         const normalized = String(raw || "").trim();
         if (normalized) {
@@ -277,6 +287,7 @@ const normalizeViewPrsUserState = (raw) => {
     reverifyByRepo: normalizePerRepoMap(source.reverifyByRepo, "boolean"),
     inReviewByRepo: normalizePerRepoMap(source.inReviewByRepo, "boolean"),
     flaggedByRepo: normalizePerRepoMap(source.flaggedByRepo, "boolean"),
+    threadChecksByRepo: normalizePerRepoMap(source.threadChecksByRepo, "stringMap"),
   };
 };
 

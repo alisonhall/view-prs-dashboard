@@ -2,24 +2,29 @@ import type { PrEntry } from "../types/pr-data.ts";
 import type { AttentionConfig } from "./pr-needs-attention.helpers.ts";
 
 // The "View scope" filter: normalizes the selected scope and narrows the
-// repo's rows to it (last run, needs attention, or needs attention or
-// interacted with), with a label for the applied-filters summary.
+// repo's rows to it (last run, needs attention, needs attention or
+// interacted with, or with conversations you started that someone else
+// resolved, to check), with a label for the applied-filters summary.
 export type SelectedScope =
   | "all"
   | "last-run"
   | "needs-attention"
-  | "needs-attention-or-interacted";
+  | "needs-attention-or-interacted"
+  | "resolved-for-me";
 
 const SELECTED_SCOPES: readonly string[] = [
   "all",
   "last-run",
   "needs-attention",
   "needs-attention-or-interacted",
+  "resolved-for-me",
 ];
 
 export interface PrScopeSelectionDeps {
   entryNeedsAttention?: (entry: PrEntry, attentionConfig: AttentionConfig | undefined) => boolean;
   entryHasYourLastActivity?: (entry: PrEntry) => boolean;
+  // Threads you started that someone else resolved, not confirmed yet.
+  entryHasThreadsToCheck?: (entry: PrEntry) => boolean;
 }
 
 export interface ResolveScopedRowsInput<E extends PrEntry> {
@@ -34,6 +39,7 @@ export interface ResolveScopedRowsInput<E extends PrEntry> {
 const createPrScopeSelectionHelpers = ({
   entryNeedsAttention,
   entryHasYourLastActivity,
+  entryHasThreadsToCheck,
 }: PrScopeSelectionDeps = {}) => {
   const entryNeedsAttentionSafe =
     typeof entryNeedsAttention === "function"
@@ -42,6 +48,10 @@ const createPrScopeSelectionHelpers = ({
   const entryHasYourLastActivitySafe =
     typeof entryHasYourLastActivity === "function"
       ? entryHasYourLastActivity
+      : () => false;
+  const entryHasThreadsToCheckSafe =
+    typeof entryHasThreadsToCheck === "function"
+      ? entryHasThreadsToCheck
       : () => false;
 
   const normalizeSelectedScope = (scopeModeValue: unknown): SelectedScope => {
@@ -83,6 +93,9 @@ const createPrScopeSelectionHelpers = ({
             entryHasYourLastActivitySafe(entry),
         );
         scopeLabel = "needs attention or interacted rows";
+      } else if (selectedScope === "resolved-for-me") {
+        rows = rows.filter((entry) => entryHasThreadsToCheckSafe(entry));
+        scopeLabel = "rows with conversations resolved for you to check";
       }
     }
 

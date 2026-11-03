@@ -460,6 +460,7 @@ Top-level user-state fields:
 | `reverifyByRepo` | object | Repo-scoped reverify flags |
 | `inReviewByRepo` | object | Repo-scoped in-review flags |
 | `flaggedByRepo` | object | Repo-scoped flagged toggles |
+| `threadChecksByRepo` | object | Optional. Conversations you started that someone else resolved, confirmed handled: repo -> PR number -> thread id -> the thread's signature when confirmed (who resolved it, how many submitted comments, the last one's id); a confirmation holds while that's unchanged |
 
 `notesByPrNumber[key]` shape:
 

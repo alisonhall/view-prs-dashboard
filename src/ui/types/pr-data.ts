@@ -306,7 +306,13 @@ export interface PrDataPayload {
   ackByRepo?: PrFlagsByRepo;
   flaggedByRepo?: PrFlagsByRepo;
   inReviewByRepo?: PrFlagsByRepo;
+  // Threads you confirmed were handled after someone else resolved them:
+  // repo -> PR number -> thread id -> the thread's signature then
+  // (threadCheckSignature).
+  threadChecksByRepo?: ThreadChecksByRepo;
 }
+
+export type ThreadChecksByRepo = Record<string, Record<string, Record<string, string | undefined> | undefined> | undefined>;
 
 // A repo's live summary state (dataMeta.liveSummary): when its open PRs
 // were last listed, the last failure, and how often it's listed (null when

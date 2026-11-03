@@ -181,6 +181,12 @@ const userStateValidationPayload = {
     userState.flaggedByRepo !== null
       ? userState.flaggedByRepo
       : {},
+  threadChecksByRepo:
+    userState &&
+    typeof userState.threadChecksByRepo === "object" &&
+    userState.threadChecksByRepo !== null
+      ? userState.threadChecksByRepo
+      : {},
 };
 
 const authorCommentsValidationPayload = {

@@ -214,6 +214,53 @@ const registerViewPrsPrRoutes = ({
     }
   });
 
+  // Confirming that a thread you started, resolved by someone else, was
+  // handled (the Conversations tab's "To check"): its signature then
+  // (threadCheckSignature in pr-review-threads.helpers.ts), or with
+  // `confirmed: false` the confirmation removed. Kept in the user state's
+  // threadChecksByRepo, repo -> PR number -> thread id -> signature.
+  app.post(["/thread-checks", "/view-prs/thread-checks"], (req, res) => {
+    const body = req.body || {};
+    const repo = String(body.repo || "").trim();
+    const prNumber = String(body.prNumber ?? "").trim();
+    const threadId = String(body.threadId || "").trim();
+    const signature = String(body.signature || "").trim();
+    const confirmed = body.confirmed !== false;
+    const startedAt = new Date().toISOString();
+    const triggerMs = Date.now();
+
+    if (!isRepoSlug(repo) || !isValidPrNumber(prNumber) || !threadId || (confirmed && !signature)) {
+      sendErrorStatus({ res, statusCode: 400, error: "Needs repo, prNumber, threadId and (to confirm) signature" });
+      return;
+    }
+
+    try {
+      const userState = normalizeViewPrsUserState(
+        readJsonFileIfExists(viewPrsUserStateFile, {}),
+      );
+      const perRepo = { ...(userState.threadChecksByRepo[repo] || {}) };
+      const perPr = { ...(perRepo[prNumber] || {}) };
+      if (confirmed) perPr[threadId] = signature;
+      else delete perPr[threadId];
+      if (Object.keys(perPr).length > 0) perRepo[prNumber] = perPr;
+      else delete perRepo[prNumber];
+      userState.threadChecksByRepo = { ...userState.threadChecksByRepo, [repo]: perRepo };
+      if (Object.keys(perRepo).length === 0) delete userState.threadChecksByRepo[repo];
+      writeViewPrsUserState(userState);
+
+      appendActionLogEntry({
+        action: "post/thread-checks",
+        triggeredAt: startedAt,
+        durationMs: Date.now() - triggerMs,
+        ok: true,
+        detail: { prNumber, repo, threadId, confirmed },
+      });
+      sendSuccessPayload({ res, payload: { ok: true, prData: readViewPrsData() } });
+    } catch (error) {
+      sendInternalError({ res, error });
+    }
+  });
+
   app.get(["/author-comments", "/view-prs/author-comments"], (req, res) => {
     const { authorLogin: requestedAuthorLogin } = parseAuthorCommentsQueryRequest(
       req.query,

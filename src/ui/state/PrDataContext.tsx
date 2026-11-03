@@ -44,3 +44,9 @@ export function usePrData(): PrDataValue {
   }
   return context;
 }
+
+// For a component that can do without the data (a cell or tab rendered on
+// its own): null outside a <PrDataProvider>.
+export function useOptionalPrData(): PrDataValue | null {
+  return useContext(PrDataContext);
+}

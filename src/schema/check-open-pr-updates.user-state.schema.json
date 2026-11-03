@@ -33,6 +33,24 @@
     },
     "flaggedByRepo": {
       "$ref": "#/$defs/repoBooleanStateMap"
+    },
+    "threadChecksByRepo": {
+      "description": "Conversations you started that someone else resolved, confirmed handled: repo -> PR number -> thread id -> the thread's signature when confirmed",
+      "type": "object",
+      "default": {},
+      "patternProperties": {
+        "^[^\\s/]+/[^\\s/]+$": {
+          "type": "object",
+          "patternProperties": {
+            "^[0-9]+$": {
+              "type": "object",
+              "additionalProperties": { "type": "string" }
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
     }
   },
   "$defs": {

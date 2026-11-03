@@ -1104,6 +1104,86 @@ test("the detail pane's Conversations tab lists unresolved threads by file and o
   expect(consoleErrors).toEqual([]);
 });
 
+test("a conversation you started that someone else resolved: found by the view scope, flagged on the row, confirmed in the Conversations tab", async ({ page }) => {
+  // Adds to PR #2 (in the e2e run's temp copy, put back after the test, as
+  // changeServerData does) a thread the viewer started that hubot resolved;
+  // the user state the confirmation writes, and the saved filters (the
+  // view scope picked here), are put back too - pass or fail, so a failure
+  // can't leave the scope set for the tests after it.
+  const tempDir = path.resolve(String(process.env.VIEW_PRS_E2E_TEMP_DIR || ""));
+  if (!process.env.VIEW_PRS_E2E_TEMP_DIR || !tempDir.startsWith(path.resolve(os.tmpdir()) + path.sep)) {
+    throw new Error(`VIEW_PRS_E2E_TEMP_DIR must be a temp dir, got "${process.env.VIEW_PRS_E2E_TEMP_DIR}"`);
+  }
+  const dataFile = path.join(tempDir, "check-open-pr-updates.data.json");
+  const userStateFile = path.join(tempDir, "check-open-pr-updates.user-state.json");
+  const userDefaultsFile = path.join(tempDir, "user-defaults.json");
+  const restoreAfter = (file) => {
+    const original = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : null;
+    pendingServerDataRestores.push(() => (original === null ? fs.rmSync(file, { force: true }) : fs.writeFileSync(file, original)));
+    return original;
+  };
+  const originalData = restoreAfter(dataFile);
+  restoreAfter(userStateFile);
+  restoreAfter(userDefaultsFile);
+  const data = JSON.parse(originalData);
+  const key = Object.keys(data.byPrNumber).find((candidate) => candidate === "2" || candidate.endsWith("#2"));
+  data.byPrNumber[key].data.reviewThreads.push({
+    id: "e2e-t3",
+    isResolved: true,
+    isOutdated: true,
+    resolvedByLogin: "hubot",
+    comments: [
+      { id: "e2e-t3-c1", authorLogin: "e2e-viewer", createdAt: "2026-01-04T09:00:00Z", path: "src/parser.js", line: 20, body: "Please add a guard here" },
+      { id: "e2e-t3-c2", authorLogin: "hubot", createdAt: "2026-01-04T10:00:00Z", body: "Added one." },
+    ],
+  });
+  fs.writeFileSync(dataFile, JSON.stringify(data, null, 2));
+
+  const { consoleErrors } = collectPageErrors(page);
+  await page.goto("/");
+  await waitForPrTable(page);
+
+  // The view scope leaves only PR #2.
+  await openFilterBar(page);
+  const scope = filterBar(page).getByLabel("View scope", { exact: true });
+  await scope.selectOption("resolved-for-me");
+  await expect(page.getByRole("region", { name: "PR data summary", exact: true, includeHidden: true })).toContainText(
+    "scope=rows with conversations resolved for you to check",
+  );
+  // A PR can be in more than one section: the distinct PRs shown.
+  const shownPrs = async () =>
+    [...new Set(await prTables(page).getByRole("button", { name: /^Show summary for PR #\d+$/, includeHidden: true }).evaluateAll((buttons) => buttons.map((button) => button.getAttribute("aria-label"))))];
+  await expect.poll(shownPrs).toEqual(["Show summary for PR #2"]);
+
+  const openSection = prSection(page, "Open PRs");
+  if (!(await openSection.evaluate((el) => el.open))) {
+    await openSection.getByText("Open PRs", { exact: true }).click();
+  }
+  await expect(openSection.getByText("1 to check")).toBeVisible();
+
+  await summaryToggleFor(openSection, 2).click();
+  await openSection.getByRole("button", { name: "Show details for PR #2", exact: true }).click();
+  await paneTab(page, "Conversations").click();
+  const pane = detailPane(page);
+  await expect(pane.getByText("resolved for you to check")).toBeVisible();
+  await pane.getByRole("group", { name: "Show", exact: true }).getByRole("button", { name: /^To check/ }).click();
+  await pane.getByRole("button", { name: /Please add a guard here/ }).click();
+  await expect(pane.getByText("You started this, and")).toBeVisible();
+  await expect(pane.getByText("replied in it")).toBeVisible();
+
+  await pane.getByRole("button", { name: "Confirm handled", exact: true }).click();
+  await expect(pane.getByText("Nothing to check")).toBeVisible();
+  await expect(openSection.getByText("1 to check")).toHaveCount(0);
+  expect(JSON.parse(fs.readFileSync(userStateFile, "utf8")).threadChecksByRepo).toEqual({
+    "octocat/hello-world": { 2: { "e2e-t3": "hubot|2|e2e-t3-c2" } },
+  });
+
+  // Back to the default scope, for the tests after this one (the shared server keeps it).
+  await scope.selectOption("all");
+  await waitForFilterPersist(page);
+  expect(consoleErrors).toEqual([]);
+});
+
 test("hiding the detail pane is remembered after a reload", async ({ page }) => {
   await page.goto("/");
   await waitForPrTable(page);

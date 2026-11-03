@@ -58,6 +58,7 @@
 - [ ] Keyboard navigation in the PR table: j/k to move between rows, Enter to open the detail pane, `a` to Ack
 - [ ] Undo an Ack: a short "Acked #123 - Undo" toast, since an accidental Ack hides changes
 - [ ] Saved filter views, one click each - e.g. "My PRs needing action", "Waiting on my review"
+- [x] ~~Call out conversations I started that someone else resolved, so I can confirm they were handled~~ - done (2026-11-03): others may resolve my threads on high-priority PRs once they've checked them, which no data shows, so every such thread is "to check" until I confirm it in the Conversations tab (its `To check` chip; the thread shows who resolved it - warning when it was the PR author - whether the code under it changed since, and whether they replied). The Review column shows "N to check" and the `View scope` filter lists those PRs. Confirmations are kept in the user state (`threadChecksByRepo`) and lapse when the thread gets a new reply or is resolved again by someone else.
 
 ### Styling
 

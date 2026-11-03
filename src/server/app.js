@@ -1565,6 +1565,7 @@ const readViewPrsData = () => {
       reverifyByRepo: normalizedUserState.reverifyByRepo,
       inReviewByRepo: normalizedUserState.inReviewByRepo,
       flaggedByRepo: normalizedUserState.flaggedByRepo,
+      threadChecksByRepo: normalizedUserState.threadChecksByRepo,
     };
   }
 
@@ -1651,6 +1652,7 @@ const readViewPrsData = () => {
       reverifyByRepo: mergedUserState.reverifyByRepo,
       inReviewByRepo: mergedUserState.inReviewByRepo,
       flaggedByRepo: mergedUserState.flaggedByRepo,
+      threadChecksByRepo: mergedUserState.threadChecksByRepo,
     };
   } catch (error) {
     return {
@@ -1664,6 +1666,7 @@ const readViewPrsData = () => {
       reverifyByRepo: normalizedUserState.reverifyByRepo,
       inReviewByRepo: normalizedUserState.inReviewByRepo,
       flaggedByRepo: normalizedUserState.flaggedByRepo,
+      threadChecksByRepo: normalizedUserState.threadChecksByRepo,
       readError: error.message,
     };
   }

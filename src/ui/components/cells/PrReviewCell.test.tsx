@@ -176,3 +176,27 @@ describe('PrReviewCell', () => {
     });
   });
 });
+
+describe('PrReviewCell: conversations resolved for you', () => {
+  const identity = {
+    getEffectiveViewerLogin: () => 'me',
+    getPreferredActorKey: (login: unknown) => String(login || ''),
+  } as unknown as Partial<ActorIdentityValue>;
+  const resolvedForMe = (id: string) => ({
+    id,
+    isResolved: true,
+    resolvedByLogin: 'bob',
+    comments: [{ id: `${id}-c`, authorLogin: 'me', createdAt: '2026-01-01T00:00:00Z' }],
+  });
+
+  test('"N to check" for threads you started that someone else resolved', () => {
+    renderCell({ authorLogin: 'author', reviewThreads: [resolvedForMe('T1'), resolvedForMe('T2')] }, { identity });
+    const signal = screen.getByRole('img', { name: '2 conversations you started resolved by someone else, to check' });
+    expect(signal.closest('.ui-signal')).toHaveTextContent('2 to check');
+  });
+
+  test('nothing when there are none', () => {
+    renderCell({ authorLogin: 'author', reviewThreads: [] }, { identity });
+    expect(screen.queryByText(/to check/)).not.toBeInTheDocument();
+  });
+});

@@ -297,7 +297,9 @@ function PaneContent({
             onFiltersChange={onActivityFiltersChange}
           />
         )}
-        {selectedTab === 'conversations' && <PrConversationsTab pr={pr} actorsMap={rowActorsMap} />}
+        {selectedTab === 'conversations' && (
+          <PrConversationsTab pr={pr} actorsMap={rowActorsMap} entry={entry} onDataRefresh={onDataRefresh} />
+        )}
         {/* Kept mounted (hidden) on the other tabs: unmounting would drop
             unsaved edits, which the "unsaved" badge still promises. */}
         <div className="pr-pane-notes" hidden={selectedTab !== 'notes'}>

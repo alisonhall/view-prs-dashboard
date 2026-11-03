@@ -460,6 +460,13 @@
   margin-top: 4px;
 }
 
+/* "N to check": threads you started that someone else resolved. */
+.pr-review-check {
+  flex-basis: 100%;
+  margin-top: 4px;
+  font-size: var(--font-size-xs);
+}
+
 .pr-people-group {
   display: grid;
   /* Wide enough for "Assigned" and "Reviewer" in the usual fonts; a wider

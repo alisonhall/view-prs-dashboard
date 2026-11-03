@@ -456,6 +456,47 @@
 .pr-conv-state[data-state="waiting"] { color: var(--color-accent-text); font-weight: 600; }
 .pr-conv-state[data-state="wrong"] { color: var(--color-attention); font-weight: 600; }
 
+/* A thread resolved for you: "to check" until you confirm it. */
+.pr-conv-check { color: var(--color-attention); font-weight: 600; }
+.pr-conv-check[data-confirmed="true"] { color: var(--color-success); font-weight: 400; }
+
+.pr-conv-check-panel {
+  margin: 0 0 var(--space-2);
+  padding: 6px 10px;
+  border: 1px solid var(--color-attention);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+}
+
+.pr-conv-check-panel[data-confirmed="true"] {
+  border-color: var(--color-border-subtle);
+}
+
+.pr-conv-check-panel > p { margin: 0 0 4px; }
+.pr-conv-check-panel > .pr-conv-callout { margin: 0 0 4px; }
+
+.pr-conv-check-evidence {
+  margin: 0 0 6px;
+  padding-left: 1.2em;
+  color: var(--color-text-muted);
+}
+
+.pr-conv-check-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.pr-conv-check-done {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--color-success);
+}
+
+.pr-conv-check-error { color: var(--color-danger); }
+
 .pr-conv-badge {
   margin-left: 4px;
   padding: 0 6px;

@@ -1,7 +1,9 @@
 import type { PrApprover, PrData, PrEntry } from '../../types/pr-data.ts';
 import { useActorIdentity } from '../../state/ActorIdentityContext';
+import { useOptionalPrData } from '../../state/PrDataContext';
 import { usePrInsightsDisplay } from '../../state/PrInsightsDisplayContext';
 import { describeNotes, describeViewedFiles } from '../../helpers/pr-row-signals.helpers.ts';
+import { countThreadsToCheck, threadConfirmationsFor } from '../../helpers/pr-review-threads.helpers.ts';
 import { Avatar } from '../ui/Avatar';
 import { EmptySignal, Signal, SignalGroup } from '../ui/Signal';
 import { useTooltipController } from '../ui/Tooltip';
@@ -22,7 +24,9 @@ const toCount = (value: unknown): number => {
  * On lines under the slots, labelled so they read without hovering:
  * "Assigned" and the assigned users' avatars, as the old Approved column
  * showed; and "Reviewer" with the viewer's, when their review is requested
- * but they aren't assigned. "Reviewer", not "Review requested": shorter,
+ * but they aren't assigned. And "N to check": threads you started that
+ * someone else resolved, until you confirm in the Conversations tab that
+ * they were handled. "Reviewer", not "Review requested": shorter,
  * and some projects add reviewers automatically, so a request doesn't
  * always mean a review is needed. Its tooltip still says "review
  * requested".
@@ -38,7 +42,8 @@ export interface PrReviewCellProps {
 
 export function PrReviewCell({ entry, pr, actorsMap = {} }: PrReviewCellProps) {
   useTooltipController();
-  const { getEffectiveViewerLogin, resolveActorDisplayName } = useActorIdentity();
+  const { getEffectiveViewerLogin, resolveActorDisplayName, getPreferredActorKey } = useActorIdentity();
+  const payload = useOptionalPrData()?.payload;
   const { collectAssignedUsers, collectPendingReviewRequests, getUserInitials, getOpenConversationCountWithMe } =
     usePrInsightsDisplay();
 
@@ -89,6 +94,13 @@ export function PrReviewCell({ entry, pr, actorsMap = {} }: PrReviewCellProps) {
     };
   };
   const assigned = assignees.map(toPerson).filter((person) => person.login);
+  const toCheck = countThreadsToCheck(
+    pr,
+    viewerLogin,
+    getPreferredActorKey(pr?.authorLogin, pr?.author),
+    threadConfirmationsFor(payload?.threadChecksByRepo, entry?.repo, entry?.prNumber),
+  );
+  const toCheckLabel = `${toCheck} conversation${toCheck === 1 ? '' : 's'} you started resolved by someone else, to check`;
   const requested = viewerReviewerOnly ? [toPerson(viewerReviewerOnly)].filter((person) => person.login) : [];
 
   const summary = [
@@ -98,6 +110,7 @@ export function PrReviewCell({ entry, pr, actorsMap = {} }: PrReviewCellProps) {
     notes || '',
     assigned.length ? `Assigned: ${assigned.map((person) => person.label).join(', ')}` : '',
     requested.length ? `Reviewer: ${requested.map((person) => person.label).join(', ')}` : '',
+    toCheck > 0 ? toCheckLabel : '',
   ].filter(Boolean);
 
   return (
@@ -117,6 +130,11 @@ export function PrReviewCell({ entry, pr, actorsMap = {} }: PrReviewCellProps) {
           )}
           {notes ? <Signal icon="note" label={notes} size={14} inGroup /> : <EmptySignal />}
         </span>
+        {toCheck > 0 && (
+          <span className="pr-review-check">
+            <Signal icon="alert" tone="attention" text={`${toCheck} to check`} label={toCheckLabel} size={13} inGroup />
+          </span>
+        )}
         {(assigned.length > 0 || requested.length > 0) && (
           <span className="pr-review-people">
             {assigned.length > 0 && <PeopleGroup label="Assigned" people={assigned} getUserInitials={getUserInitials} />}

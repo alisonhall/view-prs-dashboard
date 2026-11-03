@@ -5,12 +5,16 @@ import {
   buildThreadViews,
   buildTopLevelComments,
   countThreads,
+  countThreadsToCheck,
   filterCount,
+  getThreadCheck,
+  getThreadChecks,
   getThreadResolutionInfo,
   groupThreadsByFile,
   isWaitingOnViewer,
   mentions,
   nextUnresolvedId,
+  threadConfirmationsFor,
   type ConversationsContext,
   type ThreadResolutionPolicy,
 } from './pr-review-threads.helpers.ts';
@@ -136,7 +140,7 @@ describe('buildThreadViews and countThreads', () => {
   });
 
   test('counts unresolved (waiting or open), waiting, and resolved by the wrong person', () => {
-    expect(countThreads(views)).toEqual({ unresolved: 2, waiting: 1, wrong: 1, total: 4 });
+    expect(countThreads(views)).toEqual({ unresolved: 2, waiting: 1, wrong: 1, toCheck: 0, total: 4 });
   });
 
   test('"Unresolved" also counts the wrongly resolved; "Waiting on me" only those waiting', () => {
@@ -205,5 +209,66 @@ describe('buildReviewSummaries', () => {
       reviewThreads: [thread('t', [comment('bob', '2026-01-02T00:00:05Z', { body: 'Nit here' })])],
     };
     expect(buildReviewSummaries(pr, names, {}).map((r) => r.id)).toEqual(['r1']);
+  });
+});
+
+describe('threads resolved for you, to check', () => {
+  // Started by the viewer ("me"), replied to by the author, resolved by a reviewer.
+  const mine = (extra: Partial<ReviewThread> = {}) =>
+    thread('T1', [comment('me', '2026-01-01T00:00:00Z', { id: 'C1' }), comment('author', '2026-01-02T00:00:00Z', { id: 'C2' })], {
+      isResolved: true,
+      resolvedByLogin: 'Reviewer',
+      ...extra,
+    });
+
+  test('a thread you started that someone else resolved is to check', () => {
+    expect(getThreadCheck(mine(), 'me', 'author')).toEqual({
+      threadId: 'T1',
+      resolvedByLogin: 'Reviewer',
+      byPrAuthor: false,
+      signature: 'reviewer|2|C2',
+      confirmed: false,
+    });
+  });
+
+  test('not when you resolved it, someone else started it, or it is open', () => {
+    expect(getThreadCheck(mine({ resolvedByLogin: 'ME' }), 'me', 'author')).toBeNull();
+    expect(getThreadCheck(thread('T2', [comment('bob', '2026-01-01T00:00:00Z')], { isResolved: true, resolvedByLogin: 'reviewer' }), 'me', 'author')).toBeNull();
+    expect(getThreadCheck(mine({ isResolved: false }), 'me', 'author')).toBeNull();
+    expect(getThreadCheck(mine(), '', 'author')).toBeNull();
+  });
+
+  test('resolved by the PR author is called out', () => {
+    expect(getThreadCheck(mine({ resolvedByLogin: 'Author' }), 'me', 'author')?.byPrAuthor).toBe(true);
+  });
+
+  test('a confirmation holds while the thread is unchanged', () => {
+    const confirmations = { T1: 'reviewer|2|C2' };
+    expect(getThreadCheck(mine(), 'me', 'author', confirmations)?.confirmed).toBe(true);
+    // A new reply, or resolved again by someone else, asks again.
+    const replied = mine({ comments: [...(mine().comments || []), comment('author', '2026-01-03T00:00:00Z', { id: 'C3' })] });
+    expect(getThreadCheck(replied, 'me', 'author', confirmations)?.confirmed).toBe(false);
+    expect(getThreadCheck(mine({ resolvedByLogin: 'other' }), 'me', 'author', confirmations)?.confirmed).toBe(false);
+    // Your own unsubmitted draft reply doesn't.
+    const drafting = mine({ comments: [...(mine().comments || []), comment('me', '2026-01-03T00:00:00Z', { id: 'C9', state: 'PENDING' })] });
+    expect(getThreadCheck(drafting, 'me', 'author', confirmations)?.confirmed).toBe(true);
+  });
+
+  test('counted per PR, and the confirmations read from the payload', () => {
+    const pr: PrData = { reviewThreads: [mine(), mine({ id: 'T3' }), thread('T4', [comment('me', '2026-01-01T00:00:00Z')])] };
+    expect(getThreadChecks(pr, 'me', 'author').map((check) => check.threadId)).toEqual(['T1', 'T3']);
+    const confirmations = threadConfirmationsFor({ 'o/r': { '12': { T1: 'reviewer|2|C2' } } }, 'o/r', 12);
+    expect(countThreadsToCheck(pr, 'me', 'author', confirmations)).toBe(1);
+    expect(threadConfirmationsFor(undefined, 'o/r', 12)).toEqual({});
+  });
+
+  test('the Conversations tab: a count, and the "To check" filter shows the unconfirmed', () => {
+    const pr: PrData = { reviewThreads: [mine(), mine({ id: 'T3' })] };
+    const views = buildThreadViews(pr, { ...CONTEXT, confirmations: { T3: 'reviewer|2|C2' } });
+    expect(countThreads(views).toCheck).toBe(1);
+    expect(groupThreadsByFile(views, 'check').groups.flatMap((group) => group.threads.map((view) => view.id))).toEqual(['T1']);
+    expect(views.find((view) => view.id === 'T3')?.check?.confirmed).toBe(true);
+    // Unresolved shows it too (it still needs a look), not the confirmed one.
+    expect(groupThreadsByFile(views, 'unresolved').groups.flatMap((group) => group.threads.map((view) => view.id))).toEqual(['T1']);
   });
 });

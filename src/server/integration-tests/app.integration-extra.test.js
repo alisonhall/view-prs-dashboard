@@ -134,6 +134,38 @@ describe("integration behavior", () => {
 
   // The Notes tab sends only id, author, tone and note. Saving used to
   // reset every comment's createdAt/updatedAt to the save time.
+  test("POST /thread-checks confirms a thread resolved for you, undoes it, and a notes save keeps it", async () => {
+    writeViewPrsData({ byPrNumber: { "owner/repo#7": { repo: "owner/repo", prNumber: "7" } }, lastRun: null });
+    writeViewPrsUserState({ ...EMPTY_USER_STATE, flaggedByRepo: { "owner/repo": { 3: true } } });
+    const stored = () => JSON.parse(fs.readFileSync(viewPrsUserStateFile, "utf8"));
+
+    const confirmed = await request
+      .post("/thread-checks")
+      .send({ repo: "owner/repo", prNumber: "7", threadId: "T1", signature: "bob|2|C2" });
+    expect(confirmed.status).toBe(200);
+    expect(stored().threadChecksByRepo).toEqual({ "owner/repo": { 7: { T1: "bob|2|C2" } } });
+    // The other user state stays, and the page gets it back.
+    expect(stored().flaggedByRepo).toEqual({ "owner/repo": { 3: true } });
+    expect(confirmed.body.prData.threadChecksByRepo).toEqual({ "owner/repo": { 7: { T1: "bob|2|C2" } } });
+
+    // A notes save rewrites the user state: the confirmation survives.
+    const notes = await request.post("/notes").send({ prNumber: "7", repo: "owner/repo", comments: [], otherNotes: "x" });
+    expect(notes.status).toBe(200);
+    expect(stored().threadChecksByRepo).toEqual({ "owner/repo": { 7: { T1: "bob|2|C2" } } });
+
+    const undone = await request.post("/thread-checks").send({ repo: "owner/repo", prNumber: "7", threadId: "T1", confirmed: false });
+    expect(undone.status).toBe(200);
+    expect(stored().threadChecksByRepo).toEqual({});
+  });
+
+  test("POST /thread-checks rejects a request without a repo, PR number, thread or signature", async () => {
+    const send = (body) => request.post("/thread-checks").send(body);
+    expect((await send({ prNumber: "7", threadId: "T1", signature: "s" })).status).toBe(400);
+    expect((await send({ repo: "owner/repo", prNumber: "x", threadId: "T1", signature: "s" })).status).toBe(400);
+    expect((await send({ repo: "owner/repo", prNumber: "7", signature: "s" })).status).toBe(400);
+    expect((await send({ repo: "owner/repo", prNumber: "7", threadId: "T1" })).status).toBe(400);
+  });
+
   test("given stored note comments, when POST /notes saves them without timestamps, then unchanged ones keep theirs and an edited one keeps createdAt", async () => {
     const prNumber = "124";
     writeViewPrsData({ byPrNumber: { [prNumber]: { repo: "owner/repo" } }, lastRun: null });

@@ -107,3 +107,18 @@ describe("pr scope selection helpers", () => {
     expect(result.rows).toEqual([{ id: 1 }, { id: 3 }]);
   });
 });
+
+describe("resolved-for-me scope", () => {
+  test("keeps the rows with conversations resolved for you to check", () => {
+    const { normalizeSelectedScope, resolveScopedRows } = createPrScopeSelectionHelpers({
+      entryHasThreadsToCheck: (entry) => entry.prNumber === "2",
+    });
+    expect(normalizeSelectedScope("resolved-for-me")).toBe("resolved-for-me");
+    const { rows, scopeLabel } = resolveScopedRows({
+      rowsForRepo: [{ prNumber: "1" }, { prNumber: "2" }],
+      selectedScope: "resolved-for-me",
+    });
+    expect(rows.map((entry) => entry.prNumber)).toEqual(["2"]);
+    expect(scopeLabel).toBe("rows with conversations resolved for you to check");
+  });
+});

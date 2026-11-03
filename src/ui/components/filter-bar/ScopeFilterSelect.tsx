@@ -2,7 +2,9 @@ import { useFilterState } from '../../state/FilterStateContext';
 
 /**
  * The filter bar's "View scope": which stored rows the table starts from
- * (all, the last run's, or those needing attention). FilterStateContext's
+ * (all, the last run's, those needing attention, or those with
+ * conversations you started that someone else resolved, until you confirm
+ * them). FilterStateContext's
  * `scopeMode`, saved with the other view filters.
  */
 export function ScopeFilterSelect() {
@@ -14,6 +16,7 @@ export function ScopeFilterSelect() {
       <option value="last-run">Last run rows</option>
       <option value="needs-attention">Needs attention rows</option>
       <option value="needs-attention-or-interacted">Needs attention or interacted rows</option>
+      <option value="resolved-for-me">Conversations resolved for you to check</option>
     </select>
   );
 }
