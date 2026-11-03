@@ -200,6 +200,10 @@ export interface PrData {
   // The viewer's own last activity on the PR (README: "Your last
   // activity"); "" or "-" when there is none.
   baseline?: string;
+  // The commits after the one the viewer's latest review was on: new since
+  // that review though dated before it (a commit's date is when it was
+  // made, not pushed). Empty when an ack is the baseline.
+  commitsAfterReview?: string[];
   url?: string;
   author?: string;
   authorLogin?: string;

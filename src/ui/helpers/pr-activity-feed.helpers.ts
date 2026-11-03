@@ -70,6 +70,9 @@ export interface ActivityFeedOptions {
   kinds: readonly ActivityKind[];
   // Days are calendar days here; the browser's own zone when omitted.
   timeZone?: string;
+  // Commits new since the viewer last looked though dated before it: those
+  // after the one their latest review was on (the row's commitsAfterReview).
+  newCommitOids?: readonly string[];
 }
 
 // Each formatter is made once, per locale and options: the tab re-renders
@@ -102,7 +105,11 @@ export const formatTimeOfDay = (value: unknown, timeZone?: string): string => {
 export const buildActivityFeed = (events: readonly PrActivityEvent[], options: ActivityFeedOptions): ActivityFeed => {
   const lastLooked = parseTime(options.lastLookedAt);
   const hasLastLooked = Number.isFinite(lastLooked);
-  const isSince = (event: PrActivityEvent) => hasLastLooked && parseTime(event?.occurredAt) > lastLooked;
+  const newCommitOids = new Set(options.newCommitOids || []);
+  const isSince = (event: PrActivityEvent) =>
+    hasLastLooked &&
+    (parseTime(event?.occurredAt) > lastLooked ||
+      (activityKindOf(event) === "commit" && newCommitOids.has(String(event?.sourceId || ""))));
   const sinceCount = events.filter(isSince).length;
   const sinceScope = options.scope === "since" && hasLastLooked;
   const scoped = sinceScope ? events.filter(isSince) : events.slice();

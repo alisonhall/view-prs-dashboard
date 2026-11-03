@@ -830,6 +830,11 @@ const computePrRow = (input) => {
           "",
         )
       : "";
+  // For the Activity tab's "since I last looked": the commits after the
+  // reviewed one, which their dates alone would put before it.
+  const detailCommits = each(field(detail, "commits"));
+  const reviewedIndex = reviewedOid === "" ? -1 : detailCommits.findIndex((commit) => commit?.oid === reviewedOid);
+  const commitsAfterReview = reviewedIndex === -1 ? [] : detailCommits.slice(reviewedIndex + 1).map((commit) => alt(commit?.oid, "")).filter((oid) => oid !== "");
   const externalCommitCount = countExternalCommits(detail, {
     viewerLogin,
     since,
@@ -1021,6 +1026,7 @@ const computePrRow = (input) => {
     activityTimelineSummary,
     activityTimeline,
     baseline: effectiveLast,
+    commitsAfterReview,
     reason,
   };
   return { row, clearAck };

@@ -255,9 +255,15 @@ export function PrActivityTab({ pr, actorsMap, lastLookedAt, filters, onFiltersC
   const events = useMemo(() => buildActivityEvents(pr, Number.POSITIVE_INFINITY), [buildActivityEvents, pr]);
   const hasLastLooked = Boolean(lastLookedAt);
   const scope: ActivityScope = hasLastLooked ? filters.scope : 'all';
+  // Not once an Ack later than the row's baseline is when they last looked:
+  // that saw these commits too.
+  const newCommitOids = useMemo(
+    () => (lastLookedAt && lastLookedAt === String(pr?.baseline || '').trim() && Array.isArray(pr?.commitsAfterReview) ? pr.commitsAfterReview : []),
+    [lastLookedAt, pr],
+  );
   const feed = useMemo(
-    () => buildActivityFeed(events, { scope, lastLookedAt, kinds: filters.kinds, timeZone }),
-    [events, scope, lastLookedAt, filters.kinds, timeZone],
+    () => buildActivityFeed(events, { scope, lastLookedAt, kinds: filters.kinds, timeZone, newCommitOids }),
+    [events, scope, lastLookedAt, filters.kinds, timeZone, newCommitOids],
   );
   const prNumber = String(pr?.number ?? '');
   // A closed PR's timeline stops at its close date (mergedAt wins, else

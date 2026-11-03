@@ -45,6 +45,27 @@ describe('activityKindOf', () => {
   });
 });
 
+describe('commits pushed after the review last looked at', () => {
+  // Reviewed at 11:00; c2 was committed at 10:00 and pushed after.
+  const events = [commit('c2', '2026-03-01T10:00:00Z'), commit('c1', '2026-03-01T09:00:00Z')];
+  const since: ActivityFeedOptions = { ...ALL, scope: 'since', lastLookedAt: '2026-03-01T11:00:00Z' };
+
+  test('count as since then, though dated before', () => {
+    const feed = buildActivityFeed(events, { ...since, newCommitOids: ['c2'] });
+    expect(feed.sinceCount).toBe(1);
+    expect(outline(feed)).toEqual([{ day: '2026-03-01', items: ['c2'] }]);
+  });
+
+  test('without the list, go by date', () => {
+    expect(buildActivityFeed(events, since).sinceCount).toBe(0);
+  });
+
+  test('only commits: another event with that id stays by its date', () => {
+    const feed = buildActivityFeed([event('c2', '2026-03-01T10:00:00Z')], { ...since, newCommitOids: ['c2'] });
+    expect(feed.sinceCount).toBe(0);
+  });
+});
+
 describe('getLastLookedAt', () => {
   test('is the later of the last activity and the last Ack', () => {
     expect(getLastLookedAt('2026-01-02T00:00:00Z', '2026-01-05T00:00:00Z')).toBe('2026-01-05T00:00:00Z');

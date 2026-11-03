@@ -188,14 +188,17 @@ describe("check-open-pr-updates shell helper behavior", () => {
         ...extra.input,
       }).row;
 
-    test("count as new though made before the review", () => {
+    test("count as new though made before the review, and are listed for the Activity tab", () => {
       const row = lateCommitRow();
       expect(row.status).toBe("CHANGED");
       expect(row.reason).toBe("commit");
+      expect(row.commitsAfterReview).toEqual(["x2"]);
     });
 
     test("don't count once an ack after them is the baseline", () => {
-      expect(lateCommitRow({ input: { ackAt: "2026-03-01T13:00:00Z" } }).status).toBe("NO_CHANGE");
+      const row = lateCommitRow({ input: { ackAt: "2026-03-01T13:00:00Z" } });
+      expect(row.status).toBe("NO_CHANGE");
+      expect(row.commitsAfterReview).toEqual([]);
     });
 
     test("go by date when the reviewed commit is gone (a force-push)", () => {
