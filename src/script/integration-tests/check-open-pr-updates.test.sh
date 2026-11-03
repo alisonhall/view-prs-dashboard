@@ -314,11 +314,11 @@ run_ack_store_tests() {
   set_ack_ts 100 '2026-03-06T00:00:00Z'
   assert_eq "$(get_ack_ts 100)" '2026-03-06T00:00:00Z' 'set/get ack failed for repo-b'
 
-  clear_all_repo_acks
-  assert_eq "$(get_ack_ts 100)" '' 'clear_all_repo_acks should clear only current repo entries'
+  clear_ack_ts 100
+  assert_eq "$(get_ack_ts 100)" '' 'clear_ack_ts should clear the current repo entry'
 
   REPO='owner/repo-a'
-  assert_eq "$(get_ack_ts 100)" '2026-03-05T00:00:00Z' 'clear_all_repo_acks should not clear other repo entries'
+  assert_eq "$(get_ack_ts 100)" '2026-03-05T00:00:00Z' 'clear_ack_ts should not clear other repo entries'
 
   clear_ack_ts 100
   assert_eq "$(get_ack_ts 100)" '' 'clear_ack_ts should remove specific PR ack'

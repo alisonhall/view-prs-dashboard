@@ -582,37 +582,6 @@ get_in_review_required() {
   jq -r --arg repo "$REPO" --arg number "$number" '.inReviewByRepo[$repo][$number] // false' "$USER_STATE_FILE" 2>/dev/null
 }
 
-get_flagged_required() {
-  local number="$1"
-  jq -r --arg repo "$REPO" --arg number "$number" '.flaggedByRepo[$repo][$number] // false' "$USER_STATE_FILE" 2>/dev/null
-}
-
-set_reverify_required_unlocked() {
-  local number="$1"
-  local tmp
-  tmp=$(mktemp)
-  jq --arg repo "$REPO" --arg number "$number" '(.reverifyByRepo //= {}) | (.reverifyByRepo[$repo] //= {}) | .reverifyByRepo[$repo][$number] = true' "$USER_STATE_FILE" >"$tmp"
-  replace_state_file "$tmp" "$USER_STATE_FILE" 'user-state'
-}
-
-set_reverify_required() {
-  local number="$1"
-  with_user_state_lock set_reverify_required_unlocked "$number"
-}
-
-clear_reverify_required_unlocked() {
-  local number="$1"
-  local tmp
-  tmp=$(mktemp)
-  jq --arg repo "$REPO" --arg number "$number" 'if .reverifyByRepo[$repo] then del(.reverifyByRepo[$repo][$number]) else . end' "$USER_STATE_FILE" >"$tmp"
-  replace_state_file "$tmp" "$USER_STATE_FILE" 'user-state'
-}
-
-clear_reverify_required() {
-  local number="$1"
-  with_user_state_lock clear_reverify_required_unlocked "$number"
-}
-
 set_in_review_required_unlocked() {
   local number="$1"
   local tmp
@@ -726,17 +695,6 @@ clear_ack_ts() {
   local number="$1"
   local set_reverify="${2:-true}"
   with_user_state_lock clear_ack_ts_unlocked "$number" "$set_reverify"
-}
-
-clear_all_repo_acks_unlocked() {
-  local tmp
-  tmp=$(mktemp)
-  jq --arg repo "$REPO" 'if .ackByRepo then del(.ackByRepo[$repo]) else . end' "$USER_STATE_FILE" >"$tmp"
-  replace_state_file "$tmp" "$USER_STATE_FILE" 'user-state'
-}
-
-clear_all_repo_acks() {
-  with_user_state_lock clear_all_repo_acks_unlocked
 }
 
 ensure_user_state_store() {
@@ -1775,22 +1733,6 @@ pr_passes_author_filters() {
   done <<<"$INCLUDE_AUTHORS"
 
   return 1
-}
-
-filter_prs_b64_by_filters() {
-  local b64_lines="$1"
-  local filtered=''
-  local pr_json
-
-  while IFS= read -r pr_item; do
-    [[ -z "$pr_item" ]] && continue
-    pr_json=$(printf '%s' "$pr_item" | base64 --decode)
-    if pr_passes_label_filters "$pr_json" && pr_passes_author_filters "$pr_json"; then
-      filtered+="$pr_item"$'\n'
-    fi
-  done <<<"$b64_lines"
-
-  printf '%s' "$filtered"
 }
 
 row_passes_display_filters() {
