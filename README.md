@@ -241,7 +241,7 @@ See [Development Servers](#development-servers) section for more details.
 
 - `gh` (GitHub CLI), authenticated (`gh auth login`)
 - Bash shell (on Windows: [Git for Windows](https://git-scm.com/download/win)'s Git Bash, or WSL - there's no bash on `PATH` in a native `cmd.exe`/PowerShell terminal)
-- Node.js on `PATH` (the server's): the script computes each PR's row in `src/script/compute-pr-row.js` - one process a row, where that was dozens of `jq` calls (about 6x faster)
+- Node.js: the script computes each PR's row in `src/script/compute-pr-row.js` - one process a row, where that was dozens of `jq` calls (about 6x faster). From the web UI it uses the server's own Node; run standalone, `node` on `PATH`
 
 `jq` is provided automatically by `npm install` (via the `node-jq` dependency, which downloads a real jq binary into `node_modules`) - no manual install needed. `check-open-pr-updates.sh` prefers that bundled binary over a system-wide `jq`, falling back to one on `PATH` only if `node_modules` is missing.
 
@@ -988,7 +988,7 @@ An automatic update says so in the header's status line once per new run (`Auto-
 - `jq is required`
   - Install `jq`, then verify with `jq --version`.
 - `node is required`
-  - The script computes rows with Node (`src/script/compute-pr-row.js`): put the Node.js the server uses on `PATH`, then verify with `node --version`.
+  - The script computes rows with Node (`src/script/compute-pr-row.js`): run standalone, it uses `node` from `PATH` (verify with `node --version`), or the one `VIEW_PRS_NODE` names. Runs from the web UI use the server's own Node.
 - `Permission denied` when running scripts
   - Run `chmod +x run-prs src/script/check-open-pr-updates.sh` from `view-prs`.
 - `npm start --help` shows npm help instead of script help

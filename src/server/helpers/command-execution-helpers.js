@@ -300,6 +300,11 @@ function createCommandExecutionHelpers({
         stdio: ["ignore", "pipe", "pipe"],
         env: {
           ...process.env,
+          // The script computes rows with this Node (it needn't be on
+          // PATH); forward slashes so Git Bash runs it on Windows.
+          ...(typeof process.execPath === "string" && process.execPath
+            ? { VIEW_PRS_NODE: process.execPath.replace(/\\/g, "/") }
+            : {}),
           ...(options?.env || {}),
         },
       });

@@ -321,6 +321,28 @@ describe("Command Execution Helpers", () => {
     });
   });
 
+  describe("Given the server's own Node", () => {
+    test("When a script runs, Then it gets that Node's path, with forward slashes", async () => {
+      let closeHandler;
+      mockChild.on.mockImplementation((event, handler) => {
+        if (event === "close") closeHandler = handler;
+      });
+      mockProcess.execPath = "C:\\Users\\me\\fnm\\node.exe";
+
+      const promise = commandHelpers.runViewPrsScript(["test.sh"]);
+      closeHandler(0, null);
+      await promise;
+
+      expect(mockSpawn).toHaveBeenCalledWith(
+        "bash",
+        ["test.sh"],
+        expect.objectContaining({
+          env: expect.objectContaining({ VIEW_PRS_NODE: "C:/Users/me/fnm/node.exe" }),
+        }),
+      );
+    });
+  });
+
   describe("Given runViewPrsShellScript", () => {
     test("When shell script called, Then executes bash command", async () => {
       // Arrange

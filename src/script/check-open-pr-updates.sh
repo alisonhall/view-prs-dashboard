@@ -100,6 +100,11 @@ if [[ -n "$JQ_BIN" ]]; then
   export -f jq
 fi
 
+# The Node that computes each row (compute-pr-row.js): the server passes
+# its own (process.execPath), which needn't be on PATH - nvm, Volta or an
+# editor's bundled Node; run standalone, `node` from PATH.
+NODE_BIN="${VIEW_PRS_NODE:-node}"
+
 DATA_DIR="${DATA_DIR:-$VIEW_PRS_DIR/data}"
 PR_STATE_FILE="${PR_STATE_FILE:-$DATA_DIR/check-open-pr-updates.data.json}"
 PR_STATE_LOCK_DIR="${PR_STATE_LOCK_DIR:-$DATA_DIR/check-open-pr-updates.data.lock}"
@@ -143,7 +148,7 @@ CHANGE_FILTER_IGNORE_COMMENT_AUTHORS=''
 CHANGE_FILTER_IGNORE_REVIEW_AUTHORS=''
 CHANGE_FILTER_IGNORE_COMMIT_PATTERNS=''
 # What counts as a merge commit (user-defaults.json's mergeCommitRules), as
-# JSON arrays for jq; see count_external_commits.
+# JSON arrays; see countExternalCommits in compute-pr-row.js.
 MERGE_COMMIT_HEADLINE_PATTERNS_JSON='["^Merge\\b"]'
 MERGE_COMMIT_LOGINS_JSON='[]'
 USER_DEFAULTS_FILE=''
@@ -1089,7 +1094,7 @@ fetch_pr_review_url_map_json() {
   fi
 
   # Returns a JSON object mapping "<submittedAt>_<authorLogin>" => html_url for
-  # each review, so that normalize_pr_reviews_json can be enriched with URLs.
+  # each review, so that compute-pr-row.js can give each review its URL.
   # The gh CLI's --json reviews schema doesn't expose url, so we use the REST API.
   local result
   local api_output
@@ -1775,7 +1780,9 @@ compute_pr_state_json() {
     --argjson mergeLogins "$MERGE_COMMIT_LOGINS_JSON" \
     '$ARGS.named' >"$input_dir/settings.json"
 
-  if ! computed=$(node "$SCRIPT_DIR/compute-pr-row.js" "$input_dir"); then
+  if ! computed=$("$NODE_BIN" "$SCRIPT_DIR/compute-pr-row.js" "$input_dir"); then
+    # Reported with the unfetched PRs (its stored row stays); this says why.
+    echo "PR #$number: compute-pr-row.js failed; its row is kept as stored." >&2
     rm -rf "$input_dir"
     emit_pr_progress_marker 'END' "$number"
     return 1
@@ -2796,7 +2803,7 @@ main() {
   fi
 
   # Each row is computed in compute-pr-row.js.
-  if ! command -v node >/dev/null 2>&1; then
+  if ! command -v "$NODE_BIN" >/dev/null 2>&1; then
     echo 'node is required.' >&2
     exit 1
   fi
