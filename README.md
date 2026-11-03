@@ -195,6 +195,8 @@ Script guide:
   - Proxies `/view-prs/*` API calls to backend on port 9000
   - Use for frontend-focused work with backend already running
 
+The backend answers only on this computer (`127.0.0.1`). It has no sign-in, and anyone who can reach it can read your notes and data, start runs, and apply labels on GitHub as your `gh` account. `VIEW_PRS_HOST=0.0.0.0` opens it to your network; `VIEW_PRS_PORT` changes the port.
+
 - **`npm run build:ui`**: Production build
   - Compiles React app to optimized static files
   - Output: `dist/ui/` directory

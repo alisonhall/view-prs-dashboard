@@ -1,4 +1,5 @@
 const http = require("http");
+const os = require("os");
 const { spawn } = require("child_process");
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -257,6 +258,21 @@ describe("server startup behavior", () => {
     });
 
     expect(response.body.length).toBeGreaterThan(0);
+  });
+
+  // It has no sign-in, so by default only this computer reaches it - not
+  // others on the network, through this machine's own network address.
+  test("refuses connections on this machine's network address by default", async () => {
+    const networkAddress = Object.values(os.networkInterfaces())
+      .flat()
+      .find((entry) => entry && entry.family === "IPv4" && !entry.internal)?.address;
+    if (!networkAddress) {
+      return;
+    }
+
+    await expect(requestServer(`http://${networkAddress}:${port}/`, 3000)).rejects.toThrow(
+      /ECONNREFUSED|Timed out/,
+    );
   });
 
   test("uses default port 9000 when VIEW_PRS_PORT is not set", async () => {

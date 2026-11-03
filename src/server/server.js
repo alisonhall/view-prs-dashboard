@@ -25,11 +25,17 @@ const requestedPort =
       ? Number(rawRequestedPort)
       : 9000;
 
+// This computer only, by default: the server has no sign-in, and anyone
+// who can reach it can read the notes and data, start runs, and apply
+// labels on GitHub as this machine's gh account. VIEW_PRS_HOST=0.0.0.0
+// opens it to the network.
+const requestedHost = String(process.env.VIEW_PRS_HOST || "").trim() || "127.0.0.1";
+
 // Create the app
 const app = createViewPrsApp();
 
 // Start the server
-const server = app.listen(requestedPort, () => {
+const server = app.listen(requestedPort, requestedHost, () => {
   // Get the actual port (in case 0 was requested)
   const actualPort = server.address().port;
   const baseUrl = `http://localhost:${actualPort}`;
