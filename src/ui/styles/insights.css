@@ -31,6 +31,25 @@
   max-height: 480px;
 }
 
+/* Light even in the dark theme: the hook's HTML is whatever the script
+   returns, inline colours and all, and those were written against the
+   light page - dark text, light badges. Recolouring unknown content can't
+   be done reliably (an inverting filter mangles images and brand colours),
+   so it keeps the light theme's colours on a light card instead. Literal
+   values: the light theme's tokens, which the dark theme redefines. */
+:root[data-theme="dark"] .pr-insights-hook-content {
+  color-scheme: light;
+  background: #ffffff;
+  color: #1f2328;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+
+:root[data-theme="dark"] .pr-insights-hook-content a {
+  color: #0757ba;
+}
+
 .insight-list {
   display: grid;
   gap: 6px;
