@@ -28,6 +28,59 @@ const { computePrRow, buildReasons, buildActivityEvents, buildActivityTimelineSu
 const runScriptFn = (expression) =>
   runShell(`source "${scriptPath}"; USER_STATE_FILE="${isolatedUserStateFile}"; ${expression}`);
 
+// Fake GitHub pages for a fetch helper, one file each: gh_with_retry
+// answers with the page its request names (page=N for REST, the cursor
+// for GraphQL), so no fetch goes through the command line it used to.
+const withFakePages = (pages, expression) => {
+  const fs = require("fs");
+  const os = require("os");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fake-pages-"));
+  pages.forEach((page, index) => fs.writeFileSync(path.join(dir, `${index + 1}.json`), JSON.stringify(page)));
+  const bashDir = dir.replace(/\\/g, "/");
+  try {
+    return runScriptFn(`
+      PAGES="${bashDir}"; REPO_OWNER=o; REPO_NAME=r; REVIEW_COMMENT_CACHE_DIR=$(mktemp -d); FILES_CACHE_DIR=$(mktemp -d)
+      gh_with_retry() {
+        local arg page=1
+        for arg in "$@"; do
+          case "$arg" in
+            *page=*) page=\${arg##*page=} ;;
+            after=*) page=\${arg#after=} ;;
+          esac
+        done
+        cat "$PAGES/$page.json"
+      }
+      ${expression}`);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+};
+
+describe("fetches too big for a command line", () => {
+  test("review comments: every page, though one page is past 32 KB", () => {
+    const comment = (id) => ({ id, user: { login: "bob" }, body: "x", created_at: "2026-03-01T00:00:00Z", diff_hunk: "@@ -1 +1 @@\n" + "y".repeat(3000), pull_request_review_id: 1 });
+    const pages = [Array.from({ length: 100 }, (_, i) => comment(i)), [comment(100), comment(101)]];
+    expect(withFakePages(pages, `fetch_pr_review_comments_json 5 | jq 'length'`)).toBe("102");
+  });
+
+  test("viewed files: every file of a PR with over a thousand", () => {
+    const pages = Array.from({ length: 12 }, (_, p) => ({
+      data: {
+        repository: {
+          pullRequest: {
+            changedFiles: 1200,
+            files: {
+              nodes: Array.from({ length: 100 }, (_, i) => ({ viewerViewedState: i % 2 === 0 ? "VIEWED" : "UNVIEWED" })),
+              pageInfo: { hasNextPage: p < 11, endCursor: String(p + 2) },
+            },
+          },
+        },
+      },
+    }));
+    expect(withFakePages(pages, `fetch_pr_viewed_files_stats_json 5`)).toBe('{"changedFiles":1200,"viewedFiles":600}');
+  });
+});
+
 describe("check-open-pr-updates shell helper behavior", () => {
   test("a row's source fingerprint is a versioned SHA-256 digest", () => {
     const { row } = computePrRow({ pr: { number: 1 }, viewedFilesStats: { changedFiles: 0, viewedFiles: 0 } });

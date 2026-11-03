@@ -1467,16 +1467,22 @@ fetch_pr_review_comments_json() {
   local page_count
   local api_output='[]'
   local normalized
+  local pages_file
 
+  # The pages go through a file, not --argjson: a page of 100 comments
+  # (with their diff hunks) is past Windows' 32 KB command line, and can be
+  # past Linux's 128 KB an argument - the jq failed, and the PR lost its
+  # review comments.
+  pages_file=$(mktemp)
   while true; do
     page_output=$(gh_with_retry gh api "/repos/$REPO_OWNER/$REPO_NAME/pulls/$number/comments?per_page=100&page=$page" 2>/dev/null) || page_output='[]'
-    api_output=$(jq -cn --argjson current "$api_output" --argjson pageData "$page_output" '
-      $current + (if ($pageData | type) == "array" then $pageData else [] end)
-    ' 2>/dev/null) || api_output='[]'
+    printf '%s\n' "$page_output" >>"$pages_file"
     page_count=$(printf '%s' "$page_output" | jq -r 'if type == "array" then length else 0 end' 2>/dev/null) || page_count=0
     [[ "$page_count" -lt 100 ]] && break
     page=$((page + 1))
   done
+  api_output=$(jq -cs 'map(if type == "array" then . else [] end) | add // []' "$pages_file" 2>/dev/null) || api_output='[]'
+  rm -f "$pages_file"
 
   normalized=$(printf '%s' "$api_output" | jq -c '
     if type == "array" then
@@ -1516,7 +1522,6 @@ fetch_pr_viewed_files_stats_json() {
   local number="$1"
   local response
   local fetch_failed=0
-  local files_json='[]'
 
   if [[ -z "$FILES_CACHE_DIR" ]]; then
     FILES_CACHE_DIR=$(mktemp -d)
@@ -1573,16 +1578,14 @@ fetch_pr_viewed_files_stats_json() {
     return
   fi
 
-  if [[ -s "$tmp_nodes" ]]; then
-    files_json=$(jq -s '.' "$tmp_nodes" 2>/dev/null || echo '[]')
-  fi
-
-  jq -cn --arg changedFiles "$changed_files" --argjson files "$files_json" '
+  # The files straight from their file, not --argjson: a PR with a few
+  # hundred files is past Windows' 32 KB command line.
+  jq -cs --arg changedFiles "$changed_files" '
     {
       changedFiles: (($changedFiles | split("\n") | map(select(length > 0)) | .[0] // "0") | tonumber? // 0),
-      viewedFiles: (($files // []) | map(select((.viewerViewedState // "") == "VIEWED")) | length)
+      viewedFiles: (map(select((.viewerViewedState // "") == "VIEWED")) | length)
     }
-  ' >"$cache_file"
+  ' "$tmp_nodes" >"$cache_file"
   cat "$cache_file"
 }
 
