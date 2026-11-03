@@ -40,8 +40,8 @@ export interface ShouldShowNeedsAttentionInput {
   config?: AttentionConfig;
 }
 
-// What each change-reason token from check-open-pr-updates.sh's
-// build_reasons means. An unknown token is shown as it is.
+// What each change-reason token from src/script/compute-pr-row.js's
+// buildReasons means. An unknown token is shown as it is.
 const CHANGE_REASON_TEXT: Record<string, string> = {
   "unanswered-thread": "Unanswered review threads",
   "thread-reply": "New replies in review threads",

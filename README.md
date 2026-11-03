@@ -1101,11 +1101,14 @@ When status is `CHANGED`, optional reason tags can be shown inline:
   - `unanswered-thread`
   - `thread-reply`
   - `comment`
+  - `review` (`CHANGES_REQUESTED`, or `COMMENTED` with a body - not approvals, nor the empty review GitHub wraps each inline comment in, which the thread reasons cover)
   - `commit`
 - For PRs authored by others:
   - `comment`
   - `review` (non-approval reviews such as `COMMENTED` or `CHANGES_REQUESTED`)
   - `commit` (non-merge commits)
+
+A commit counts as new when it's dated after your baseline, or comes after the commit your latest review was on - a commit's date is when it was made, not pushed, so one made before your review and pushed after it still shows. After an acknowledgment, only the date counts.
 
 ## Approval column behavior
 

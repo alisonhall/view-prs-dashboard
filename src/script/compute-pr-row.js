@@ -6,13 +6,15 @@
 // clears an ack and writes the detail file; this is the computation only,
 // one process a row.
 //
-// It matches the jq it replaced value for value (compute-pr-row.parity.test.js
-// runs both): jq's ordering (sort_by, group_by, unique_by, string
-// comparison by code point), its `//` (only null and false fall through),
-// fromdateiso8601's one format, `jq -r`'s raw output, and each object's key
-// order.
+// It was ported to match the jq value for value, checked by a parity test
+// until the port shipped: jq's ordering (sort_by, group_by, unique_by,
+// string comparison by code point), its `//` (only null and false fall
+// through), fromdateiso8601's one format, `jq -r`'s raw output, and each
+// object's key order.
 //
-// CLI: node compute-pr-row.js <input.json> - prints "clear-ack" or
+// CLI: node compute-pr-row.js <input-dir> - reads pr.json, detail.json,
+// threads.json, review-comments.json, review-url-map.json,
+// viewed-files.json and settings.json from it, and prints "clear-ack" or
 // "keep-ack" on the first line (the ack to clear: CHANGED since it), and
 // the row's JSON on the second.
 
@@ -583,14 +585,19 @@ const splitList = (text, separator) =>
     .split(separator)
     .filter((part) => part.length > 0);
 
-// count_external_commits: commits with an author other than the viewer,
+// countExternalCommits: commits with an author other than the viewer,
 // after `since` (every one when empty), leaving out merge commits (a
 // headline matching a merge pattern, case-insensitively - an invalid
 // pattern matches nothing - or every author in the merge logins) and ones
 // matching the ignore patterns. An invalid ignore pattern failed the jq
-// there, which counted as none.
-const countExternalCommits = (detail, { viewerLogin, since = "", ignoreCommitPatterns = "", mergeHeadlinePatterns = [], mergeLogins = [] }) => {
+// there, which counted as none. With `reviewedOid` (the commit the
+// viewer's latest review was on), the commits after it in the PR count as
+// new too: a commit's date is when it was made, not pushed, so one made
+// before the review and pushed after it would otherwise be missed.
+const countExternalCommits = (detail, { viewerLogin, since = "", ignoreCommitPatterns = "", mergeHeadlinePatterns = [], mergeLogins = [], reviewedOid = "" }) => {
   const mergeLoginList = mergeLogins.map(asciiDowncase);
+  const allCommits = each(field(detail, "commits"));
+  const reviewedIndex = reviewedOid === "" ? -1 : allCommits.findIndex((commit) => commit?.oid === reviewedOid);
   let ignoreRegex = null;
   if (ignoreCommitPatterns.length > 0) {
     try {
@@ -599,9 +606,10 @@ const countExternalCommits = (detail, { viewerLogin, since = "", ignoreCommitPat
       return 0;
     }
   }
-  return each(field(detail, "commits")).filter((commit) => {
+  return allCommits.filter((commit, index) => {
     if (!each(commit?.authors).some((a) => a?.login !== null && a?.login !== undefined && a.login !== viewerLogin)) return false;
-    if (since !== "" && !gt(alt(commit?.committedDate, ""), since)) return false;
+    const pushedAfterReview = reviewedIndex !== -1 && index > reviewedIndex;
+    if (since !== "" && !pushedAfterReview && !gt(alt(commit?.committedDate, ""), since)) return false;
     const headline = alt(commit?.messageHeadline, "");
     if (
       mergeHeadlinePatterns.some((pattern) => {
@@ -794,12 +802,41 @@ const computePrRow = (input) => {
       alt(r.state, "") !== "APPROVED" &&
       (ignoredReviewAuthors.length === 0 || !ignoredReviewAuthors.includes(r.author.login)),
   ).length;
+  // On the viewer's own PR, reviews that request changes or say something:
+  // GitHub wraps each inline comment or thread reply in an empty COMMENTED
+  // review, which the thread reasons already cover.
+  const externalOwnPrReviewCount = each(field(detail, "reviews")).filter(
+    (r) =>
+      alt(r?.author?.login, "") !== "" &&
+      r.author.login !== viewerLogin &&
+      (since === "" || gt(alt(r.submittedAt, ""), since)) &&
+      (r.state === "CHANGES_REQUESTED" || (r.state === "COMMENTED" && String(alt(r.body, "")).trim() !== "")) &&
+      (ignoredReviewAuthors.length === 0 || !ignoredReviewAuthors.includes(r.author.login)),
+  ).length;
+  // The commit the viewer's latest review was on - unless an ack (seen
+  // everything up to then) is the baseline.
+  const reviewedOid =
+    since !== "" && since === toString(myLast)
+      ? alt(
+          lastOr(
+            sortBy(
+              each(field(detail, "reviews")).filter(
+                (r) => alt(r?.author?.login, "") === viewerLogin && alt(r.submittedAt, "") !== "" && alt(r.commit?.oid, "") !== "",
+              ),
+              (r) => r.submittedAt,
+            ),
+            null,
+          )?.commit?.oid,
+          "",
+        )
+      : "";
   const externalCommitCount = countExternalCommits(detail, {
     viewerLogin,
     since,
     ignoreCommitPatterns,
     mergeHeadlinePatterns,
     mergeLogins,
+    reviewedOid,
   });
 
   let myLatestReviewState = sortBy(
@@ -915,6 +952,7 @@ const computePrRow = (input) => {
       ["unanswered-thread", unresolvedUnansweredCount],
       ["thread-reply", recentThreadReplyCount],
       ["comment", externalTopCommentCount],
+      ["review", externalOwnPrReviewCount],
       ["commit", externalCommitCount],
     ]);
     if (reason !== "") status = "CHANGED";
@@ -990,7 +1028,7 @@ const computePrRow = (input) => {
 
 module.exports = {
   computePrRow,
-  // For the parity tests, each piece of the jq it replaced.
+  // Each piece, for the tests.
   normalizeAuthorName,
   normalizeComments,
   normalizeReviews,

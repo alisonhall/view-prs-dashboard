@@ -117,6 +117,72 @@ describe("check-open-pr-updates shell helper behavior", () => {
     expect(row.status).toBe("NO_CHANGE");
   });
 
+  describe("commits after the one the viewer reviewed", () => {
+    // Committed at 10:00, the viewer reviewed "r1" at 11:00, pushed at 12:00.
+    const lateCommitRow = (extra = {}) =>
+      computePrRow({
+        pr: { number: 1, author: { login: "alice" } },
+        viewerLogin: "me",
+        detail: {
+          reviews: [{ author: { login: "me" }, state: "COMMENTED", submittedAt: "2026-03-01T11:00:00Z", commit: { oid: "r1" } }],
+          commits: [
+            { oid: "r1", committedDate: "2026-03-01T09:00:00Z", messageHeadline: "feat: first", authors: [{ login: "alice" }] },
+            { oid: "x2", committedDate: "2026-03-01T10:00:00Z", messageHeadline: "fix: review", authors: [{ login: "alice" }] },
+          ],
+          ...extra.detail,
+        },
+        viewedFilesStats: { changedFiles: 0, viewedFiles: 0 },
+        ...extra.input,
+      }).row;
+
+    test("count as new though made before the review", () => {
+      const row = lateCommitRow();
+      expect(row.status).toBe("CHANGED");
+      expect(row.reason).toBe("commit");
+    });
+
+    test("don't count once an ack after them is the baseline", () => {
+      expect(lateCommitRow({ input: { ackAt: "2026-03-01T13:00:00Z" } }).status).toBe("NO_CHANGE");
+    });
+
+    test("go by date when the reviewed commit is gone (a force-push)", () => {
+      const row = lateCommitRow({
+        detail: {
+          commits: [{ oid: "y1", committedDate: "2026-03-01T10:00:00Z", messageHeadline: "feat: rebased", authors: [{ login: "alice" }] }],
+        },
+      });
+      expect(row.status).toBe("NO_CHANGE");
+    });
+  });
+
+  describe("reviews on the viewer's own PR", () => {
+    const ownPrRow = (review) =>
+      computePrRow({
+        pr: { number: 2, author: { login: "me" } },
+        viewerLogin: "me",
+        detail: {
+          comments: [{ author: { login: "me" }, createdAt: "2026-03-01T09:00:00Z" }],
+          reviews: [{ author: { login: "bob" }, submittedAt: "2026-03-01T11:00:00Z", ...review }],
+        },
+        viewedFilesStats: { changedFiles: 0, viewedFiles: 0 },
+      }).row;
+
+    test("a changes-requested review marks it changed", () => {
+      const row = ownPrRow({ state: "CHANGES_REQUESTED", body: "" });
+      expect(row.status).toBe("CHANGED");
+      expect(row.reason).toBe("review");
+    });
+
+    test("a commented review with a body marks it changed", () => {
+      expect(ownPrRow({ state: "COMMENTED", body: "Some thoughts" }).reason).toBe("review");
+    });
+
+    test("an approval, or the empty review GitHub wraps an inline comment in, doesn't", () => {
+      expect(ownPrRow({ state: "APPROVED", body: "LGTM" }).status).toBe("NO_CHANGE");
+      expect(ownPrRow({ state: "COMMENTED", body: "  " }).status).toBe("NO_CHANGE");
+    });
+  });
+
   test("a row's reason lists the kinds of change with any count", () => {
     expect(buildReasons([["comment", 0], ["review", 2], ["commit", 1]])).toBe("review|commit");
   });
