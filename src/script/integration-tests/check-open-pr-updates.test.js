@@ -117,6 +117,20 @@ describe("fetches too big for a command line", () => {
     });
   });
 
+  test("review links: every page, and a path Git Bash won't rewrite into a Windows one", () => {
+    const review = (i) => ({ submitted_at: `2026-03-01T00:00:${String(i % 60).padStart(2, "0")}Z`, user: { login: `u${i}` }, html_url: `https://github.com/o/r/pull/5#pullrequestreview-${i}` });
+    const pages = [Array.from({ length: 100 }, (_, i) => review(i)), [review(100), review(101)]];
+    // --paginate prints the pages one after another.
+    const output = withFakePages(pages, `
+      gh_with_retry() {
+        local arg
+        for arg in "$@"; do [[ "$arg" == /* ]] && { echo "leading slash: $arg" >&2; return 1; }; done
+        cat "$PAGES/1.json" "$PAGES/2.json"
+      }
+      fetch_pr_review_url_map_json 5 | jq -c '[length, ."2026-03-01T00:00:41Z_u101"]'`);
+    expect(output).toBe('[102,"https://github.com/o/r/pull/5#pullrequestreview-101"]');
+  });
+
   test("viewed files: every file of a PR with over a thousand", () => {
     const pages = Array.from({ length: 12 }, (_, p) => ({
       data: {

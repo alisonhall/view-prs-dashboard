@@ -1096,13 +1096,17 @@ fetch_pr_review_url_map_json() {
   # Returns a JSON object mapping "<submittedAt>_<authorLogin>" => html_url for
   # each review, so that compute-pr-row.js can give each review its URL.
   # The gh CLI's --json reviews schema doesn't expose url, so we use the REST API.
+  # Every page (it gave the first 30), and no leading slash: Git Bash
+  # rewrites an argument starting with one into a Windows path
+  # ("C:/Program Files/Git/repos/..."), so on Windows this always failed.
+  # --paginate prints one array a page; -s gathers them.
   local result
   local api_output
-  api_output=$(gh_with_retry gh api "/repos/$REPO_OWNER/$REPO_NAME/pulls/$number/reviews" 2>/dev/null) || api_output=''
-  result=$(printf '%s' "$api_output" | jq -c 'if type == "array" then [.[] | select(.submitted_at != null and .submitted_at != "") | {
+  api_output=$(gh_with_retry gh api --paginate "repos/$REPO_OWNER/$REPO_NAME/pulls/$number/reviews?per_page=100" 2>/dev/null) || api_output=''
+  result=$(printf '%s' "$api_output" | jq -cs 'map(select(type == "array")) | add // [] | [.[] | select(.submitted_at != null and .submitted_at != "") | {
       key: (.submitted_at + "_" + (.user.login // "unknown")),
       value: (.html_url // "")
-    }] | from_entries else {} end' 2>/dev/null) || result=''
+    }] | from_entries' 2>/dev/null) || result=''
     [[ -z "$result" ]] && result='{}'
   printf '%s' "$result" >"$cache_file"
   printf '%s' "$result"
@@ -1544,7 +1548,7 @@ fetch_pr_review_comments_json() {
   # review comments.
   pages_file=$(mktemp)
   while true; do
-    page_output=$(gh_with_retry gh api "/repos/$REPO_OWNER/$REPO_NAME/pulls/$number/comments?per_page=100&page=$page" 2>/dev/null) || page_output='[]'
+    page_output=$(gh_with_retry gh api "repos/$REPO_OWNER/$REPO_NAME/pulls/$number/comments?per_page=100&page=$page" 2>/dev/null) || page_output='[]'
     printf '%s\n' "$page_output" >>"$pages_file"
     page_count=$(printf '%s' "$page_output" | jq -r 'if type == "array" then length else 0 end' 2>/dev/null) || page_count=0
     [[ "$page_count" -lt 100 ]] && break
