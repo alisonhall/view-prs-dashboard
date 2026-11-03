@@ -40,3 +40,19 @@ export const findPrEntriesByNumber = (
     .filter(([key, entry]) => entry && entryNumber(key, entry) === safeNumber)
     .map(([, entry]) => entry as PrEntry);
 };
+
+// "owner/repo#123" (or "#123" for a row without a repo).
+export const isPrEntryKey = (value: unknown): boolean => /^[^\s#]*#\d+$/.test(String(value ?? "").trim());
+
+export const parsePrEntryKey = (key: unknown): { repo: string; prNumber: string } => {
+  const text = String(key ?? "").trim();
+  const hashIndex = text.lastIndexOf("#");
+  return hashIndex < 0 ? { repo: "", prNumber: text } : { repo: text.slice(0, hashIndex), prNumber: text.slice(hashIndex + 1) };
+};
+
+// By repo, then numerically by PR number.
+export const comparePrEntryKeys = (a: string, b: string): number => {
+  const left = parsePrEntryKey(a);
+  const right = parsePrEntryKey(b);
+  return left.repo.localeCompare(right.repo) || Number(left.prNumber) - Number(right.prNumber);
+};

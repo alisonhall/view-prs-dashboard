@@ -69,7 +69,7 @@ const DEFAULT_FILTER_STATE_VALUES: FilterValues = {
  * entryNeedsAttention/entryHasYourLastActivity from useNeedsAttention().
  * Per-entry results are cached across renders (createEntryDerivedCache).
  *
- * Returns `{ visiblePrNumbers, scopeLabel }`: `scopeLabel` (e.g. "all
+ * Returns `{ visiblePrKeys, scopeLabel }`: `scopeLabel` (e.g. "all
  * stored rows"/"needs attention rows") falls out of the same scope pass and
  * feeds the "Applied filters" text (useAppliedFilterSummary.tsx calls this
  * same hook rather than re-deriving scope).
@@ -183,7 +183,7 @@ export function useFilteredPrRows(): VisiblePrNumbersResult {
   );
 }
 
-// PrTableApp's entry point: just the visible PR numbers.
-export function useVisiblePrNumbers(): string[] {
-  return useFilteredPrRows().visiblePrNumbers;
+// PrTableApp's entry point: just the visible rows' repo-and-number keys.
+export function useVisiblePrKeys(): string[] {
+  return useFilteredPrRows().visiblePrKeys;
 }

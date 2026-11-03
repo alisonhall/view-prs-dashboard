@@ -24,7 +24,7 @@ const { buildAutoRenderBlockedStatusText } = createPrAutoRenderIndicatorHelpers(
 const EMPTY_BLOCKING_STATE: AutoRenderBlockingState = {
   dirtyFieldCount: 0,
   unsavedNotesCount: 0,
-  blockingPrNumbers: [],
+  blockingPrKeys: [],
   blockingAuthorInsightsLogins: [],
   blockingPrLabel: '',
 };
@@ -161,7 +161,7 @@ export function AutoRenderBlockingProvider({ children }: { children?: ReactNode 
       isBlocked,
       statusText,
       discardAndApply,
-      blockingPrNumbers: blockingState.blockingPrNumbers || [],
+      blockingPrKeys: blockingState.blockingPrKeys || [],
       blockingAuthorInsightsLogins: blockingState.blockingAuthorInsightsLogins || [],
       blockingPrLabel: blockingState.blockingPrLabel || '',
     }),

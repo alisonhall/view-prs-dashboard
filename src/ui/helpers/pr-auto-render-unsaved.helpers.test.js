@@ -5,39 +5,40 @@ const {
 } = require("./pr-auto-render-unsaved.helpers.ts");
 
 describe("auto render unsaved helpers", () => {
-  const createHelpers = ({ getDirtyNotesPrNumbers } = {}) =>
+  const createHelpers = ({ getDirtyNotesPrKeys } = {}) =>
     createPrAutoRenderUnsavedHelpers({
-      getDirtyNotesPrNumbers,
+      getDirtyNotesPrKeys,
     });
 
-  test("given dirty notes PR numbers with a duplicate, when collecting blocking PR numbers, then unique sorted PR numbers are returned", () => {
-    const { getUnsavedNotesPrNumbers, getBlockingPrNumbers } = createHelpers({
-      getDirtyNotesPrNumbers: () => ["12", "7", "12"],
+  test("given dirty notes PR keys with a duplicate, when collecting blocking PR keys, then unique keys sorted by repo then number are returned", () => {
+    const { getUnsavedNotesPrKeys, getBlockingPrKeys } = createHelpers({
+      getDirtyNotesPrKeys: () => ["acme/web#12", "acme/web#7", "acme/api#30", "acme/web#12"],
     });
 
-    expect(getUnsavedNotesPrNumbers()).toEqual(["12", "7", "12"]);
-    expect(getBlockingPrNumbers()).toEqual(["7", "12"]);
+    expect(getUnsavedNotesPrKeys()).toEqual(["acme/web#12", "acme/web#7", "acme/api#30", "acme/web#12"]);
+    expect(getBlockingPrKeys()).toEqual(["acme/api#30", "acme/web#7", "acme/web#12"]);
   });
 
-  test("given no getDirtyNotesPrNumbers hook, when reading unsaved notes PR numbers, then it is a safe empty default", () => {
-    const { getUnsavedNotesPrNumbers } = createHelpers();
+  test("given no getDirtyNotesPrKeys hook, when reading unsaved notes PR keys, then it is a safe empty default", () => {
+    const { getUnsavedNotesPrKeys } = createHelpers();
 
-    expect(getUnsavedNotesPrNumbers()).toEqual([]);
+    expect(getUnsavedNotesPrKeys()).toEqual([]);
   });
 
-  test("given malformed values from getDirtyNotesPrNumbers, when reading unsaved notes PR numbers, then only digit-only values are kept", () => {
-    const { getUnsavedNotesPrNumbers } = createHelpers({
-      getDirtyNotesPrNumbers: () => ["12", "abc", " 7 ", ""],
+  test("given malformed values from getDirtyNotesPrKeys, when reading unsaved notes PR keys, then only PR keys are kept", () => {
+    const { getUnsavedNotesPrKeys } = createHelpers({
+      getDirtyNotesPrKeys: () => ["acme/api#12", "abc", " acme/api#7 ", "", "12", "acme/api#x"],
     });
 
-    expect(getUnsavedNotesPrNumbers()).toEqual(["12", "7"]);
+    expect(getUnsavedNotesPrKeys()).toEqual(["acme/api#12", "acme/api#7"]);
   });
 
-  test("given malformed PR values, when normalizing PR numbers, then only digits are accepted", () => {
-    const { normalizePrNumber } = createHelpers();
+  test("given malformed PR values, when normalizing PR keys, then only repo-and-number keys are accepted", () => {
+    const { normalizePrKey } = createHelpers();
 
-    expect(normalizePrNumber("42")).toBe("42");
-    expect(normalizePrNumber(" 007 ")).toBe("007");
-    expect(normalizePrNumber("abc")).toBe("");
+    expect(normalizePrKey("acme/api#42")).toBe("acme/api#42");
+    expect(normalizePrKey(" #7 ")).toBe("#7");
+    expect(normalizePrKey("42")).toBe("");
+    expect(normalizePrKey("abc")).toBe("");
   });
 });

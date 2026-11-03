@@ -2,12 +2,13 @@ import type { PrDataPayload, PrEntry } from "../types/pr-data.ts";
 import type { RowFilterCriteria, RowFilterCriteriaInput } from "./pr-row-filtering.helpers.ts";
 import { parseCsvTokens } from "./form-parsing.helpers.ts";
 import type { AttentionConfig } from "./pr-needs-attention.helpers.ts";
+import { buildPrEntryKey } from "./pr-entry-keys.helpers.ts";
 
 // Which PRs the table shows for the current filters, computed reactively
 // (useVisiblePrNumbers wires it to Context). Composes the injected scope
 // and row-filter helpers (resolveScopedRows/buildRowFilterCriteria/
 // applyRowUiFilters) rather than reimplementing them. Returns
-// `{ visiblePrNumbers, scopeLabel }`: useAppliedFilterSummary needs the
+// `{ visiblePrKeys, scopeLabel }`: useAppliedFilterSummary needs the
 // scope label too, and it falls out of the same scope-resolution pass.
 export interface RowFilterSelections {
   includeLabels?: string[];
@@ -48,7 +49,9 @@ export interface VisiblePrNumbersInput {
 }
 
 export interface VisiblePrNumbersResult {
-  visiblePrNumbers: string[];
+  // Each shown row's repo-and-number key ("owner/repo#123"): a bare
+  // number would also match another repo's PR with it.
+  visiblePrKeys: string[];
   scopeLabel: string;
   // Every stored row, before scope and filters (the filter bar's "of M").
   totalCount: number;
@@ -131,11 +134,14 @@ const createPrVisiblePrNumbersHelpers = ({
 
     const filteredRows = applyRowUiFiltersSafe(scopedRows, criteria);
 
-    const visiblePrNumbers = filteredRows
-      .map((entry) => String(entry?.data?.number ?? entry?.prNumber ?? ""))
+    const visiblePrKeys = filteredRows
+      .map((entry) => {
+        const prNumber = String(entry?.data?.number ?? entry?.prNumber ?? "").trim();
+        return prNumber ? buildPrEntryKey(entry?.repo, prNumber) : "";
+      })
       .filter(Boolean);
 
-    return { visiblePrNumbers, scopeLabel, totalCount: allEntries.length };
+    return { visiblePrKeys, scopeLabel, totalCount: allEntries.length };
   };
 
   return {

@@ -9,13 +9,14 @@ const { createPrRowMatchFiltersHelpers } = require("./pr-row-match-filters.helpe
 // useVisiblePrNumbers.tsx uses - the one new piece of logic this slice
 // adds, everything else reused from the existing vanilla pipeline as-is.
 //
-// computeVisiblePrNumbers returns { visiblePrNumbers, scopeLabel } (not a
+// computeVisiblePrNumbers returns { visiblePrKeys, scopeLabel } (not a
 // bare array) - scopeLabel feeds the Applied-filters-chip-text follow-up
 // (state/useAppliedFilterSummary.tsx) and falls out of the same
 // scope-resolution pass for free.
 describe("pr-visible-pr-numbers helpers", () => {
   const makeEntry = (number, overrides = {}) => ({
     prNumber: String(number),
+    repo: overrides.repo || "owner/repo",
     updatedAt: overrides.updatedAt,
     data: {
       number,
@@ -64,13 +65,13 @@ describe("pr-visible-pr-numbers helpers", () => {
     const computeVisiblePrNumbers = makeComputeVisiblePrNumbers();
     const payload = { byPrNumber: { 1: makeEntry(1), 2: makeEntry(2) } };
 
-    const { visiblePrNumbers, scopeLabel } = computeVisiblePrNumbers({
+    const { visiblePrKeys, scopeLabel } = computeVisiblePrNumbers({
       payload,
       scopeMode: "all",
       filterPrNumbersRaw: "",
     });
 
-    expect(visiblePrNumbers.sort()).toEqual(["1", "2"]);
+    expect(visiblePrKeys.sort()).toEqual(["owner/repo#1", "owner/repo#2"]);
     expect(scopeLabel).toBe("all stored rows");
   });
 
@@ -89,26 +90,26 @@ describe("pr-visible-pr-numbers helpers", () => {
       lastFullRun: { updatedAt: fullRun },
     };
 
-    expect(computeVisiblePrNumbers({ payload, scopeMode: "last-run", filterPrNumbersRaw: "" }).visiblePrNumbers.sort()).toEqual(["1", "2"]);
+    expect(computeVisiblePrNumbers({ payload, scopeMode: "last-run", filterPrNumbersRaw: "" }).visiblePrKeys.sort()).toEqual(["owner/repo#1", "owner/repo#2"]);
     // Data from before lastFullRun: lastRun.
     const { lastFullRun: _omitted, ...older } = payload;
     expect(
       computeVisiblePrNumbers({ payload: { ...older, lastRun: { updatedAt: fullRun } }, scopeMode: "last-run", filterPrNumbersRaw: "" })
-        .visiblePrNumbers.sort(),
-    ).toEqual(["1", "2"]);
+        .visiblePrKeys.sort(),
+    ).toEqual(["owner/repo#1", "owner/repo#2"]);
   });
 
   test("given a PR-number filter, when called, then only that PR is visible, regardless of scope", () => {
     const computeVisiblePrNumbers = makeComputeVisiblePrNumbers();
     const payload = { byPrNumber: { 1: makeEntry(1), 2: makeEntry(2) } };
 
-    const { visiblePrNumbers } = computeVisiblePrNumbers({
+    const { visiblePrKeys } = computeVisiblePrNumbers({
       payload,
       scopeMode: "all",
       filterPrNumbersRaw: "2",
     });
 
-    expect(visiblePrNumbers).toEqual(["2"]);
+    expect(visiblePrKeys).toEqual(["owner/repo#2"]);
   });
 
   test("given alwaysShowInReview, when a row is in review but fails every other active filter, then it's still visible", () => {
@@ -120,7 +121,7 @@ describe("pr-visible-pr-numbers helpers", () => {
       },
     };
 
-    const { visiblePrNumbers } = computeVisiblePrNumbers({
+    const { visiblePrKeys } = computeVisiblePrNumbers({
       payload,
       scopeMode: "all",
       filterPrNumbersRaw: "",
@@ -128,7 +129,7 @@ describe("pr-visible-pr-numbers helpers", () => {
       rowFilterSelections: { authorLogins: ["alice"] },
     });
 
-    expect(visiblePrNumbers.sort()).toEqual(["1", "2"]);
+    expect(visiblePrKeys.sort()).toEqual(["owner/repo#1", "owner/repo#2"]);
   });
 
   // Regression test: inReview's real-world default is the STRING "false"
@@ -143,7 +144,7 @@ describe("pr-visible-pr-numbers helpers", () => {
       },
     };
 
-    const { visiblePrNumbers } = computeVisiblePrNumbers({
+    const { visiblePrKeys } = computeVisiblePrNumbers({
       payload,
       scopeMode: "all",
       filterPrNumbersRaw: "",
@@ -151,7 +152,7 @@ describe("pr-visible-pr-numbers helpers", () => {
       rowFilterSelections: { authorLogins: ["alice"] },
     });
 
-    expect(visiblePrNumbers).toEqual(["2"]);
+    expect(visiblePrKeys).toEqual(["owner/repo#2"]);
   });
 
   test("given a needs-attention scope, when called, then only rows entryNeedsAttention flags are visible, and scopeLabel reflects it", () => {
@@ -159,13 +160,13 @@ describe("pr-visible-pr-numbers helpers", () => {
     const computeVisiblePrNumbers = makeComputeVisiblePrNumbers({ entryNeedsAttention });
     const payload = { byPrNumber: { 1: makeEntry(1), 2: makeEntry(2) } };
 
-    const { visiblePrNumbers, scopeLabel } = computeVisiblePrNumbers({
+    const { visiblePrKeys, scopeLabel } = computeVisiblePrNumbers({
       payload,
       scopeMode: "needs-attention",
       filterPrNumbersRaw: "",
     });
 
-    expect(visiblePrNumbers).toEqual(["1"]);
+    expect(visiblePrKeys).toEqual(["owner/repo#1"]);
     expect(scopeLabel).toBe("needs attention rows");
   });
 
@@ -178,14 +179,14 @@ describe("pr-visible-pr-numbers helpers", () => {
       },
     };
 
-    const { visiblePrNumbers } = computeVisiblePrNumbers({
+    const { visiblePrKeys } = computeVisiblePrNumbers({
       payload,
       scopeMode: "all",
       filterPrNumbersRaw: "",
       rowFilterSelections: { includeLabels: ["bug"] },
     });
 
-    expect(visiblePrNumbers).toEqual(["1"]);
+    expect(visiblePrKeys).toEqual(["owner/repo#1"]);
   });
 
   test("given an author filter combined with an assigned filter, when called, then both must match", () => {
@@ -197,14 +198,14 @@ describe("pr-visible-pr-numbers helpers", () => {
       },
     };
 
-    const { visiblePrNumbers } = computeVisiblePrNumbers({
+    const { visiblePrKeys } = computeVisiblePrNumbers({
       payload,
       scopeMode: "all",
       filterPrNumbersRaw: "",
       rowFilterSelections: { authorLogins: ["alice"], assignedLogins: ["bob"] },
     });
 
-    expect(visiblePrNumbers).toEqual(["1"]);
+    expect(visiblePrKeys).toEqual(["owner/repo#1"]);
   });
 
   test("given an approver filter (the 5th row-filtering multi-select), when called, then only matching rows are visible", () => {
@@ -216,32 +217,53 @@ describe("pr-visible-pr-numbers helpers", () => {
       },
     };
 
-    const { visiblePrNumbers } = computeVisiblePrNumbers({
+    const { visiblePrKeys } = computeVisiblePrNumbers({
       payload,
       scopeMode: "all",
       filterPrNumbersRaw: "",
       rowFilterSelections: { approverLogins: ["dave"] },
     });
 
-    expect(visiblePrNumbers).toEqual(["1"]);
+    expect(visiblePrKeys).toEqual(["owner/repo#1"]);
   });
 
   test("given no payload/entries at all, when called, then it returns an empty array", () => {
     const computeVisiblePrNumbers = makeComputeVisiblePrNumbers();
-    const { visiblePrNumbers } = computeVisiblePrNumbers({
+    const { visiblePrKeys } = computeVisiblePrNumbers({
       payload: null,
       scopeMode: "all",
       filterPrNumbersRaw: "",
     });
-    expect(visiblePrNumbers).toEqual([]);
+    expect(visiblePrKeys).toEqual([]);
   });
 
   test("given no dependencies injected at all, when called, then it resolves safely", () => {
     const { computeVisiblePrNumbers } = createPrVisiblePrNumbersHelpers();
-    const { visiblePrNumbers, scopeLabel } = computeVisiblePrNumbers({
+    const { visiblePrKeys, scopeLabel } = computeVisiblePrNumbers({
       payload: { byPrNumber: { 1: makeEntry(1) } },
     });
-    expect(visiblePrNumbers).toEqual(["1"]);
+    expect(visiblePrKeys).toEqual(["owner/repo#1"]);
     expect(scopeLabel).toBe("all stored rows");
+  });
+
+  // Keys, not bare numbers: two repos can each have a PR #7, and a filter
+  // matching one mustn't show the other.
+  test("given two repos' PRs with the same number, when a filter matches one, then only that repo's is visible", () => {
+    const computeVisiblePrNumbers = makeComputeVisiblePrNumbers();
+    const payload = {
+      byPrNumber: {
+        "acme/api#7": makeEntry(7, { repo: "acme/api", authorLogin: "alice" }),
+        "acme/web#7": makeEntry(7, { repo: "acme/web", authorLogin: "bob" }),
+      },
+    };
+
+    const { visiblePrKeys } = computeVisiblePrNumbers({
+      payload,
+      scopeMode: "all",
+      filterPrNumbersRaw: "",
+      rowFilterSelections: { authorLogins: ["alice"] },
+    });
+
+    expect(visiblePrKeys).toEqual(["acme/api#7"]);
   });
 });

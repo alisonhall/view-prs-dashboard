@@ -26,8 +26,8 @@ const baseEntry: PrEntry = {
 
 const Providers = ({ children, dirty = [] as string[] }: { children: ReactNode; dirty?: string[] }) => (
   <RequestActivityContext.Provider value={{ beginRequestActivity: () => () => {} } as never}>
-    <RepoLabelsContext.Provider value={{ labels: [{ name: 'bug' }, { name: 'docs' }], refresh: () => {} }}>
-      <NotesDirtyContext.Provider value={{ dirtyPrNumbers: dirty, setNotesDirty: () => {} }}>{children}</NotesDirtyContext.Provider>
+    <RepoLabelsContext.Provider value={{ labels: [], refresh: () => {}, labelsByRepo: { 'owner/repo': [{ name: 'bug' }, { name: 'docs' }] }, ensureLabels: () => {} }}>
+      <NotesDirtyContext.Provider value={{ dirtyPrKeys: dirty, setNotesDirty: () => {} }}>{children}</NotesDirtyContext.Provider>
     </RepoLabelsContext.Provider>
   </RequestActivityContext.Provider>
 );
@@ -361,7 +361,7 @@ describe('PrDetailPane', () => {
             data: { ...baseEntry.data, openConversationCount: '2' },
           },
         },
-        { dirty: ['7'] },
+        { dirty: ['owner/repo#7'] },
       );
       const tabs = screen.getByRole('tablist', { name: 'PR #7 details' });
       expect(within(tabs).getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
@@ -370,6 +370,12 @@ describe('PrDetailPane', () => {
         'Conversations2 open',
         'Notesunsaved',
       ]);
+    });
+
+    test("another repo's PR with the same number having unsaved notes doesn't mark this one's", () => {
+      renderPane({}, { dirty: ['other/repo#7'] });
+      const notesTab = within(screen.getByRole('tablist', { name: 'PR #7 details' })).getByRole('tab', { name: /Notes/ });
+      expect(notesTab).toHaveTextContent(/^Notes$/);
     });
 
     test('picking a tab reports it, and the selected tab shows its content', async () => {

@@ -89,7 +89,7 @@ describe('useFilteredPrRows filter-match cache', () => {
         });
       }
 
-      expect(latest.visiblePrNumbers).toBeDefined();
+      expect(latest.visiblePrKeys).toBeDefined();
       // The hook's own cache instance (the only one created for it).
       const cache = mockCacheInstances[0];
       expect(cache).toBeDefined();

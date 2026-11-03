@@ -13,7 +13,7 @@ const { PrTableOpenSectionsContext } = require('../../state/PrTableUiStateContex
 // The default is one open section showing PR 11, matching samplePayload.
 const buildTree = ({ initialPayload, selectedRepo, uiState } = {}) => (
   <PrDataProvider initialPayload={initialPayload} initialSelectedRepo={selectedRepo}>
-    <PrTableOpenSectionsContext.Provider value={{ prNumbersInOpenSections: ['11'], openSectionCount: 1, ...uiState }}>
+    <PrTableOpenSectionsContext.Provider value={{ prKeysInOpenSections: ['owner/repo#11'], openSectionCount: 1, ...uiState }}>
       <ExportSection />
     </PrTableOpenSectionsContext.Provider>
   </PrDataProvider>
@@ -72,7 +72,7 @@ describe('ExportSection', () => {
     renderExportSection({
       initialPayload: twoPrPayload,
       selectedRepo: 'owner/repo',
-      uiState: { prNumbersInOpenSections: ['12'], openSectionCount: 1 },
+      uiState: { prKeysInOpenSections: ['owner/repo#12'], openSectionCount: 1 },
     });
     await waitForAllFieldsSelected();
 
@@ -89,7 +89,7 @@ describe('ExportSection', () => {
     renderExportSection({
       initialPayload: twoPrPayload,
       selectedRepo: 'owner/repo',
-      uiState: { prNumbersInOpenSections: [], openSectionCount: 0 },
+      uiState: { prKeysInOpenSections: [], openSectionCount: 0 },
     });
     await waitForAllFieldsSelected();
 
@@ -102,7 +102,7 @@ describe('ExportSection', () => {
     const { rerender } = renderExportSection({
       initialPayload: twoPrPayload,
       selectedRepo: 'owner/repo',
-      uiState: { prNumbersInOpenSections: ['11'], openSectionCount: 1 },
+      uiState: { prKeysInOpenSections: ['owner/repo#11'], openSectionCount: 1 },
     });
     expect(screen.getByText(/Visible PR rows eligible for export: 1\/2/)).toBeInTheDocument();
     expect(screen.getByText(/Expanded PR sections: 1/)).toBeInTheDocument();
@@ -111,7 +111,7 @@ describe('ExportSection', () => {
       buildTree({
         initialPayload: twoPrPayload,
         selectedRepo: 'owner/repo',
-        uiState: { prNumbersInOpenSections: ['11', '12'], openSectionCount: 3 },
+        uiState: { prKeysInOpenSections: ['owner/repo#11', 'owner/repo#12'], openSectionCount: 3 },
       }),
     );
     expect(screen.getByText(/Visible PR rows eligible for export: 2\/2/)).toBeInTheDocument();

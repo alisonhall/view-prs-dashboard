@@ -12,6 +12,7 @@ import { usePrInsightsDisplay } from '../../state/PrInsightsDisplayContext';
 import { useRequestActivity } from '../../state/RequestActivityContext';
 import { createPrAuthorInsightsIdentityHelpers } from '../../helpers/pr-author-insights-identity.helpers.ts';
 import { autoResizeTextarea } from '../../helpers/pr-textarea-autoresize.helpers.ts';
+import { buildPrEntryKey } from '../../helpers/pr-entry-keys.helpers.ts';
 import { postJson } from '../../helpers/pr-http.helpers.ts';
 import {
   DIFFICULTY_OPTIONS,
@@ -219,16 +220,17 @@ export function PrNotesTab({ entry, pr, actorsMap = {}, onDataRefresh }: PrNotes
   const fieldRefs = useRef(new Map<NotesField, HTMLDivElement>());
 
   const dirty = hasUnsavedDrafts(saved, drafts);
+  const prKey = buildPrEntryKey(repo, prNumber);
   useEffect(() => {
-    setNotesDirty(prNumber, dirty);
+    setNotesDirty(prKey, dirty);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dirty, prNumber]);
+  }, [dirty, prKey]);
   // Unmounting while dirty must not leave the PR marked (the effect above
   // doesn't run on unmount).
   useEffect(
-    () => () => setNotesDirty(prNumber, false),
+    () => () => setNotesDirty(prKey, false),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [prNumber],
+    [prKey],
   );
 
   useEffect(() => {

@@ -25,7 +25,8 @@ import { createContext, useContext } from 'react';
 export interface RenderedSection {
   key: string;
   defaultOpen: boolean;
-  prNumbers: string[];
+  // Its rows' repo-and-number keys ("owner/repo#123").
+  prKeys: string[];
 }
 
 export interface SelectedPr {
@@ -61,12 +62,12 @@ export interface PrTableUiStateValue {
   reportRenderedSections: (sections: RenderedSection[], hiddenPrCount?: number) => void;
 }
 
-// From the reported sections: how many are open, the PR numbers in the
+// From the reported sections: how many are open, the PR keys in the
 // open ones (display order, each once), and how many PRs are only in
 // hidden sections (the filter bar's count mentions them).
 export interface PrTableOpenSectionsValue {
   openSectionCount: number;
-  prNumbersInOpenSections: string[];
+  prKeysInOpenSections: string[];
   hiddenPrCount: number;
 }
 
@@ -88,7 +89,7 @@ export const defaultPrTableUiState: PrTableUiStateValue = {
 
 export const defaultPrTableOpenSections: PrTableOpenSectionsValue = {
   openSectionCount: 0,
-  prNumbersInOpenSections: [],
+  prKeysInOpenSections: [],
   hiddenPrCount: 0,
 };
 

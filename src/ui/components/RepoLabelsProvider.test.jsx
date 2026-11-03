@@ -378,4 +378,36 @@ describe('RepoLabelsProvider refresh() dedup/fallback rules', () => {
     });
     expect(labelsFetchCalls()).toEqual([]);
   });
+
+  // A row's labels are its own repo's: a PR from another repo can't take
+  // the current repo's.
+  test("given a row from another repo than the current one, when its menu opens, then it lists that repo's labels", async () => {
+    const user = userEvent.setup();
+    global.fetch = jest.fn((url) => {
+      const text = String(url);
+      if (text.startsWith('/view-prs/labels')) {
+        const labels = text.includes('other%2Flib') ? [{ name: 'lib-only' }] : [{ name: 'bug' }];
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, labels }) });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, overrides: {} }) });
+    });
+
+    render(
+      <TestProviders initialSelectedRepo="owner/repo">
+        <table>
+          <tbody>
+            <tr>
+              <PrActionsCell pr={{ number: '5' }} repo="other/lib" isFlagged={false} isInReview={false} />
+            </tr>
+          </tbody>
+        </table>
+      </TestProviders>,
+    );
+
+    await waitFor(() => {
+      expect(labelsFetchCalls().map(([url]) => url)).toContain('/view-prs/labels?repo=other%2Flib');
+    });
+    const rowGroup = await openRowAddLabelGroup(user, '5');
+    await waitFor(() => expect(labelNames(rowGroup)).toEqual(['lib-only']));
+  });
 });

@@ -80,7 +80,7 @@ const describeCount = (verb: string, exportPayload: ExportPayload) =>
 
 export function ExportSection() {
   const { payload, selectedRepo } = usePrData();
-  const { prNumbersInOpenSections, openSectionCount } = usePrTableOpenSections();
+  const { prKeysInOpenSections, openSectionCount } = usePrTableOpenSections();
   const [selectedFieldIds, setSelectedFieldIds] = useState<Set<string> | null>(null); // null until initialized
   const [status, setStatus] = useState('Waiting for data...');
   const [preview, setPreview] = useState('Run Preview JSON to inspect the export payload.');
@@ -194,7 +194,7 @@ export function ExportSection() {
 
     const exportPayload = buildExportPayload({
       payload,
-      visiblePrNumbers: prNumbersInOpenSections,
+      visiblePrKeys: prKeysInOpenSections,
       selectedDataPaths: selected.dataPaths,
       selectedUserStatePaths: selected.userStatePaths,
     });
@@ -258,7 +258,7 @@ export function ExportSection() {
   const totalVisibleCount = Object.keys(payload?.byPrNumber || {}).length;
   const summaryText = [
     `Selected fields: ${selected.dataPaths.length} data + ${selected.userStatePaths.length} user state`,
-    `Visible PR rows eligible for export: ${prNumbersInOpenSections.length}/${totalVisibleCount}`,
+    `Visible PR rows eligible for export: ${prKeysInOpenSections.length}/${totalVisibleCount}`,
     `Expanded PR sections: ${openSectionCount}`,
   ].join('\n');
 

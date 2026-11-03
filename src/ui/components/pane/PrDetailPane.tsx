@@ -15,11 +15,12 @@ import { InsightsHookContent, useInsightsHookHtml } from '../insights/InsightsHo
 import { PrOverview } from './PrOverview';
 import { DEFAULT_ACTIVITY_FILTERS, PrActivityTab, type ActivityFilters } from './PrActivityTab';
 import { buildAckEvents, getLastLookedAt } from '../../helpers/pr-activity-feed.helpers.ts';
-import { useRepoLabels } from '../../state/RepoLabelsContext';
+import { useLabelsForRepo } from '../../state/RepoLabelsContext';
 import { usePrInsightsDisplay } from '../../state/PrInsightsDisplayContext';
 import { useActorIdentity } from '../../state/ActorIdentityContext';
 import { useNeedsAttention } from '../../state/NeedsAttentionContext';
 import { createPrAuthorCellHelpers } from '../../helpers/pr-author-cell.helpers.ts';
+import { buildPrEntryKey } from '../../helpers/pr-entry-keys.helpers.ts';
 import { useNotesDirty } from '../../state/NotesDirtyContext';
 import { useOptionalPrData } from '../../state/PrDataContext';
 import { useFocusTrap } from '../../state/useFocusTrap';
@@ -182,7 +183,8 @@ function PaneContent({
   const repo = entry.repo || fallbackRepo;
   const ref = { prNumber, repo };
   const url = pr.url || `https://github.com/${repo}/pull/${prNumber}`;
-  const { labels: repoLabels } = useRepoLabels();
+  // This PR's repo's labels, not the current repo's.
+  const repoLabels = useLabelsForRepo(repo);
   const { buildRowActorsMap, getEffectiveViewerLogin, getPreferredActorKey } = useActorIdentity();
   // "by" lists who the row's Who cell does: the author, then anyone else
   // with non-merge commits (its "+N" and tooltip) - same helper, same
@@ -201,7 +203,7 @@ function PaneContent({
   const viewerLogin = String(getEffectiveViewerLogin(pr) || '');
   const ackEvents = useMemo(() => buildAckEvents(ackHistory, ackedAt || '', viewerLogin), [ackHistory, ackedAt, viewerLogin]);
   const lastAckedAt = String(ackEvents[0]?.occurredAt || '');
-  const { dirtyPrNumbers } = useNotesDirty();
+  const { dirtyPrKeys } = useNotesDirty();
   const hookHtml = useInsightsHookHtml(repo, prNumber, String(pr.sourceUpdatedAt || entry.updatedAt || ''));
   const rowActorsMap = buildRowActorsMap(pr, actorsMap);
 
@@ -222,7 +224,7 @@ function PaneContent({
     () => buildActivityEvents(pr, Number.POSITIVE_INFINITY).length + ackEvents.length,
     [buildActivityEvents, pr, ackEvents],
   );
-  const notesUnsaved = dirtyPrNumbers.includes(prNumber);
+  const notesUnsaved = dirtyPrKeys.includes(buildPrEntryKey(repo, prNumber));
 
   const tabs: TabItem[] = [
     { id: 'overview', label: 'Overview' },

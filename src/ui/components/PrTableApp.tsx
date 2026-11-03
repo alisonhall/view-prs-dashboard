@@ -15,7 +15,7 @@ import { usePrData } from '../state/PrDataContext';
 import { useNeedsAttention } from '../state/NeedsAttentionContext';
 import { useActorIdentity } from '../state/ActorIdentityContext';
 import { usePrInsightsDisplay } from '../state/PrInsightsDisplayContext';
-import { useVisiblePrNumbers } from '../state/useVisiblePrNumbers';
+import { useVisiblePrKeys } from '../state/useVisiblePrNumbers';
 import { usePrActivityQueue } from '../state/PrActivityQueueContext';
 import { useSinglePrUpdate } from '../state/useSinglePrUpdate';
 import { useStableCallback } from '../state/useStableCallback';
@@ -28,6 +28,7 @@ import { useMediaQuery } from '../state/useMediaQuery';
 import { usePrSectionPreferences } from '../state/PrSectionPreferencesProvider';
 import { useSettingsDrawer } from '../state/SettingsDrawerContext';
 import { isPrSectionHidden, prSectionStartsOpen } from '../helpers/pr-section-preferences.helpers.ts';
+import { buildPrEntryKey } from '../helpers/pr-entry-keys.helpers.ts';
 import { captureRowAnchor, restoreRowAnchor, type RowAnchor } from '../helpers/row-scroll-anchor.helpers.ts';
 import { dockedPaneRoom } from '../helpers/docked-pane-room.helpers.ts';
 import { PrDetailPane } from './pane/PrDetailPane';
@@ -89,11 +90,11 @@ export function PrTableApp() {
   // PR data payload/selectedRepo - owned by <PrDataProvider />
   // (state/PrDataProvider.tsx).
   const { payload, selectedRepo, setPayload, applyFreshTablePayload } = usePrData();
-  // Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering"): visiblePrNumbers
+  // Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering"): visiblePrKeys
   // used to come from usePrData() itself (imperatively pushed by the
   // vanilla "Apply filters" pipeline) - now reactively derived live from
   // Context instead. See useVisiblePrNumbers.tsx's own comment.
-  const visiblePrNumbers = useVisiblePrNumbers();
+  const visiblePrKeys = useVisiblePrKeys();
   const { entryNeedsAttention, entryNeedsAttentionReasons, attentionConfig } = useNeedsAttention();
   // For the viewer's own smart groups (their PRs, assigned, review requested).
   const { getEffectiveViewerLogin, normalizeActorLogin } = useActorIdentity();
@@ -117,7 +118,7 @@ export function PrTableApp() {
     setPaneTab,
     reportRenderedSections,
   } = usePrTableUiState();
-  const { dirtyPrNumbers } = useNotesDirty();
+  const { dirtyPrKeys } = useNotesDirty();
   // Settings › Appearance: which sections show, and which start open.
   const { preferences: sectionPreferences, isReady: areSectionPreferencesReady } = usePrSectionPreferences();
   const settingsDrawer = useSettingsDrawer();
@@ -510,12 +511,13 @@ export function PrTableApp() {
     // each entry already has the { prNumber, repo, section, data } shape
     // the vanilla renderer expects.
     const allEntries = Object.values(payload.byPrNumber);
-    // null/undefined visiblePrNumbers means no local filter is active (show
+    // null/undefined visiblePrKeys means no local filter is active (show
     // every stored PR); an array (even empty) means the vanilla filter
     // pipeline has run and this is exactly what passed it - without this,
     // "Apply filters (local)" would have no visible effect on the
     // React-rendered table at all (see index.page.js's React rendering
-    // path, which computes visiblePrNumbers from that same pipeline).
+    // path, which computes visiblePrKeys from that same pipeline). Keys,
+    // not bare numbers: another repo's PR with a shown number isn't shown.
     //
     // Deliberately NOT also gated on `entry?.repo === effectiveRepo`: PR
     // data for a repo other than the currently-configured one should still
@@ -529,12 +531,11 @@ export function PrTableApp() {
     // `const repo = effectiveRepo;` alias here had become dead after an
     // earlier refactor moved every real use over to `entry.repo` directly;
     // removed along with this now-stale comment describing it as in use.
-    const visiblePrNumberSet = Array.isArray(visiblePrNumbers)
-      ? new Set(visiblePrNumbers.map(String))
-      : null;
+    const visiblePrKeySet = Array.isArray(visiblePrKeys) ? new Set(visiblePrKeys) : null;
     const entriesForRepo = allEntries.filter(
       (entry) =>
-        !visiblePrNumberSet || visiblePrNumberSet.has(String(entry?.data?.number ?? entry?.prNumber ?? "")),
+        !visiblePrKeySet ||
+        visiblePrKeySet.has(buildPrEntryKey(entry?.repo, String(entry?.data?.number ?? entry?.prNumber ?? "").trim())),
     );
 
     // Group by lifecycle status and sort - now the *actual* shared
@@ -629,7 +630,7 @@ export function PrTableApp() {
     }));
   }, [
     payload,
-    visiblePrNumbers,
+    visiblePrKeys,
     checkNeedsAttention,
     checkUserInteraction,
     buildGroupedPrSections,
@@ -675,7 +676,7 @@ export function PrTableApp() {
       sections.map((section) => ({
         key: section.key,
         defaultOpen: Boolean(section.defaultOpen),
-        prNumbers: (section.prs || []).map((entry) => String(entry?.data?.number || '')),
+        prKeys: (section.prs || []).map((entry) => buildPrEntryKey(entry?.repo, String(entry?.data?.number || ''))),
       })),
       hiddenPrCount,
     );
@@ -721,7 +722,7 @@ export function PrTableApp() {
   // hiding the pane) unmounts its Notes: ask first when they're unsaved
   // (UI_REDESIGN_PLAN.md, decision 3).
   const confirmLeavingPr = (): boolean => {
-    if (!selectedPr || !dirtyPrNumbers.includes(selectedPr.prNumber)) return true;
+    if (!selectedPr || !dirtyPrKeys.includes(buildPrEntryKey(selectedPr.repo, selectedPr.prNumber))) return true;
     return window.confirm(`PR #${selectedPr.prNumber} has unsaved notes. Discard them?`);
   };
   const selectPr = (next: SelectedPr | null): boolean => {

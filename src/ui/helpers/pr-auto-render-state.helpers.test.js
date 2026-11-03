@@ -7,10 +7,10 @@ const {
 describe("auto render state helpers", () => {
   const createHelpers = (overrides = {}) =>
     createPrAutoRenderStateHelpers({
-      getUnsavedNotesPrNumbers: () => ["7"],
-      getBlockingPrNumbers: () => ["12", "15"],
+      getUnsavedNotesPrKeys: () => ["7"],
+      getBlockingPrKeys: () => ["12", "15"],
       getBlockingAuthorInsightsLogins: () => ["alice"],
-      formatBlockingPrNumbersLabel: (prNumbers) =>
+      formatBlockingPrKeysLabel: (prNumbers) =>
         Array.isArray(prNumbers) && prNumbers.length > 0
           ? `Blocking PRs: ${prNumbers.join(", ")}`
           : "",
@@ -23,7 +23,7 @@ describe("auto render state helpers", () => {
     expect(getAutoRenderBlockingState()).toEqual({
       dirtyFieldCount: 0,
       unsavedNotesCount: 1,
-      blockingPrNumbers: ["12", "15"],
+      blockingPrKeys: ["12", "15"],
       blockingAuthorInsightsLogins: ["alice"],
       blockingPrLabel: "Blocking PRs: 12, 15",
     });

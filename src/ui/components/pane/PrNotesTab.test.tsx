@@ -15,7 +15,7 @@ const mockPost = postJson as jest.MockedFunction<typeof postJson>;
 const render = (ui: ReactNode, setNotesDirty: (prNumber: string, dirty: boolean) => void = () => {}) =>
   baseRender(
     <RequestActivityContext.Provider value={{ beginRequestActivity: () => () => {} } as never}>
-      <NotesDirtyContext.Provider value={{ dirtyPrNumbers: [], setNotesDirty } as never}>{ui}</NotesDirtyContext.Provider>
+      <NotesDirtyContext.Provider value={{ dirtyPrKeys: [], setNotesDirty } as never}>{ui}</NotesDirtyContext.Provider>
     </RequestActivityContext.Provider>,
   );
 
@@ -246,7 +246,7 @@ describe('PrNotesTab saving', () => {
     const refreshed: PrEntry = { ...entry, notes: { ...entry.notes, prDifficulty: '5', analysisOfPr: 'From another window' } };
     rerender(
       <RequestActivityContext.Provider value={{ beginRequestActivity: () => () => {} } as never}>
-        <NotesDirtyContext.Provider value={{ dirtyPrNumbers: [], setNotesDirty: () => {} } as never}>
+        <NotesDirtyContext.Provider value={{ dirtyPrKeys: [], setNotesDirty: () => {} } as never}>
           <PrNotesTab entry={refreshed} pr={pr} />
         </NotesDirtyContext.Provider>
       </RequestActivityContext.Provider>,
@@ -266,15 +266,15 @@ describe('PrNotesTab unsaved state (NotesDirtyContext)', () => {
     const user = userEvent.setup();
     const setNotesDirty = jest.fn();
     const { unmount } = render(<PrNotesTab entry={savedEntry()} pr={pr} />, setNotesDirty);
-    expect(setNotesDirty).toHaveBeenLastCalledWith('42', false);
+    expect(setNotesDirty).toHaveBeenLastCalledWith('owner/repo#42', false);
 
     await user.click(screen.getByRole('button', { name: 'Edit other notes' }));
-    expect(setNotesDirty).toHaveBeenLastCalledWith('42', false);
+    expect(setNotesDirty).toHaveBeenLastCalledWith('owner/repo#42', false);
     await user.type(screen.getByRole('textbox', { name: 'Other notes' }), '!');
-    expect(setNotesDirty).toHaveBeenLastCalledWith('42', true);
+    expect(setNotesDirty).toHaveBeenLastCalledWith('owner/repo#42', true);
 
     setNotesDirty.mockClear();
     unmount();
-    expect(setNotesDirty).toHaveBeenCalledWith('42', false);
+    expect(setNotesDirty).toHaveBeenCalledWith('owner/repo#42', false);
   });
 });

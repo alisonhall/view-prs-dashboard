@@ -179,7 +179,7 @@ const { createPrSmartGroupsHelpers } = require('../helpers/pr-smart-groups.helpe
 // - `filterStateValues` lets an individual test override the defaults
 // below (e.g. to exercise a specific scope/PR-number filter) without every
 // existing call site needing to pass a full values object.
-// `dirtyPrNumbers`: PRs with unsaved notes (NotesDirtyContext).
+// `dirtyPrKeys`: PRs with unsaved notes (NotesDirtyContext).
 // `sectionPreferences`: Settings › Appearance's saved section choices
 // (user-defaults.json's prSections), read by PrSectionPreferencesProvider
 // through a mocked fetch, which answers once `sectionPreferencesHeld`
@@ -189,7 +189,7 @@ const renderPrTableApp = ({
   selectedRepo,
   needsAttention,
   filterStateValues,
-  dirtyPrNumbers,
+  dirtyPrKeys,
   sectionPreferences,
   sectionPreferencesHeld,
   ...tableProps
@@ -226,7 +226,7 @@ const renderPrTableApp = ({
               <ActivityQueueProbe />
               <UiStateProbe />
               <OpenSectionsProbe />
-              <NotesDirtyContext.Provider value={{ dirtyPrNumbers: dirtyPrNumbers || [], setNotesDirty: () => {} }}>
+              <NotesDirtyContext.Provider value={{ dirtyPrKeys: dirtyPrKeys || [], setNotesDirty: () => {} }}>
                 {sectionPreferences ? (
                   <SettingsDrawerProvider>
                     <SettingsDrawerProbe />
@@ -585,13 +585,13 @@ describe('PrTableApp', () => {
     renderPrTableApp({ initialPayload: payload, selectedRepo: '' });
     // Every section here defaults closed (the mocked helper).
     expect(capturedOpenSections.openSectionCount).toBe(0);
-    expect(capturedOpenSections.prNumbersInOpenSections).toEqual([]);
+    expect(capturedOpenSections.prKeysInOpenSections).toEqual([]);
 
     React.act(() => {
       capturedSectionProps.find((p) => p.section.key === 'open').onToggleSection('open', true);
     });
     expect(capturedOpenSections.openSectionCount).toBe(1);
-    expect(capturedOpenSections.prNumbersInOpenSections).toEqual(['20', '10']);
+    expect(capturedOpenSections.prKeysInOpenSections).toEqual(['owner/repo#20', 'owner/repo#10']);
   });
 
   test('given a new PR arrives, when the sections are rebuilt and reported, then the table renders once (the report goes to Export\'s context, not back to the table)', () => {
@@ -936,7 +936,7 @@ describe('PrTableApp', () => {
     test('given the selected PR has unsaved notes, when its row is clicked again and the discard is refused, then the pane stays open on it', () => {
       const confirm = jest.spyOn(window, 'confirm').mockReturnValue(false);
       try {
-        renderPrTableApp({ initialPayload: twoPrPayload(), selectedRepo: 'owner/repo', dirtyPrNumbers: ['1'] });
+        renderPrTableApp({ initialPayload: twoPrPayload(), selectedRepo: 'owner/repo', dirtyPrKeys: ['owner/repo#1'] });
         React.act(() => openSectionProps().onSelectRow('1', 'owner/repo'));
 
         React.act(() => openSectionProps().onSelectRow('1', 'owner/repo'));
@@ -998,7 +998,7 @@ describe('PrTableApp', () => {
     test('given unsaved notes, when the pane is closed and leaving is cancelled, then it stays open on the PR', () => {
       const confirm = jest.spyOn(window, 'confirm').mockReturnValue(false);
       try {
-        renderPrTableApp({ initialPayload: twoPrPayload(), selectedRepo: 'owner/repo', dirtyPrNumbers: ['1'] });
+        renderPrTableApp({ initialPayload: twoPrPayload(), selectedRepo: 'owner/repo', dirtyPrKeys: ['owner/repo#1'] });
         React.act(() => openSectionProps().onSelectRow('1', 'owner/repo'));
         React.act(() => latestPane().onClose());
         expect(confirm).toHaveBeenCalled();
@@ -1012,7 +1012,7 @@ describe('PrTableApp', () => {
     test('given unsaved notes on the selected PR, then switching asks first, and staying keeps the selection', () => {
       const confirm = jest.spyOn(window, 'confirm').mockReturnValue(false);
       try {
-        renderPrTableApp({ initialPayload: twoPrPayload(), selectedRepo: 'owner/repo', dirtyPrNumbers: ['1'] });
+        renderPrTableApp({ initialPayload: twoPrPayload(), selectedRepo: 'owner/repo', dirtyPrKeys: ['owner/repo#1'] });
         React.act(() => openSectionProps().onSelectRow('1', 'owner/repo'));
         expect(confirm).not.toHaveBeenCalled();
 
@@ -1075,7 +1075,7 @@ describe('PrTableApp', () => {
     test('given the pane toggle, then the pane hides; hiding asks first with unsaved notes', () => {
       const confirm = jest.spyOn(window, 'confirm').mockReturnValue(false);
       try {
-        renderPrTableApp({ initialPayload: twoPrPayload(), selectedRepo: 'owner/repo', dirtyPrNumbers: ['1'] });
+        renderPrTableApp({ initialPayload: twoPrPayload(), selectedRepo: 'owner/repo', dirtyPrKeys: ['owner/repo#1'] });
         const toggle = screen.getByRole('button', { name: 'Detail pane' });
         expect(toggle).toHaveAttribute('aria-pressed', 'true');
 

@@ -141,7 +141,7 @@ let requestActivityTestHandle = null;
 let statusTextTestHandle = null;
 // Window-bridge elimination Phase 7.4: the real NotesDirtyProvider's value,
 // captured by NotesDirtyTestHandle below. The deferred-poll tests mark a PR's
-// notes dirty through it (they used to stub window.getDirtyNotesPrNumbers and
+// notes dirty through it (they used to stub window.getDirtyNotesPrKeys and
 // call window.recomputeDirtyPrSectionsFields, both index.page.js's).
 let notesDirtyTestHandle = null;
 const readFilterStateValues = () => filterStateTestHandle?.values;
@@ -7278,7 +7278,7 @@ describe("index page rendering with Testing Library", () => {
     // REACT_MIGRATION_PLAN.md, "a real fast path for fresh-payload
     // renders"): no existing test (jest or Playwright) exercised the full
     // dirty -> queued -> clean -> flush cycle end to end - only the dirty
-    // bridge itself (window.getDirtyNotesPrNumbers) had coverage. This
+    // bridge itself (window.getDirtyNotesPrKeys) had coverage. This
     // proves the flush's applyFreshPrPayload call actually reaches the
     // real, mounted React table. Window-bridge elimination Phase 7.4: the
     // dirty state now flows NotesDirtyProvider -> AutoRenderBlockingSync ->
@@ -7318,7 +7318,7 @@ describe("index page rendering with Testing Library", () => {
       // Mark PR 101's notes dirty through the real NotesDirtyProvider, as
       // the Notes tab does on an edit.
       act(() => {
-        notesDirtyTestHandle.setNotesDirty("101", true);
+        notesDirtyTestHandle.setNotesDirty("owner/repo#101", true);
       });
 
       // The indicator only becomes visible once a poll actually has a
@@ -7386,7 +7386,7 @@ describe("index page rendering with Testing Library", () => {
       // and the Provider sees !hasDirtyPrSectionsFields &&
       // pendingAutoRenderPayload and flushes.
       act(() => {
-        notesDirtyTestHandle.setNotesDirty("101", false);
+        notesDirtyTestHandle.setNotesDirty("owner/repo#101", false);
       });
 
       await waitFor(() => {
@@ -7453,7 +7453,7 @@ describe("index page rendering with Testing Library", () => {
       // Mark PR 102's notes dirty through the real NotesDirtyProvider, as
       // the sibling test above does.
       act(() => {
-        notesDirtyTestHandle.setNotesDirty("102", true);
+        notesDirtyTestHandle.setNotesDirty("owner/repo#102", true);
       });
 
       fetchMock.mockClear();
@@ -7508,7 +7508,7 @@ describe("index page rendering with Testing Library", () => {
       // setTimeout(0)) finds document.activeElement is still our focused
       // text input and chooses "wait-for-blur" instead of applying.
       act(() => {
-        notesDirtyTestHandle.setNotesDirty("102", false);
+        notesDirtyTestHandle.setNotesDirty("owner/repo#102", false);
       });
 
       // Give the setTimeout(0) a chance to run, then confirm the payload

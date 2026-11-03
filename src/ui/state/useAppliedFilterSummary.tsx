@@ -55,7 +55,7 @@ export interface AppliedFilterSummary {
 
 export function useAppliedFilterSummary(): AppliedFilterSummary {
   const { payload, selectedRepo } = usePrData();
-  const { visiblePrNumbers, scopeLabel, totalCount } = useFilteredPrRows();
+  const { visiblePrKeys, scopeLabel, totalCount } = useFilteredPrRows();
   const { checkedByListId } = useRowFilterSelection();
   const { schedulerSummary } = useJobEvents();
   const filterState = useContext(FilterStateContext);
@@ -84,17 +84,17 @@ export function useAppliedFilterSummary(): AppliedFilterSummary {
       approverFilter: selectedFilters.approverFilter,
       alwaysShowInReview: selectedFilters.alwaysShowInReview,
       openModeFilter: selectedFilters.openModeFilter,
-      rowsCount: visiblePrNumbers.length,
+      rowsCount: visiblePrKeys.length,
       // The stamp "Last run rows" matches (see useVisiblePrNumbers).
       lastRunUpdatedAt: (payload?.lastFullRun || payload?.lastRun)?.updatedAt,
       scheduler: schedulerSummary,
     });
 
-    return { summaryText: appliedSummaryText, filterChips, shownCount: visiblePrNumbers.length, totalCount };
+    return { summaryText: appliedSummaryText, filterChips, shownCount: visiblePrKeys.length, totalCount };
   }, [
     selectedRepo,
     scopeLabel,
-    visiblePrNumbers,
+    visiblePrKeys,
     totalCount,
     payload,
     checkedByListId,

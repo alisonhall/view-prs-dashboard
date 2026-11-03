@@ -1,6 +1,6 @@
 import type { MouseEvent } from 'react';
 import type { PrData } from '../../types/pr-data.ts';
-import { useRepoLabels } from '../../state/RepoLabelsContext';
+import { useLabelsForRepo } from '../../state/RepoLabelsContext';
 import { getLabelName } from '../../helpers/pr-filter-label-extraction.helpers.ts';
 import { IconButton } from '../ui/Button';
 import { MenuButton } from '../ui/MenuButton';
@@ -45,7 +45,8 @@ export function PrActionsCell({
 }: PrActionsCellProps) {
   const prNumber = String(pr?.number || '');
   const entry = { prNumber, repo };
-  const { labels: repoLabels } = useRepoLabels();
+  // This PR's repo's labels, not the current repo's.
+  const repoLabels = useLabelsForRepo(repo);
   const existingLabels = new Set((Array.isArray(pr?.labels) ? pr.labels : []).map((label) => getLabelName(label)).filter(Boolean));
   const availableLabels = repoLabels
     .map((label) => String(label?.name || ''))

@@ -34,7 +34,7 @@ const renderCell = (props: Partial<PrActionsCellProps> = {}, labels?: Labels) =>
   );
   render(
     labels ? (
-      <RepoLabelsContext.Provider value={{ labels, refresh: () => Promise.resolve() } as never}>{cell}</RepoLabelsContext.Provider>
+      <RepoLabelsContext.Provider value={{ labels: [], refresh: () => Promise.resolve(), labelsByRepo: { [props.repo || 'owner/repo']: labels }, ensureLabels: () => {} } as never}>{cell}</RepoLabelsContext.Provider>
     ) : (
       cell
     ),
