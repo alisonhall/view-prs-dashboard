@@ -12,6 +12,7 @@
 
 // Import view-prs-data-helpers directly (plain module)
 const dataHelpers = require('./view-prs-data-helpers');
+const { writeFileReplacingSync } = require('./file-io-helpers');
 
 /**
  * Creates scheduler helper functions.
@@ -166,11 +167,7 @@ function createSchedulerHelpers({
         entries = entries.slice(0, ACTION_LOG_MAX_ENTRIES);
       }
 
-      fs.writeFileSync(
-        viewPrsActionLogFile,
-        JSON.stringify(entries, null, 2),
-        "utf8",
-      );
+      writeFileReplacingSync(fs, viewPrsActionLogFile, JSON.stringify(entries, null, 2));
     } catch (_error) {
       // Best-effort logging, don't fail on log errors
     }

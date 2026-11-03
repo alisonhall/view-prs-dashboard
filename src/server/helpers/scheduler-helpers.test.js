@@ -12,6 +12,8 @@ describe("Scheduler Helpers", () => {
       existsSync: jest.fn(() => false),
       readFileSync: jest.fn(),
       writeFileSync: jest.fn(),
+      renameSync: jest.fn(),
+      rmSync: jest.fn(),
       mkdirSync: jest.fn(),
     };
 
@@ -226,9 +228,13 @@ describe("Scheduler Helpers", () => {
       // Assert
       expect(mockFs.mkdirSync).toHaveBeenCalled();
       expect(mockFs.writeFileSync).toHaveBeenCalledWith(
-        "/test/action-log.json",
+        expect.stringMatching(/^\/test\/action-log\.json\.tmp-/),
         expect.stringContaining('"action": "test"'),
         "utf8",
+      );
+      expect(mockFs.renameSync).toHaveBeenCalledWith(
+        mockFs.writeFileSync.mock.calls[0][0],
+        "/test/action-log.json",
       );
     });
 

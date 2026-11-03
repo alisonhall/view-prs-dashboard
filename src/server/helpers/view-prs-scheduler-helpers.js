@@ -1,4 +1,5 @@
 const path = require("path");
+const { writeFileReplacingSync } = require("./file-io-helpers");
 
 const isPlainObject = (value) =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -176,11 +177,7 @@ const createViewPrsSchedulerHelpers = ({
 
     try {
       fs.mkdirSync(path.dirname(viewPrsSchedulerFile), { recursive: true });
-      fs.writeFileSync(
-        viewPrsSchedulerFile,
-        `${JSON.stringify(persisted, null, 2)}\n`,
-        "utf8",
-      );
+      writeFileReplacingSync(fs, viewPrsSchedulerFile, `${JSON.stringify(persisted, null, 2)}\n`);
     } catch (error) {
       console.warn(
         `Unable to write scheduler state at ${viewPrsSchedulerFile}: ${error.message}`,
