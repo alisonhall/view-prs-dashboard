@@ -182,6 +182,20 @@ describe("App Configuration", () => {
       expect(config.viewPrsActorNameCacheFile).toBe("/tmp/cache.json");
     });
 
+    // Bash runs it from the project folder and resolves it itself; Node's
+    // path.resolve would turn a Git Bash path into D:\d\hooks\... on Windows.
+    test("When the insights hook script is set, Then it's passed to bash as given; unset is empty", () => {
+      const viewPrsDir = "/test/view-prs";
+      const hookFor = (value) =>
+        createAppConfig({ viewPrsDir, env: { VIEW_PRS_INSIGHTS_HOOK_SCRIPT: value } })
+          .viewPrsInsightsHookScript;
+
+      expect(hookFor("local-hooks/insights.sh")).toBe("local-hooks/insights.sh");
+      expect(hookFor(" /d/hooks/insights.sh ")).toBe("/d/hooks/insights.sh");
+      expect(hookFor("my-hook")).toBe("my-hook");
+      expect(createAppConfig({ viewPrsDir, env: {} }).viewPrsInsightsHookScript).toBe("");
+    });
+
     test("When timeout env vars provided, Then parses and validates", () => {
       // Arrange
       const viewPrsDir = "/test/view-prs";

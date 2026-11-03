@@ -734,7 +734,7 @@ To enable it:
 
 1. Write an executable script (any language with a shebang, or a compiled binary) that reads a single JSON argument and prints HTML on stdout.
 2. Keep it out of the repo, or under the gitignored `local-hooks/` directory if you'd rather keep it alongside the checkout.
-3. Set `VIEW_PRS_INSIGHTS_HOOK_SCRIPT` to its absolute path before starting the server. Optionally set `VIEW_PRS_INSIGHTS_HOOK_TIMEOUT_MS` (default `10000`) to bound how long it's allowed to run.
+3. Set `VIEW_PRS_INSIGHTS_HOOK_SCRIPT` to its path - absolute (a Git Bash path like `/d/hooks/insights.sh` works), or relative to the project folder - in an optional `.env` file in the project folder (copy `.env.example`; `.env` is gitignored), which the server reads when it starts, so no start command needs changing. Without a `.env`, the server starts as usual with the hook off. Optionally set `VIEW_PRS_INSIGHTS_HOOK_TIMEOUT_MS` (default `10000`) to bound how long it's allowed to run. A variable already set in your shell wins over `.env`; restart the server after changing it.
 
 The script receives one JSON-encoded argument shaped like:
 

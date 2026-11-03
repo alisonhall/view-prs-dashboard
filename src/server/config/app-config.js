@@ -332,7 +332,10 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
 
   // Optional, absent by default - only present if the user opts in to a
   // custom "More Insights" hook script (see runInsightsHookScript in app.js).
-  const viewPrsInsightsHookScript = env.VIEW_PRS_INSIGHTS_HOOK_SCRIPT || "";
+  // Passed to bash as given, run from the project folder - so a relative
+  // path (local-hooks/insights.sh) is from there, and a Git Bash path
+  // (/d/hooks/insights.sh) or a command on PATH works too.
+  const viewPrsInsightsHookScript = String(env.VIEW_PRS_INSIGHTS_HOOK_SCRIPT || "").trim();
 
   const viewPrsInsightsHookTimeoutMs = Math.max(
     1000,

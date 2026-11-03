@@ -1,5 +1,7 @@
 const http = require("http");
 const os = require("os");
+const fs = require("fs");
+const path = require("path");
 const { spawn } = require("child_process");
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -273,6 +275,49 @@ describe("server startup behavior", () => {
     await expect(requestServer(`http://${networkAddress}:${port}/`, 3000)).rejects.toThrow(
       /ECONNREFUSED|Timed out/,
     );
+  });
+
+  // A .env's settings reach the server with no start command changed, and
+  // what's already set in the environment wins over the file.
+  test("reads its settings from an env file, the environment's own values winning", async () => {
+    const envDir = fs.mkdtempSync(path.join(os.tmpdir(), "view-prs-env-"));
+    const startWithEnvFile = async (fileText, envPort) => {
+      const envFile = path.join(envDir, ".env");
+      fs.rmSync(envFile, { force: true });
+      if (fileText !== null) {
+        fs.writeFileSync(envFile, fileText, "utf8");
+      }
+      const childEnv = {
+        ...process.env,
+        VIEW_PRS_DISABLE_SCHEDULER_STARTUP: "1",
+        VIEW_PRS_ENV_FILE: envFile,
+      };
+      delete childEnv.VIEW_PRS_PORT;
+      if (envPort !== undefined) {
+        childEnv.VIEW_PRS_PORT = envPort;
+      }
+      const child = spawn("node", ["../server.js"], {
+        cwd: viewPrsDir,
+        env: childEnv,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      try {
+        return (await waitForReportedPort(child)).port;
+      } finally {
+        await stopProcess(child);
+      }
+    };
+
+    try {
+      // Port 0 from the file: the OS picks one, not the 9000 default.
+      expect(await startWithEnvFile("VIEW_PRS_PORT=0\n")).not.toBe(9000);
+      // The file's 9000 loses to the environment's 0.
+      expect(await startWithEnvFile("VIEW_PRS_PORT=9000\n", "0")).not.toBe(9000);
+      // It's optional: with no file there, the server starts as usual.
+      expect(await startWithEnvFile(null, "0")).toBeGreaterThan(0);
+    } finally {
+      fs.rmSync(envDir, { recursive: true, force: true });
+    }
   });
 
   test("uses default port 9000 when VIEW_PRS_PORT is not set", async () => {
