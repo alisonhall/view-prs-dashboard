@@ -80,6 +80,7 @@ const { createAppConfig } = require("./config/app-config");
 const { createFileIoHelpers } = require("./helpers/file-io-helpers");
 const { createCommandExecutionHelpers, describeFailure } = require("./helpers/command-execution-helpers");
 const { createSchedulerHelpers } = require("./helpers/scheduler-helpers");
+const { createRequestOriginGuard, isLoopbackHostname } = require("./helpers/request-origin-guard");
 
 // Configuration and constants
 // Initialize configuration from config module
@@ -3250,8 +3251,16 @@ const getViteDevServer = () => {
 const createViewPrsApp = ({ production = isProductionEnv } = {}) => {
   const app = express();
 
+  // Only the dashboard's own pages may use it through a browser (see
+  // request-origin-guard.js); any Host once VIEW_PRS_HOST opens it to the
+  // network (server.js).
+  app.use(
+    createRequestOriginGuard({
+      allowAnyHost: !isLoopbackHostname(String(process.env.VIEW_PRS_HOST || "").trim() || "127.0.0.1"),
+    }),
+  );
+  // JSON bodies only: a form any site can post (urlencoded) isn't parsed.
   app.use(express.json());
-  app.use(express.urlencoded({ extended: true }));
 
   if (!production) {
     app.use((req, res, next) => {
