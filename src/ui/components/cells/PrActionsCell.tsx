@@ -47,7 +47,7 @@ export function PrActionsCell({
   const entry = { prNumber, repo };
   // This PR's repo's labels, not the current repo's, fetched when the menu
   // first opens.
-  const { labels: repoLabels, loaded: labelsLoaded, load: loadLabels } = useLabelsForRepo(repo);
+  const { labels: repoLabels, loaded: labelsLoaded, failed: labelsFailed, load: loadLabels } = useLabelsForRepo(repo);
   const existingLabels = new Set((Array.isArray(pr?.labels) ? pr.labels : []).map((label) => getLabelName(label)).filter(Boolean));
   const availableLabels = repoLabels
     .map((label) => String(label?.name || ''))
@@ -94,11 +94,15 @@ export function PrActionsCell({
               id: 'labels',
               label: 'Add label',
               emptyText: labelsLoaded ? 'No labels to add' : 'Loading labels…',
-              items: availableLabels.map((name) => ({
-                id: name,
-                label: name,
-                onSelect: () => onApplyLabel?.(pr?.number, name, repo),
-              })),
+              // A failed request offers to try again, the menu staying open
+              // for what it brings - rather than "Loading labels…" for good.
+              items: labelsFailed
+                ? [{ id: 'retry-labels', label: "Couldn't load labels - retry", icon: 'refresh', keepOpen: true, onSelect: loadLabels }]
+                : availableLabels.map((name) => ({
+                    id: name,
+                    label: name,
+                    onSelect: () => onApplyLabel?.(pr?.number, name, repo),
+                  })),
             },
           ]}
         />

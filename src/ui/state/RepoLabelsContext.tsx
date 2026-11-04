@@ -28,6 +28,8 @@ export interface RepoLabelsValue {
   // Fetches for repoOverride, else the current repo.
   refresh: (repoOverride?: string) => Promise<void> | void;
   labelsByRepo?: Record<string, RepoLabel[]>;
+  // The repos whose last request failed (until they're asked for again).
+  failedRepos?: Record<string, true>;
   // Fetches a repo's labels unless they're fetched or being fetched.
   ensureLabels?: (repo: string) => void;
 }
@@ -43,13 +45,19 @@ const NO_LABELS: RepoLabel[] = [];
 // One repo's labels: what's fetched so far, whether they have been, and
 // `load` to fetch them (once per repo) - called when a menu listing them
 // opens, so a table of many repos doesn't fetch every repo's on load.
-export function useLabelsForRepo(repo: string): { labels: RepoLabel[]; loaded: boolean; load: () => void } {
-  const { labelsByRepo, ensureLabels } = useRepoLabels();
+// failed: its last request failed - load() asks again.
+export function useLabelsForRepo(repo: string): { labels: RepoLabel[]; loaded: boolean; failed: boolean; load: () => void } {
+  const { labelsByRepo, failedRepos, ensureLabels } = useRepoLabels();
   const safeRepo = String(repo || '').trim();
   const load = useCallback(() => {
     if (safeRepo) ensureLabels?.(safeRepo);
   }, [safeRepo, ensureLabels]);
   const fetched = safeRepo ? labelsByRepo?.[safeRepo] : undefined;
   // Without a Provider to fetch them, there's nothing to wait for.
-  return { labels: fetched || NO_LABELS, loaded: Boolean(fetched) || !ensureLabels, load };
+  return {
+    labels: fetched || NO_LABELS,
+    loaded: Boolean(fetched) || !ensureLabels,
+    failed: !fetched && Boolean(safeRepo && failedRepos?.[safeRepo]),
+    load,
+  };
 }

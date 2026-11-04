@@ -21,6 +21,8 @@ import { resolveRepoForLabelsFetch } from '../helpers/pr-repo-labels.helpers.ts'
 export function RepoLabelsProvider({ children }: { children?: ReactNode }) {
   const [labels, setLabels] = useState<RepoLabel[]>([]);
   const [labelsByRepo, setLabelsByRepo] = useState<Record<string, RepoLabel[]>>({});
+  // The repos whose last request failed: their menus offer to try again.
+  const [failedRepos, setFailedRepos] = useState<Record<string, true>>({});
   const { selectedRepo } = usePrData();
   const { values, restoredRepoOverride } = useFilterState();
   const lastTriggeredRepoRef = useRef('');
@@ -33,6 +35,8 @@ export function RepoLabelsProvider({ children }: { children?: ReactNode }) {
   const fetchLabels = useCallback((repo: string): Promise<RepoLabel[] | null> => {
     const inFlight = inFlightRef.current.get(repo);
     if (inFlight) return inFlight;
+    // Asked again: it's loading, not failed.
+    setFailedRepos(({ [repo]: _cleared, ...rest }) => rest);
     const request = (async () => {
       try {
         const response = await fetch(`/view-prs/labels?repo=${encodeURIComponent(repo)}`);
@@ -46,6 +50,7 @@ export function RepoLabelsProvider({ children }: { children?: ReactNode }) {
       } catch (_error) {
         // Best-effort: leave any previously cached labels in place.
       }
+      setFailedRepos((previous) => ({ ...previous, [repo]: true }));
       return null;
     })().finally(() => inFlightRef.current.delete(repo));
     inFlightRef.current.set(repo, request);
@@ -97,6 +102,9 @@ export function RepoLabelsProvider({ children }: { children?: ReactNode }) {
     [fetchLabels],
   );
 
-  const value = useMemo(() => ({ labels, refresh, labelsByRepo, ensureLabels }), [labels, refresh, labelsByRepo, ensureLabels]);
+  const value = useMemo(
+    () => ({ labels, refresh, labelsByRepo, failedRepos, ensureLabels }),
+    [labels, refresh, labelsByRepo, failedRepos, ensureLabels],
+  );
   return <RepoLabelsContext.Provider value={value}>{children}</RepoLabelsContext.Provider>;
 }

@@ -179,6 +179,41 @@ describe('RepoLabelsProvider + ApplyLabelSelect/PrActionsCell wiring', () => {
     expect(document.getElementById('apply-label-select')).toHaveDisplayValue('No labels found for this repo');
   });
 
+  test("a row's labels that couldn't load offer a retry, which keeps the menu open and shows them once they come", async () => {
+    const user = userEvent.setup();
+    let labelsFail = true;
+    global.fetch = jest.fn((url) => {
+      if (String(url).startsWith('/view-prs/labels')) {
+        return labelsFail
+          ? Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({ ok: false, error: 'gh failed' }) })
+          : Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, labels: [{ name: 'bug' }, { name: 'docs' }] }) });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, overrides: {} }) });
+    });
+
+    render(
+      <TestProviders initialSelectedRepo="owner/repo">
+        <table>
+          <tbody>
+            <tr>
+              <PrActionsCell pr={{ number: '7', labels: ['docs'] }} repo="other/repo" isFlagged={false} isInReview={false} />
+            </tr>
+          </tbody>
+        </table>
+      </TestProviders>,
+    );
+
+    const group = await openRowAddLabelGroup(user, '7');
+    const retry = await within(group).findByRole('menuitem', { name: "Couldn't load labels - retry" });
+
+    labelsFail = false;
+    await user.click(retry);
+
+    expect(screen.getByRole('menu', { name: 'More actions for PR #7' })).toBeInTheDocument();
+    await waitFor(() => expect(labelNames(screen.getByRole('group', { name: 'Add label' }))).toEqual(['bug']));
+    expect(screen.getAllByRole('menuitem')[0]).toHaveFocus();
+  });
+
   test('given the fetch rejects, when rendering, then it falls back to no labels rather than throwing', async () => {
     global.fetch = jest.fn(() => Promise.reject(new Error('network down')));
 
