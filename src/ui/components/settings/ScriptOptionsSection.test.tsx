@@ -32,7 +32,7 @@ const renderSection = () =>
 describe('ScriptOptionsSection', () => {
   test('every option is labelled, with its saved value', () => {
     renderSection();
-    expect(screen.getByRole('textbox', { name: 'Repo (owner/name)' })).toHaveValue('');
+    expect(screen.getByRole('combobox', { name: 'Repo (owner/name)' })).toHaveValue('');
     for (const name of ['Open PR limit', 'Merged PR limit', 'Parallel jobs']) {
       expect(screen.getByRole('spinbutton', { name })).toHaveAttribute('min', '1');
     }
@@ -44,7 +44,7 @@ describe('ScriptOptionsSection', () => {
   test('changing one sets its FilterStateContext key', async () => {
     const user = userEvent.setup();
     renderSection();
-    await user.type(screen.getByRole('textbox', { name: 'Repo (owner/name)' }), 'o/r');
+    await user.type(screen.getByRole('combobox', { name: 'Repo (owner/name)' }), 'o/r');
     await user.selectOptions(screen.getByRole('combobox', { name: 'Open mode' }), 'changed');
     await user.click(screen.getByRole('checkbox', { name: 'Ack all CHANGED non-draft PRs from this run' }));
     expect(values).toMatchObject({ repo: 'o/r', openMode: 'changed', ackChanged: true });

@@ -132,11 +132,23 @@ describe("view-prs sources storage", () => {
 
     const loaded = storage.loadSources({ seedRepos: () => ["acme/api", "other/lib"] });
 
-    expect(loaded).toEqual({ version: 1, subscriptions: [], trackedPrs: [] });
+    expect(loaded).toEqual({ version: 1, subscriptions: [], trackedPrs: [], lost: { at: expect.any(String) } });
     expect(storage.readSources()).toEqual(loaded);
     expect(warnings.join("\n")).toMatch(/sources file missing/);
+    // The next change is a deliberate one: the file no longer stands for a lost one.
     expect(storage.subscribeRepo("acme/web", { seedRepos: () => ["acme/api"] })).toBe(true);
-    expect(storage.readSources().subscriptions).toEqual([{ repo: "acme/web", mode: "recent" }]);
+    expect(storage.readSources()).toEqual({ version: 1, subscriptions: [{ repo: "acme/web", mode: "recent" }], trackedPrs: [] });
+  });
+
+  test("once seeded, an unreadable file starts empty too, saying where it was kept", () => {
+    storage.loadSources({ seedRepos: () => ["acme/api"] });
+    fs.writeFileSync(sourcesFile, "{ not json", "utf8");
+
+    const loaded = storage.loadSources({ seedRepos: () => ["acme/api"] });
+
+    expect(loaded.subscriptions).toEqual([]);
+    expect(loaded.lost.asidePath).toMatch(/\.unreadable-\d+$/);
+    expect(fs.readFileSync(loaded.lost.asidePath, "utf8")).toBe("{ not json");
   });
 
   test("a file from before the seeded marker counts as seeded once read", () => {
@@ -182,6 +194,30 @@ describe("view-prs sources storage", () => {
 
     expect(storage.readSources().subscriptions).toEqual([{ repo: "acme/api", mode: "recent" }]);
     expect(storage.readSources().trackedPrs.map((entry) => `${entry.repo}#${entry.number}`)).toEqual(["corp/tool#5"]);
+  });
+
+  test("subscribes a repo, changes its mode in place keeping its host, and unsubscribes it", () => {
+    storage.writeSources({
+      subscriptions: [
+        { repo: "acme/api", mode: "recent" },
+        { repo: "acme/web", mode: "recent", host: "github.example.com" },
+      ],
+    });
+
+    expect(storage.upsertSubscription({ repo: "acme/web", mode: "numbers", numbers: ["4", "x"] })).toEqual({
+      repo: "acme/web",
+      mode: "numbers",
+      numbers: ["4"],
+      host: "github.example.com",
+    });
+    expect(storage.upsertSubscription({ repo: "acme/docs", mode: "recent" })).toEqual({ repo: "acme/docs", mode: "recent" });
+    expect(storage.readSources().subscriptions.map((entry) => entry.repo)).toEqual(["acme/api", "acme/web", "acme/docs"]);
+    expect(() => storage.upsertSubscription({ repo: "acme/api", mode: "all" })).toThrow(/Not a subscription mode/);
+    expect(() => storage.upsertSubscription({ repo: "nope", mode: "recent" })).toThrow(/Not a repo/);
+
+    expect(storage.removeSubscription("acme/api")).toBe(true);
+    expect(storage.removeSubscription("acme/api")).toBe(false);
+    expect(storage.readSources().subscriptions.map((entry) => entry.repo)).toEqual(["acme/web", "acme/docs"]);
   });
 
   test("lists each repo's PRs fetched on their own, and a repo's Enterprise host", () => {

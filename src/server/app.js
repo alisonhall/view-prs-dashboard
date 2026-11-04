@@ -1010,6 +1010,7 @@ const {
   getViewPrsAutoRefreshRepos,
   getExplicitRefreshNumbers,
   getExplicitPrNumbersInWindow,
+  getRowVisibility,
   getRepoGhEnv,
   inferTrackedRepos,
   subscribeRepoToRecent,
@@ -1772,8 +1773,12 @@ const readViewPrsDataVersion = () => {
   // carries the user state's per-repo maps (buildDataManifestPayload).
   const userStateStats = fs.existsSync(viewPrsUserStateFile) ? fs.statSync(viewPrsUserStateFile) : null;
   const userStateVersion = userStateStats ? `${Math.trunc(userStateStats.mtimeMs) || 0}-${userStateStats.size}` : "none";
+  // And the sources: subscribing or unsubscribing a repo shows or hides its
+  // rows (readVisibleViewPrsData).
+  const sourcesStats = fs.existsSync(viewPrsSourcesFile) ? fs.statSync(viewPrsSourcesFile) : null;
+  const sourcesVersion = sourcesStats ? `${Math.trunc(sourcesStats.mtimeMs) || 0}-${sourcesStats.size}` : "none";
   return {
-    dataVersion: `${mtimeMs}:${stats.size}:${getLiveSummaryVersion()}:${pendingVersion}:${userStateVersion}`,
+    dataVersion: `${mtimeMs}:${stats.size}:${getLiveSummaryVersion()}:${pendingVersion}:${userStateVersion}:${sourcesVersion}`,
     mtimeMs,
     sizeBytes: Number.isFinite(stats.size) ? stats.size : 0,
   };
@@ -1785,6 +1790,72 @@ const getViewPrsDataVersion = () => {
   } catch (_error) {
     return "unavailable";
   }
+};
+
+// The stored data as the page gets it: without the rows of repos that
+// aren't in view - unsubscribed (hidden, not deleted), or never subscribed
+// (a PR's repo runs of chosen PRs saved rows for) - except PRs added one by
+// one (getRowVisibility).
+const filterToVisibleRows = (data) => {
+  const visibility = getRowVisibility();
+  if (!visibility || !isObject(data?.byPrNumber)) return data;
+  const byPrNumber = Object.fromEntries(
+    Object.entries(data.byPrNumber).filter(
+      ([, entry]) =>
+        visibility.repos.has(entry?.repo) || visibility.prKeys.has(`${entry?.repo}#${entry?.prNumber}`),
+    ),
+  );
+  return { ...data, byPrNumber };
+};
+const readVisibleViewPrsData = () => filterToVisibleRows(callReadViewPrsData());
+
+// PRs fetched on their own that the last run of them couldn't fetch
+// (deleted, or no longer visible to gh): repo#number => since when. Kept in
+// memory - a restart finds them again on their next run.
+const unreachablePrSince = new Map();
+const recordUnreachablePrs = (repo, attemptedNumbers, missingNumbers) => {
+  const missing = new Set((missingNumbers || []).map(String));
+  (attemptedNumbers || []).map(String).forEach((number) => {
+    const key = `${repo}#${number}`;
+    if (!missing.has(number)) unreachablePrSince.delete(key);
+    else if (!unreachablePrSince.has(key)) unreachablePrSince.set(key, new Date().toISOString());
+  });
+};
+
+// A manual run of chosen PRs in a repo not fetched in full adds them, as
+// by URL: otherwise the rows it saves would be hidden (filterToVisibleRows).
+// Those in view already (their repo subscribed, or added) are left as they
+// are.
+const trackRunPrs = (repo, numbers) => {
+  const visibility = getRowVisibility();
+  if (!visibility || !repo || visibility.repos.has(repo)) return;
+  const host = getRepoGhEnv(repo).GH_HOST || "";
+  numbers
+    .filter((number) => !visibility.prKeys.has(`${repo}#${number}`))
+    .forEach((number) => {
+      try {
+        viewPrsSourcesStorage.addTrackedPr(
+          { repo, number, host, url: `https://${host || "github.com"}/${repo}/pull/${number}` },
+          { seedRepos: seedSubscriptionRepos },
+        );
+      } catch (error) {
+        console.warn(`[view-prs] couldn't add ${repo}#${number} to the sources: ${error.message}`);
+      }
+    });
+};
+
+// The sources, for the page (Settings › Sources, the repo pickers): with
+// the PRs that couldn't be fetched, and the repos VIEW_PRS_AUTO_REPOS
+// fetches in full whatever the file says (envRepos - unsubscribing one
+// can't hide it). Null until the file is seeded.
+const getSourcesForPage = () => {
+  const sources = viewPrsSourcesStorage.loadSources({ seedRepos: seedSubscriptionRepos });
+  if (!sources) return null;
+  return {
+    ...sources,
+    unreachable: Object.fromEntries(unreachablePrSince),
+    envRepos: parseRepoCsv(process.env.VIEW_PRS_AUTO_REPOS || "").filter((repo) => isRepoSlug(repo)),
+  };
 };
 
 const getViewPrsDataMeta = () => {
@@ -1832,6 +1903,7 @@ const getViewPrsDataMeta = () => {
       sizeBytes,
       liveSummary,
       backgroundUpdates,
+      sources: getSourcesForPage(),
     };
   } catch (error) {
     return {
@@ -2124,23 +2196,29 @@ const runViewPrsAutoRefresh = async ({
           await runScriptForRepo(targetPrNumbers);
         } catch (failure) {
           missingPrNumbers = targetPrNumbers ? parseUnfetchedPrNumbers(failure) : [];
+          if (missingPrNumbers.length > 0) recordUnreachablePrs(repo, targetPrNumbers, missingPrNumbers);
           if (missingPrNumbers.length === 0 || missingPrNumbers.length >= targetPrNumbers.length) {
             throw failure;
           }
           console.warn(`[view-prs] couldn't fetch ${repo} PR(s) ${missingPrNumbers.join(", ")}; refreshed the rest`);
         }
+        if (targetPrNumbers) recordUnreachablePrs(repo, targetPrNumbers, missingPrNumbers);
         // A full run, then the PRs added from this repo by URL it didn't
         // refresh (too old for its listings), on their own. Their failing
         // doesn't fail the full run.
         if (!targetPrNumbers) {
           const missedPrNumbers = getExplicitPrsMissedByFullRun(repo);
           if (missedPrNumbers.length > 0) {
+            // Whether it got to its end, so says which it fetched.
+            let followUpFinished = true;
             try {
               await runScriptForRepo(missedPrNumbers);
             } catch (failure) {
               missingPrNumbers = parseUnfetchedPrNumbers(failure);
+              followUpFinished = missingPrNumbers.length > 0;
               console.warn(`[view-prs] refreshing ${repo}'s added PR(s) ${missedPrNumbers.join(", ")} failed: ${describeFailure(failure)}`);
             }
+            if (followUpFinished) recordUnreachablePrs(repo, missedPrNumbers, missingPrNumbers);
           }
         }
         const repoFinishedMs = Date.now();
@@ -3550,7 +3628,8 @@ const createViewPrsApp = ({ production = isProductionEnv } = {}) => {
     clearPendingForRepo,
     clearPendingNumbersForRepo,
     appendActionLogEntry,
-    readViewPrsData,
+    // Without hidden repos' rows (filterToVisibleRows).
+    readViewPrsData: readVisibleViewPrsData,
     enqueuePrDiffRefreshForData,
     formatScriptFailureMessage,
     viewPrsSchedulerState,
@@ -3584,6 +3663,7 @@ const createViewPrsApp = ({ production = isProductionEnv } = {}) => {
     // that same kind of work, rather than a second, disconnected guess.
     runAutoGhReservationCost: dispatcherGhCostByTaskType.autoRefresh,
     getRepoGhEnv,
+    trackRunPrs,
   });
 
   registerViewPrsSourcesRoutes({
@@ -3593,6 +3673,7 @@ const createViewPrsApp = ({ production = isProductionEnv } = {}) => {
     verifyGithubPr: (...args) => (module.exports.verifyGithubPr || verifyGithubPr)(...args),
     runViewPrsAutoRefresh: (...args) => callRunViewPrsAutoRefresh(...args),
     emitDataChanged: callEmitDataChanged,
+    getSourcesForPage,
     console,
   });
 
@@ -3613,7 +3694,8 @@ const createViewPrsApp = ({ production = isProductionEnv } = {}) => {
     readViewPrsAuthorComments,
     writeViewPrsAuthorComments,
     appendActionLogEntry,
-    readViewPrsData,
+    // Without hidden repos' rows (filterToVisibleRows).
+    readViewPrsData: readVisibleViewPrsData,
     readViewPrsActorLoginAliases,
     resolveCanonicalActorLogin,
     isRepoSlug,
@@ -3629,7 +3711,8 @@ const createViewPrsApp = ({ production = isProductionEnv } = {}) => {
     writeUserDefaults,
     readJsonFileIfExists,
     getViewPrsBackfillPublicState,
-    readViewPrsData,
+    // Without hidden repos' rows (filterToVisibleRows).
+    readViewPrsData: readVisibleViewPrsData,
     enqueuePrDiffRefreshForData,
     getViewPrsDataMeta,
     getViewPrsDataManifest,

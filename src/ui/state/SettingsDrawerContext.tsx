@@ -12,6 +12,7 @@ export type SettingsSectionId =
   | 'attention'
   | 'merge-commits'
   | 'change-detection'
+  | 'sources'
   | 'script-options'
   | 'background-updates'
   | 'backfill'

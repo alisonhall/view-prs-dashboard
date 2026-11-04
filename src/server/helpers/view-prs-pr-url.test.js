@@ -1,4 +1,4 @@
-const { parsePrUrl } = require("./view-prs-pr-url");
+const { parsePrUrl, isRepoName } = require("./view-prs-pr-url");
 
 describe("parsePrUrl", () => {
   test("reads a github.com PR's URL, any page of it, with or without the scheme", () => {
@@ -34,5 +34,12 @@ describe("parsePrUrl", () => {
     "acme/api#x",
   ])("isn't a PR: %p", (input) => {
     expect(parsePrUrl(input)).toBeNull();
+  });
+});
+
+describe("isRepoName", () => {
+  test("an owner/name GitHub could have, not one gh could take for an option or a path", () => {
+    expect(["acme/api", "a-b/c.d_e", "o/.github"].every(isRepoName)).toBe(true);
+    expect(["-x/y", "x/-y", "../x", "x/..", "a/b/c", "a b/c", "a/b;c", "", "a"].some(isRepoName)).toBe(false);
   });
 });

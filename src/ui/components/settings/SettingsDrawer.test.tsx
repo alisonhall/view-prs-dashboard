@@ -123,6 +123,7 @@ describe('SettingsDrawer', () => {
       'Attention rules',
       'Merge commits',
       'Change detection',
+      'Sources',
       'Script options',
       'Background updates',
       'Backfill',

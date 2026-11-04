@@ -347,6 +347,39 @@ export interface PrDataMeta {
   // Every repo checked in the background (listed or not); a repo missing
   // from it isn't. Absent from older servers.
   backgroundUpdates?: Record<string, RepoBackgroundUpdatesMeta | undefined>;
+  // Which repos and PRs are in view (the server's sources file); null
+  // before it's seeded, absent from older servers.
+  sources?: PrSources | null;
+}
+
+// A repo followed as a whole: its recent PRs, or only the numbers listed.
+export interface PrSubscription {
+  repo: string;
+  mode: 'recent' | 'numbers';
+  numbers?: string[];
+  host?: string;
+}
+
+// A PR added on its own, by URL.
+export interface PrTrackedPr {
+  repo: string;
+  number: string;
+  url?: string;
+  host?: string;
+  addedAt?: string;
+}
+
+export interface PrSources {
+  subscriptions: PrSubscription[];
+  trackedPrs: PrTrackedPr[];
+  // PRs fetched on their own that their last run couldn't fetch:
+  // "repo#number" => since when.
+  unreachable?: Record<string, string>;
+  // Repos VIEW_PRS_AUTO_REPOS fetches in full whatever the file says.
+  envRepos?: string[];
+  // When it started empty because the file was lost, and where an
+  // unreadable one was kept: until the next change.
+  lost?: { at: string; asidePath?: string };
 }
 
 // What polling compares to find changed PRs: per PR, a version string of

@@ -11,6 +11,7 @@ import { ChangeDetectionSection } from './ChangeDetectionSection';
 import { MergeCommitsSection } from './MergeCommitsSection';
 import { RunCheckSection } from './RunCheckSection';
 import { ScriptOptionsSection } from './ScriptOptionsSection';
+import { SourcesSection } from './SourcesSection';
 
 // Loaded the first time their section is opened (each its own chunk).
 const ActionLogSection = lazy(() => import('./ActionLogSection').then((m) => ({ default: m.ActionLogSection })));
@@ -34,6 +35,7 @@ const SECTIONS: ReadonlyArray<{ id: SettingsSectionId; label: string; render: ()
   { id: 'attention', label: 'Attention rules', render: () => <AttentionRulesSection /> },
   { id: 'merge-commits', label: 'Merge commits', render: () => <MergeCommitsSection /> },
   { id: 'change-detection', label: 'Change detection', render: () => <ChangeDetectionSection /> },
+  { id: 'sources', label: 'Sources', render: () => <SourcesSection /> },
   { id: 'script-options', label: 'Script options', render: () => <ScriptOptionsSection /> },
   {
     id: 'background-updates',

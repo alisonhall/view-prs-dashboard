@@ -205,10 +205,12 @@ describe("scheduler helper behavior", () => {
       }
     });
 
-    test("falls back to VIEW_PRS_REPO when nothing is subscribed, without writing it to the sources", () => {
+    // Unsubscribing the last repo mustn't bring VIEW_PRS_REPO back: the
+    // fallback is for a fresh install, before the file is seeded.
+    test("doesn't fall back to VIEW_PRS_REPO once the sources exist, though nothing is subscribed", () => {
       viewPrsSourcesStorage.writeSources({ subscriptions: [] });
 
-      expect(getViewPrsAutoRefreshRepos("")).toEqual(["test-org/test-repo"]);
+      expect(getViewPrsAutoRefreshRepos("")).toEqual([]);
       expect(viewPrsSourcesStorage.readSources().subscriptions).toEqual([]);
     });
   });

@@ -8,7 +8,15 @@
 const NAME_PATTERN = /^[A-Za-z0-9_.-]+$/;
 const HOST_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
 
-const isName = (value) => NAME_PATTERN.test(value) && value !== "." && value !== "..";
+const isName = (value) => NAME_PATTERN.test(value) && value !== "." && value !== ".." && !value.startsWith("-");
+
+// Whether it's an owner/name GitHub could have: letters, digits, ".", "_"
+// and "-" (not leading, so gh can't take it for an option), and not "." or
+// "..". Stricter than isRepoSlug, for repos the background runs keep using.
+const isRepoName = (value) => {
+  const parts = String(value ?? "").trim().split("/");
+  return parts.length === 2 && parts.every(isName);
+};
 
 const buildPr = ({ host, owner, name, number }) => {
   if (!isName(owner) || !isName(name) || !/^[1-9]\d*$/.test(number)) return null;
@@ -47,4 +55,4 @@ const parsePrUrl = (input) => {
   return buildPr({ host, owner: owner || "", name: name || "", number: number || "" });
 };
 
-module.exports = { parsePrUrl };
+module.exports = { parsePrUrl, isRepoName };

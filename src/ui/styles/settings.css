@@ -309,3 +309,55 @@
     box-shadow: inset 0 -2px 0 var(--color-accent);
   }
 }
+
+/* Settings › Sources (SourcesSection.tsx): subscriptions and PRs added
+   one by one, a row each, and the subscribe form. */
+.sources-list {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sources-item,
+.sources-add-row,
+.sources-item-numbers {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.sources-item-name {
+  min-width: 12em;
+  font-weight: 600;
+}
+
+.sources-item-meta {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.sources-item-warning {
+  font-size: var(--font-size-sm);
+  color: var(--color-danger);
+}
+
+.sources-add {
+  display: grid;
+  gap: 4px;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.sources-section input[type="text"],
+.sources-section select {
+  min-height: 30px;
+  padding: 4px 8px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  font: var(--font-size-md) var(--font-sans);
+  color: var(--color-text);
+}

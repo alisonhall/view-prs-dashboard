@@ -13,9 +13,12 @@ export interface ContextRunScriptTextInputProps {
   type?: 'text' | 'number';
   placeholder?: string;
   filterStateKey: string;
+  // A datalist's id: its options are suggested (the repo field's known
+  // repos - KnownReposDatalist).
+  list?: string;
 }
 
-export function ContextRunScriptTextInput({ id, name, type = 'text', placeholder = '', filterStateKey }: ContextRunScriptTextInputProps) {
+export function ContextRunScriptTextInput({ id, name, type = 'text', placeholder = '', filterStateKey, list }: ContextRunScriptTextInputProps) {
   const { values, setValue } = useFilterState();
   return (
     <input
@@ -23,6 +26,7 @@ export function ContextRunScriptTextInput({ id, name, type = 'text', placeholder
       id={id}
       name={name}
       placeholder={placeholder}
+      list={list}
       {...(type === 'number' ? { min: 1 } : {})}
       {...NON_CREDENTIAL_INPUT_PROPS}
       value={String(values[filterStateKey] ?? '')}

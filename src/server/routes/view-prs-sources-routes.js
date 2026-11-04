@@ -1,4 +1,4 @@
-const { parsePrUrl } = require("../helpers/view-prs-pr-url");
+const { parsePrUrl, isRepoName } = require("../helpers/view-prs-pr-url");
 
 // The sources file's routes (view-prs-sources-storage.js): what's in view,
 // and PRs added to it one by one, by URL - from any repo, a GitHub
@@ -15,6 +15,9 @@ const registerViewPrsSourcesRoutes = ({
   // Refreshes the PR, so its row appears: runViewPrsAutoRefresh.
   runViewPrsAutoRefresh,
   emitDataChanged,
+  // () => the sources as the page gets them (with the PRs that couldn't be
+  // fetched); the stored ones without it.
+  getSourcesForPage,
   console: logger = console,
   // How long the add route waits for its fetch before answering, how long
   // that waits on its repo's run in progress, and how often it looks.
@@ -25,10 +28,60 @@ const registerViewPrsSourcesRoutes = ({
   const emitDataChangedSafe = typeof emitDataChanged === "function" ? emitDataChanged : () => {};
 
   const readSourcesForResponse = () =>
-    sourcesStorage.loadSources({ seedRepos: seedSubscriptionRepos }) || sourcesStorage.normalizeSources({});
+    (typeof getSourcesForPage === "function" ? getSourcesForPage() : null) ||
+    sourcesStorage.loadSources({ seedRepos: seedSubscriptionRepos }) ||
+    sourcesStorage.normalizeSources({});
 
   app.get("/view-prs/sources", (_req, res) => {
     res.json({ ok: true, sources: readSourcesForResponse() });
+  });
+
+  // { repo, mode: "recent" | "numbers", numbers? } - subscribes a repo, or
+  // changes how: its recent PRs, or only the numbers listed. Its rows show
+  // again (the data's version moves with the sources file), and the
+  // background updates take it up at their next tick.
+  app.put("/view-prs/subscriptions", (req, res) => {
+    const repo = String(req.body?.repo || "").trim();
+    if (!isRepoName(repo)) {
+      res.status(400).json({ ok: false, error: `Not a repo (owner/name): ${repo}` });
+      return;
+    }
+    const mode = String(req.body?.mode || "recent");
+    const numbers = Array.isArray(req.body?.numbers)
+      ? req.body.numbers.map((value) => String(value).trim())
+      : String(req.body?.numbers || "").split(/[\s,]+/).filter(Boolean);
+    const invalidNumber = numbers.find((value) => !/^[1-9]\d*$/.test(value));
+    if (invalidNumber !== undefined) {
+      res.status(400).json({ ok: false, error: `Not a PR number: ${invalidNumber}` });
+      return;
+    }
+    if (mode === "numbers" && numbers.length === 0) {
+      res.status(400).json({ ok: false, error: "List the PR numbers to follow" });
+      return;
+    }
+    try {
+      const subscription = sourcesStorage.upsertSubscription(
+        { repo, mode, numbers: mode === "numbers" ? numbers : undefined },
+        { seedRepos: seedSubscriptionRepos },
+      );
+      res.json({ ok: true, subscription, sources: readSourcesForResponse() });
+      emitDataChangedSafe();
+    } catch (error) {
+      res.status(/^Not a /.test(error.message) ? 400 : 500).json({ ok: false, error: error.message });
+    }
+  });
+
+  // { repo } - unsubscribes a repo: its rows are hidden, not deleted (notes
+  // and all), and PRs added from it by URL stay.
+  app.delete("/view-prs/subscriptions", (req, res) => {
+    const repo = String(req.body?.repo || "").trim();
+    try {
+      const removed = sourcesStorage.removeSubscription(repo);
+      res.json({ ok: true, removed, sources: readSourcesForResponse() });
+      if (removed) emitDataChangedSafe();
+    } catch (error) {
+      res.status(500).json({ ok: false, error: error.message });
+    }
   });
 
   // Fetches a just-added PR: { fetched: true }, or { fetched: false, error }.
@@ -104,13 +157,15 @@ const registerViewPrsSourcesRoutes = ({
     });
   });
 
-  // { repo, number } - stops tracking a PR added by URL. Its row stays.
+  // { repo, number } - stops tracking a PR added by URL. Its row stays
+  // stored, but is hidden unless its repo is subscribed.
   app.delete("/view-prs/tracked-prs", (req, res) => {
     const repo = String(req.body?.repo || "").trim();
     const number = String(req.body?.number || "").trim();
     try {
       const removed = sourcesStorage.removeTrackedPr(repo, number);
-      res.json({ ok: true, removed });
+      res.json({ ok: true, removed, sources: readSourcesForResponse() });
+      if (removed) emitDataChangedSafe();
     } catch (error) {
       res.status(500).json({ ok: false, error: error.message });
     }

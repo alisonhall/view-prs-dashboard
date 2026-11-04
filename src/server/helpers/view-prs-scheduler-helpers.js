@@ -663,10 +663,10 @@ const createViewPrsSchedulerHelpers = ({
   // The repos the background updates fetch in full: VIEW_PRS_AUTO_REPOS
   // and the "recent" subscriptions - not every repo with a stored row, or
   // a single PR added from another repo would bring in all of that repo's.
-  // VIEW_PRS_REPO when there are no sources at all, so a fresh install
-  // still starts. Until the sources file is seeded (no file, and no repo
-  // to seed it from yet - or data that couldn't be read), inferred as
-  // before.
+  // Until the sources file is seeded (no file, and no repo to seed it from
+  // yet - or data that couldn't be read), inferred as before - VIEW_PRS_REPO
+  // when nothing names a repo, so a fresh install still starts. Not after:
+  // unsubscribing the last repo mustn't bring VIEW_PRS_REPO back.
   const getFullRefreshRepos = (sources, extraReposRaw) => {
     if (!sources) {
       return inferTrackedRepos(readViewPrsData(), extraReposRaw);
@@ -683,9 +683,6 @@ const createViewPrsSchedulerHelpers = ({
     };
     parseRepoCsv(extraReposRaw).forEach(addRepo);
     sourcesStorage.getRecentSubscriptionRepos(sources).forEach(addRepo);
-    if (repos.length === 0 && sources.subscriptions.length === 0 && sources.trackedPrs.length === 0) {
-      addRepo(defaultViewPrsRepo);
-    }
     return repos;
   };
 
@@ -750,6 +747,22 @@ const createViewPrsSchedulerHelpers = ({
     return getExplicitRefreshNumbersByRepo(sources, fullRepos)[repo] || [];
   };
 
+  // Which stored rows the page shows: { repos, prKeys } - every row of a
+  // repo fetched in full, and each PR fetched on their own (repo#number,
+  // merged or closed long ago included: those stop being checked, not
+  // shown). A repo unsubscribed is hidden, not deleted - its rows and notes
+  // stay, and come back with it. Null, showing every row, until the
+  // sources file is seeded.
+  const getRowVisibility = (extraReposRaw = process.env.VIEW_PRS_AUTO_REPOS || "") => {
+    const sources = loadSources();
+    if (!sources) return null;
+    const prKeys = new Set();
+    Object.entries(sourcesStorage.getExplicitPrNumbersByRepo(sources)).forEach(([repo, numbers]) =>
+      numbers.forEach((number) => prKeys.add(`${repo}#${number}`)),
+    );
+    return { repos: new Set(getFullRefreshRepos(sources, extraReposRaw)), prKeys };
+  };
+
   // A repo's PRs fetched on their own still worth checking, whether or not
   // it's fetched in full too (whose runs may not reach the older ones).
   const getExplicitPrNumbersInWindow = (repo) =>
@@ -807,6 +820,7 @@ const createViewPrsSchedulerHelpers = ({
     getViewPrsAutoRefreshRepos,
     getExplicitRefreshNumbers,
     getExplicitPrNumbersInWindow,
+    getRowVisibility,
     getRepoGhEnv,
     inferTrackedRepos,
     subscribeRepoToRecent,

@@ -82,7 +82,11 @@ beforeEach(() => {
 
 afterAll(() => {
   if (savedSources) viewPrsSourcesStorage.writeSources(savedSources);
-  else fs.rmSync(viewPrsSourcesStorage.sourcesFile, { force: true });
+  else {
+    // With its seeded marker: the next suite in this worker seeds afresh.
+    fs.rmSync(viewPrsSourcesStorage.sourcesFile, { force: true });
+    fs.rmSync(`${viewPrsSourcesStorage.sourcesFile}.seeded`, { force: true });
+  }
   fs.rmSync(dataFile, { force: true });
   if (savedAutoRepos === undefined) delete process.env.VIEW_PRS_AUTO_REPOS;
   else process.env.VIEW_PRS_AUTO_REPOS = savedAutoRepos;
@@ -249,8 +253,9 @@ describe("the tracked PR routes", () => {
     const res = await supertest(server).delete("/view-prs/tracked-prs").send({ repo: "other-org/lib", number: "9" });
     const again = await supertest(server).delete("/view-prs/tracked-prs").send({ repo: "other-org/lib", number: "9" });
 
-    expect(res.body).toEqual({ ok: true, removed: true });
-    expect(again.body).toEqual({ ok: true, removed: false });
+    expect(res.body).toMatchObject({ ok: true, removed: true });
+    expect(again.body).toMatchObject({ ok: true, removed: false });
+    expect(res.body.sources.trackedPrs.map((entry) => entry.number)).not.toContain("9");
     expect(trackedKeys()).not.toContain("other-org/lib#9");
   });
 
@@ -268,5 +273,85 @@ describe("the tracked PR routes", () => {
     expect(argAfter(scriptCalls[0].args, "--prs")).toBe("3,8");
     expect(scriptCalls[0].args).not.toContain("--pr");
     expect(scriptCalls[0].env).toEqual({ VIEW_PRS_SKIP_UNCHANGED: "0", GH_HOST: "github.example.com" });
+  });
+});
+
+describe("what the page shows", () => {
+  let server;
+  beforeEach(() => {
+    writeRows([
+      { repo: SUBSCRIBED, prNumber: "1", section: "open" },
+      { repo: "acme-org/picked", prNumber: "4", section: "open" },
+      { repo: "acme-org/picked", prNumber: "6", section: "open" },
+      { repo: "other-org/lib", prNumber: "9", section: "open" },
+      { repo: "stranger/repo", prNumber: "3", section: "open" },
+    ]);
+    server = appModule.createViewPrsApp().listen(0);
+  });
+  afterEach(async () => {
+    server.closeAllConnections?.();
+    await new Promise((resolve) => server.close(resolve));
+  });
+
+  const shownKeys = async () => Object.keys((await supertest(server).get("/view-prs/data")).body.byPrNumber).sort();
+
+  test("rows of subscribed repos and PRs added one by one, not those of repos not in view", async () => {
+    expect(await shownKeys()).toEqual(["acme-org/picked#4", `${SUBSCRIBED}#1`, "other-org/lib#9"]);
+    const manifest = (await supertest(server).get("/view-prs/data-manifest")).body.manifest;
+    expect(Object.keys(manifest.byPrNumber || manifest.entries || manifest).join(",")).not.toMatch(/stranger/);
+  });
+
+  test("unsubscribing hides a repo's rows - not its PRs added by URL - and subscribing shows them again, with a new data version", async () => {
+    const versionBefore = (await supertest(server).get("/view-prs/data-meta")).body.dataVersion;
+
+    const removed = await supertest(server).delete("/view-prs/subscriptions").send({ repo: SUBSCRIBED });
+    expect(removed.body).toMatchObject({ ok: true, removed: true });
+    expect(removed.body.sources.subscriptions.map((entry) => entry.repo)).toEqual(["acme-org/picked"]);
+    expect(await shownKeys()).toEqual(["acme-org/picked#4", "other-org/lib#9"]);
+    expect((await supertest(server).get("/view-prs/data-meta")).body.dataVersion).not.toBe(versionBefore);
+
+    const added = await supertest(server).put("/view-prs/subscriptions").send({ repo: "stranger/repo", mode: "recent" });
+    expect(added.body).toMatchObject({ ok: true, subscription: { repo: "stranger/repo", mode: "recent" } });
+    expect(await shownKeys()).toEqual(["acme-org/picked#4", "other-org/lib#9", "stranger/repo#3"]);
+  });
+
+  test("changing a subscription to listed numbers shows just those", async () => {
+    const res = await supertest(server).put("/view-prs/subscriptions").send({ repo: "acme-org/picked", mode: "numbers", numbers: "4, 6" });
+
+    expect(res.body.subscription).toEqual({ repo: "acme-org/picked", mode: "numbers", numbers: ["4", "6"] });
+    expect(await shownKeys()).toEqual(["acme-org/picked#4", "acme-org/picked#6", `${SUBSCRIBED}#1`, "other-org/lib#9"]);
+  });
+
+  test("refuses a subscription that isn't one", async () => {
+    expect((await supertest(server).put("/view-prs/subscriptions").send({ repo: "not a repo" })).status).toBe(400);
+    expect((await supertest(server).put("/view-prs/subscriptions").send({ repo: "-x/y" })).status).toBe(400);
+    expect((await supertest(server).put("/view-prs/subscriptions").send({ repo: "../x" })).status).toBe(400);
+    expect((await supertest(server).put("/view-prs/subscriptions").send({ repo: "a/b", mode: "everything" })).status).toBe(400);
+    expect((await supertest(server).put("/view-prs/subscriptions").send({ repo: "a/b", mode: "numbers" })).status).toBe(400);
+    expect((await supertest(server).put("/view-prs/subscriptions").send({ repo: "a/b", mode: "numbers", numbers: "x" })).status).toBe(400);
+  });
+
+  test("the page gets the sources, with the PRs that couldn't be fetched, until they can be", async () => {
+    appModule.runViewPrsScript = async (args) => {
+      scriptCalls.push({ args, env: {} });
+      throw Object.assign(new Error("Command exited with code 1"), { stderr: "Could not fetch PR(s): 10\n" });
+    };
+    await runViewPrsAutoRefresh({ skipCooldownChecks: true, reposOverride: ["other-org/lib"] });
+
+    process.env.VIEW_PRS_AUTO_REPOS = "env-org/fixed";
+    const meta = (await supertest(server).get("/view-prs/data-meta")).body;
+    delete process.env.VIEW_PRS_AUTO_REPOS;
+    expect(meta.sources.envRepos).toEqual(["env-org/fixed"]);
+    // (Kept in memory: other tests here leave theirs too.)
+    expect(Object.keys(meta.sources.unreachable)).toContain("other-org/lib#10");
+    expect(Object.keys(meta.sources.unreachable)).not.toContain("other-org/lib#9");
+    expect(meta.sources.trackedPrs.map((entry) => `${entry.repo}#${entry.number}`)).toContain("other-org/lib#10");
+
+    appModule.runViewPrsScript = async (args) => {
+      scriptCalls.push({ args, env: {} });
+      return { stdout: "", stderr: "" };
+    };
+    await runViewPrsAutoRefresh({ skipCooldownChecks: true, reposOverride: ["other-org/lib"] });
+    expect(Object.keys((await supertest(server).get("/view-prs/sources")).body.sources.unreachable)).not.toContain("other-org/lib#10");
   });
 });

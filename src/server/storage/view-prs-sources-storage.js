@@ -70,7 +70,17 @@ const createViewPrsSourcesStorage = ({ fs, sourcesFile, isRepoSlug, console: log
       });
     });
 
-    return { version: SOURCES_VERSION, subscriptions, trackedPrs };
+    // When it started empty because the file was lost (see loadSources),
+    // and where an unreadable one was set aside: until the next change.
+    const lost =
+      isPlainObject(source.lost) && toTrimmed(source.lost.at)
+        ? {
+            at: toTrimmed(source.lost.at),
+            ...(toTrimmed(source.lost.asidePath) ? { asidePath: toTrimmed(source.lost.asidePath) } : {}),
+          }
+        : null;
+
+    return { version: SOURCES_VERSION, subscriptions, trackedPrs, ...(lost ? { lost } : {}) };
   };
 
   const seededMarkerFile = `${sourcesFile}.seeded`;
@@ -83,6 +93,9 @@ const createViewPrsSourcesStorage = ({ fs, sourcesFile, isRepoSlug, console: log
       logger.warn?.(`[view-prs] unable to write ${seededMarkerFile}: ${error.message}`);
     }
   };
+
+  // Where the last unreadable file was set aside, for loadSources to say.
+  let lastAsidePath = "";
 
   // The stored sources, or null when there's no file - or an unreadable
   // one, which is set aside (not deleted) so it can be seeded afresh.
@@ -97,6 +110,7 @@ const createViewPrsSourcesStorage = ({ fs, sourcesFile, isRepoSlug, console: log
       const asidePath = `${sourcesFile}.unreadable-${Date.now()}`;
       try {
         fs.renameSync(sourcesFile, asidePath);
+        lastAsidePath = asidePath;
         logger.warn?.(`[view-prs] sources file unreadable (${error.message}); kept as ${asidePath}`);
       } catch (_renameError) {
         logger.warn?.(`[view-prs] sources file unreadable (${error.message})`);
@@ -112,6 +126,10 @@ const createViewPrsSourcesStorage = ({ fs, sourcesFile, isRepoSlug, console: log
     markSeeded();
     return normalized;
   };
+
+  // A change made here (not loadSources' start): the file no longer stands
+  // for a lost one.
+  const writeChange = (sources) => writeSources({ ...sources, lost: undefined });
 
   const seededSources = (repos) =>
     normalizeSources({ subscriptions: repos.map((repo) => ({ repo, mode: "recent" })) });
@@ -136,14 +154,17 @@ const createViewPrsSourcesStorage = ({ fs, sourcesFile, isRepoSlug, console: log
     const seeded = wasSeeded();
     const starting = startingSources(seedRepos);
     if (!starting || (!seeded && starting.subscriptions.length === 0)) return null;
+    let toWrite = starting;
     if (seeded) {
       logger.warn?.(`[view-prs] sources file missing (${sourcesFile}); starting with no subscriptions or added PRs`);
+      toWrite = { ...starting, lost: { at: new Date().toISOString(), asidePath: lastAsidePath } };
     }
+    lastAsidePath = "";
     try {
-      return writeSources(starting);
+      return writeSources(toWrite);
     } catch (error) {
       logger.warn?.(`[view-prs] unable to write sources file: ${error.message}`);
-      return starting;
+      return normalizeSources(toWrite);
     }
   };
 
@@ -187,7 +208,7 @@ const createViewPrsSourcesStorage = ({ fs, sourcesFile, isRepoSlug, console: log
     const sources = readOrStartSources(seedRepos);
     if (!sources) return false;
     if (sources.subscriptions.some((entry) => entry.repo === safeRepo)) return false;
-    writeSources({ ...sources, subscriptions: [...sources.subscriptions, { repo: safeRepo, mode: "recent" }] });
+    writeChange({ ...sources, subscriptions: [...sources.subscriptions, { repo: safeRepo, mode: "recent" }] });
     return true;
   };
 
@@ -207,7 +228,7 @@ const createViewPrsSourcesStorage = ({ fs, sourcesFile, isRepoSlug, console: log
     }
     const existing = sources.trackedPrs.find((entry) => entry.repo === safeRepo && entry.number === safeNumber);
     if (existing) return { added: false, entry: existing };
-    const written = writeSources({
+    const written = writeChange({
       ...sources,
       trackedPrs: [...sources.trackedPrs, { repo: safeRepo, number: safeNumber, url, host, addedAt: now().toISOString() }],
     });
@@ -215,6 +236,38 @@ const createViewPrsSourcesStorage = ({ fs, sourcesFile, isRepoSlug, console: log
       added: true,
       entry: written.trackedPrs.find((entry) => entry.repo === safeRepo && entry.number === safeNumber),
     };
+  };
+
+  // Subscribes a repo, or changes its subscription: mode "recent" (its
+  // recent PRs) or "numbers" (only these). Keeps its place in the list, and
+  // its host unless given one. Returns the subscription. Throws as
+  // addTrackedPr does.
+  const upsertSubscription = ({ repo, mode, numbers, host }, { seedRepos = () => null } = {}) => {
+    const safeRepo = toTrimmed(repo);
+    if (!isRepoSlug(safeRepo)) throw new Error(`Not a repo: ${safeRepo}`);
+    if (!SUBSCRIPTION_MODES.has(mode)) throw new Error(`Not a subscription mode: ${mode}`);
+    const sources = readOrStartSources(seedRepos);
+    if (!sources) {
+      throw new Error("The stored PR data couldn't be read, so the sources file wasn't written; try again once it can be");
+    }
+    const existing = sources.subscriptions.find((entry) => entry.repo === safeRepo);
+    const next = { repo: safeRepo, mode, numbers, host: host === undefined ? existing?.host : host };
+    const subscriptions = existing
+      ? sources.subscriptions.map((entry) => (entry === existing ? next : entry))
+      : [...sources.subscriptions, next];
+    return writeChange({ ...sources, subscriptions }).subscriptions.find((entry) => entry.repo === safeRepo);
+  };
+
+  // Unsubscribes a repo (its PRs added one by one stay). Returns whether it
+  // was subscribed.
+  const removeSubscription = (repo) => {
+    const sources = readSources();
+    if (!sources) return false;
+    const safeRepo = toTrimmed(repo);
+    const subscriptions = sources.subscriptions.filter((entry) => entry.repo !== safeRepo);
+    if (subscriptions.length === sources.subscriptions.length) return false;
+    writeChange({ ...sources, subscriptions });
+    return true;
   };
 
   // Stops tracking a PR added on its own. Returns whether it was tracked.
@@ -225,14 +278,13 @@ const createViewPrsSourcesStorage = ({ fs, sourcesFile, isRepoSlug, console: log
     const safeNumber = toTrimmed(number);
     const trackedPrs = sources.trackedPrs.filter((entry) => !(entry.repo === safeRepo && entry.number === safeNumber));
     if (trackedPrs.length === sources.trackedPrs.length) return false;
-    writeSources({ ...sources, trackedPrs });
+    writeChange({ ...sources, trackedPrs });
     return true;
   };
 
   return {
     sourcesFile,
     normalizeSources,
-    normalizeHost,
     readSources,
     writeSources,
     loadSources,
@@ -240,6 +292,8 @@ const createViewPrsSourcesStorage = ({ fs, sourcesFile, isRepoSlug, console: log
     getExplicitPrNumbersByRepo,
     getRepoHost,
     subscribeRepo,
+    upsertSubscription,
+    removeSubscription,
     addTrackedPr,
     removeTrackedPr,
   };

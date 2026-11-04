@@ -52,6 +52,16 @@ const writeViewPrsUserState = (state = EMPTY_USER_STATE) => {
 describe("integration behavior", () => {
   jest.setTimeout(60000);
   let server, request;
+  // No sources file, as before any is seeded: every stored row is shown -
+  // the owner/repo rows these tests write included, which nothing fetches,
+  // so no seeded file would subscribe. And no rows left by the test before
+  // (its notes give their PR a row too), which it would be seeded from.
+  beforeEach(() => {
+    writeViewPrsData({ byPrNumber: {}, lastRun: null });
+    writeViewPrsUserState();
+    fs.rmSync(appModule.viewPrsSourcesStorage.sourcesFile, { force: true });
+    fs.rmSync(`${appModule.viewPrsSourcesStorage.sourcesFile}.seeded`, { force: true });
+  });
   beforeAll(() => {
     writeViewPrsData({ byPrNumber: {}, lastRun: null });
     writeViewPrsUserState();
@@ -818,8 +828,9 @@ describe("integration behavior", () => {
   });
 
   // Running a repo in full always added it to the background updates; it
-  // subscribes it (the sources file) now. A run of one PR doesn't.
-  test("a full manual run subscribes its repo to its recent PRs, and a run of one PR doesn't", async () => {
+  // subscribes it (the sources file) now. A run of one PR adds just it, so
+  // its row stays in view.
+  test("a full manual run subscribes its repo to its recent PRs, and a run of one PR adds just it", async () => {
     const app = require("../app.js");
     const orig = app.runViewPrsScript;
     const origDep = app.getDependencyStatus;
@@ -835,7 +846,15 @@ describe("integration behavior", () => {
       await testRequest.post("/view-prs/run").send({ repo: "owner/repo", openMode: "none" }).expect(200);
 
       expect(app.viewPrsSourcesStorage.readSources().subscriptions).toEqual([{ repo: "acme-org/run-whole", mode: "recent" }]);
-      expect(app.getViewPrsAutoRefreshRepos("")).toEqual(["acme-org/run-whole"]);
+      expect(app.viewPrsSourcesStorage.readSources().trackedPrs).toEqual([
+        expect.objectContaining({ repo: "acme-org/run-one", number: "5", url: "https://github.com/acme-org/run-one/pull/5" }),
+      ]);
+      expect(app.getViewPrsAutoRefreshRepos("")).toEqual(["acme-org/run-whole", "acme-org/run-one"]);
+
+      // A run of one PR in a subscribed repo, or of one added already, adds nothing.
+      await testRequest.post("/view-prs/run").send({ repo: "acme-org/run-whole", prNumber: "8", openMode: "none" }).expect(200);
+      await testRequest.post("/view-prs/run").send({ repo: "acme-org/run-one", prNumber: "5", openMode: "none" }).expect(200);
+      expect(app.viewPrsSourcesStorage.readSources().trackedPrs).toHaveLength(1);
     } finally {
       app.runViewPrsScript = orig;
       app.getDependencyStatus = origDep;

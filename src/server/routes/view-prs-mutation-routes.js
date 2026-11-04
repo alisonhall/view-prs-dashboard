@@ -71,7 +71,11 @@ const registerViewPrsMutationRoutes = ({
   // (repo) => the env a script run for it needs (GH_HOST for a GitHub
   // Enterprise repo). Safely no-ops if absent.
   getRepoGhEnv,
+  // (repo, numbers) => adds the PRs a manual run chose, in a repo not
+  // subscribed, to the sources. Safely no-ops if absent.
+  trackRunPrs,
 }) => {
+  const trackRunPrsSafe = typeof trackRunPrs === "function" ? trackRunPrs : () => {};
   const getRepoGhEnvSafe = (repo) => (typeof getRepoGhEnv === "function" && repo ? getRepoGhEnv(repo) : {});
   const emitDataChangedSafe =
     typeof emitDataChanged === "function" ? emitDataChanged : () => {};
@@ -203,6 +207,11 @@ const registerViewPrsMutationRoutes = ({
           clearPendingForRepo(detail.repo);
         } else if (detail.repo && detail.prNumber && typeof clearPendingNumbersForRepo === "function") {
           clearPendingNumbersForRepo(detail.repo, detail.prNumbers);
+        }
+        // A run of chosen PRs in a repo not subscribed adds them, so their
+        // rows stay in view.
+        if (detail.prNumber) {
+          trackRunPrsSafe(detail.repo || defaultViewPrsRepo, detail.prNumbers);
         }
         appendActionLogEntry(
           buildRunSuccessActionLogEntry({
