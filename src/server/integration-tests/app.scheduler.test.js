@@ -21,12 +21,14 @@ const {
   viewPrsSchedulerFile,
 } = appModule;
 
-// Puts the sources file back as a test found it - removed if there was none.
+// Puts the sources file back as a test found it - removed if there was
+// none, with its seeded marker, so it seeds again.
 const restoreSources = (saved) => {
   if (saved) {
     viewPrsSourcesStorage.writeSources(saved);
   } else {
     fs.rmSync(viewPrsSourcesStorage.sourcesFile, { force: true });
+    fs.rmSync(`${viewPrsSourcesStorage.sourcesFile}.seeded`, { force: true });
   }
 };
 
@@ -173,7 +175,7 @@ describe("scheduler helper behavior", () => {
       restoreSources(savedSources);
     });
 
-    test("lists VIEW_PRS_AUTO_REPOS and the recent subscriptions, not numbers-only ones or repos only tracked PRs come from", () => {
+    test("lists VIEW_PRS_AUTO_REPOS and the recent subscriptions, then the repos with PRs fetched on their own", () => {
       viewPrsSourcesStorage.writeSources({
         subscriptions: [
           { repo: "acme/api", mode: "recent" },
@@ -182,14 +184,14 @@ describe("scheduler helper behavior", () => {
         trackedPrs: [{ repo: "other/lib", number: "9" }],
       });
 
-      expect(getViewPrsAutoRefreshRepos("acme/extra, acme/api")).toEqual(["acme/extra", "acme/api"]);
+      expect(getViewPrsAutoRefreshRepos("acme/extra, acme/api")).toEqual(["acme/extra", "acme/api", "acme/web", "other/lib"]);
     });
 
     // Seeded from data that couldn't be read, the file would stand empty
     // for good - every repo dropped from the background updates.
     test("without a sources file, data that can't be read seeds nothing: the repos are inferred until it can", () => {
       const savedRead = appModule.readViewPrsData;
-      fs.rmSync(viewPrsSourcesStorage.sourcesFile, { force: true });
+      restoreSources(null);
       try {
         appModule.readViewPrsData = () => ({ byPrNumber: {}, lastRun: null, readError: "Unexpected end of JSON input" });
         expect(getViewPrsAutoRefreshRepos("")).toEqual(["test-org/test-repo"]);

@@ -843,6 +843,7 @@ describe("integration behavior", () => {
         app.viewPrsSourcesStorage.writeSources(savedSources);
       } else {
         fs.rmSync(app.viewPrsSourcesStorage.sourcesFile, { force: true });
+        fs.rmSync(`${app.viewPrsSourcesStorage.sourcesFile}.seeded`, { force: true });
       }
       testServer.closeAllConnections?.();
       await new Promise((resolve) => testServer.close(resolve));

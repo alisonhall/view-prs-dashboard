@@ -41,6 +41,7 @@ const {
 const {
   registerViewPrsPrRoutes,
 } = require("./routes/view-prs-pr-routes");
+const { registerViewPrsSourcesRoutes } = require("./routes/view-prs-sources-routes");
 const {
   isViewPrsFixtureRow,
   parseTimestamp,
@@ -1007,8 +1008,12 @@ const {
   resetAutoCircuitBreaker,
   getOpenAutoCircuitRepos,
   getViewPrsAutoRefreshRepos,
+  getExplicitRefreshNumbers,
+  getExplicitPrNumbersInWindow,
+  getRepoGhEnv,
   inferTrackedRepos,
   subscribeRepoToRecent,
+  seedSubscriptionRepos,
   setPendingForRepo,
   clearPendingForRepo,
   clearPendingNumbersForRepo,
@@ -1024,6 +1029,8 @@ const {
   isRepoSlug,
   parseRepoCsv,
   sourcesStorage: viewPrsSourcesStorage,
+  // Lazily: defined further down.
+  getDataVersion: () => readViewPrsDataVersion(),
   getDispatcherDerivedFields: () => dispatcherHelpersRef?.getPublicStateFields() || {},
   // callReadViewPrsData, not readViewPrsDataRef: getViewPrsAutoRefreshRepos
   // below (the only consumer) reads via this as a lazy default parameter
@@ -1306,6 +1313,27 @@ const applyLabelToPr = async ({ repo, prNumber, label }) => {
 // for a PR with a lot of history, especially merged ones), this is a single
 // small `gh` call so the UI can reflect a just-applied label immediately
 // instead of waiting on the next scheduled full refresh.
+// Resolves once gh finds the PR - on its GitHub Enterprise host, given one
+// (gh's -R takes host/owner/repo) - and rejects with gh's reason otherwise.
+const verifyGithubPr = async ({ repo, number, host = "" }) => {
+  const safeRepo = toTrimmedString(repo);
+  const safeNumber = toTrimmedString(number);
+  if (!isRepoSlug(safeRepo) || !/^\d+$/.test(safeNumber)) {
+    throw new Error(`Invalid PR: ${safeRepo}#${safeNumber}`);
+  }
+  const target = host ? `${host}/${safeRepo}` : safeRepo;
+  try {
+    await callRunViewPrsBashCommand(
+      ["-lc", `gh pr view ${shellQuoteSingle(safeNumber)} -R ${shellQuoteSingle(target)} --json number --jq .number`],
+      64 * 1024,
+      { timeoutMs: 20000 },
+    );
+  } catch (failure) {
+    const reason = String(failure?.stderr || "").trim().split("\n").filter(Boolean).pop();
+    throw new Error(reason || describeFailure(failure), { cause: failure });
+  }
+};
+
 const fetchGithubPrLabels = async ({ repo, prNumber }) => {
   const safeRepo = toTrimmedString(repo);
   const safePrNumber = toTrimmedString(prNumber);
@@ -1826,6 +1854,28 @@ const getViewPrsDataManifest = (dataOverride = null) => {
   }
 };
 
+// The PR numbers a run of chosen PRs couldn't fetch: its "Could not fetch
+// PR(s): 9,10" line, which it prints at its end - so having it, the run
+// got through the rest.
+const parseUnfetchedPrNumbers = (failure) => {
+  const match = String(failure?.stderr || "").match(/Could not fetch PR\(s\): ([\d,]+)/);
+  return match ? match[1].split(",").filter(Boolean) : [];
+};
+
+// The PRs added from a repo by URL (or a "numbers" subscription's), still
+// worth checking, that its last full run didn't refresh: too old for its
+// listings. Their rows' updatedAt isn't that run's, or they have none yet.
+const getExplicitPrsMissedByFullRun = (repo) => {
+  const numbers = getExplicitPrNumbersInWindow(repo);
+  if (numbers.length === 0) return [];
+  const data = callReadViewPrsData();
+  const fullRunStamp = data?.lastFullRunByRepo?.[repo]?.updatedAt;
+  return numbers.filter((number) => {
+    const row = data?.byPrNumber?.[`${repo}#${number}`];
+    return !row || !fullRunStamp || row.updatedAt !== fullRunStamp;
+  });
+};
+
 // Auto-refresh logic
 // prNumbersByRepo: { [repo]: ["12", ...] } - those repos refresh only these
 // PRs (the script's --prs), the PRs a quick check found changed, instead
@@ -1835,10 +1885,21 @@ const runViewPrsAutoRefresh = async ({
   reposOverride = null,
   prNumbersByRepo = {},
 } = {}) => {
-  const getTargetPrNumbers = (repo) =>
-    Array.isArray(prNumbersByRepo?.[repo]) && prNumbersByRepo[repo].length > 0
-      ? prNumbersByRepo[repo].map(String)
-      : null;
+  // Each repo's PR numbers to refresh, or null for the whole repo: those
+  // asked for, or else - for a repo not fetched in full (only PRs added
+  // from it, or a "numbers" subscription) - its own PRs, never the whole
+  // repo (getExplicitRefreshNumbers). Resolved once per repo.
+  const targetPrNumbersByRepo = new Map();
+  const getTargetPrNumbers = (repo) => {
+    if (!targetPrNumbersByRepo.has(repo)) {
+      const requested =
+        Array.isArray(prNumbersByRepo?.[repo]) && prNumbersByRepo[repo].length > 0
+          ? prNumbersByRepo[repo].map(String)
+          : null;
+      targetPrNumbersByRepo.set(repo, requested || getExplicitRefreshNumbers(repo));
+    }
+    return targetPrNumbersByRepo.get(repo);
+  };
   // Resolved up front (same reasoning as runViewPrsQuickCheck's own
   // quickCheckTargetRepos) so a call whose entire target set overlaps an
   // ALREADY-running auto refresh can defer immediately, preserving today's
@@ -1848,10 +1909,24 @@ const runViewPrsAutoRefresh = async ({
   // own comment near viewPrsSchedulerState's definition - this is the same
   // Set, now also used for this self-exclusion check, not just the
   // cross-task one runViewPrsQuickCheck reads).
-  const requestedAutoRefreshRepos =
+  // Less any repo with nothing to fetch: one not fetched in full whose own
+  // PRs have all been merged or closed for long enough ([]). None left:
+  // skipped, rather than a run of no repo, which would count as failed.
+  const candidateAutoRefreshRepos =
     Array.isArray(reposOverride) && reposOverride.length > 0
       ? reposOverride
       : getViewPrsAutoRefreshRepos();
+  const requestedAutoRefreshRepos = candidateAutoRefreshRepos.filter(
+    (repo) => getTargetPrNumbers(repo)?.length !== 0,
+  );
+  if (candidateAutoRefreshRepos.length > 0 && requestedAutoRefreshRepos.length === 0) {
+    callEmitJobEvent({
+      job: JOB_NAMES.AUTO_REFRESH,
+      phase: JOB_PHASES.SKIPPED,
+      detail: { reason: "nothing-to-fetch", repos: candidateAutoRefreshRepos },
+    });
+    return { skipped: true, skipReason: "nothing-to-fetch" };
+  }
   // Tracked separately (not just the survivors below) so a caller grouping
   // several repos into one call - like the dispatcher's own per-task-type
   // batching - can tell exactly which of ITS repos were silently excluded
@@ -2006,9 +2081,9 @@ const runViewPrsAutoRefresh = async ({
       const repoStartMs = Date.now();
       let repoFirstPrProgressMs = null;
 
-      try {
-        addSchedulerActivePrNumbers(seededPrNumbers, repo);
-        await callRunViewPrsScript(
+      // The repo's run, of these PRs or (null) the whole repo.
+      const runScriptForRepo = (prNumbers) =>
+        callRunViewPrsScript(
           [
             viewPrsRunScriptRelativePath,
             "--quiet",
@@ -2017,11 +2092,12 @@ const runViewPrsAutoRefresh = async ({
             "--repo",
             repo,
             "--show-reason",
-            ...(targetPrNumbers ? ["--prs", targetPrNumbers.join(",")] : []),
+            ...(prNumbers ? ["--prs", prNumbers.join(",")] : []),
           ],
           10 * 1024 * 1024,
           {
             timeoutMs: viewPrsAutoScriptTimeoutMs,
+            env: getRepoGhEnv(repo),
             // Tags every active-PR-tracking call this run makes (this
             // options.repo, read by runViewPrsBashCommand) with the repo
             // being scanned - see buildActivePrKey's own comment.
@@ -2035,6 +2111,38 @@ const runViewPrsAutoRefresh = async ({
             },
           },
         );
+
+      try {
+        addSchedulerActivePrNumbers(seededPrNumbers, repo);
+        // A run of chosen PRs that fetched some of them did its job: the
+        // ones it couldn't (deleted, or no longer visible) are reported,
+        // not the repo's run failed - one gone PR added by URL would
+        // otherwise fail every run of its repo, and its circuit breaker
+        // would stop the rest. One that fetched none still fails.
+        let missingPrNumbers = [];
+        try {
+          await runScriptForRepo(targetPrNumbers);
+        } catch (failure) {
+          missingPrNumbers = targetPrNumbers ? parseUnfetchedPrNumbers(failure) : [];
+          if (missingPrNumbers.length === 0 || missingPrNumbers.length >= targetPrNumbers.length) {
+            throw failure;
+          }
+          console.warn(`[view-prs] couldn't fetch ${repo} PR(s) ${missingPrNumbers.join(", ")}; refreshed the rest`);
+        }
+        // A full run, then the PRs added from this repo by URL it didn't
+        // refresh (too old for its listings), on their own. Their failing
+        // doesn't fail the full run.
+        if (!targetPrNumbers) {
+          const missedPrNumbers = getExplicitPrsMissedByFullRun(repo);
+          if (missedPrNumbers.length > 0) {
+            try {
+              await runScriptForRepo(missedPrNumbers);
+            } catch (failure) {
+              missingPrNumbers = parseUnfetchedPrNumbers(failure);
+              console.warn(`[view-prs] refreshing ${repo}'s added PR(s) ${missedPrNumbers.join(", ")} failed: ${describeFailure(failure)}`);
+            }
+          }
+        }
         const repoFinishedMs = Date.now();
         // A full run refreshes both sections, so anything queued by the
         // quick-check for this repo has now been addressed; a run of chosen
@@ -2048,6 +2156,7 @@ const runViewPrsAutoRefresh = async ({
           ok: true,
           repo,
           targeted: Boolean(targetPrNumbers),
+          missingPrNumbers,
           metrics: {
             repo,
             targetedPrCount: targetPrNumbers ? targetPrNumbers.length : null,
@@ -2224,6 +2333,12 @@ const runViewPrsAutoRefresh = async ({
       targetedRepos: refreshResults
         .filter((result) => result && result.ok === true && result.targeted)
         .map((result) => result.repo),
+      // Of those, the PRs each couldn't fetch (see runRepoRefresh).
+      missingPrNumbersByRepo: Object.fromEntries(
+        refreshResults
+          .filter((result) => result?.ok === true && result.missingPrNumbers?.length > 0)
+          .map((result) => [result.repo, result.missingPrNumbers]),
+      ),
       failedRepos,
       failedRepoErrors,
       reposExcludedForAlreadyInProgress,
@@ -2484,6 +2599,18 @@ const runViewPrsQuickCheck = async ({
         reposSkippedForAutoRefresh.push(repo);
         return;
       }
+      // A repo not fetched in full checks just its own PRs, by number -
+      // listing it would queue every PR in it. None left to check: done.
+      if (!extraArgs.includes("--quick-check-numbers")) {
+        const explicitNumbers = getExplicitRefreshNumbers(repo);
+        if (explicitNumbers) {
+          if (explicitNumbers.length === 0) {
+            reposChecked.push(repo);
+            return;
+          }
+          extraArgs = [...extraArgs, "--quick-check-numbers", explicitNumbers.join(",")];
+        }
+      }
       // The repo's open PRs as GitHub has them now, for the rows (see
       // view-prs-live-summary-helpers.js) - not for a check of entered
       // numbers, which may not be open. A failure keeps the last listing
@@ -2511,7 +2638,7 @@ const runViewPrsQuickCheck = async ({
         const result = await callRunViewPrsScript(
           [viewPrsRunScriptRelativePath, "--quiet", "--quick-check", "--repo", repo, ...extraArgs],
           1024 * 1024,
-          { timeoutMs: scriptTimeoutMs, trackSchedulerPrProgress: false },
+          { timeoutMs: scriptTimeoutMs, trackSchedulerPrProgress: false, env: getRepoGhEnv(repo) },
         );
         const parsed = JSON.parse(String(result?.stdout || "").trim() || "{}");
         const pendingOpen = [
@@ -3456,6 +3583,17 @@ const createViewPrsApp = ({ production = isProductionEnv } = {}) => {
     // estimate keeps this consistent with how the dispatcher accounts for
     // that same kind of work, rather than a second, disconnected guess.
     runAutoGhReservationCost: dispatcherGhCostByTaskType.autoRefresh,
+    getRepoGhEnv,
+  });
+
+  registerViewPrsSourcesRoutes({
+    app,
+    sourcesStorage: viewPrsSourcesStorage,
+    seedSubscriptionRepos,
+    verifyGithubPr: (...args) => (module.exports.verifyGithubPr || verifyGithubPr)(...args),
+    runViewPrsAutoRefresh: (...args) => callRunViewPrsAutoRefresh(...args),
+    emitDataChanged: callEmitDataChanged,
+    console,
   });
 
   registerViewPrsPrRoutes({
@@ -3605,6 +3743,8 @@ module.exports = {
   // Main app and scheduler
   createViewPrsApp,
   initializeScheduler,
+  // Overridable by tests (see the sources routes' registration).
+  verifyGithubPr,
   runViewPrsAutoRefresh,
   runViewPrsQuickCheck,
   runViewPrsMergedQueueDrain,
@@ -3726,6 +3866,7 @@ module.exports = {
   resetAutoCircuitBreaker,
   getOpenAutoCircuitRepos,
   getViewPrsAutoRefreshRepos,
+  getExplicitRefreshNumbers,
   inferTrackedRepos,
   subscribeRepoToRecent,
   viewPrsSourcesStorage,

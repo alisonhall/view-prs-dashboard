@@ -76,6 +76,7 @@ describe("scheduler job event emission", () => {
       skipped: false,
       succeededRepos: ["owner/repo-one"],
       targetedRepos: [],
+      missingPrNumbersByRepo: {},
       failedRepos: [],
       failedRepoErrors: {},
       reposExcludedForAlreadyInProgress: [],

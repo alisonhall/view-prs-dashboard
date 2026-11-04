@@ -55,6 +55,7 @@ describe("view-prs mutation route helpers", () => {
       detail: {
         repo: "owner/repo",
         prNumber: "42",
+        prNumbers: ["42"],
       },
       displayCommand:
         "bash run-prs/check-open-pr-updates.sh --repo owner/repo --pr 42 --limit 5 --merged-limit 3 --jobs 2 --open changed --ack 101 --ack-clear 102 --ack-changed --hide-reason --quiet",
@@ -105,13 +106,26 @@ describe("view-prs mutation route helpers", () => {
       1,
       ["run-prs/check-open-pr-updates.sh", "--ack-only"],
       4 * 1024 * 1024,
-      { timeoutMs: 1234 },
+      { timeoutMs: 1234, env: {} },
     );
     expect(callRunViewPrsScript).toHaveBeenNthCalledWith(
       2,
       ["run-prs/check-open-pr-updates.sh", "--ack", "99"],
       4 * 1024 * 1024,
-      { timeoutMs: 4321 },
+      { timeoutMs: 4321, env: {} },
+    );
+
+    // A GitHub Enterprise repo's runs go to its host.
+    const enterpriseRunScript = helpers.createAckScriptRunner({
+      callRunViewPrsScript,
+      viewPrsAckScriptTimeoutMs: 1234,
+      env: { GH_HOST: "github.example.com" },
+    });
+    await enterpriseRunScript(["run-prs/check-open-pr-updates.sh", "--ack", "99"]);
+    expect(callRunViewPrsScript).toHaveBeenLastCalledWith(
+      ["run-prs/check-open-pr-updates.sh", "--ack", "99"],
+      4 * 1024 * 1024,
+      { timeoutMs: 1234, env: { GH_HOST: "github.example.com" } },
     );
   });
 

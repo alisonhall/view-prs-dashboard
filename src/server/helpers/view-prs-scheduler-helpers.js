@@ -35,6 +35,9 @@ const createViewPrsSchedulerHelpers = ({
   // subscribed. Without it (tests building these helpers alone), the repos
   // are inferred from the stored data as before it existed.
   sourcesStorage = null,
+  // () => { dataVersion }, which moves with the data file: what's read from
+  // it is kept until then. Without it (tests), read each time.
+  getDataVersion = null,
 }) => {
   const getManualCooldownSkipReason = ({
     nowMs,
@@ -654,14 +657,17 @@ const createViewPrsSchedulerHelpers = ({
     return repos;
   };
 
+  const loadSources = () =>
+    sourcesStorage ? sourcesStorage.loadSources({ seedRepos: seedSubscriptionRepos }) : null;
+
   // The repos the background updates fetch in full: VIEW_PRS_AUTO_REPOS
   // and the "recent" subscriptions - not every repo with a stored row, or
   // a single PR added from another repo would bring in all of that repo's.
-  // VIEW_PRS_REPO when there are none, so a fresh install still starts.
-  // Until the sources file is seeded (no file, and no repo to seed it from
-  // yet - or data that couldn't be read), inferred as before.
-  const getViewPrsAutoRefreshRepos = (extraReposRaw = process.env.VIEW_PRS_AUTO_REPOS || "") => {
-    const sources = sourcesStorage ? sourcesStorage.loadSources({ seedRepos: seedSubscriptionRepos }) : null;
+  // VIEW_PRS_REPO when there are no sources at all, so a fresh install
+  // still starts. Until the sources file is seeded (no file, and no repo
+  // to seed it from yet - or data that couldn't be read), inferred as
+  // before.
+  const getFullRefreshRepos = (sources, extraReposRaw) => {
     if (!sources) {
       return inferTrackedRepos(readViewPrsData(), extraReposRaw);
     }
@@ -677,10 +683,83 @@ const createViewPrsSchedulerHelpers = ({
     };
     parseRepoCsv(extraReposRaw).forEach(addRepo);
     sourcesStorage.getRecentSubscriptionRepos(sources).forEach(addRepo);
-    if (repos.length === 0) {
+    if (repos.length === 0 && sources.subscriptions.length === 0 && sources.trackedPrs.length === 0) {
       addRepo(defaultViewPrsRepo);
     }
     return repos;
+  };
+
+  // How long a merged or closed PR fetched on its own keeps being checked.
+  const EXPLICIT_PR_DONE_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+
+  // The PRs fetched on their own (a "numbers" subscription's, and those
+  // added by URL), by repo - only in repos not fetched in full, whose runs
+  // cover them - less those merged or closed over 30 days ago, which have
+  // stopped changing. A repo left with none is left out.
+  // When each stored merged or closed PR was, by repo#number - read again
+  // only when the data's version moves (the dispatcher asks every tick).
+  let doneAtCache = { version: null, byKey: new Map() };
+  const getDoneAtByKey = () => {
+    const version = getDataVersion ? getDataVersion()?.dataVersion : null;
+    if (version && version === doneAtCache.version) return doneAtCache.byKey;
+    const byKey = new Map();
+    Object.values(readViewPrsData()?.byPrNumber || {}).forEach((entry) => {
+      if (entry?.section !== "merged" && entry?.section !== "closed") return;
+      const doneAtMs = parseTimestamp(entry?.data?.mergedAt || entry?.data?.closedAt);
+      if (doneAtMs !== null) byKey.set(`${entry.repo}#${entry.prNumber}`, doneAtMs);
+    });
+    doneAtCache = { version, byKey };
+    return byKey;
+  };
+
+  const getExplicitRefreshNumbersByRepo = (sources, fullRepos, nowMs = Date.now()) => {
+    const explicitByRepo = sources ? sourcesStorage.getExplicitPrNumbersByRepo(sources) : {};
+    const repos = Object.keys(explicitByRepo).filter((repo) => !fullRepos.includes(repo));
+    if (repos.length === 0) return {};
+    const doneAtByKey = getDoneAtByKey();
+    const byRepo = {};
+    repos.forEach((repo) => {
+      const numbers = explicitByRepo[repo].filter((number) => {
+        const doneAtMs = doneAtByKey.get(`${repo}#${number}`);
+        return doneAtMs === undefined || nowMs - doneAtMs <= EXPLICIT_PR_DONE_WINDOW_MS;
+      });
+      if (numbers.length > 0) byRepo[repo] = numbers;
+    });
+    return byRepo;
+  };
+
+  // Every repo the background updates fetch: those fetched in full, then
+  // those with PRs fetched on their own (getExplicitRefreshNumbers says
+  // which).
+  const getViewPrsAutoRefreshRepos = (extraReposRaw = process.env.VIEW_PRS_AUTO_REPOS || "") => {
+    const sources = loadSources();
+    const fullRepos = getFullRefreshRepos(sources, extraReposRaw);
+    return [...fullRepos, ...Object.keys(getExplicitRefreshNumbersByRepo(sources, fullRepos))];
+  };
+
+  // The PR numbers a background refresh of this repo is limited to: those
+  // of a repo with PRs fetched on their own and not fetched in full - []
+  // when none is left to check, so it's skipped, never fetched in full: one
+  // PR added from a repo mustn't bring in all of its PRs. Null - no limit -
+  // for any other repo: one fetched in full, or one asked for by name.
+  const getExplicitRefreshNumbers = (repo, extraReposRaw = process.env.VIEW_PRS_AUTO_REPOS || "") => {
+    const sources = loadSources();
+    if (!sources || !sourcesStorage.getExplicitPrNumbersByRepo(sources)[repo]) return null;
+    const fullRepos = getFullRefreshRepos(sources, extraReposRaw);
+    if (fullRepos.includes(repo)) return null;
+    return getExplicitRefreshNumbersByRepo(sources, fullRepos)[repo] || [];
+  };
+
+  // A repo's PRs fetched on their own still worth checking, whether or not
+  // it's fetched in full too (whose runs may not reach the older ones).
+  const getExplicitPrNumbersInWindow = (repo) =>
+    getExplicitRefreshNumbersByRepo(loadSources(), [])[repo] || [];
+
+  // The environment the script and gh run in for a repo: GH_HOST for one
+  // on a GitHub Enterprise host (gh's own -R takes owner/repo against it).
+  const getRepoGhEnv = (repo) => {
+    const host = sourcesStorage ? sourcesStorage.getRepoHost(sourcesStorage.readSources(), repo) : "";
+    return host ? { GH_HOST: host } : {};
   };
 
   // The first sources file's subscriptions: the repos tracked until then,
@@ -726,8 +805,12 @@ const createViewPrsSchedulerHelpers = ({
     resetAutoCircuitBreaker,
     getOpenAutoCircuitRepos,
     getViewPrsAutoRefreshRepos,
+    getExplicitRefreshNumbers,
+    getExplicitPrNumbersInWindow,
+    getRepoGhEnv,
     inferTrackedRepos,
     subscribeRepoToRecent,
+    seedSubscriptionRepos,
     setPendingForRepo,
     clearPendingForRepo,
     clearPendingNumbersForRepo,

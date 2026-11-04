@@ -10,7 +10,11 @@ const { writeFileReplacingSync } = require("../helpers/file-io-helpers");
 // which repos and PRs the background updates fetch. Only the server writes
 // it, whole (writeFileReplacingSync). A file that doesn't exist yet is
 // seeded once from the repos the dashboard tracked before it existed
-// (inferTrackedRepos), so nothing changes when it first appears.
+// (inferTrackedRepos), so nothing changes when it first appears - once:
+// a marker beside it (<file>.seeded) says it has been, so one deleted or
+// set aside later starts empty rather than seeded again, which would
+// subscribe every repo with a row (those unsubscribed, and those of PRs
+// added one by one, included).
 
 const SOURCES_VERSION = 1;
 const SUBSCRIPTION_MODES = new Set(["recent", "numbers"]);
@@ -69,12 +73,26 @@ const createViewPrsSourcesStorage = ({ fs, sourcesFile, isRepoSlug, console: log
     return { version: SOURCES_VERSION, subscriptions, trackedPrs };
   };
 
+  const seededMarkerFile = `${sourcesFile}.seeded`;
+  const wasSeeded = () => fs.existsSync(seededMarkerFile);
+  const markSeeded = () => {
+    if (wasSeeded()) return;
+    try {
+      fs.writeFileSync(seededMarkerFile, `${new Date().toISOString()}\n`, "utf8");
+    } catch (error) {
+      logger.warn?.(`[view-prs] unable to write ${seededMarkerFile}: ${error.message}`);
+    }
+  };
+
   // The stored sources, or null when there's no file - or an unreadable
   // one, which is set aside (not deleted) so it can be seeded afresh.
   const readSources = () => {
     if (!fs.existsSync(sourcesFile)) return null;
     try {
-      return normalizeSources(JSON.parse(fs.readFileSync(sourcesFile, "utf8")));
+      const stored = normalizeSources(JSON.parse(fs.readFileSync(sourcesFile, "utf8")));
+      // A file from before the marker counts as seeded too.
+      markSeeded();
+      return stored;
     } catch (error) {
       const asidePath = `${sourcesFile}.unreadable-${Date.now()}`;
       try {
@@ -91,61 +109,139 @@ const createViewPrsSourcesStorage = ({ fs, sourcesFile, isRepoSlug, console: log
     const normalized = normalizeSources(sources);
     fs.mkdirSync(path.dirname(sourcesFile), { recursive: true });
     writeFileReplacingSync(fs, sourcesFile, `${JSON.stringify(normalized, null, 2)}\n`);
+    markSeeded();
     return normalized;
   };
 
   const seededSources = (repos) =>
     normalizeSources({ subscriptions: repos.map((repo) => ({ repo, mode: "recent" })) });
 
+  // The sources to start from without a file: none once the file has been
+  // seeded (the marker), or else the seed's - null when the seed can't tell
+  // (seedRepos returns null: the data couldn't be read).
+  const startingSources = (seedRepos) => {
+    if (wasSeeded()) return normalizeSources({});
+    const seed = seedRepos();
+    return Array.isArray(seed) ? seededSources(seed) : null;
+  };
+
   // The sources, seeded and written the first time: a "recent"
   // subscription for each repo seedRepos() names. Null - nothing written -
-  // while there's no file and the seed names no repo, or can't tell
-  // (seedRepos returns null: the data couldn't be read). Written then, it
-  // would stand for good: every repo dropped by one failed read.
+  // while there's no file and the seed names no repo, or can't tell. Written
+  // then, it would stand for good: every repo dropped by one failed read.
+  // A file gone after it was seeded starts empty, and says so.
   const loadSources = ({ seedRepos = () => null } = {}) => {
     const stored = readSources();
     if (stored) return stored;
-    const seed = seedRepos();
-    if (!Array.isArray(seed) || seed.length === 0) return null;
-    const seeded = seededSources(seed);
+    const seeded = wasSeeded();
+    const starting = startingSources(seedRepos);
+    if (!starting || (!seeded && starting.subscriptions.length === 0)) return null;
+    if (seeded) {
+      logger.warn?.(`[view-prs] sources file missing (${sourcesFile}); starting with no subscriptions or added PRs`);
+    }
     try {
-      return writeSources(seeded);
+      return writeSources(starting);
     } catch (error) {
       logger.warn?.(`[view-prs] unable to write sources file: ${error.message}`);
-      return seeded;
+      return starting;
     }
   };
+
+  // The stored sources, or those to start from; null when they can't be
+  // told (see startingSources), and a change then is better not written: a
+  // file of it alone would drop the seed's repos.
+  const readOrStartSources = (seedRepos) => readSources() || startingSources(seedRepos);
 
   const getRecentSubscriptionRepos = (sources) =>
     (sources?.subscriptions || []).filter((entry) => entry.mode === "recent").map((entry) => entry.repo);
 
+  // Each repo's PRs fetched on their own rather than with the rest of the
+  // repo: those of a "numbers" subscription and those added one by one.
+  const getExplicitPrNumbersByRepo = (sources) => {
+    const byRepo = {};
+    const add = (repo, number) => {
+      byRepo[repo] = byRepo[repo] || [];
+      if (!byRepo[repo].includes(number)) byRepo[repo].push(number);
+    };
+    (sources?.subscriptions || [])
+      .filter((entry) => entry.mode === "numbers")
+      .forEach((entry) => (entry.numbers || []).forEach((number) => add(entry.repo, number)));
+    (sources?.trackedPrs || []).forEach((entry) => add(entry.repo, entry.number));
+    return byRepo;
+  };
+
+  // The GitHub Enterprise host a repo is on ("" for github.com): its
+  // subscription's, or else a PR added from it.
+  const getRepoHost = (sources, repo) =>
+    [...(sources?.subscriptions || []), ...(sources?.trackedPrs || [])].find(
+      (entry) => entry.repo === repo && entry.host,
+    )?.host || "";
+
   // Subscribes a repo to its recent PRs, unless it's subscribed already
   // (in either mode, which is kept). Returns whether it was added. Without
-  // a file, the seed's repos come too - unless the seed can't tell (null),
-  // when nothing is written: a file of this repo alone would drop the
-  // rest. Its rows seed it later anyway.
+  // a file, the seed's repos come too - unless the seed can't tell, when
+  // nothing is written. Its rows seed it later anyway.
   const subscribeRepo = (repo, { seedRepos = () => null } = {}) => {
     const safeRepo = toTrimmed(repo);
     if (!isRepoSlug(safeRepo)) return false;
-    let sources = readSources();
-    if (!sources) {
-      const seed = seedRepos();
-      if (!Array.isArray(seed)) return false;
-      sources = seededSources(seed);
-    }
+    const sources = readOrStartSources(seedRepos);
+    if (!sources) return false;
     if (sources.subscriptions.some((entry) => entry.repo === safeRepo)) return false;
     writeSources({ ...sources, subscriptions: [...sources.subscriptions, { repo: safeRepo, mode: "recent" }] });
+    return true;
+  };
+
+  // Tracks a PR added on its own (by URL). { added, entry }: added false
+  // when it was tracked already (entry is the stored one). Throws when the
+  // sources can't be told (as subscribeRepo writes nothing then) or the PR
+  // isn't one.
+  const addTrackedPr = ({ repo, number, url, host }, { seedRepos = () => null, now = () => new Date() } = {}) => {
+    const safeRepo = toTrimmed(repo);
+    const safeNumber = toTrimmed(number);
+    if (!isRepoSlug(safeRepo) || !/^\d+$/.test(safeNumber)) {
+      throw new Error(`Not a PR: ${safeRepo}#${safeNumber}`);
+    }
+    const sources = readOrStartSources(seedRepos);
+    if (!sources) {
+      throw new Error("The stored PR data couldn't be read, so the sources file wasn't written; try again once it can be");
+    }
+    const existing = sources.trackedPrs.find((entry) => entry.repo === safeRepo && entry.number === safeNumber);
+    if (existing) return { added: false, entry: existing };
+    const written = writeSources({
+      ...sources,
+      trackedPrs: [...sources.trackedPrs, { repo: safeRepo, number: safeNumber, url, host, addedAt: now().toISOString() }],
+    });
+    return {
+      added: true,
+      entry: written.trackedPrs.find((entry) => entry.repo === safeRepo && entry.number === safeNumber),
+    };
+  };
+
+  // Stops tracking a PR added on its own. Returns whether it was tracked.
+  const removeTrackedPr = (repo, number) => {
+    const sources = readSources();
+    if (!sources) return false;
+    const safeRepo = toTrimmed(repo);
+    const safeNumber = toTrimmed(number);
+    const trackedPrs = sources.trackedPrs.filter((entry) => !(entry.repo === safeRepo && entry.number === safeNumber));
+    if (trackedPrs.length === sources.trackedPrs.length) return false;
+    writeSources({ ...sources, trackedPrs });
     return true;
   };
 
   return {
     sourcesFile,
     normalizeSources,
+    normalizeHost,
     readSources,
     writeSources,
     loadSources,
     getRecentSubscriptionRepos,
+    getExplicitPrNumbersByRepo,
+    getRepoHost,
     subscribeRepo,
+    addTrackedPr,
+    removeTrackedPr,
   };
 };
 

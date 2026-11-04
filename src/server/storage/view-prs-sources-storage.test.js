@@ -123,4 +123,86 @@ describe("view-prs sources storage", () => {
     ]);
     expect(storage.getRecentSubscriptionRepos(storage.readSources())).toEqual(["acme/api"]);
   });
+
+  // Seeded again, it would subscribe every repo with a row: those
+  // unsubscribed, and those of PRs added one by one.
+  test("once seeded, a file gone later starts empty, and says so, rather than being seeded again", () => {
+    storage.loadSources({ seedRepos: () => ["acme/api"] });
+    fs.rmSync(sourcesFile);
+
+    const loaded = storage.loadSources({ seedRepos: () => ["acme/api", "other/lib"] });
+
+    expect(loaded).toEqual({ version: 1, subscriptions: [], trackedPrs: [] });
+    expect(storage.readSources()).toEqual(loaded);
+    expect(warnings.join("\n")).toMatch(/sources file missing/);
+    expect(storage.subscribeRepo("acme/web", { seedRepos: () => ["acme/api"] })).toBe(true);
+    expect(storage.readSources().subscriptions).toEqual([{ repo: "acme/web", mode: "recent" }]);
+  });
+
+  test("a file from before the seeded marker counts as seeded once read", () => {
+    fs.writeFileSync(sourcesFile, JSON.stringify({ subscriptions: [{ repo: "acme/api" }] }), "utf8");
+    storage.readSources();
+    fs.rmSync(sourcesFile);
+
+    expect(storage.loadSources({ seedRepos: () => ["acme/api"] }).subscriptions).toEqual([]);
+  });
+
+  test("adds a tracked PR once, with when it was added, and removes it", () => {
+    storage.writeSources({ subscriptions: [{ repo: "acme/api", mode: "recent" }] });
+    const now = () => new Date("2026-11-04T09:00:00Z");
+
+    const first = storage.addTrackedPr(
+      { repo: "corp/tool", number: "5", url: "https://github.example.com/corp/tool/pull/5", host: "github.example.com" },
+      { now },
+    );
+    const again = storage.addTrackedPr({ repo: "corp/tool", number: "5" }, { now });
+
+    const entry = {
+      repo: "corp/tool",
+      number: "5",
+      url: "https://github.example.com/corp/tool/pull/5",
+      host: "github.example.com",
+      addedAt: "2026-11-04T09:00:00.000Z",
+    };
+    expect(first).toEqual({ added: true, entry });
+    expect(again).toEqual({ added: false, entry });
+    expect(storage.readSources().trackedPrs).toEqual([entry]);
+    expect(() => storage.addTrackedPr({ repo: "corp/tool", number: "x" })).toThrow(/Not a PR/);
+
+    expect(storage.removeTrackedPr("corp/tool", "5")).toBe(true);
+    expect(storage.removeTrackedPr("corp/tool", "5")).toBe(false);
+    expect(storage.readSources().trackedPrs).toEqual([]);
+  });
+
+  test("adding a tracked PR without a file seeds it first, and writes nothing when the seed can't tell", () => {
+    expect(() => storage.addTrackedPr({ repo: "corp/tool", number: "5" }, { seedRepos: () => null })).toThrow(/couldn't be read/);
+    expect(fs.existsSync(sourcesFile)).toBe(false);
+
+    storage.addTrackedPr({ repo: "corp/tool", number: "5" }, { seedRepos: () => ["acme/api"] });
+
+    expect(storage.readSources().subscriptions).toEqual([{ repo: "acme/api", mode: "recent" }]);
+    expect(storage.readSources().trackedPrs.map((entry) => `${entry.repo}#${entry.number}`)).toEqual(["corp/tool#5"]);
+  });
+
+  test("lists each repo's PRs fetched on their own, and a repo's Enterprise host", () => {
+    const sources = storage.normalizeSources({
+      subscriptions: [
+        { repo: "acme/api", mode: "recent" },
+        { repo: "acme/web", mode: "numbers", numbers: ["4", "7"], host: "github.example.com" },
+      ],
+      trackedPrs: [
+        { repo: "acme/web", number: "7" },
+        { repo: "acme/web", number: "9" },
+        { repo: "corp/tool", number: "5", host: "ghe.corp.example" },
+      ],
+    });
+
+    expect(storage.getExplicitPrNumbersByRepo(sources)).toEqual({
+      "acme/web": ["4", "7", "9"],
+      "corp/tool": ["5"],
+    });
+    expect(storage.getRepoHost(sources, "acme/web")).toBe("github.example.com");
+    expect(storage.getRepoHost(sources, "corp/tool")).toBe("ghe.corp.example");
+    expect(storage.getRepoHost(sources, "acme/api")).toBe("");
+  });
 });

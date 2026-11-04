@@ -19,10 +19,15 @@ const createViewPrsMutationRouteHelpers = ({ formatScriptFailureMessage }) => {
 
   const buildDisplayCommand = (args) => `bash ${args.join(" ")}`;
 
-  const buildRunRequestDetail = (body = {}) => ({
-    repo: toTrimmedString(body.repo) || null,
-    prNumber: toTrimmedString(body.prNumber) || null,
-  });
+  // prNumber may list several PRs ("12, 34"): prNumbers has each.
+  const buildRunRequestDetail = (body = {}) => {
+    const prNumbers = toTrimmedString(body.prNumber).split(/[\s,]+/).filter(Boolean);
+    return {
+      repo: toTrimmedString(body.repo) || null,
+      prNumber: prNumbers.join(",") || null,
+      prNumbers,
+    };
+  };
 
   const buildRunRequest = ({ body = {}, viewPrsRunScriptRelativePath }) => {
     const args = [viewPrsRunScriptRelativePath];
@@ -49,11 +54,17 @@ const createViewPrsMutationRouteHelpers = ({ formatScriptFailureMessage }) => {
       args.push("--repo", detail.repo);
     }
 
-    if (detail.prNumber) {
-      if (!/^\d+$/.test(detail.prNumber) || Number(detail.prNumber) < 1) {
-        throw new Error(`Invalid --pr value: ${detail.prNumber}`);
+    if (detail.prNumbers.length > 0) {
+      const invalid = detail.prNumbers.find((value) => !/^\d+$/.test(value) || Number(value) < 1);
+      if (invalid !== undefined) {
+        throw new Error(`Invalid --pr value: ${invalid}`);
       }
-      args.push("--pr", detail.prNumber);
+      // One PR is --pr, as it always was; several, --prs.
+      if (detail.prNumbers.length === 1) {
+        args.push("--pr", detail.prNumber);
+      } else {
+        args.push("--prs", detail.prNumber);
+      }
     }
 
     appendNumericFlag("--limit", body.limit);
@@ -375,12 +386,14 @@ const createViewPrsMutationRouteHelpers = ({ formatScriptFailureMessage }) => {
     };
   };
 
+  // env: the repo's (GH_HOST for a GitHub Enterprise one).
   const createAckScriptRunner = ({
     callRunViewPrsScript,
     viewPrsAckScriptTimeoutMs,
+    env = {},
   }) =>
     (scriptArgs, timeoutMs = viewPrsAckScriptTimeoutMs) =>
-      callRunViewPrsScript(scriptArgs, 4 * 1024 * 1024, { timeoutMs });
+      callRunViewPrsScript(scriptArgs, 4 * 1024 * 1024, { timeoutMs, env });
 
   const buildAckRefreshList = (detail) => [
     ...new Set([
@@ -598,6 +611,7 @@ const createViewPrsMutationRouteHelpers = ({ formatScriptFailureMessage }) => {
     repo,
     callRunViewPrsScript,
     viewPrsAckRefreshScriptTimeoutMs,
+    env = {},
   }) => {
     const refreshedPrs = [];
     const refreshErrors = [];
@@ -612,6 +626,7 @@ const createViewPrsMutationRouteHelpers = ({ formatScriptFailureMessage }) => {
       try {
         await callRunViewPrsScript(refreshArgs, 4 * 1024 * 1024, {
           timeoutMs: viewPrsAckRefreshScriptTimeoutMs,
+          env,
         });
         refreshedPrs.push(candidate.number);
       } catch (failure) {

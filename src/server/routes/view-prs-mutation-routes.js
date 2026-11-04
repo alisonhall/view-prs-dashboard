@@ -68,7 +68,11 @@ const registerViewPrsMutationRoutes = ({
   // its own call site below for why it reserves this many slots instead of
   // the default 1. Falls back to 1 (matching every other route) if absent.
   runAutoGhReservationCost,
+  // (repo) => the env a script run for it needs (GH_HOST for a GitHub
+  // Enterprise repo). Safely no-ops if absent.
+  getRepoGhEnv,
 }) => {
+  const getRepoGhEnvSafe = (repo) => (typeof getRepoGhEnv === "function" && repo ? getRepoGhEnv(repo) : {});
   const emitDataChangedSafe =
     typeof emitDataChanged === "function" ? emitDataChanged : () => {};
   const subscribeRepoToRecentSafe =
@@ -179,7 +183,8 @@ const registerViewPrsMutationRoutes = ({
       repo: detail.repo,
       // Asked for by hand: every PR fetched in full, none reused as stored
       // (as the background sweep does) - the way to make sure of a row.
-      env: { VIEW_PRS_SKIP_UNCHANGED: "0" },
+      // GH_HOST for a repo on a GitHub Enterprise host.
+      env: { VIEW_PRS_SKIP_UNCHANGED: "0", ...getRepoGhEnvSafe(detail.repo || defaultViewPrsRepo) },
     })
       .finally(() => releaseGhSlotsSafe())
       .then(({ stdout, stderr }) => {
@@ -197,7 +202,7 @@ const registerViewPrsMutationRoutes = ({
         if (detail.repo && !detail.prNumber) {
           clearPendingForRepo(detail.repo);
         } else if (detail.repo && detail.prNumber && typeof clearPendingNumbersForRepo === "function") {
-          clearPendingNumbersForRepo(detail.repo, [detail.prNumber]);
+          clearPendingNumbersForRepo(detail.repo, detail.prNumbers);
         }
         appendActionLogEntry(
           buildRunSuccessActionLogEntry({
@@ -434,11 +439,6 @@ const registerViewPrsMutationRoutes = ({
     const body = req.body || {};
     let ackRequest;
 
-    const runScript = createAckScriptRunner({
-      callRunViewPrsScript,
-      viewPrsAckScriptTimeoutMs,
-    });
-
     try {
       ackRequest = buildAckRequest({ body, viewPrsRunScriptRelativePath });
     } catch (error) {
@@ -453,6 +453,12 @@ const registerViewPrsMutationRoutes = ({
       detail,
       displayCommand,
     } = ackRequest;
+
+    const runScript = createAckScriptRunner({
+      callRunViewPrsScript,
+      viewPrsAckScriptTimeoutMs,
+      env: getRepoGhEnvSafe(repo || defaultViewPrsRepo),
+    });
     const timingContext = createTimingContext();
     
     // Determine if this is a checkbox-only operation (flagged/inReview only)
@@ -595,6 +601,7 @@ const registerViewPrsMutationRoutes = ({
         repo,
         callRunViewPrsScript,
         viewPrsAckRefreshScriptTimeoutMs,
+        env: getRepoGhEnvSafe(repo),
       });
       const { refreshedPrs, refreshErrors } = refreshResult;
 

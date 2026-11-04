@@ -12,6 +12,7 @@ import { describeReposChecked } from '../../helpers/pr-row-freshness.helpers.ts'
 import { readDefaultQuickCheckIntervalMs } from '../../state/RepoFreshnessContext';
 import type { PrDataMeta } from '../../types/pr-data.ts';
 import { ActivityPopover } from './ActivityPopover';
+import { AddPrPopover } from './AddPrPopover';
 import { QuickCheckAllButton, type QuickCheckAllButtonProps } from './QuickCheckAllButton';
 
 // The views, as tabs over AppShell's panels (#tab-panel-*, which AppShell
@@ -85,7 +86,8 @@ function LastUpdatePill({
  * repos the table shows rows from (one by name, else how many - the list on
  * hover), the view tabs (Pull requests / Review stats / Authors,
  * TabStateContext's data tab), the latest action's status, when the data
- * was last updated, the refresh (Quick check all), the background activity
+ * was last updated, the refresh (Quick check all), adding a PR by URL
+ * (AddPrPopover), the background activity
  * (ActivityPopover) and the Settings drawer's button. The
  * auto-update-paused banner has its own root under it
  * (AutoUpdatePausedBanner).
@@ -135,6 +137,7 @@ export function AppHeader({ onQuickCheckAll }: AppHeaderProps) {
             />
           </NowProvider>
           <QuickCheckAllButton onCheck={onQuickCheckAll} />
+          <AddPrPopover />
           <ActivityPopover />
           <Button icon="sliders" aria-haspopup="dialog" aria-expanded={settings.isOpen} onClick={() => settings.open()}>
             Settings
