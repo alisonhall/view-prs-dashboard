@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect } from 'react';
+import { createContext, useCallback, useContext } from 'react';
 
 /**
  * Repos' available GitHub labels (GET /view-prs/labels).
@@ -10,8 +10,8 @@ import { createContext, useContext, useEffect } from 'react';
  * - `labelsByRepo` holds every repo's fetched so far, and `ensureLabels`
  *   fetches a repo's once. A PR's own label pickers (each row's,
  *   PrActionsCell, and the detail pane's) read their PR's repo through
- *   useLabelsForRepo: a PR from another repo can't take the current repo's
- *   labels.
+ *   useLabelsForRepo, fetched when their menu first opens: a PR from
+ *   another repo can't take the current repo's labels.
  *
  * Default value (unwrapped) is safe empty lists and no-op fetches,
  * matching every other Context in this app - a consumer rendered without a
@@ -40,12 +40,16 @@ export function useRepoLabels(): RepoLabelsValue {
 
 const NO_LABELS: RepoLabel[] = [];
 
-// One repo's labels, fetched the first time any component asks for them.
-export function useLabelsForRepo(repo: string): RepoLabel[] {
+// One repo's labels: what's fetched so far, whether they have been, and
+// `load` to fetch them (once per repo) - called when a menu listing them
+// opens, so a table of many repos doesn't fetch every repo's on load.
+export function useLabelsForRepo(repo: string): { labels: RepoLabel[]; loaded: boolean; load: () => void } {
   const { labelsByRepo, ensureLabels } = useRepoLabels();
   const safeRepo = String(repo || '').trim();
-  useEffect(() => {
+  const load = useCallback(() => {
     if (safeRepo) ensureLabels?.(safeRepo);
   }, [safeRepo, ensureLabels]);
-  return (safeRepo && labelsByRepo?.[safeRepo]) || NO_LABELS;
+  const fetched = safeRepo ? labelsByRepo?.[safeRepo] : undefined;
+  // Without a Provider to fetch them, there's nothing to wait for.
+  return { labels: fetched || NO_LABELS, loaded: Boolean(fetched) || !ensureLabels, load };
 }

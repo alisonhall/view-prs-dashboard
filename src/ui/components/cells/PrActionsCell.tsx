@@ -45,8 +45,9 @@ export function PrActionsCell({
 }: PrActionsCellProps) {
   const prNumber = String(pr?.number || '');
   const entry = { prNumber, repo };
-  // This PR's repo's labels, not the current repo's.
-  const repoLabels = useLabelsForRepo(repo);
+  // This PR's repo's labels, not the current repo's, fetched when the menu
+  // first opens.
+  const { labels: repoLabels, loaded: labelsLoaded, load: loadLabels } = useLabelsForRepo(repo);
   const existingLabels = new Set((Array.isArray(pr?.labels) ? pr.labels : []).map((label) => getLabelName(label)).filter(Boolean));
   const availableLabels = repoLabels
     .map((label) => String(label?.name || ''))
@@ -73,6 +74,7 @@ export function PrActionsCell({
         <MenuButton
           icon="more"
           label={`More actions for PR #${prNumber}`}
+          onOpen={loadLabels}
           entries={[
             {
               id: 'in-review',
@@ -91,7 +93,7 @@ export function PrActionsCell({
             {
               id: 'labels',
               label: 'Add label',
-              emptyText: 'No labels to add',
+              emptyText: labelsLoaded ? 'No labels to add' : 'Loading labels…',
               items: availableLabels.map((name) => ({
                 id: name,
                 label: name,

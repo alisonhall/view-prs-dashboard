@@ -52,6 +52,8 @@ export interface MenuButtonProps {
   // The button's accessible name, also its tooltip.
   label: string;
   entries: MenuEntry[];
+  // Called as the menu opens (to load what it lists only when it's wanted).
+  onOpen?: () => void;
 }
 
 const GAP_PX = 4;
@@ -70,7 +72,7 @@ export function computeMenuPosition(
   return { top, left: Math.max(VIEWPORT_MARGIN_PX, Math.min(rightAligned, maxLeft)) };
 }
 
-export function MenuButton({ icon, label, entries }: MenuButtonProps) {
+export function MenuButton({ icon, label, entries, onOpen }: MenuButtonProps) {
   const menuId = useId();
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -136,6 +138,7 @@ export function MenuButton({ icon, label, entries }: MenuButtonProps) {
   const openMenu = (focus: 'first' | 'last') => {
     setInitialFocus(focus);
     setOpen(true);
+    onOpen?.();
   };
 
   const handleButtonKeyDown = (event: KeyboardEvent) => {
