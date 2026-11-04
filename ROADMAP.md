@@ -60,6 +60,48 @@
 - [ ] Saved filter views, one click each - e.g. "My PRs needing action", "Waiting on my review"
 - [x] ~~Call out conversations I started that someone else resolved, so I can confirm they were handled~~ - done (2026-11-03): others may resolve my threads on high-priority PRs once they've checked them, which no data shows, so every such thread is "to check" until I confirm it in the Conversations tab (its `To check` chip; the thread shows who resolved it - warning when it was the PR author - whether the code under it changed since, and whether they replied). The Review column shows "N to check" and the `View scope` filter lists those PRs. Confirmations are kept in the user state (`threadChecksByRepo`) and lapse when the thread gets a new reply or is resolved again by someone else.
 
+### After the multi-source refactor (added 2026-11-04)
+
+Improvements noted once PRs could come from several repos and sources (subscriptions, PRs added by URL, runs of chosen PRs).
+
+#### PR table
+
+- [ ] A legend for the signals and icons. In particular, the Signals column's first slot: a blue (accent) dot means the PR changed since your last Ack (its tooltip says what changed), a grey (muted) ring means it's had no recent activity, and an empty slot means no change since your Ack. None of that is explained anywhere on the page.
+- [ ] Fix the Review column's spacing: its "files viewed" count sometimes wraps onto the next line.
+- [ ] Sorting options for each section. Default: the Merged section by date merged (newest first), every other section by PR number.
+
+#### Filters and search
+
+- [ ] Explain each filter better, so it's clear what it filters (help text or tooltips in the filter bar).
+- [ ] A search box for the page - unless the `PRs` filter (numbers, `owner/repo#n`, URLs, repos) already covers it. Decide first what search would add (titles, authors, notes, branch names?).
+- [ ] Remove the "Applied filters" text at the top of the page: the filter bar's chips and "Showing N of M PRs" replace it.
+
+#### Header, Activity and checks
+
+- [ ] Reorganize the Activity popover so it's clear what's running now and what's coming up next, whether it's a background job or something you started.
+- [ ] Move the header's `Quick check all` button into Settings › Run & check.
+- [ ] Add a `Quick check open and latest merged` button: quick-check the open PRs plus the most recently merged ones, not every stored row.
+
+#### Settings
+
+- [ ] Reorganize the Settings drawer so items are grouped by what they do, and describe every option so it makes sense to someone with no context.
+- [ ] Decide whether Settings › Background updates belongs in Sources. If it stays separate, list every source there (each subscription, and the repos of PRs added one by one), not only the repos the dispatcher has scheduled.
+- [ ] Rethink `Request more` (fetch more of a repo's merged PRs) now that PRs come from subscriptions and PRs added one by one: say which repo it's for, and what it means for a repo you only follow listed PRs in. Possibly move it into Settings › Sources, beside each subscription.
+- [ ] Make the Action log scannable, and log background requests (quick checks, refreshes, drains) as well as actions you started.
+
+#### Actors
+
+- [ ] Rework how actor names are matched: an internal actor id, with an editable display name and any number of login aliases attached to it - in place of today's login-to-name cache plus `actor-login-aliases.json`.
+
+#### Export
+
+- [ ] Make choosing fields easier: nested lists for fields inside groups/objects, with a way to select every field in a group at once.
+- [ ] Export profiles: save the chosen fields as a named profile, then load, edit or use it later. Profiles are saved in `user-defaults.json`.
+
+#### Other views
+
+- [ ] Convert the "Review stats" and "Authors" views to the new design (UI_REDESIGN_PLAN.md).
+
 ### Styling
 
 - [ ] Add different styling for when my name appears
