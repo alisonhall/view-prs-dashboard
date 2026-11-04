@@ -70,12 +70,22 @@ Improvements noted once PRs could come from several repos and sources (subscript
 - [x] ~~Fix the Review column's spacing: its "files viewed" count sometimes wraps onto the next line~~ - done (2026-11-04): the table lets cell text break anywhere, so from three digits the count split ("120/" over "134"). A slot's number no longer breaks, the slots are 8px apart (were 10px), and the column is 180px (was 170px), which fits four-digit counts; past that, or in the docked pane's narrower column, whole slots wrap.
 - [x] ~~Sorting options for each section~~ - done (2026-11-04): a sort menu at the end of each section's table header row (the `Actions` header) - PR number or last updated, and in the Merged and Closed sections the date merged or closed, and the order - saved with the section's preferences (Appearance's `Restore default sections` leaves it). Defaults: Merged by date merged, Closed by date closed, every other section by PR number, newest first (the smart groups - Flagged, Needs Attention and the rest - used the order rows were first stored in). Rows don't store when a PR was created, so there's no "Created" sort yet.
 - [ ] Stop rows jumping around under the "Last updated" sort: rows move as PRs change on GitHub and the page refreshes, so working down the list, a row can move away from under you (or the next one change). For example, hold the order while you're interacting with the section (scrolled into it, a row selected, a menu open) and say when there's a newer order to apply ("Order changed - re-sort").
+- [ ] An open-in-new-tab icon button beside the PR number in each row, opening the PR on GitHub in a new tab.
+- [ ] Fix the repo name in a row overlapping the Author column: it never wraps (`.pr-title-repo`), so a long `owner/repo` runs past the Pull request column's edge.
+- [ ] Find a better way to show a row's repo: on its own line it makes every row taller when PRs come from several repos. Options: an abbreviation or the repo name alone (not the owner), a small chip on the number line, the repo only on hover, or relying on "Group rows by repo" headings.
 
 #### Filters and search
 
 - [x] ~~Explain each filter better~~ - done (2026-11-04): a line under each filter says what it does (the `View scope` one following the scope chosen), and each label or people list says it at the top when open - all as the control's description, so screen readers read it too.
 - [ ] A search box for the page. Decided (2026-11-04): it searches PR titles, authors, branch names, and every field you type in yourself - notes (comments, other notes, difficulty, stories) and the like. The `PRs` filter stays for picking PRs by number, `owner/repo#n`, URL or repo.
 - [x] ~~Remove the "Applied filters" text at the top of the page~~ - done (2026-11-04): the filter bar's chips and "Showing N of M PRs" replace it (the header pill says when the data was updated, Activity what's running).
+- [ ] Decide whether "View scope" is still needed. "Last run rows" no longer seems useful; "Needs attention rows" is its own section; "Needs attention or interacted rows" is covered by the Needs Attention and "Open PRs I'm Involved In" sections; and "Conversations resolved for you to check" works better as a filter of its own. If it goes, the "PRs" filter's "show whatever the scope" behaviour goes with it.
+- [ ] More filters: PRs with open conversations with me, and PRs with a conversation waiting on me (the Review column's speech bubble and filled bubble).
+
+#### Detail pane
+
+- [ ] Make the source and target branch names clearer about what they are (labelled, e.g. "From `feature/x` into `main`").
+- [ ] Put the source branch's copy button on the same line as its name, not the next line.
 
 #### Header, Activity and checks
 
