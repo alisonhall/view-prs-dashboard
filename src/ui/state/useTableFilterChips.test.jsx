@@ -70,15 +70,15 @@ describe('useTableFilterChips', () => {
     const user = userEvent.setup();
     renderProbe({ filterStateValues: { filterPrNumbers: '42' } });
 
-    expect(screen.getByText('PR #: 42')).toBeInTheDocument();
+    expect(screen.getByText('PRs: 42')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'remove PR #: 42' }));
+    await user.click(screen.getByRole('button', { name: 'remove PRs: 42' }));
 
     // filterPrNumbers is debounced the same way the table's own live
     // filtering is (useVisiblePrNumbers.tsx) - the chip's disappearance
     // lags the click by up to FILTER_PR_NUMBERS_DEBOUNCE_MS, same as
     // typing into the real field would.
-    await waitFor(() => expect(screen.queryByText('PR #: 42')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText('PRs: 42')).not.toBeInTheDocument());
   });
 
   test('given a checked label (RowFilterSelectionContext), when its chip is removed, then that label is unchecked', async () => {

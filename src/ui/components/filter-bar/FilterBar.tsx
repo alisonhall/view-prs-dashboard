@@ -114,7 +114,7 @@ export function FilterBar({ shownCount, totalCount, loaded, hiddenCount = 0 }: F
             <ScopeFilterSelect />
           </div>
           <div className="filter-bar-field">
-            <label htmlFor="filter-pr-numbers">PR numbers</label>
+            <label htmlFor="filter-pr-numbers">PRs</label>
             <PrNumberFilterInput />
           </div>
           <label className="filter-bar-check">

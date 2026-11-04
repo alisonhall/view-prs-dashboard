@@ -15,13 +15,13 @@ const OPTIONS: ReadonlyArray<{ value: ThemePreference; label: string }> = [
 ];
 
 /**
- * The Settings drawer's "Appearance": the page's theme, and which PR table
- * sections show and start open. Each is saved as soon as it changes
+ * The Settings drawer's "Appearance": the page's theme, which PR table
+ * sections show and start open, and whether rows are grouped by repo. Each is saved as soon as it changes
  * (ThemeProvider, PrSectionPreferencesProvider), in user-defaults.json.
  */
 export function AppearanceSection() {
   const { preference, setPreference } = useTheme();
-  const { preferences, setSectionHidden, setSectionStartsOpen, resetSections } = usePrSectionPreferences();
+  const { preferences, setSectionHidden, setSectionStartsOpen, resetSections, groupByRepo, setGroupByRepo } = usePrSectionPreferences();
   return (
     <div className="settings-section">
       <fieldset className="settings-group settings-fieldset">
@@ -85,6 +85,14 @@ export function AppearanceSection() {
             Restore default sections
           </Button>
         </div>
+      </div>
+
+      <div className="settings-group">
+        <h3 className="settings-heading">Rows</h3>
+        <label className="settings-check">
+          <input type="checkbox" checked={groupByRepo} onChange={(event) => setGroupByRepo(event.target.checked)} />
+          Group rows by repo (in a section with PRs from more than one)
+        </label>
       </div>
     </div>
   );

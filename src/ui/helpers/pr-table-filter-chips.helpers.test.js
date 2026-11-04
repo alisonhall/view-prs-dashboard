@@ -60,7 +60,7 @@ describe("pr table filter chips helpers", () => {
       expect(chips).toEqual([
         {
           id: "filterPrNumbers",
-          label: "PR #: 123, 456",
+          label: "PRs: 123, 456",
           clear: { kind: "field", key: "filterPrNumbers", value: "" },
         },
       ]);

@@ -26,6 +26,8 @@ describe("pr row filtering helpers", () => {
 
     expect(criteria).toEqual({
       prNumbers: ["101", "102"],
+      prKeys: [],
+      repos: [],
       includeLabels: ["bug"],
       excludeLabels: ["wip"],
       authorLogins: ["alice"],
@@ -47,6 +49,8 @@ describe("pr row filtering helpers", () => {
 
     expect(criteria).toEqual({
       prNumbers: [],
+      prKeys: [],
+      repos: [],
       includeLabels: [],
       excludeLabels: [],
       authorLogins: [],

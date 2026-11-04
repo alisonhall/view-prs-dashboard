@@ -6,6 +6,7 @@ import { createPrStatusDisplayHelpers } from '../../helpers/pr-status-display.he
 import { createPrFormattingHelpers } from '../../helpers/pr-formatting.helpers.ts';
 import { countPendingThreadComments } from '../../helpers/pr-thread-comments.helpers.ts';
 import { getLabelName } from '../../helpers/pr-filter-label-extraction.helpers.ts';
+import { useShowRowRepo } from '../../state/ShowRowRepoContext';
 
 const { formatTitleWithIcons } = createPrStatusDisplayHelpers();
 const { escapeHtml } = createPrFormattingHelpers();
@@ -24,6 +25,7 @@ const labelHue = (label: string) => [...label].reduce((sum, char) => sum + char.
 /**
  * The Pull request column. The title wraps rather than being cut off, and
  * is followed by:
+ * - the repo, when rows from more than one are in view (ShowRowRepoContext)
  * - the #number link
  * - a busy indicator while the PR is refreshing or queued
  * - a copy button (on row hover/focus)
@@ -60,6 +62,9 @@ export function PrTitleCell({
   onToggleInsights,
 }: PrTitleCellProps) {
   const prNumber = String(pr?.number || '');
+  // With rows from several repos in view, the number alone doesn't say
+  // which PR this is.
+  const showRepo = useShowRowRepo() && Boolean(repo);
   const title = formatTitleWithIcons(pr?.titleDisplay, pr?.title);
   const plainTitle = String(pr?.title || '').trim();
   const url = pr?.url || `https://github.com/${repo || ''}/pull/${prNumber}`;
@@ -93,6 +98,11 @@ export function PrTitleCell({
         </button>
         <div className="pr-title-body">
           <div className="pr-title-number-line">
+            {showRepo && (
+              <span className="pr-title-repo" title={`In ${repo}`}>
+                {repo}
+              </span>
+            )}
             <a className="pr-link" href={url} target="_blank" rel="noopener noreferrer">
               #{prNumber}
             </a>

@@ -2782,7 +2782,7 @@ describe("index page rendering with Testing Library", () => {
     await waitFor(() => {
       const dataMetaText = document.getElementById("data-meta")?.textContent || "";
       expect(dataMetaText).toContain("Rows: 1");
-      expect(dataMetaText).toContain("pr-numbers=1");
+      expect(dataMetaText).toContain("prs=1");
       expect(dataMetaText).toContain("scope=all stored rows");
     });
 

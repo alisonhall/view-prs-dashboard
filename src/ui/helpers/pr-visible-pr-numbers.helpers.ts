@@ -1,6 +1,6 @@
 import type { PrDataPayload, PrEntry } from "../types/pr-data.ts";
 import type { RowFilterCriteria, RowFilterCriteriaInput } from "./pr-row-filtering.helpers.ts";
-import { parseCsvTokens } from "./form-parsing.helpers.ts";
+import { parsePrFilterInput, prFilterPicksPrs } from "./pr-filter-input.helpers.ts";
 import type { AttentionConfig } from "./pr-needs-attention.helpers.ts";
 import { buildPrEntryKey } from "./pr-entry-keys.helpers.ts";
 
@@ -108,12 +108,11 @@ const createPrVisiblePrNumbersHelpers = ({
         .filter(([, stamp]) => stamp),
     );
 
-    const filterPrNumbers = parseCsvTokens(filterPrNumbersRaw)
-      .map((value) => String(value || "").trim())
-      .filter((value) => /^\d+$/.test(value));
+    const prFilter = parsePrFilterInput(filterPrNumbersRaw);
 
     const selectedScope = normalizeSelectedScopeSafe(scopeMode);
-    const ignoreScopeForPrNumberFilter = filterPrNumbers.length > 0;
+    // PRs picked by number (or repo and number) show whatever the scope.
+    const ignoreScopeForPrNumberFilter = prFilterPicksPrs(prFilter);
     const useLastRunScope = selectedScope === "last-run";
 
     const { rows: scopedRows, scopeLabel } = resolveScopedRowsSafe({
@@ -127,7 +126,9 @@ const createPrVisiblePrNumbersHelpers = ({
     });
 
     const criteria = buildRowFilterCriteriaSafe({
-      prNumbers: filterPrNumbers,
+      prNumbers: prFilter.prNumbers,
+      prKeys: prFilter.prKeys,
+      repos: prFilter.repos,
       includeLabels: rowFilterSelections.includeLabels,
       excludeLabels: rowFilterSelections.excludeLabels,
       authorLogins: rowFilterSelections.authorLogins,

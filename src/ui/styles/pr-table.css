@@ -305,6 +305,30 @@
   white-space: nowrap;
 }
 
+/* The PR's repo, before its number, when rows from more than one repo are
+   in view (ShowRowRepoContext). */
+.pr-title-repo {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+/* "Group rows by repo": a heading row per repo, across the table. */
+.pr-repo-group-row > th {
+  padding: var(--space-2) var(--space-3) var(--space-1);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface-subtle);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  text-align: left;
+}
+
+.pr-repo-group-count {
+  margin-left: var(--space-2);
+  font-weight: 400;
+  color: var(--color-text-muted);
+}
+
 /* The title flows as text, with the copy button in a gutter; a word only
    breaks when it can't fit on a line of its own. */
 .pr-title-line {

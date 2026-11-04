@@ -61,7 +61,7 @@ describe("pr applied summary helpers", () => {
     expect(model.appliedFilters).toEqual([
       "repo=all repos",
       "scope=needs attention rows",
-      "pr-numbers=101,102",
+      "prs=101,102",
       "label=bug",
       "exclude-label=wip",
       "author=alice",
@@ -73,7 +73,7 @@ describe("pr applied summary helpers", () => {
     expect(model.filterChips).toEqual([
       "repo=all repos",
       "scope=needs attention rows",
-      "pr-numbers=101,102",
+      "prs=101,102",
       "label=bug",
       "exclude-label=wip",
       "author=alice",

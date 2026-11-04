@@ -36,7 +36,7 @@ const DEFAULT_FILTER_STATE_VALUES: FilterValues = {
  * `filterPrNumbers` for display is debounced the exact same way
  * useFilteredPrRows() debounces it internally (same
  * FILTER_PR_NUMBERS_DEBOUNCE_MS) - without this, the chip text's
- * "pr-numbers=..." entry (if read raw/undebounced) and its "Rows: N"
+ * "prs=..." entry (if read raw/undebounced) and its "Rows: N"
  * entry (from useFilteredPrRows(), debounced) would visibly disagree with
  * each other while typing a multi-digit PR number.
  *

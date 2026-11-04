@@ -75,6 +75,29 @@ export const storePrSectionPreferences = (preferences: PrSectionPreferences) => 
   }
 };
 
+// Settings › Appearance's "Group rows by repo": each section's rows under a
+// heading per repo (PrTable). Saved like the section choices, in its own
+// key.
+export const PR_ROWS_GROUP_BY_REPO_OVERRIDE_KEY = 'prRowsGroupByRepo';
+export const PR_ROWS_GROUP_BY_REPO_STORAGE_KEY = 'view-prs:pr-rows-group-by-repo';
+
+export const readStoredGroupRowsByRepo = (): boolean | null => {
+  try {
+    const value = window.localStorage.getItem(PR_ROWS_GROUP_BY_REPO_STORAGE_KEY);
+    return value === null ? null : value === 'true';
+  } catch (_error) {
+    return null;
+  }
+};
+
+export const storeGroupRowsByRepo = (groupByRepo: boolean) => {
+  try {
+    window.localStorage.setItem(PR_ROWS_GROUP_BY_REPO_STORAGE_KEY, String(groupByRepo));
+  } catch (_error) {
+    // Only the first draw uses the copy; user-defaults.json keeps the choice.
+  }
+};
+
 export const isPrSectionHidden =(preferences: PrSectionPreferences, key: string) => preferences[key]?.hidden === true;
 
 // Whether a section starts open: the saved choice, else the built-in default.

@@ -39,6 +39,8 @@ import { normalizeRows, sortRowsByPrNumberDesc, sortRowsByDateFieldDesc } from '
 import * as prSectionConfigHelperFactory from '../helpers/pr-section-config.helpers.ts';
 import * as prSmartGroupsHelperFactory from '../helpers/pr-smart-groups.helpers.ts';
 import * as prSectionGroupingHelperFactory from '../helpers/pr-section-grouping.helpers.ts';
+import { ShowRowRepoContext } from '../state/ShowRowRepoContext';
+import { groupRowsByRepo } from '../helpers/pr-repo-grouping.helpers.ts';
 import type { PrData, PrDataPayload, PrEntry } from '../types/pr-data.ts';
 
 type PrNumber = string | number | undefined;
@@ -120,7 +122,7 @@ export function PrTableApp() {
   } = usePrTableUiState();
   const { dirtyPrKeys } = useNotesDirty();
   // Settings › Appearance: which sections show, and which start open.
-  const { preferences: sectionPreferences, isReady: areSectionPreferencesReady } = usePrSectionPreferences();
+  const { preferences: sectionPreferences, isReady: areSectionPreferencesReady, groupByRepo } = usePrSectionPreferences();
   const settingsDrawer = useSettingsDrawer();
   // Below 900px the detail pane is an overlay drawer instead of docked.
   const isNarrow = useMediaQuery(NARROW_SCREEN_QUERY);
@@ -642,13 +644,25 @@ export function PrTableApp() {
 
   // Settings › Appearance's choices: hidden sections are left out entirely
   // (so they're not in previous/next, Export or View in table either), and
-  // a saved "Open when the page loads" replaces the built-in default.
+  // a saved "Open when the page loads" replaces the built-in default. With
+  // "Group rows by repo", each section's rows in their repos' order (A-Z),
+  // so previous/next and Export follow the headings PrTable draws.
   const sections = useMemo(
     () =>
       builtSections
         .filter((section) => !isPrSectionHidden(sectionPreferences, section.key))
-        .map((section) => ({ ...section, defaultOpen: prSectionStartsOpen(sectionPreferences, section.key, section.defaultOpen) })),
-    [builtSections, sectionPreferences],
+        .map((section) => ({
+          ...section,
+          prs: groupByRepo ? groupRowsByRepo(section.prs, true).flatMap((group) => group.rows) : section.prs,
+          defaultOpen: prSectionStartsOpen(sectionPreferences, section.key, section.defaultOpen),
+        })),
+    [builtSections, sectionPreferences, groupByRepo],
+  );
+  // Rows say their repo once those in view (not just those filtered to)
+  // come from more than one, so filtering doesn't make it come and go.
+  const showRowRepo = useMemo(
+    () => new Set(Object.values(payload?.byPrNumber || {}).map((entry) => entry?.repo).filter(Boolean)).size > 1,
+    [payload],
   );
   // The PRs the filters let through that aren't in any section on the page
   // (all their sections are hidden), for the filter bar's count.
@@ -1066,81 +1080,83 @@ export function PrTableApp() {
 
   // NowProvider: one clock for the rows' relative times (Activity ages).
   // RepoFreshnessProvider: each repo's listing state, for the rows'
-  // freshness.
+  // freshness. ShowRowRepoContext: whether rows say their repo.
   return (
-    <NowProvider>
-      <RepoFreshnessProvider
-        liveSummary={payload?.dataMeta?.liveSummary}
-        backgroundUpdates={payload?.dataMeta?.backgroundUpdates}
-        defaultIntervalMs={readDefaultQuickCheckIntervalMs(payload?.scheduler)}
-      >
-        <div className="pr-workspace-toolbar">
-          <Button icon="panel" pressed={isPaneVisible} onClick={handleTogglePane}>
-            Detail pane
-          </Button>
-        </div>
-        <div ref={workspaceRef} className="pr-workspace" data-pane={isPaneDocked ? 'docked' : undefined}>
-          <div className="pr-workspace-list">
-            {sections.length === 0 && (
-              <div className="pr-sections-all-hidden">
-                <p>Every section is hidden.</p>
-                <Button onClick={() => settingsDrawer.open('appearance')}>Choose sections to show</Button>
-              </div>
-            )}
-            {sections.map((section) => (
-              <PrSection
-                key={section.key}
-                section={section}
+    <ShowRowRepoContext.Provider value={showRowRepo}>
+      <NowProvider>
+        <RepoFreshnessProvider
+          liveSummary={payload?.dataMeta?.liveSummary}
+          backgroundUpdates={payload?.dataMeta?.backgroundUpdates}
+          defaultIntervalMs={readDefaultQuickCheckIntervalMs(payload?.scheduler)}
+        >
+          <div className="pr-workspace-toolbar">
+            <Button icon="panel" pressed={isPaneVisible} onClick={handleTogglePane}>
+              Detail pane
+            </Button>
+          </div>
+          <div ref={workspaceRef} className="pr-workspace" data-pane={isPaneDocked ? 'docked' : undefined}>
+            <div className="pr-workspace-list">
+              {sections.length === 0 && (
+                <div className="pr-sections-all-hidden">
+                  <p>Every section is hidden.</p>
+                  <Button onClick={() => settingsDrawer.open('appearance')}>Choose sections to show</Button>
+                </div>
+              )}
+              {sections.map((section) => (
+                <PrSection
+                  key={section.key}
+                  section={section}
+                  repo={effectiveRepo}
+                  actorsMap={actorsMap}
+                  isOpen={isSectionOpen(section.key, Boolean(section.defaultOpen))}
+                  expandedInsights={expandedInsights}
+                  selectedPrKey={selectedPrKey}
+                  onToggleSection={handleToggleSection}
+                  onToggleInsights={handleToggleInsights}
+                  onSelectRow={handleSelectRow}
+                  onSelectPr={handleSelectPr}
+                  onShowDetails={handleShowDetails}
+                  onClearSelection={handleClearSelection}
+                  onCheckboxChange={handleCheckboxChange}
+                  onAckAction={handleAckActionBusy}
+                  onApplyLabel={handleApplyLabelBusy}
+                  onUpdatePr={handleUpdatePrBusy}
+                  onViewJson={handleViewJson}
+                  getPrFlags={getPrFlags}
+                  getAttentionReasons={getAttentionReasons}
+                  activePrNumbers={combinedActivePrNumbers}
+                  queuedPrNumbers={combinedQueuedPrNumbers}
+                />
+              ))}
+            </div>
+            {isPaneVisible && (
+              <PrDetailPane
+                entry={selectedEntry}
                 repo={effectiveRepo}
+                mode={paneMode}
                 actorsMap={actorsMap}
-                isOpen={isSectionOpen(section.key, Boolean(section.defaultOpen))}
-                expandedInsights={expandedInsights}
-                selectedPrKey={selectedPrKey}
-                onToggleSection={handleToggleSection}
-                onToggleInsights={handleToggleInsights}
-                onSelectRow={handleSelectRow}
-                onSelectPr={handleSelectPr}
-                onShowDetails={handleShowDetails}
+                isFlagged={Boolean(paneFlags?.isFlagged)}
+                isInReview={Boolean(paneFlags?.isInReview)}
+                isAcknowledged={Boolean(paneFlags?.isAcknowledged)}
+                ackedAt={paneAckedAt}
+                tab={paneTab}
+                onTabChange={setPaneTab}
+                onPrevious={previousPr ? () => handleStepPr(previousPr) : undefined}
+                onNext={nextPr ? () => handleStepPr(nextPr) : undefined}
+                onClose={handleClosePane}
                 onClearSelection={handleClearSelection}
                 onCheckboxChange={handleCheckboxChange}
                 onAckAction={handleAckActionBusy}
                 onApplyLabel={handleApplyLabelBusy}
                 onUpdatePr={handleUpdatePrBusy}
                 onViewJson={handleViewJson}
-                getPrFlags={getPrFlags}
-                getAttentionReasons={getAttentionReasons}
-                activePrNumbers={combinedActivePrNumbers}
-                queuedPrNumbers={combinedQueuedPrNumbers}
+                onDataRefresh={setPayload}
               />
-            ))}
+            )}
           </div>
-          {isPaneVisible && (
-            <PrDetailPane
-              entry={selectedEntry}
-              repo={effectiveRepo}
-              mode={paneMode}
-              actorsMap={actorsMap}
-              isFlagged={Boolean(paneFlags?.isFlagged)}
-              isInReview={Boolean(paneFlags?.isInReview)}
-              isAcknowledged={Boolean(paneFlags?.isAcknowledged)}
-              ackedAt={paneAckedAt}
-              tab={paneTab}
-              onTabChange={setPaneTab}
-              onPrevious={previousPr ? () => handleStepPr(previousPr) : undefined}
-              onNext={nextPr ? () => handleStepPr(nextPr) : undefined}
-              onClose={handleClosePane}
-              onClearSelection={handleClearSelection}
-              onCheckboxChange={handleCheckboxChange}
-              onAckAction={handleAckActionBusy}
-              onApplyLabel={handleApplyLabelBusy}
-              onUpdatePr={handleUpdatePrBusy}
-              onViewJson={handleViewJson}
-              onDataRefresh={setPayload}
-            />
-          )}
-        </div>
-        <PrJsonModal target={jsonModalTarget} payload={payload} onClose={() => setJsonModalTarget(null)} />
-      </RepoFreshnessProvider>
-    </NowProvider>
+          <PrJsonModal target={jsonModalTarget} payload={payload} onClose={() => setJsonModalTarget(null)} />
+        </RepoFreshnessProvider>
+      </NowProvider>
+    </ShowRowRepoContext.Provider>
   );
 }

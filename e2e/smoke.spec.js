@@ -1232,14 +1232,14 @@ test("the filter bar starts closed with the row count, opens as it was left afte
   await waitForPrTable(page);
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
 
-  await filterBar(page).getByLabel("PR numbers", { exact: true }).fill("1");
-  await expect(filterChips(page)).toContainText("PR #: 1");
+  await filterBar(page).getByLabel("PRs", { exact: true }).fill("1");
+  await expect(filterChips(page)).toContainText("PRs: 1");
   await expect(toggle).toHaveAccessibleName("Filters, 1 applied");
   await expect(filterBar(page)).toContainText("Showing 1 of 3 PRs");
 
   await filterBar(page).getByRole("button", { name: "Clear all", exact: true }).click();
   await expect(filterChips(page)).toHaveCount(0);
-  await expect(filterBar(page).getByLabel("PR numbers", { exact: true })).toHaveValue("");
+  await expect(filterBar(page).getByLabel("PRs", { exact: true })).toHaveValue("");
   await waitForFilterPersist(page);
 });
 
@@ -1273,7 +1273,7 @@ test("typing a PR-number filter actually filters the rendered table in a real br
   await expect(prTables(page)).toContainText("Fix flaky test");
 
   await openFilterBar(page);
-  await filterBar(page).getByLabel("PR numbers", { exact: true }).fill("1");
+  await filterBar(page).getByLabel("PRs", { exact: true }).fill("1");
   await waitForFilterPersist(page);
   await page.getByRole("tab", { name: "Pull requests" }).click();
 
@@ -1287,7 +1287,7 @@ test("typing a PR-number filter actually filters the rendered table in a real br
   // (see setNativeValueAndDispatch in index.page.js), so a leftover
   // persisted filter here isn't just cosmetic for the next test anymore.
   await openFilterBar(page);
-  await filterBar(page).getByLabel("PR numbers", { exact: true }).fill("");
+  await filterBar(page).getByLabel("PRs", { exact: true }).fill("");
   await waitForFilterPersist(page);
 });
 
@@ -1668,7 +1668,7 @@ test("React-owned PR-number filter input survives a persisted-value restore on p
   await waitForPrTable(page);
 
   await openFilterBar(page);
-  const input = filterBar(page).getByLabel("PR numbers", { exact: true });
+  const input = filterBar(page).getByLabel("PRs", { exact: true });
   await input.fill("1");
   await waitForFilterPersist(page);
 
@@ -1676,12 +1676,12 @@ test("React-owned PR-number filter input survives a persisted-value restore on p
   await waitForPrTable(page);
   await openFilterBar(page);
 
-  await expect(filterBar(page).getByLabel("PR numbers", { exact: true })).toHaveValue("1");
+  await expect(filterBar(page).getByLabel("PRs", { exact: true })).toHaveValue("1");
 
   // Clear it and leave that persisted too, so this test's filter doesn't
   // hide PR #2/#3 from whatever unrelated test happens to load next
   // against this suite's one shared webServer.
-  await filterBar(page).getByLabel("PR numbers", { exact: true }).fill("");
+  await filterBar(page).getByLabel("PRs", { exact: true }).fill("");
   await waitForFilterPersist(page);
 });
 
@@ -1834,7 +1834,7 @@ test("typing a PR-number filter updates the rendered React table live, with no \
   await expect(prTables(page)).toContainText("Fix flaky test");
 
   await openFilterBar(page);
-  await filterBar(page).getByLabel("PR numbers", { exact: true }).fill("1");
+  await filterBar(page).getByLabel("PRs", { exact: true }).fill("1");
 
   await page.getByRole("tab", { name: "Pull requests" }).click();
   await expect(prTables(page)).toContainText("Add welcome banner");
@@ -1846,7 +1846,7 @@ test("typing a PR-number filter updates the rendered React table live, with no \
   // be saved, as the scope test above does: the next test once loaded with
   // "1" still saved, hiding "Fix flaky test" (2026-10-31).
   await openFilterBar(page);
-  await filterBar(page).getByLabel("PR numbers", { exact: true }).fill("");
+  await filterBar(page).getByLabel("PRs", { exact: true }).fill("");
   await page.getByRole("tab", { name: "Pull requests" }).click();
   await expect(prTables(page)).toContainText("Fix flaky test");
   await waitForFilterPersist(page);
@@ -1918,11 +1918,11 @@ test("the PR data summary's \"Applied filters\" text updates live too, with no \
   await expect(summary).toContainText("repo=");
   await expect(summary).toContainText("scope=all stored rows");
 
-  await filterBar(page).getByLabel("PR numbers", { exact: true }).fill("1");
-  await expect(summary).toContainText("pr-numbers=1");
+  await filterBar(page).getByLabel("PRs", { exact: true }).fill("1");
+  await expect(summary).toContainText("prs=1");
   await expect(summary).toContainText("Rows: 1");
 
-  await filterBar(page).getByLabel("PR numbers", { exact: true }).fill("");
+  await filterBar(page).getByLabel("PRs", { exact: true }).fill("");
 
   const labelDropdownSummary = filterDropdownSummary(filterBarList(page, "Labels"));
   await labelDropdownSummary.click();
@@ -1955,14 +1955,14 @@ test("a removable filter chip appears above the table for each non-default filte
   await expect(chips).toHaveCount(0);
 
   await openFilterBar(page);
-  await filterBar(page).getByLabel("PR numbers", { exact: true }).fill("1");
+  await filterBar(page).getByLabel("PRs", { exact: true }).fill("1");
 
   await page.getByRole("tab", { name: "Pull requests" }).click();
-  await expect(chips).toContainText("PR #: 1");
+  await expect(chips).toContainText("PRs: 1");
   await expect(prTables(page)).toContainText("Add welcome banner");
   await expect(prTables(page)).not.toContainText("Fix flaky test");
 
-  await chips.getByRole("button", { name: "Remove filter: PR #: 1" }).click();
+  await chips.getByRole("button", { name: "Remove filter: PRs: 1" }).click();
 
   await expect(chips).toHaveCount(0);
   await expect(prTables(page)).toContainText("Fix flaky test");
@@ -1980,7 +1980,7 @@ test("a removable filter chip appears above the table for each non-default filte
   await waitForFilterPersist(page);
 
   await openFilterBar(page);
-  await expect(filterBar(page).getByLabel("PR numbers", { exact: true })).toHaveValue("");
+  await expect(filterBar(page).getByLabel("PRs", { exact: true })).toHaveValue("");
 
   // A checked label filter gets its own chip too, removable the same way.
   const labelDropdownSummary = filterDropdownSummary(filterBarList(page, "Labels"));
@@ -2256,7 +2256,7 @@ test("all 6 React-portaled non-credential-hint fields get their credential-manag
   }
   await closeSettings(page);
   await openFilterBar(page);
-  const prNumbersFilter = filterBar(page).getByLabel("PR numbers", { exact: true });
+  const prNumbersFilter = filterBar(page).getByLabel("PRs", { exact: true });
   await expect(prNumbersFilter).toHaveAttribute("autocomplete", "off");
   await expect(prNumbersFilter).toHaveAttribute("data-lpignore", "true");
 });
@@ -2878,7 +2878,7 @@ test("React-owned Review Stats controls render, respond to changes, and survive 
   // review stats), then come back.
   await page.getByRole("tab", { name: "Pull requests" }).click();
   await openFilterBar(page);
-  await filterBar(page).getByLabel("PR numbers", { exact: true }).fill("1");
+  await filterBar(page).getByLabel("PRs", { exact: true }).fill("1");
   await waitForFilterPersist(page);
   await page.getByRole("tab", { name: "Pull requests" }).click();
   await page.getByRole("tab", { name: "Review stats" }).click();
@@ -2895,7 +2895,7 @@ test("React-owned Review Stats controls render, respond to changes, and survive 
   // webServer.
   await page.getByRole("tab", { name: "Pull requests" }).click();
   await openFilterBar(page);
-  await filterBar(page).getByLabel("PR numbers", { exact: true }).fill("");
+  await filterBar(page).getByLabel("PRs", { exact: true }).fill("");
   await waitForFilterPersist(page);
 });
 
@@ -2989,7 +2989,7 @@ test("React-owned Author Insights selector renders options, changes the selected
   // stats), then come back.
   await page.getByRole("tab", { name: "Pull requests" }).click();
   await openFilterBar(page);
-  await filterBar(page).getByLabel("PR numbers", { exact: true }).fill("1");
+  await filterBar(page).getByLabel("PRs", { exact: true }).fill("1");
   await waitForFilterPersist(page);
   await page.getByRole("tab", { name: "Pull requests" }).click();
   await page.getByRole("tab", { name: "Authors" }).click();
@@ -3001,7 +3001,7 @@ test("React-owned Author Insights selector renders options, changes the selected
   // happens to load next against this suite's one shared webServer.
   await page.getByRole("tab", { name: "Pull requests" }).click();
   await openFilterBar(page);
-  await filterBar(page).getByLabel("PR numbers", { exact: true }).fill("");
+  await filterBar(page).getByLabel("PRs", { exact: true }).fill("");
   await waitForFilterPersist(page);
 });
 
@@ -3062,7 +3062,7 @@ test("React-owned Author Insights \"created PRs\" section updates on author swit
   // class of bug caught the same way).
   await page.getByRole("tab", { name: "Pull requests" }).click();
   await openFilterBar(page);
-  await filterBar(page).getByLabel("PR numbers", { exact: true }).fill("1");
+  await filterBar(page).getByLabel("PRs", { exact: true }).fill("1");
   await waitForFilterPersist(page);
   await page.getByRole("tab", { name: "Pull requests" }).click();
   await page.getByRole("tab", { name: "Authors" }).click();
@@ -3074,7 +3074,7 @@ test("React-owned Author Insights \"created PRs\" section updates on author swit
   // happens to load next against this suite's one shared webServer.
   await page.getByRole("tab", { name: "Pull requests" }).click();
   await openFilterBar(page);
-  await filterBar(page).getByLabel("PR numbers", { exact: true }).fill("");
+  await filterBar(page).getByLabel("PRs", { exact: true }).fill("");
   await waitForFilterPersist(page);
 });
 
@@ -3117,7 +3117,7 @@ test("React-owned Author Insights header updates on author switch and survives a
   // apply an unrelated local filter in the filter bar, then come back.
   await page.getByRole("tab", { name: "Pull requests" }).click();
   await openFilterBar(page);
-  await filterBar(page).getByLabel("PR numbers", { exact: true }).fill("1");
+  await filterBar(page).getByLabel("PRs", { exact: true }).fill("1");
   await waitForFilterPersist(page);
   await page.getByRole("tab", { name: "Pull requests" }).click();
   await page.getByRole("tab", { name: "Authors" }).click();
@@ -3129,7 +3129,7 @@ test("React-owned Author Insights header updates on author switch and survives a
   // happens to load next against this suite's one shared webServer.
   await page.getByRole("tab", { name: "Pull requests" }).click();
   await openFilterBar(page);
-  await filterBar(page).getByLabel("PR numbers", { exact: true }).fill("");
+  await filterBar(page).getByLabel("PRs", { exact: true }).fill("");
   await waitForFilterPersist(page);
 });
 
@@ -3158,7 +3158,7 @@ test("React-owned Author Insights PR-linked notes section survives an unrelated 
   // apply an unrelated local filter in the filter bar, then come back.
   await page.getByRole("tab", { name: "Pull requests" }).click();
   await openFilterBar(page);
-  await filterBar(page).getByLabel("PR numbers", { exact: true }).fill("1");
+  await filterBar(page).getByLabel("PRs", { exact: true }).fill("1");
   await waitForFilterPersist(page);
   await page.getByRole("tab", { name: "Pull requests" }).click();
   await page.getByRole("tab", { name: "Authors" }).click();
@@ -3170,7 +3170,7 @@ test("React-owned Author Insights PR-linked notes section survives an unrelated 
   // happens to load next against this suite's one shared webServer.
   await page.getByRole("tab", { name: "Pull requests" }).click();
   await openFilterBar(page);
-  await filterBar(page).getByLabel("PR numbers", { exact: true }).fill("");
+  await filterBar(page).getByLabel("PRs", { exact: true }).fill("");
   await waitForFilterPersist(page);
 });
 
@@ -3224,7 +3224,7 @@ test("React-owned Author Insights manual comments composer can save and edit a c
   // container must not vanish, and the saved comment must still be there.
   await page.getByRole("tab", { name: "Pull requests" }).click();
   await openFilterBar(page);
-  await filterBar(page).getByLabel("PR numbers", { exact: true }).fill("1");
+  await filterBar(page).getByLabel("PRs", { exact: true }).fill("1");
   await waitForFilterPersist(page);
   await page.getByRole("tab", { name: "Pull requests" }).click();
   await page.getByRole("tab", { name: "Authors" }).click();
@@ -3236,7 +3236,7 @@ test("React-owned Author Insights manual comments composer can save and edit a c
   // happens to load next against this suite's one shared webServer.
   await page.getByRole("tab", { name: "Pull requests" }).click();
   await openFilterBar(page);
-  await filterBar(page).getByLabel("PR numbers", { exact: true }).fill("");
+  await filterBar(page).getByLabel("PRs", { exact: true }).fill("");
   await waitForFilterPersist(page);
 });
 

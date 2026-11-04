@@ -39,7 +39,7 @@ const DEFAULT_FILTER_STATE_VALUES: FilterValues = {
  * useVisiblePrNumbers.tsx/useAppliedFilterSummary.tsx both already debounce
  * it (same FILTER_PR_NUMBERS_DEBOUNCE_MS) - without this, the chip would
  * flicker through every intermediate keystroke (e.g. briefly showing
- * "PR #: 1" while typing "12") out of step with the table's own debounced
+ * "PRs: 1" while typing "12") out of step with the table's own debounced
  * re-filter.
  */
 export interface TableFilterChip {

@@ -4,7 +4,11 @@ import type { EntryDerivedCache } from "./pr-entry-derived-cache.helpers.ts";
 // The row filters' criteria object, and applying it to the stored rows
 // (with each entry's match result cached).
 export interface RowFilterCriteria {
+  // The PRs field (pr-filter-input.helpers.ts): PR numbers, PRs by repo
+  // ("owner/repo#12") and repos.
   prNumbers: string[];
+  prKeys: string[];
+  repos: string[];
   includeLabels: string[];
   excludeLabels: string[];
   authorLogins: string[];
@@ -49,6 +53,8 @@ const createPrRowFilteringHelpers = ({
 
   const buildRowFilterCriteria = ({
     prNumbers,
+    prKeys,
+    repos,
     includeLabels,
     excludeLabels,
     authorLogins,
@@ -62,6 +68,8 @@ const createPrRowFilteringHelpers = ({
     analysisOfPr,
   }: RowFilterCriteriaInput = {}): RowFilterCriteria => ({
     prNumbers: asStringArray(prNumbers),
+    prKeys: asStringArray(prKeys),
+    repos: asStringArray(repos),
     includeLabels: asStringArray(includeLabels),
     excludeLabels: asStringArray(excludeLabels),
     authorLogins: asStringArray(authorLogins),

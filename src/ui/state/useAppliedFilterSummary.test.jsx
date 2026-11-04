@@ -105,7 +105,7 @@ describe('useAppliedFilterSummary', () => {
     renderProbe({ payload, selectedRepo: 'owner/repo', filterStateValues: { filterPrNumbers: '1' } });
 
     const summaryText = screen.getByTestId('summary-text').textContent;
-    expect(summaryText).toContain('pr-numbers=1');
+    expect(summaryText).toContain('prs=1');
     expect(summaryText).toContain('Rows: 1');
   });
 
@@ -153,7 +153,7 @@ describe('useAppliedFilterSummary', () => {
   // Regression test: filterPrNumbers-for-display used to be read raw
   // (undebounced) while rowsCount came from useFilteredPrRows()
   // (debounced) - the two could visibly disagree with each other while
-  // typing (e.g. "pr-numbers=12 | Rows: 1" for up to 150ms). Both must now
+  // typing (e.g. "prs=12 | Rows: 1" for up to 150ms). Both must now
   // move together.
   describe('filterPrNumbers debounce (see pr-visible-pr-numbers helpers for rowsCount side)', () => {
     beforeEach(() => {
@@ -172,7 +172,7 @@ describe('useAppliedFilterSummary', () => {
       const payload = { byPrNumber: { 1: { prNumber: '1', data: { number: 1 } } } };
       renderProbe({ payload, selectedRepo: 'owner/repo', filterStateValues: { filterPrNumbers: '1' } });
 
-      expect(screen.getByTestId('summary-text').textContent).toContain('pr-numbers=1 ');
+      expect(screen.getByTestId('summary-text').textContent).toContain('prs=1 ');
       expect(screen.getByTestId('summary-text').textContent).toContain('Rows: 1');
 
       act(() => {
@@ -181,18 +181,18 @@ describe('useAppliedFilterSummary', () => {
       // Deliberately NOT advancing timers yet - both debounced values
       // (useFilteredPrRows' internal one, and this hook's own) should
       // still be holding the OLD "1"/"Rows: 1" pair together, not a mix
-      // of the new "pr-numbers=12" text with the old "Rows: 1" count (the
+      // of the new "prs=12" text with the old "Rows: 1" count (the
       // bug) or any other inconsistent combination.
       const midDebounceText = screen.getByTestId('summary-text').textContent;
-      expect(midDebounceText).toContain('pr-numbers=1 ');
+      expect(midDebounceText).toContain('prs=1 ');
       expect(midDebounceText).toContain('Rows: 1');
-      expect(midDebounceText).not.toContain('pr-numbers=12');
+      expect(midDebounceText).not.toContain('prs=12');
 
       act(() => {
         jest.advanceTimersByTime(150);
       });
       const afterDebounceText = screen.getByTestId('summary-text').textContent;
-      expect(afterDebounceText).toContain('pr-numbers=12');
+      expect(afterDebounceText).toContain('prs=12');
       expect(afterDebounceText).toContain('Rows: 0');
     });
   });

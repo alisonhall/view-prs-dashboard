@@ -2,8 +2,11 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { createPrUiOptionPersistenceHelpers } from '../helpers/pr-ui-option-persistence.helpers.ts';
 import {
   normalizePrSectionPreferences,
+  PR_ROWS_GROUP_BY_REPO_OVERRIDE_KEY,
   PR_SECTIONS_OVERRIDE_KEY,
+  readStoredGroupRowsByRepo,
   readStoredPrSectionPreferences,
+  storeGroupRowsByRepo,
   storePrSectionPreferences,
   withPrSectionPreference,
   type PrSectionPreferences,
@@ -22,21 +25,26 @@ export interface PrSectionPreferencesValue {
   setSectionHidden: (key: string, hidden: boolean) => void;
   setSectionStartsOpen: (key: string, open: boolean) => void;
   resetSections: () => void;
+  // "Group rows by repo".
+  groupByRepo: boolean;
+  setGroupByRepo: (groupByRepo: boolean) => void;
 }
 
-const PrSectionPreferencesContext = createContext<PrSectionPreferencesValue>({
+export const PrSectionPreferencesContext = createContext<PrSectionPreferencesValue>({
   preferences: {},
   isReady: true,
   setSectionHidden: () => {},
   setSectionStartsOpen: () => {},
   resetSections: () => {},
+  groupByRepo: false,
+  setGroupByRepo: () => {},
 });
 
 export const usePrSectionPreferences = () => useContext(PrSectionPreferencesContext);
 
 /**
  * Settings › Appearance's section choices (which sections show, and which
- * start open). They start from the browser copy, then take the setting
+ * start open), and whether rows are grouped by repo. They start from the browser copy, then take the setting
  * saved in user-defaults.json once it's read; each change saves both. The
  * PR table reads them too.
  */
@@ -44,6 +52,8 @@ export function PrSectionPreferencesProvider({ children }: { children: ReactNode
   const [stored] = useState(readStoredPrSectionPreferences);
   const [preferences, setPreferences] = useState<PrSectionPreferences>(() => stored ?? {});
   const [isReady, setIsReady] = useState(stored !== null);
+  const [groupByRepo, setGroupByRepoState] = useState(() => readStoredGroupRowsByRepo() ?? false);
+  const hasChosenGroupingRef = useRef(false);
 
   // The saved choices, unless one was made here before they arrived. If
   // they can't be read, the browser copy stays (and is kept), else the
@@ -52,6 +62,11 @@ export function PrSectionPreferencesProvider({ children }: { children: ReactNode
   useEffect(() => {
     let cancelled = false;
     readUiSessionOverridesOrNull().then((overrides) => {
+      if (!cancelled && overrides && !hasChosenGroupingRef.current) {
+        const savedGrouping = overrides[PR_ROWS_GROUP_BY_REPO_OVERRIDE_KEY] === true;
+        setGroupByRepoState(savedGrouping);
+        storeGroupRowsByRepo(savedGrouping);
+      }
       if (cancelled || hasChosenRef.current) return;
       if (!overrides) {
         setIsReady(true);
@@ -88,10 +103,16 @@ export function PrSectionPreferencesProvider({ children }: { children: ReactNode
     [save],
   );
   const resetSections = useCallback(() => save({}), [save]);
+  const setGroupByRepo = useCallback((next: boolean) => {
+    hasChosenGroupingRef.current = true;
+    setGroupByRepoState(next);
+    storeGroupRowsByRepo(next);
+    updateUiSessionOverride(PR_ROWS_GROUP_BY_REPO_OVERRIDE_KEY, next ? true : undefined);
+  }, []);
 
   const value = useMemo(
-    () => ({ preferences, isReady, setSectionHidden, setSectionStartsOpen, resetSections }),
-    [preferences, isReady, setSectionHidden, setSectionStartsOpen, resetSections],
+    () => ({ preferences, isReady, setSectionHidden, setSectionStartsOpen, resetSections, groupByRepo, setGroupByRepo }),
+    [preferences, isReady, setSectionHidden, setSectionStartsOpen, resetSections, groupByRepo, setGroupByRepo],
   );
   return <PrSectionPreferencesContext.Provider value={value}>{children}</PrSectionPreferencesContext.Provider>;
 }

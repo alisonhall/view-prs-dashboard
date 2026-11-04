@@ -159,7 +159,7 @@ describe('FilterBar panel', () => {
     await open(user);
     const rows = screen.getByRole('group', { name: 'Rows' });
     expect(within(rows).getByRole('combobox', { name: 'View scope' })).toBeInTheDocument();
-    expect(within(rows).getByRole('textbox', { name: 'PR numbers' })).toBeInTheDocument();
+    expect(within(rows).getByRole('textbox', { name: 'PRs' })).toBeInTheDocument();
     expect(within(rows).getByRole('checkbox', { name: 'Always show PRs in review' })).toBeInTheDocument();
     const people = screen.getByRole('group', { name: 'Labels and people' });
     ['Labels', 'Excluded labels', 'Authors', 'Assigned to', 'Approved by'].forEach((name) => {

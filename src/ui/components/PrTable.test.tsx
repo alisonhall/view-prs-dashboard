@@ -4,6 +4,8 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { PrEntry } from '../types/pr-data.ts';
 import { PrTable, type PrTableProps } from './PrTable';
+import { PrSectionPreferencesContext } from '../state/PrSectionPreferencesProvider';
+import { ShowRowRepoContext } from '../state/ShowRowRepoContext';
 
 const entry = (number: string, extra: Partial<PrEntry['data']> = {}): PrEntry => ({
   prNumber: number,
@@ -161,5 +163,54 @@ describe('PrTable', () => {
     await user.click(screen.getByRole('button', { name: 'More actions for PR #1' }));
     await user.click(screen.getByRole('menuitem', { name: 'View PR JSON details' }));
     expect(onViewJson).toHaveBeenCalledWith({ prNumber: '1', repo: 'owner/repo' }, { number: '1', title: 'PR 1' });
+  });
+});
+
+describe('PrTable with rows from several repos', () => {
+  const fromRepo = (repo: string, number: string): PrEntry => ({ ...entry(number), repo });
+  const rows = [fromRepo('acme/web', '3'), fromRepo('acme/api', '1'), fromRepo('acme/web', '4')];
+  const preferences = (groupByRepo: boolean) => ({
+    preferences: {},
+    isReady: true,
+    setSectionHidden: jest.fn(),
+    setSectionStartsOpen: jest.fn(),
+    resetSections: jest.fn(),
+    groupByRepo,
+    setGroupByRepo: jest.fn(),
+  });
+  const renderRows = (groupByRepo: boolean, showRepo: boolean) =>
+    render(
+      <PrSectionPreferencesContext.Provider value={preferences(groupByRepo)}>
+        <ShowRowRepoContext.Provider value={showRepo}>
+          <PrTable prs={rows} repo="acme/api" sectionKey="open" label="Open PRs" expandedInsights={{}} onToggleInsights={jest.fn()} />
+        </ShowRowRepoContext.Provider>
+      </PrSectionPreferencesContext.Provider>,
+    );
+
+  test('each row says its repo when rows from more than one are in view', () => {
+    renderRows(false, true);
+    const firstRow = document.querySelector('tr.pr-row') as HTMLElement;
+    expect(within(firstRow).getByText('acme/web')).toHaveAttribute('title', 'In acme/web');
+  });
+
+  test("doesn't say the repo with rows from one", () => {
+    renderRows(false, false);
+    expect(document.querySelector('.pr-title-repo')).toBeNull();
+  });
+
+  test("grouped by repo, each repo's rows are a body of their own under its heading, A-Z, and don't each say it", () => {
+    renderRows(true, true);
+    const groups = Array.from(document.querySelectorAll('tbody.pr-repo-group')) as HTMLElement[];
+    expect(groups.map((group) => group.querySelector('th[scope="rowgroup"]')?.textContent)).toEqual(['acme/api1 PR', 'acme/web2 PRs']);
+    expect(groups.map((group) => Array.from(group.querySelectorAll('tr.pr-row')).map((row) => (row as HTMLElement).dataset.prNumber))).toEqual([
+      ['1'],
+      ['3', '4'],
+    ]);
+    expect(document.querySelector('.pr-title-repo')).toBeNull();
+  });
+
+  test('not grouped when the option is off', () => {
+    renderRows(false, true);
+    expect(document.querySelector('.pr-repo-group-row')).toBeNull();
   });
 });

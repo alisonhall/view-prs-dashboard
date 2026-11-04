@@ -76,7 +76,7 @@ const createPrTableFilterChipsHelpers = () => {
       chips.push(
         fieldChip(
           "filterPrNumbers",
-          `PR #: ${String(filterPrNumbers).trim()}`,
+          `PRs: ${String(filterPrNumbers).trim()}`,
           "filterPrNumbers",
           "",
         ),

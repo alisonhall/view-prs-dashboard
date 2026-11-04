@@ -124,6 +124,30 @@ describe("pr-visible-pr-numbers helpers", () => {
     expect(scopeLabel).toBe("last run rows");
   });
 
+  test("given PRs by repo or URL, or a repo, in the PRs field, then just those - PRs whatever the scope, a repo within it", () => {
+    const computeVisiblePrNumbers = makeComputeVisiblePrNumbers();
+    const fullRun = "2026-10-31T10:00:00Z";
+    const payload = {
+      byPrNumber: {
+        "acme/api#1": makeEntry(1, { repo: "acme/api", updatedAt: fullRun }),
+        "acme/api#2": makeEntry(2, { repo: "acme/api", updatedAt: "2026-10-30T10:00:00Z" }),
+        "acme/web#1": makeEntry(1, { repo: "acme/web", updatedAt: fullRun }),
+      },
+      lastFullRunByRepo: { "acme/api": { updatedAt: fullRun }, "acme/web": { updatedAt: fullRun } },
+    };
+    const visible = (filterPrNumbersRaw, scopeMode = "last-run") =>
+      computeVisiblePrNumbers({ payload, scopeMode, filterPrNumbersRaw }).visiblePrKeys.sort();
+
+    // acme/api#2 isn't a last run row, but named, it shows.
+    expect(visible("acme/api#2")).toEqual(["acme/api#2"]);
+    expect(visible("https://github.com/acme/web/pull/1/files")).toEqual(["acme/web#1"]);
+    expect(visible("1")).toEqual(["acme/api#1", "acme/web#1"]);
+    expect(visible("acme/api 1")).toEqual(["acme/api#1"]);
+    // A repo filters within the scope.
+    expect(visible("acme/api")).toEqual(["acme/api#1"]);
+    expect(visible("acme/api", "all")).toEqual(["acme/api#1", "acme/api#2"]);
+  });
+
   test("given a PR-number filter, when called, then only that PR is visible, regardless of scope", () => {
     const computeVisiblePrNumbers = makeComputeVisiblePrNumbers();
     const payload = { byPrNumber: { 1: makeEntry(1), 2: makeEntry(2) } };

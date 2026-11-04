@@ -55,7 +55,7 @@ const createPrAppliedSummaryHelpers = () => {
     ];
 
     if (filterPrNumbersRaw) {
-      appliedFilters.push(`pr-numbers=${filterPrNumbersRaw}`);
+      appliedFilters.push(`prs=${filterPrNumbersRaw}`);
     }
     if (includeLabelFilter) {
       appliedFilters.push(`label=${includeLabelFilter}`);

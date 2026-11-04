@@ -8,6 +8,9 @@
  * Activity, Actions - all of them, with the detail pane docked too (its
  * cells then take two lines where they need to; pr-table.css).
  *
+ * With Settings › Appearance's "Group rows by repo", rows from more than
+ * one repo go in a body per repo, under its heading (groupRowsByRepo).
+ *
  * The detail pane's keyboard selection, while focus is in the table (on
  * any row control, not while typing or when the key was already used):
  * - ↑/↓ select the row with focus, or move from the selected row to the
@@ -22,6 +25,9 @@ import type { PrEntry } from '../types/pr-data.ts';
 import { PrRow, type PrRowHandlers } from './PrRow';
 import { buildActivePrKey, buildExpandedInsightsKey } from './pr-row-keys';
 import { useTooltipController } from './ui/Tooltip';
+import { usePrSectionPreferences } from '../state/PrSectionPreferencesProvider';
+import { groupRowsByRepo } from '../helpers/pr-repo-grouping.helpers.ts';
+import { ShowRowRepoContext } from '../state/ShowRowRepoContext';
 
 import type { ActorsMap } from '../helpers/pr-actor-identity.helpers.ts';
 type PrFlags = { isFlagged: boolean; isInReview: boolean; isAcknowledged: boolean };
@@ -123,6 +129,46 @@ export function PrTable({
   // Composite "repo::prNumber" keys: PR numbers are only unique within a repo.
   const activeKeys = new Set((activePrNumbers || []).map(String));
   const queuedKeys = new Set((queuedPrNumbers || []).map(String));
+  // Settings › Appearance's "Group rows by repo": with rows from more than
+  // one, each repo's (in their order) under a heading, repos A-Z.
+  const { groupByRepo } = usePrSectionPreferences();
+  const groups = groupRowsByRepo(prs, groupByRepo);
+
+  const renderRow = (entry: PrEntry) => {
+    const data = entry.data || {};
+    const rowRepo = entry.repo || repo;
+    const activeKey = buildActivePrKey(data.number ?? '', entry.repo);
+    // Plain values, not objects/arrays, so the memoized row only
+    // re-renders when one actually changes.
+    const flags = getPrFlags ? getPrFlags(data.number, entry.repo) : NO_FLAGS;
+    const attentionReasons = (getAttentionReasons ? getAttentionReasons(entry) : NO_REASONS).join('\n');
+    const rowKey = buildExpandedInsightsKey(sectionKey, entry.repo, data.number ?? '');
+    return (
+      <PrRow
+        // PR numbers are only unique within a repo.
+        key={`${entry.repo || ''}:${data.number}`}
+        entry={entry}
+        pr={data}
+        // Each row's own repo: rows from other repos render too, and
+        // links/actions must target that repo.
+        repo={rowRepo}
+        sectionKey={sectionKey}
+        isSmartGroup={isSmartGroup}
+        lifecycleSection={entry.section || lifecycleSection}
+        actorsMap={actorsMap}
+        isExpanded={expandedInsights[rowKey] ?? false}
+        isSelected={Boolean(selectedPrKey) && buildActivePrKey(data.number ?? '', rowRepo) === selectedPrKey}
+        isFlagged={flags.isFlagged}
+        isInReview={flags.isInReview}
+        isAcknowledged={flags.isAcknowledged}
+        attentionReasons={attentionReasons}
+        isActive={activeKeys.has(activeKey)}
+        isQueued={queuedKeys.has(activeKey)}
+        columnCount={columns.length}
+        {...handlers}
+      />
+    );
+  };
 
   return (
     <table ref={tableRef} className="pr-table" aria-label={label || undefined} onKeyDown={handleKeyDown}>
@@ -153,43 +199,26 @@ export function PrTable({
           ))}
         </tr>
       </thead>
-      <tbody>
-        {prs.map((entry) => {
-          const data = entry.data || {};
-          const rowRepo = entry.repo || repo;
-          const activeKey = buildActivePrKey(data.number ?? '', entry.repo);
-          // Plain values, not objects/arrays, so the memoized row only
-          // re-renders when one actually changes.
-          const flags = getPrFlags ? getPrFlags(data.number, entry.repo) : NO_FLAGS;
-          const attentionReasons = (getAttentionReasons ? getAttentionReasons(entry) : NO_REASONS).join('\n');
-          const rowKey = buildExpandedInsightsKey(sectionKey, entry.repo, data.number ?? '');
-          return (
-            <PrRow
-              // PR numbers are only unique within a repo.
-              key={`${entry.repo || ''}:${data.number}`}
-              entry={entry}
-              pr={data}
-              // Each row's own repo: rows from other repos render too, and
-              // links/actions must target that repo.
-              repo={rowRepo}
-              sectionKey={sectionKey}
-              isSmartGroup={isSmartGroup}
-              lifecycleSection={entry.section || lifecycleSection}
-              actorsMap={actorsMap}
-              isExpanded={expandedInsights[rowKey] ?? false}
-              isSelected={Boolean(selectedPrKey) && buildActivePrKey(data.number ?? '', rowRepo) === selectedPrKey}
-              isFlagged={flags.isFlagged}
-              isInReview={flags.isInReview}
-              isAcknowledged={flags.isAcknowledged}
-              attentionReasons={attentionReasons}
-              isActive={activeKeys.has(activeKey)}
-              isQueued={queuedKeys.has(activeKey)}
-              columnCount={columns.length}
-              {...handlers}
-            />
-          );
-        })}
-      </tbody>
+      {groups.map(({ repo: groupRepo, rows }) =>
+        groupRepo ? (
+          // A body per repo, headed by it - so its rows don't each say it.
+          <ShowRowRepoContext.Provider key={`group:${groupRepo}`} value={false}>
+            <tbody className="pr-repo-group">
+              <tr className="pr-repo-group-row">
+                <th scope="rowgroup" colSpan={columns.length}>
+                  {groupRepo}
+                  <span className="pr-repo-group-count">
+                    {rows.length} PR{rows.length === 1 ? '' : 's'}
+                  </span>
+                </th>
+              </tr>
+              {rows.map((entry) => renderRow(entry))}
+            </tbody>
+          </ShowRowRepoContext.Provider>
+        ) : (
+          <tbody key="rows">{rows.map((entry) => renderRow(entry))}</tbody>
+        ),
+      )}
     </table>
   );
 }
