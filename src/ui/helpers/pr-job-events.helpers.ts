@@ -18,15 +18,6 @@ export interface JobState {
   waitingOn?: { job: string | null; since: string } | null;
 }
 
-export interface SchedulerSummary {
-  intervalMinutes: number;
-  manualCooldownMinutes: number;
-  lastManualRunAt: unknown;
-  lastAutoRunAt: unknown;
-  lastAutoSkipReason: unknown;
-  lastAutoError: unknown;
-}
-
 export interface FinishedJob {
   job: string;
   at: string;
@@ -45,7 +36,6 @@ export interface JobEventsState {
   recentFinished: FinishedJob[];
   dispatcherQueue: unknown[];
   openAutoCircuitRepos: unknown[];
-  schedulerSummary: SchedulerSummary;
 }
 
 // The scheduler state the server bundles with every SSE frame.
@@ -122,18 +112,6 @@ const createPrJobEventsHelpers = ({ now }: { now?: () => string } = {}) => {
     // (see autoCircuitByRepo in app.js) - same job-agnostic,
     // whole-scheduler-snapshot category as dispatcherQueue above.
     openAutoCircuitRepos: [],
-    // The scheduler fields the PR data summary's "Applied filters" text
-    // shows (interval, cooldown, last manual/auto run, last skip reason
-    // and error) - same whole-scheduler-snapshot category, read off every
-    // envelope's bundled scheduler object.
-    schedulerSummary: {
-      intervalMinutes: 15,
-      manualCooldownMinutes: 15,
-      lastManualRunAt: null,
-      lastAutoRunAt: null,
-      lastAutoSkipReason: null,
-      lastAutoError: null,
-    },
   });
 
   const extractDispatcherQueue = (scheduler: SchedulerSnapshot | undefined): unknown[] =>
@@ -141,29 +119,6 @@ const createPrJobEventsHelpers = ({ now }: { now?: () => string } = {}) => {
 
   const extractOpenAutoCircuitRepos = (scheduler: SchedulerSnapshot | undefined): unknown[] =>
     Array.isArray(scheduler?.openAutoCircuitRepos) ? scheduler.openAutoCircuitRepos : [];
-
-  // Missing fields keep their previous values.
-  const extractSchedulerSummary = (
-    scheduler: SchedulerSnapshot | undefined,
-    previous: SchedulerSummary,
-  ): SchedulerSummary => ({
-    intervalMinutes: Number.isFinite(Number(scheduler?.intervalMinutes))
-      ? Number(scheduler?.intervalMinutes)
-      : previous.intervalMinutes,
-    manualCooldownMinutes: Number.isFinite(Number(scheduler?.manualCooldownMinutes))
-      ? Number(scheduler?.manualCooldownMinutes)
-      : previous.manualCooldownMinutes,
-    lastManualRunAt:
-      scheduler?.lastManualRunAt !== undefined ? scheduler.lastManualRunAt : previous.lastManualRunAt,
-    lastAutoRunAt:
-      scheduler?.lastAutoRunAt !== undefined ? scheduler.lastAutoRunAt : previous.lastAutoRunAt,
-    lastAutoSkipReason:
-      scheduler?.lastAutoSkipReason !== undefined
-        ? scheduler.lastAutoSkipReason
-        : previous.lastAutoSkipReason,
-    lastAutoError:
-      scheduler?.lastAutoError !== undefined ? scheduler.lastAutoError : previous.lastAutoError,
-  });
 
   const extractPendingCounts = (scheduler: SchedulerSnapshot | undefined) => ({
     pendingOpenCount: Number(scheduler?.pendingOpenCount) || 0,
@@ -225,7 +180,6 @@ const createPrJobEventsHelpers = ({ now }: { now?: () => string } = {}) => {
       ...extractPendingCounts(scheduler),
       dispatcherQueue: extractDispatcherQueue(scheduler),
       openAutoCircuitRepos: extractOpenAutoCircuitRepos(scheduler),
-      schedulerSummary: extractSchedulerSummary(scheduler, state.schedulerSummary),
     };
   };
 
@@ -249,7 +203,6 @@ const createPrJobEventsHelpers = ({ now }: { now?: () => string } = {}) => {
     const pendingCounts = extractPendingCounts(envelope.scheduler);
     const dispatcherQueue = extractDispatcherQueue(envelope.scheduler);
     const openAutoCircuitRepos = extractOpenAutoCircuitRepos(envelope.scheduler);
-    const schedulerSummary = extractSchedulerSummary(envelope.scheduler, state.schedulerSummary);
 
     if (!previousJob || !isJobKey(jobKey)) {
       return {
@@ -260,7 +213,6 @@ const createPrJobEventsHelpers = ({ now }: { now?: () => string } = {}) => {
         ...pendingCounts,
         dispatcherQueue,
         openAutoCircuitRepos,
-        schedulerSummary,
       };
     }
 
@@ -323,7 +275,6 @@ const createPrJobEventsHelpers = ({ now }: { now?: () => string } = {}) => {
       ...pendingCounts,
       dispatcherQueue,
       openAutoCircuitRepos,
-      schedulerSummary,
     };
   };
 
@@ -332,11 +283,6 @@ const createPrJobEventsHelpers = ({ now }: { now?: () => string } = {}) => {
     setConnectionState,
     applyJobEventsSnapshot,
     applyJobEvent,
-    // Exported for JobEventsProvider.tsx's own payload.scheduler fallback
-    // (see that file's comment) - lets it normalize payload.scheduler
-    // into the exact same schedulerSummary shape, until the first real
-    // SSE snapshot arrives.
-    extractSchedulerSummary,
   };
 };
 

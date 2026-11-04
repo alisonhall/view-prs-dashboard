@@ -19,7 +19,6 @@ const {
   setConnectionState,
   applyJobEventsSnapshot,
   applyJobEvent,
-  extractSchedulerSummary,
 } = createPrJobEventsHelpers();
 
 // A job/scheduler frame, or a "data-changed" frame (which carries `type`).
@@ -49,9 +48,8 @@ export function JobEventsProvider({ children }: { children?: ReactNode }) {
   // Reads PrDataContext directly (not the throwing usePrData() hook) so
   // this still works without a <PrDataProvider> ancestor - this
   // component's own existing test file mounts it standalone, and payload
-  // is only used below as an optional seed (see the schedulerSummary
-  // useMemo's own comment), never required for this Provider's main job
-  // (owning the EventSource connection).
+  // only tells it when the data has first loaded, never required for this
+  // Provider's main job (owning the EventSource connection).
   const prDataContext = useContext(PrDataContext);
   const payload = prDataContext?.payload;
   // Ref, not an effect dependency: the SSE effect below must not tear down
@@ -228,31 +226,7 @@ export function JobEventsProvider({ children }: { children?: ReactNode }) {
     return () => clearInterval(watchdog);
   }, []);
 
-  // schedulerSummary's own default value (getInitialJobEventsState) is a
-  // hardcoded placeholder ({ intervalMinutes: 15, lastAutoRunAt: null,
-  // ... }), not real data - on a fresh page load, before this
-  // connection's first real 'snapshot' event arrives, consumers would
-  // otherwise briefly see that placeholder instead of whatever's actually
-  // true (e.g. "Last auto: -" even if an auto run genuinely happened
-  // recently). payload.scheduler (PrDataProvider's own state, already
-  // populated from the very first /view-prs/data fetch - the exact same
-  // server-side getViewPrsSchedulerPublicState() this connection's own
-  // scheduler frames carry) already has the real values immediately, so
-  // prefer it as a fallback until lastSnapshotAt confirms this connection
-  // has delivered real data of its own - from then on, the live
-  // SSE-tracked value is preferred (fresher between polls, the whole
-  // point of this connection existing).
-  const schedulerSummary = useMemo(() => {
-    if (jobEventsState.lastSnapshotAt) {
-      return jobEventsState.schedulerSummary;
-    }
-    return extractSchedulerSummary(payload?.scheduler as SchedulerSnapshot | undefined, jobEventsState.schedulerSummary);
-  }, [jobEventsState.lastSnapshotAt, jobEventsState.schedulerSummary, payload]);
-
-  const value = useMemo<JobEventsValue>(
-    () => ({ ...jobEventsState, schedulerSummary, isStale }),
-    [jobEventsState, schedulerSummary, isStale],
-  );
+  const value = useMemo<JobEventsValue>(() => ({ ...jobEventsState, isStale }), [jobEventsState, isStale]);
 
   return <JobEventsContext.Provider value={value}>{children}</JobEventsContext.Provider>;
 }
