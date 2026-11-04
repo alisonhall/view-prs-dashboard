@@ -74,8 +74,12 @@ const registerViewPrsMutationRoutes = ({
   // (repo, numbers) => adds the PRs a manual run chose, in a repo not
   // subscribed, to the sources. Safely no-ops if absent.
   trackRunPrs,
+  // (repo) => whether every row of the repo shows (fetched in full); true
+  // if absent.
+  showsAllRowsOfRepo,
 }) => {
   const trackRunPrsSafe = typeof trackRunPrs === "function" ? trackRunPrs : () => {};
+  const showsAllRowsOfRepoSafe = typeof showsAllRowsOfRepo === "function" ? showsAllRowsOfRepo : () => true;
   const getRepoGhEnvSafe = (repo) => (typeof getRepoGhEnv === "function" && repo ? getRepoGhEnv(repo) : {});
   const emitDataChangedSafe =
     typeof emitDataChanged === "function" ? emitDataChanged : () => {};
@@ -574,6 +578,17 @@ const registerViewPrsMutationRoutes = ({
     if (!isRepoSlug(repo)) {
       const invalidRepoResult = buildRequestMoreInvalidRepoResult(repo);
       sendRouteResult({ res, result: invalidRepoResult });
+      return;
+    }
+
+    // Only for a repo whose rows all show (subscribed to its recent PRs):
+    // in one followed by listed PRs, or PRs added one by one, the older
+    // merged PRs it fetched would be hidden.
+    if (!showsAllRowsOfRepoSafe(repo)) {
+      sendRouteResult({
+        res,
+        result: buildBadRequestResult(`${repo} isn't subscribed to its recent PRs, so its older merged PRs wouldn't show`),
+      });
       return;
     }
 

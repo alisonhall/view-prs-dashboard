@@ -1,12 +1,9 @@
 import { Suspense, lazy, useEffect, useRef, type ReactNode, type RefObject } from 'react';
 import { usePrData } from '../../state/PrDataContext';
 import { type TabPanelId, useHasTabPanelBeenVisible, useIsTabPanelVisible } from '../../state/useIsTabPanelVisible';
-import { useMergedRequestMoreActionOptions } from '../../state/useMergedRequestMoreActionOptions';
 import { useMultiSelectDropdownClosing } from '../../state/useMultiSelectDropdownClosing';
 import { useQuickCheckActions } from '../../state/useQuickCheckActions';
-import { useRequestMoreMerged } from '../../state/useRequestMoreMerged';
 import { AuthorInsightsProvider } from '../AuthorInsightsProvider';
-import { MergedRequestMoreAction } from '../MergedRequestMoreAction';
 import { NeedsAttentionProvider } from '../NeedsAttentionProvider';
 import { PrInsightsDisplayProvider } from '../PrInsightsDisplayProvider';
 import { PrTableApp } from '../PrTableApp';
@@ -115,14 +112,6 @@ function PrTable() {
   );
 }
 
-// key={repo}: its pending and status messages are about one repo's request,
-// so a repo change starts it afresh.
-function MergedRequestMoreActionLive() {
-  const { isVisible, repo } = useMergedRequestMoreActionOptions();
-  const requestMoreMerged = useRequestMoreMerged();
-  return <MergedRequestMoreAction key={repo} isVisible={isVisible} repo={repo} onRequestMore={requestMoreMerged} />;
-}
-
 /**
  * The page: the snackbar, the app header and the auto-update-paused banner,
  * the three views (the header's tabs choose which shows), and the Settings
@@ -163,9 +152,6 @@ export function AppShell() {
           <DataViewHeader />
           <div id="pr-sections" role="region" aria-label="Pull requests">
             <PrTable />
-          </div>
-          <div id="merged-request-more-action" className="merged-request-more-action">
-            <MergedRequestMoreActionLive />
           </div>
         </TabPanel>
 

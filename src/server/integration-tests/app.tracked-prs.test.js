@@ -322,6 +322,16 @@ describe("what the page shows", () => {
     expect(await shownKeys()).toEqual(["acme-org/picked#4", "acme-org/picked#6", `${SUBSCRIBED}#1`, "other-org/lib#9"]);
   });
 
+  test("fetches older merged PRs only for a repo whose rows all show", async () => {
+    const refused = await supertest(server).post("/view-prs/merged/request-more").send({ repo: "acme-org/picked", count: 30 });
+    const refusedAdded = await supertest(server).post("/view-prs/merged/request-more").send({ repo: "other-org/lib", count: 30 });
+
+    expect(refused.status).toBe(400);
+    expect(refused.body.error).toMatch(/isn't subscribed to its recent PRs/);
+    expect(refusedAdded.status).toBe(400);
+    expect(scriptCalls).toEqual([]);
+  });
+
   test("refuses a subscription that isn't one", async () => {
     expect((await supertest(server).put("/view-prs/subscriptions").send({ repo: "not a repo" })).status).toBe(400);
     expect((await supertest(server).put("/view-prs/subscriptions").send({ repo: "-x/y" })).status).toBe(400);

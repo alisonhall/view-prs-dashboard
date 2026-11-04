@@ -361,3 +361,7 @@
   font: var(--font-size-md) var(--font-sans);
   color: var(--color-text);
 }
+
+.sources-item-meta[data-tone="error"] {
+  color: var(--color-danger);
+}

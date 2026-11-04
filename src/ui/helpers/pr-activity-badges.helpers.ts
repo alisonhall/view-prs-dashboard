@@ -7,14 +7,23 @@ export interface ActivityBadge {
   className: string;
 }
 
+// How long a request runs before its badge warns, then turns critical.
+export interface RequestActivityThresholds {
+  warnMs: number;
+  criticalMs: number;
+}
+
 export interface ActiveRequestEntry {
   label: string;
   elapsedMs?: number | null;
+  // Its own, for a kind that takes longer when working normally; the
+  // defaults otherwise.
+  thresholds?: RequestActivityThresholds;
 }
 
 export interface PrActivityBadgesDeps {
   withElapsedSuffix?: (label: string, elapsedMs?: number | null) => string;
-  getRequestActivitySeverityClass?: (elapsedMs?: number | null) => string;
+  getRequestActivitySeverityClass?: (elapsedMs?: number | null, thresholds?: RequestActivityThresholds) => string;
 }
 
 export interface RequestActivityBadgesInput {
@@ -62,7 +71,7 @@ const createPrActivityBadgesHelpers = ({
     activeEntries.forEach((entry) => {
       badges.push({
         text: withElapsedSuffixSafe(entry.label, entry.elapsedMs),
-        className: `scheduler-badge-running ${getRequestActivitySeverityClassSafe(entry.elapsedMs)}`,
+        className: `scheduler-badge-running ${getRequestActivitySeverityClassSafe(entry.elapsedMs, entry.thresholds)}`,
       });
     });
 

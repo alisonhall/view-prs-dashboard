@@ -322,7 +322,7 @@ const createFetchMock = ({
 // window.renderReactFilterSummary/window.updateReactDataMetaText (the 2
 // push bridges this used to install a standalone rtlRender tree for) are
 // both confirmed dead in production - DataViewHeader derives the same
-// summary/chips/#data-meta text live, reactively, from Context instead.
+// chips and filter bar count live, reactively, from Context instead.
 // The harness's real AppShell renders it inside the harness's
 // PrDataProvider (not as its own independent root the way this used to
 // be), since it needs a real <PrDataProvider/> ancestor.
@@ -1823,8 +1823,8 @@ describe("index page rendering with Testing Library", () => {
     });
 
     await waitFor(() => {
-      const dataMeta = document.getElementById("data-meta")?.textContent || "";
-      expect(dataMeta).toContain("Rows: 1");
+      const dataMeta = document.querySelector(".filter-bar-count")?.textContent || "";
+      expect(dataMeta).toContain("Showing 1 of");
     });
 
     // #scheduler-badges/#scheduler-details (the Status tab's old "Auto
@@ -2780,15 +2780,13 @@ describe("index page rendering with Testing Library", () => {
 
 
     await waitFor(() => {
-      const dataMetaText = document.getElementById("data-meta")?.textContent || "";
-      expect(dataMetaText).toContain("Rows: 1");
-      expect(dataMetaText).toContain("prs=1");
-      expect(dataMetaText).toContain("scope=all stored rows");
+      const dataMetaText = document.querySelector(".filter-bar-count")?.textContent || "";
+      expect(dataMetaText).toContain("Showing 1 of");
     });
 
     // Phase H.12 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
     // now that filterPrNumbers is synced into real Context above (needed
-    // for the live #data-meta summary to see it), the REAL React table -
+    // for the live filter bar count to see it), the REAL React table -
     // which reads useVisiblePrNumbers(), the same reactive Context
     // derivation - picks it up too, same as it already does in the real
     // app: the PR-number filter takes precedence over the 4 multi-select
@@ -2796,7 +2794,7 @@ describe("index page rendering with Testing Library", () => {
     // assigned=assignee-other, which alone would match PR #2, not PR #1).
     // Matches the real, fully-wired app's own precedence (also covered by
     // pr-visible-pr-numbers.helpers.test.js and Playwright e2e).
-    // The table and #data-meta update separately: wait for the table too
+    // The table and the filter bar's count update separately: wait for the table too
     // (checking it straight after the summary failed on slower CI runners).
     await waitFor(() => {
       expect(
@@ -2890,9 +2888,8 @@ describe("index page rendering with Testing Library", () => {
     // intentionally removed (see "Further migration and removal of in
     // review attention override"). Only PR #1 (CHANGED) qualifies here.
     await waitFor(() => {
-      const dataMetaText = document.getElementById("data-meta")?.textContent || "";
-      expect(dataMetaText).toContain("Rows: 1");
-      expect(dataMetaText).toContain("scope=needs attention rows");
+      const dataMetaText = document.querySelector(".filter-bar-count")?.textContent || "";
+      expect(dataMetaText).toContain("Showing 1 of");
     });
 
     fireEvent.change(scopeField, { target: { value: "needs-attention-or-interacted" } });
@@ -2900,9 +2897,8 @@ describe("index page rendering with Testing Library", () => {
     // PR #1 (needs attention) + PR #2 (interacted) = 2. PR #4's in-review
     // flag alone no longer qualifies it for either scope.
     await waitFor(() => {
-      const dataMetaText = document.getElementById("data-meta")?.textContent || "";
-      expect(dataMetaText).toContain("Rows: 2");
-      expect(dataMetaText).toContain("scope=needs attention or interacted rows");
+      const dataMetaText = document.querySelector(".filter-bar-count")?.textContent || "";
+      expect(dataMetaText).toContain("Showing 2 of");
     });
   });
 
@@ -3356,8 +3352,8 @@ describe("index page rendering with Testing Library", () => {
     await clickMultiSelectCheckbox("author-list", "zuser", user);
 
     await waitFor(() => {
-      const dataMetaText = document.getElementById("data-meta")?.textContent || "";
-      expect(dataMetaText).toContain("Rows: 1");
+      const dataMetaText = document.querySelector(".filter-bar-count")?.textContent || "";
+      expect(dataMetaText).toContain("Showing 1 of");
       expect(screen.getByText("#12")).toBeInTheDocument();
       expect(screen.queryByText("#11")).not.toBeInTheDocument();
     });
@@ -3372,8 +3368,8 @@ describe("index page rendering with Testing Library", () => {
       const selectedAuthorValues = getSelectedMultiSelectValues("author-list");
       expect(selectedAuthorValues).toEqual(["zuser"]);
 
-      const dataMetaText = document.getElementById("data-meta")?.textContent || "";
-      expect(dataMetaText).toContain("Rows: 1");
+      const dataMetaText = document.querySelector(".filter-bar-count")?.textContent || "";
+      expect(dataMetaText).toContain("Showing 1 of");
       expect(screen.getByText("#12")).toBeInTheDocument();
       expect(screen.queryByText("#11")).not.toBeInTheDocument();
     });
@@ -4327,12 +4323,11 @@ describe("index page rendering with Testing Library", () => {
     await clickMultiSelectCheckbox("approver-list", "alice", user);
 
     await waitFor(() => {
-      const dataMetaText = document.getElementById("data-meta")?.textContent || "";
-      expect(dataMetaText).toContain("Rows: 1");
-      expect(dataMetaText).toContain("approver=alice");
+      const dataMetaText = document.querySelector(".filter-bar-count")?.textContent || "";
+      expect(dataMetaText).toContain("Showing 1 of");
     });
 
-    // The table and #data-meta update separately: wait for the table too
+    // The table and the filter bar's count update separately: wait for the table too
     // (checking it straight after the summary failed on slower CI runners).
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "More actions for PR #401" })).toBeInTheDocument();
@@ -4697,11 +4692,11 @@ describe("index page rendering with Testing Library", () => {
     await clickMultiSelectCheckbox("approver-list", "reviewer-a", user);
 
     await waitFor(() => {
-      const dataMetaText = document.getElementById("data-meta")?.textContent || "";
-      expect(dataMetaText).toContain("Rows: 1");
+      const dataMetaText = document.querySelector(".filter-bar-count")?.textContent || "";
+      expect(dataMetaText).toContain("Showing 1 of");
     });
 
-    // The table and #data-meta update separately: wait for the table too
+    // The table and the filter bar's count update separately: wait for the table too
     // (checking it straight after the summary failed on slower CI runners).
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "More actions for PR #601" })).toBeInTheDocument();
@@ -4885,12 +4880,11 @@ describe("index page rendering with Testing Library", () => {
     });
 
     await waitFor(() => {
-      const dataMetaText = document.getElementById("data-meta")?.textContent || "";
-      expect(dataMetaText).toContain("approver=grace");
-      expect(dataMetaText).toContain("Rows: 1");
+      const dataMetaText = document.querySelector(".filter-bar-count")?.textContent || "";
+      expect(dataMetaText).toContain("Showing 1 of");
     });
 
-    // The table and #data-meta update separately: wait for the table too
+    // The table and the filter bar's count update separately: wait for the table too
     // (checking it straight after the summary failed on slower CI runners).
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "More actions for PR #901" })).toBeInTheDocument();
@@ -5059,62 +5053,6 @@ describe("index page rendering with Testing Library", () => {
     const backfillLog = document.getElementById("backfill-log");
     expect(String(backfillLog?.textContent || "")).toContain("Showing 2 log line(s)");
     expect(String(backfillLog?.textContent || "")).toContain("line-1");
-  });
-
-  test("given Request more is triggered, when handled, then it posts the expected merged request payload (button rendering/visibility is React-owned - see MergedRequestMoreAction.test.jsx)", async () => {
-    initTestPage({
-      dataPayload: createMultiPrPayload({
-        prs: [
-          {
-            scenario: "merged",
-            prNumber: 100,
-            overrides: {
-              data: {
-                title: "Merged PR row",
-                titleDisplay: "Merged PR row [CHK:PASS] [MRG:YES]",
-                author: "octocat",
-                url: "https://github.com/owner/repo/pull/100",
-                labels: [{ name: "bug" }],
-                mergedAt: "2026-03-10T10:00:00Z",
-                updatedAt: "2026-03-11T11:00:00Z",
-              },
-            },
-          },
-        ],
-        lastRun: { repo: "owner/repo", updatedAt: "2026-03-11T11:00:00Z" },
-        scheduler: {
-          intervalMinutes: 15,
-          manualCooldownMinutes: 15,
-          isAutoRunInProgress: false,
-        },
-      }),
-    });
-    // The shell's own button, under the table once the data has loaded
-    // (scope "all" by default).
-    const requestMore = await within(document.getElementById("merged-request-more-action")).findByRole("button", {
-      name: "Request more",
-    });
-    fetchMock.mockClear();
-    const user = userEvent.setup();
-    await user.click(requestMore);
-
-    let requestMoreCall;
-    await waitFor(() => {
-      requestMoreCall = fetchMock.mock.calls.find((call) => {
-        const [url, init] = call;
-        return (
-          String(url || "") === "/view-prs/merged/request-more" &&
-          String(init?.method || "GET").toUpperCase() === "POST"
-        );
-      });
-      expect(requestMoreCall).toBeDefined();
-    });
-
-    expect(requestMoreCall).toBeDefined();
-    const requestMorePayload = JSON.parse(String(requestMoreCall?.[1]?.body || "{}"));
-    expect(requestMorePayload.repo).toBe("owner/repo");
-    expect(requestMorePayload.count).toBe(30);
-    expect(requestMorePayload.scanLimit).toBe(100);
   });
 
   test("renders row-level in-review control for PRs returned from data fetch", async () => {
@@ -7981,7 +7919,6 @@ describe("index page rendering with Testing Library", () => {
       "Latest request output",
       "Backfill status details",
       "Backfill log",
-      "PR data summary",
       "Status message",
       // The filter bar above the table (its applied-filter chips are a
       // group only while a filter is applied).

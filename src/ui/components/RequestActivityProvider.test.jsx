@@ -157,3 +157,41 @@ describe('RequestActivityProvider', () => {
     expect(renders).toBe(rendersAfterMount);
   });
 });
+
+describe('RequestActivityProvider badge severity', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  // Elapsed times are recomputed when the badges are rendered again (each
+  // scheduler update does), not on a timer of their own.
+  const advanceMinutes = (read, minutes) =>
+    act(() => {
+      jest.advanceTimersByTime(minutes * 60 * 1000);
+      read().actions.renderRequestActivity();
+    });
+  const classOf = (display, labelStart) =>
+    display.requestActivityBadges.find((badge) => String(badge.text).startsWith(labelStart))?.className || '';
+
+  test('warns after 2 minutes and turns critical after 6, but a fetch of older merged PRs - several minutes when working - only after 10 and 20', () => {
+    const { read } = mount();
+    act(() => {
+      read().actions.beginRequestActivity('olderMerged');
+      read().actions.beginRequestActivity('runScript');
+    });
+
+    advanceMinutes(read, 3);
+    expect(classOf(read().display, 'Run script')).toContain('scheduler-badge-warning');
+    expect(classOf(read().display, 'Fetch older merged PRs')).not.toMatch(/warning|critical/);
+
+    advanceMinutes(read, 8);
+    expect(classOf(read().display, 'Run script')).toContain('scheduler-badge-critical');
+    expect(classOf(read().display, 'Fetch older merged PRs')).toContain('scheduler-badge-warning');
+
+    advanceMinutes(read, 10);
+    expect(classOf(read().display, 'Fetch older merged PRs')).toContain('scheduler-badge-critical');
+  });
+});

@@ -10,9 +10,8 @@ const { createPrRowMatchFiltersHelpers } = require("./pr-row-match-filters.helpe
 // adds, everything else reused from the existing vanilla pipeline as-is.
 //
 // computeVisiblePrNumbers returns { visiblePrKeys, scopeLabel } (not a
-// bare array) - scopeLabel feeds the Applied-filters-chip-text follow-up
-// (state/useAppliedFilterSummary.tsx) and falls out of the same
-// scope-resolution pass for free.
+// bare array) - scopeLabel names the scope that applied, and falls out
+// of the same scope-resolution pass for free.
 describe("pr-visible-pr-numbers helpers", () => {
   const makeEntry = (number, overrides = {}) => ({
     prNumber: String(number),

@@ -67,18 +67,19 @@ Improvements noted once PRs could come from several repos and sources (subscript
 #### PR table
 
 - [ ] A legend for the signals and icons. In particular, the Signals column's first slot: a blue (accent) dot means the PR changed since your last Ack (its tooltip says what changed), a grey (muted) ring means it's had no recent activity, and an empty slot means no change since your Ack. None of that is explained anywhere on the page.
-- [ ] Fix the Review column's spacing: its "files viewed" count sometimes wraps onto the next line.
+- [x] ~~Fix the Review column's spacing: its "files viewed" count sometimes wraps onto the next line~~ - done (2026-11-04): the table lets cell text break anywhere, so from three digits the count split ("120/" over "134"). A slot's number no longer breaks, the slots are 8px apart (were 10px), and the column is 180px (was 170px), which fits four-digit counts; past that, or in the docked pane's narrower column, whole slots wrap.
 - [ ] Sorting options for each section. Default: the Merged section by date merged (newest first), every other section by PR number.
 
 #### Filters and search
 
 - [ ] Explain each filter better, so it's clear what it filters (help text or tooltips in the filter bar).
 - [ ] A search box for the page - unless the `PRs` filter (numbers, `owner/repo#n`, URLs, repos) already covers it. Decide first what search would add (titles, authors, notes, branch names?).
-- [ ] Remove the "Applied filters" text at the top of the page: the filter bar's chips and "Showing N of M PRs" replace it.
+- [x] ~~Remove the "Applied filters" text at the top of the page~~ - done (2026-11-04): the filter bar's chips and "Showing N of M PRs" replace it (the header pill says when the data was updated, Activity what's running).
 
 #### Header, Activity and checks
 
 - [ ] Reorganize the Activity popover so it's clear what's running now and what's coming up next, whether it's a background job or something you started.
+- [ ] Have the server report progress on long requests, shown in Activity: `Fetch older merged PRs` refreshes up to 30 PRs one at a time, and today Activity only knows it started ("Fetch older merged PRs (4m)"), not how far it's got ("12 of 30"). Announced as a server job, it would also show in every open tab - a request's tracking is per tab now, so only the tab it was started from lists it. Its badge warns after 10 minutes and turns critical after 20 (other requests: 2 and 6), as several minutes is normal for it.
 - [ ] Move the header's `Quick check all` button into Settings › Run & check.
 - [ ] Add a `Quick check open and latest merged` button: quick-check the open PRs plus the most recently merged ones, not every stored row.
 
@@ -86,7 +87,7 @@ Improvements noted once PRs could come from several repos and sources (subscript
 
 - [ ] Reorganize the Settings drawer so items are grouped by what they do, and describe every option so it makes sense to someone with no context.
 - [ ] Decide whether Settings › Background updates belongs in Sources. If it stays separate, list every source there (each subscription, and the repos of PRs added one by one), not only the repos the dispatcher has scheduled.
-- [ ] Rethink `Request more` (fetch more of a repo's merged PRs) now that PRs come from subscriptions and PRs added one by one: say which repo it's for, and what it means for a repo you only follow listed PRs in. Possibly move it into Settings › Sources, beside each subscription.
+- [x] ~~Rethink `Request more`~~ - done (2026-11-04): it fetched older merged PRs for whichever repo the last run was of. It's now `Fetch older merged PRs` in Settings › Sources, beside each repo followed for its recent PRs; the server refuses it for a repo followed for listed PRs, or one with only PRs added by URL, whose new rows wouldn't show.
 - [ ] Make the Action log scannable, and log background requests (quick checks, refreshes, drains) as well as actions you started.
 
 #### Actors

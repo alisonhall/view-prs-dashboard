@@ -3695,6 +3695,11 @@ const createViewPrsApp = ({ production = isProductionEnv } = {}) => {
     runAutoGhReservationCost: dispatcherGhCostByTaskType.autoRefresh,
     getRepoGhEnv,
     trackRunPrs,
+    // Every row shows: before the sources are seeded, or a repo fetched in full.
+    showsAllRowsOfRepo: (repo) => {
+      const visibility = getRowVisibility();
+      return !visibility || visibility.repos.has(repo);
+    },
   });
 
   registerViewPrsSourcesRoutes({

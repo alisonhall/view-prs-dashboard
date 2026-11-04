@@ -161,7 +161,7 @@
 .pr-col-select { width: 34px; }
 .pr-col-signals { width: 88px; }
 .pr-col-who { width: 150px; }
-.pr-col-review { width: 170px; }
+.pr-col-review { width: 180px; }
 .pr-col-checks { width: 64px; }
 .pr-col-size { width: 96px; }
 .pr-col-activity { width: 92px; }
@@ -267,8 +267,18 @@
   gap: 6px;
 }
 
+/* Whole slots wrap only when they can't fit: in the docked pane's narrower
+   column, or past four-digit viewed files at full width (the column's
+   width fits "1200/1340" with the rest). */
 .pr-review-slots {
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+
+/* A slot's number never breaks (the table's cells let text break
+   anywhere): "120/134" viewed files split as "120/" over "134". */
+.pr-signal-slots .ui-signal-text {
+  white-space: nowrap;
 }
 
 /* Pull request: the chevron in its own column; beside it the title line

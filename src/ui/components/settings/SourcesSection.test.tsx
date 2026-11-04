@@ -3,6 +3,7 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { PrDataContext, type PrDataValue } from '../../state/PrDataContext';
+import { RequestActivityContext } from '../../state/RequestActivityContext';
 import type { PrDataPayload, PrSources } from '../../types/pr-data.ts';
 import { SourcesSection } from './SourcesSection';
 
@@ -102,6 +103,66 @@ describe('SourcesSection', () => {
       '/view-prs/tracked-prs',
       expect.objectContaining({ method: 'DELETE', body: JSON.stringify({ repo: 'other/lib', number: '9' }) }),
     );
+  });
+
+  test('offers older merged PRs beside a repo followed for its recent PRs (the env var\'s too), not one followed for listed PRs', async () => {
+    const user = userEvent.setup();
+    const fetchMock = respondWith({ ok: true, refreshedPrs: ['10', '11'] });
+    global.fetch = fetchMock;
+    renderSection({ ...SOURCES, envRepos: ['env/only'] });
+
+    expect(within(item('env/only')).getByRole('button', { name: 'Fetch older merged PRs' })).toBeInTheDocument();
+    expect(within(item('acme/web')).queryByRole('button', { name: 'Fetch older merged PRs' })).not.toBeInTheDocument();
+
+    await user.click(within(item('acme/api')).getByRole('button', { name: 'Fetch older merged PRs' }));
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/view-prs/merged/request-more',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ repo: 'acme/api', count: 30, scanLimit: 100 }) }),
+    );
+    expect(await within(item('acme/api')).findByRole('status')).toHaveTextContent('Fetched 2 merged PRs.');
+  });
+
+  test('fetching older merged PRs is a request the Activity popover lists, from start to finish', async () => {
+    const user = userEvent.setup();
+    let resolveFetch: (value: Response) => void = () => {};
+    global.fetch = jest.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+    const finish = jest.fn();
+    const beginRequestActivity = jest.fn(() => finish);
+    const payload = { ok: true, byPrNumber: {}, dataMeta: { sources: SOURCES } } as unknown as PrDataPayload;
+    render(
+      <RequestActivityContext.Provider value={{ beginRequestActivity, renderRequestActivity: jest.fn(), renderSchedulerStatus: jest.fn() }}>
+        <PrDataContext.Provider value={{ payload } as unknown as PrDataValue}>
+          <SourcesSection />
+        </PrDataContext.Provider>
+      </RequestActivityContext.Provider>,
+    );
+
+    await user.click(within(item('acme/api')).getByRole('button', { name: 'Fetch older merged PRs' }));
+    expect(beginRequestActivity).toHaveBeenCalledWith('olderMerged');
+    expect(finish).not.toHaveBeenCalled();
+    expect(within(item('acme/api')).getByRole('button', { name: 'Fetching…' })).toBeDisabled();
+
+    resolveFetch({ ok: true, status: 200, json: async () => ({ ok: true, refreshedPrs: ['10'] }) } as Response);
+    expect(await within(item('acme/api')).findByRole('status')).toHaveTextContent('Fetched 1 merged PR.');
+    expect(finish).toHaveBeenCalledTimes(1);
+  });
+
+  test('says when no older merged PRs were missing, or why fetching them failed', async () => {
+    const user = userEvent.setup();
+    global.fetch = respondWith({ ok: true, refreshedPrs: [] });
+    renderSection();
+    await user.click(within(item('acme/api')).getByRole('button', { name: 'Fetch older merged PRs' }));
+    expect(await within(item('acme/api')).findByRole('status')).toHaveTextContent('None missing among its latest 100 merged PRs.');
+
+    global.fetch = respondWith({ ok: false, error: 'gh failed' }, 500);
+    await user.click(within(item('acme/api')).getByRole('button', { name: 'Fetch older merged PRs' }));
+    expect(await within(item('acme/api')).findByRole('alert')).toHaveTextContent('gh failed');
   });
 
   test('before there are any sources, says so and still offers to subscribe', () => {

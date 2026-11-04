@@ -434,10 +434,9 @@ test("page loads, PR table renders, and no requests or console calls fail", asyn
   const rowCount = await prTables(page).getByRole("row", { includeHidden: true }).count();
   expect(rowCount).toBeGreaterThan(0);
 
-  // data-meta should show the applied-filters summary, not be stuck on the
-  // initial "Loading..." placeholder (regression guard: the React render
-  // path used to skip the vanilla pipeline step that sets this text).
-  await expect(page.getByRole("region", { name: "PR data summary", exact: true, includeHidden: true })).not.toHaveText("Loading...");
+  // The filter bar's count shouldn't be stuck on its "Loading…"
+  // placeholder once the data has loaded.
+  await expect(page.locator(".filter-bar-count")).not.toHaveText("Loading…");
 
   expect(failedRequests).toEqual([]);
   expect(consoleErrors).toEqual([]);
@@ -1147,9 +1146,7 @@ test("a conversation you started that someone else resolved: found by the view s
   await openFilterBar(page);
   const scope = filterBar(page).getByLabel("View scope", { exact: true });
   await scope.selectOption("resolved-for-me");
-  await expect(page.getByRole("region", { name: "PR data summary", exact: true, includeHidden: true })).toContainText(
-    "scope=rows with conversations resolved for you to check",
-  );
+  await expect(filterChips(page)).toContainText("Scope: resolved-for-me");
   // A PR can be in more than one section: the distinct PRs shown.
   const shownPrs = async () =>
     [...new Set(await prTables(page).getByRole("button", { name: /^Show summary for PR #\d+$/, includeHidden: true }).evaluateAll((buttons) => buttons.map((button) => button.getAttribute("aria-label"))))];
@@ -1277,7 +1274,7 @@ test("typing a PR-number filter actually filters the rendered table in a real br
   await waitForFilterPersist(page);
   await page.getByRole("tab", { name: "Pull requests" }).click();
 
-  await expect(page.getByRole("region", { name: "PR data summary", exact: true, includeHidden: true })).toContainText("Rows: 1");
+  await expect(page.locator(".filter-bar-count")).toContainText("Showing 1 of");
   await expect(prTables(page)).toContainText("Add welcome banner");
   await expect(prTables(page)).not.toContainText("Fix flaky test");
 
@@ -1291,17 +1288,17 @@ test("typing a PR-number filter actually filters the rendered table in a real br
   await waitForFilterPersist(page);
 });
 
-test("Request more merged PRs button renders (lives outside the React-owned table)", async ({ page }) => {
-  // Regression test: this button is a static sibling of #pr-sections,
-  // toggled by the vanilla pipeline - it used to only be appended as part
-  // of building the vanilla <table> markup, a step skipped entirely when
-  // React renders the table, so the button was simply absent in the real
-  // (React) UI despite the default scope ("all stored rows") making it
-  // eligible to show.
+test("Settings › Sources offers fetching older merged PRs beside a repo followed for its recent PRs", async ({ page }) => {
+  // It replaced the page's Request more button, which fetched them for
+  // whichever repo the last run was of.
   await page.goto("/");
   await waitForPrTable(page);
+  await expect(page.getByRole("button", { name: "Request more", exact: true })).toHaveCount(0);
 
-  await expect(page.getByRole("button", { name: "Request more", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByRole("tab", { name: "Sources" }).click();
+  const panel = page.getByRole("tabpanel", { name: "Sources" });
+  await expect(panel.getByRole("button", { name: "Fetch older merged PRs" }).first()).toBeVisible();
 });
 
 test("scheduler-driven active-PR progress indicator reaches the React-rendered row", async ({ page }) => {
@@ -1710,7 +1707,7 @@ test("React-owned scope <select> survives a persisted-value restore, and selecti
   // against this suite's one shared webServer.
   await filterBar(page).getByLabel("View scope", { exact: true }).selectOption("all");
   await waitForFilterPersist(page);
-  await expect(page.getByRole("region", { name: "PR data summary", exact: true, includeHidden: true })).toContainText("scope=all stored rows");
+  await expect(filterBar(page).getByText(/^Scope:/)).toHaveCount(0);
 });
 
 test("React-owned checkbox survives a persisted-value restore, and toggling still applies filters", async ({ page }) => {
@@ -1800,10 +1797,10 @@ test("changing a React-owned filter auto-applies without clicking \"Apply filter
   await waitForPrTable(page);
 
   await openFilterBar(page);
-  await expect(page.getByRole("region", { name: "PR data summary", exact: true, includeHidden: true })).toContainText("scope=all stored rows");
+  await expect(filterBar(page).getByText(/^Scope:/)).toHaveCount(0);
 
   await filterBar(page).getByLabel("View scope", { exact: true }).selectOption("last-run");
-  await expect(page.getByRole("region", { name: "PR data summary", exact: true, includeHidden: true })).toContainText("scope=last run rows");
+  await expect(filterChips(page)).toContainText("Scope: last-run");
 
   // Reset so this test's change doesn't affect whatever loads next against
   // this suite's one shared webServer. Waiting for "a" save isn't enough:
@@ -1812,7 +1809,7 @@ test("changing a React-owned filter auto-applies without clicking \"Apply filter
   // page closed - leaving scope at "last run rows" for every later test
   // (CI, 2026-10-30). So wait for saving to settle, then check the file.
   await filterBar(page).getByLabel("View scope", { exact: true }).selectOption("all");
-  await expect(page.getByRole("region", { name: "PR data summary", exact: true, includeHidden: true })).toContainText("scope=all stored rows");
+  await expect(filterBar(page).getByText(/^Scope:/)).toHaveCount(0);
   await waitForFilterPersist(page);
   await expect
     .poll(async () => (await (await page.request.get("/view-prs/user-defaults")).json()).overrides?.["scope-mode"] ?? "all")
@@ -1901,33 +1898,26 @@ test("checking a row-filtering multi-select (label) filters the rendered table l
   await expect(prTables(page)).toContainText("Fix flaky test");
 });
 
-test("the PR data summary's \"Applied filters\" text updates live too, with no \"Apply filters (local)\" click at all", async ({ page }) => {
-  // Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering" follow-up): the
-  // chip/summary text used to only update via index.page.js's vanilla
-  // pipeline, pushed into React through a window.renderReactFilterSummary
-  // bridge - <DataViewHeader> now derives this
-  // text itself, reactively, via useAppliedFilterSummary(). This test
-  // proves both the PR-number filter and a multi-select update the chip
-  // text immediately, matching the table itself (see the two tests above).
+test("the filter bar's count and chips update live - the old \"Applied filters\" text above it is gone", async ({ page }) => {
+  // The chips say which filters apply, and "Showing N of M PRs" how many
+  // rows they leave: the summary text that repeated them is gone.
   await page.goto("/");
   await waitForPrTable(page);
 
   await openFilterBar(page);
-
-  const summary = page.getByRole("region", { name: "PR data summary", exact: true, includeHidden: true });
-  await expect(summary).toContainText("repo=");
-  await expect(summary).toContainText("scope=all stored rows");
+  await expect(page.getByRole("region", { name: "PR data summary", includeHidden: true })).toHaveCount(0);
+  const count = page.locator(".filter-bar-count");
 
   await filterBar(page).getByLabel("PRs", { exact: true }).fill("1");
-  await expect(summary).toContainText("prs=1");
-  await expect(summary).toContainText("Rows: 1");
+  await expect(count).toContainText("Showing 1 of");
+  await expect(filterChips(page)).toContainText("PRs: 1");
 
   await filterBar(page).getByLabel("PRs", { exact: true }).fill("");
 
   const labelDropdownSummary = filterDropdownSummary(filterBarList(page, "Labels"));
   await labelDropdownSummary.click();
   await filterBarList(page, "Labels").getByLabel("enhancement", { exact: true }).check();
-  await expect(summary).toContainText("label=enhancement");
+  await expect(filterChips(page)).toContainText("enhancement");
 
   // Reset so this test's filter doesn't hide PRs from whatever unrelated
   // test happens to load next against this suite's one shared webServer.
@@ -3471,7 +3461,7 @@ test("no React-portaled status/log panel shows its old static placeholder text s
     expect(hasStuckPlaceholder).toBe(false);
   };
 
-  await assertNoStalePrefix(page.getByRole("region", { name: "PR data summary", exact: true, includeHidden: true }), "Loading...");
+  await assertNoStalePrefix(page.locator(".filter-bar-count"), "Loading…");
   await assertNoStalePrefix(page.getByRole("region", { name: "Status message", exact: true, includeHidden: true }), "Not run");
   await assertNoStalePrefix(page.getByRole("region", { name: "Latest request output", exact: true, includeHidden: true }), "Run the script to see output");
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { createPrActivityBadgesHelpers } from '../helpers/pr-activity-badges.helpers.ts';
+import { createPrActivityBadgesHelpers, type RequestActivityThresholds } from '../helpers/pr-activity-badges.helpers.ts';
 import { createPrSchedulerStatusHelpers } from '../helpers/pr-scheduler-status.helpers.ts';
 import {
   RequestActivityContext,
@@ -14,6 +14,7 @@ const REQUEST_ACTIVITY_LABELS: Record<RequestActivityKey, string> = {
   ackClear: 'Ack/Clear',
   singlePr: 'Single PR update',
   dataLoad: 'Data refresh',
+  olderMerged: 'Fetch older merged PRs',
   backfill: 'Backfill request',
   labelApply: 'Apply label',
   checkboxToggle: 'Checkbox toggle',
@@ -23,8 +24,13 @@ const REQUEST_ACTIVITY_LABELS: Record<RequestActivityKey, string> = {
 };
 const REQUEST_ACTIVITY_KEYS = Object.keys(REQUEST_ACTIVITY_LABELS) as RequestActivityKey[];
 const RECENT_REQUEST_ACTIVITY_LIMIT = 10;
-const REQUEST_ACTIVITY_WARN_MS = 2 * 60 * 1000;
-const REQUEST_ACTIVITY_CRITICAL_MS = 6 * 60 * 1000;
+// When a request's badge warns, then turns critical: after 2 and 6
+// minutes, unless its kind takes longer when working normally.
+const DEFAULT_REQUEST_ACTIVITY_THRESHOLDS: RequestActivityThresholds = { warnMs: 2 * 60 * 1000, criticalMs: 6 * 60 * 1000 };
+const REQUEST_ACTIVITY_THRESHOLDS: Partial<Record<RequestActivityKey, RequestActivityThresholds>> = {
+  // Up to 30 PRs refreshed one at a time: several minutes is normal.
+  olderMerged: { warnMs: 10 * 60 * 1000, criticalMs: 20 * 60 * 1000 },
+};
 
 // The scheduler fields this Provider reads.
 type SchedulerState = Parameters<RequestActivityValue['renderSchedulerStatus']>[0] & {
@@ -75,15 +81,18 @@ const withElapsedSuffix = (label: string, elapsedMs?: number | null): string => 
   return `${label} (${formatElapsedLabel(elapsedMs)})`;
 };
 
-const getRequestActivitySeverityClass = (elapsedMs?: number | null): string => {
+const getRequestActivitySeverityClass = (
+  elapsedMs?: number | null,
+  { warnMs, criticalMs }: RequestActivityThresholds = DEFAULT_REQUEST_ACTIVITY_THRESHOLDS,
+): string => {
   const safeElapsedMs = Number(elapsedMs);
   if (!Number.isFinite(safeElapsedMs) || safeElapsedMs < 0) {
     return '';
   }
-  if (safeElapsedMs >= REQUEST_ACTIVITY_CRITICAL_MS) {
+  if (safeElapsedMs >= criticalMs) {
     return 'scheduler-badge-critical';
   }
-  if (safeElapsedMs >= REQUEST_ACTIVITY_WARN_MS) {
+  if (safeElapsedMs >= warnMs) {
     return 'scheduler-badge-warning';
   }
   return '';
@@ -103,6 +112,7 @@ const buildBadges = (activityState: ActivityState) => {
     (key) => ({
       label: `${REQUEST_ACTIVITY_LABELS[key]} x${activityState.counters[key]}`,
       elapsedMs: getElapsedFromStartMs(activityState.startedAtMs[key]),
+      thresholds: REQUEST_ACTIVITY_THRESHOLDS[key],
     }),
   );
   const isAutoRunInProgress = Boolean(activityState.latestSchedulerState?.isAutoRunInProgress);

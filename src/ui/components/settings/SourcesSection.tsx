@@ -1,10 +1,11 @@
 import { useEffect, useId, useState, type FormEvent } from 'react';
 import { useOptionalPrData } from '../../state/PrDataContext';
-import { sendJson } from '../../helpers/pr-http.helpers.ts';
+import { postJson, sendJson } from '../../helpers/pr-http.helpers.ts';
 import { NON_CREDENTIAL_INPUT_PROPS } from '../../helpers/form-parsing.helpers.ts';
 import type { PrSources, PrSubscription } from '../../types/pr-data.ts';
 import { Button } from '../ui/Button';
 import { KnownReposDatalist } from './KnownReposDatalist';
+import { useRequestActivity } from '../../state/RequestActivityContext';
 
 // What the sources routes return.
 interface SourcesResult {
@@ -21,6 +22,76 @@ const formatSince = (iso: string | undefined) => {
   const ms = Date.parse(String(iso || ''));
   return Number.isFinite(ms) ? new Date(ms).toLocaleString() : '';
 };
+
+// What POST /view-prs/merged/request-more returns.
+interface RequestMoreResult {
+  ok?: boolean;
+  error?: string;
+  refreshedPrs?: unknown[];
+}
+
+// How many older merged PRs one click fetches, among how many of the repo's
+// latest merged PRs it looks.
+const OLDER_MERGED_COUNT = 30;
+const OLDER_MERGED_SCAN = 100;
+
+/**
+ * A repo's "Fetch older merged PRs": up to 30 of its latest 100 merged PRs
+ * that aren't stored yet (the background updates only fetch recently
+ * merged ones). Only beside a repo followed for its recent PRs - the server
+ * refuses another, whose new rows wouldn't show. The rows arrive with the
+ * data's next change; this says how many it fetched. Tracked as a request
+ * (the Activity popover lists it while it runs, and once it's done).
+ */
+function FetchOlderMergedButton({ repo }: { repo: string }) {
+  const { beginRequestActivity } = useRequestActivity();
+  const [pending, setPending] = useState(false);
+  const [status, setStatus] = useState<{ tone: 'done' | 'error'; text: string } | null>(null);
+
+  const handleClick = async () => {
+    setPending(true);
+    setStatus(null);
+    const finishActivity = beginRequestActivity('olderMerged');
+    try {
+      const { response, result } = await postJson<RequestMoreResult>('/view-prs/merged/request-more', {
+        repo,
+        count: OLDER_MERGED_COUNT,
+        scanLimit: OLDER_MERGED_SCAN,
+      });
+      if (!response.ok || result.ok === false) {
+        setStatus({ tone: 'error', text: result.error || `HTTP ${response.status}` });
+        return;
+      }
+      const count = Array.isArray(result.refreshedPrs) ? result.refreshedPrs.length : 0;
+      setStatus({
+        tone: 'done',
+        text: count > 0 ? `Fetched ${count} merged PR${count === 1 ? '' : 's'}.` : `None missing among its latest ${OLDER_MERGED_SCAN} merged PRs.`,
+      });
+    } catch (caught) {
+      setStatus({ tone: 'error', text: caught instanceof Error ? caught.message : String(caught) });
+    } finally {
+      setPending(false);
+      finishActivity();
+    }
+  };
+
+  return (
+    <>
+      <Button
+        disabled={pending}
+        title={`Fetches up to ${OLDER_MERGED_COUNT} of its latest ${OLDER_MERGED_SCAN} merged PRs that aren't stored yet - the background updates only fetch recently merged ones.`}
+        onClick={() => void handleClick()}
+      >
+        {pending ? 'Fetching…' : 'Fetch older merged PRs'}
+      </Button>
+      {status && (
+        <span className="sources-item-meta" data-tone={status.tone} role={status.tone === 'error' ? 'alert' : 'status'}>
+          {status.text}
+        </span>
+      )}
+    </>
+  );
+}
 
 /**
  * The Settings drawer's "Sources": which repos and PRs are in view (the
@@ -120,6 +191,7 @@ export function SourcesSection() {
               <li key={`env-${repo}`} className="sources-item">
                 <span className="sources-item-name">{repo}</span>
                 <span className="sources-item-meta">Its recent PRs - set by VIEW_PRS_AUTO_REPOS, so it can&apos;t be unsubscribed here</span>
+                <FetchOlderMergedButton repo={repo} />
               </li>
             ))}
             {editableSubscriptions.map((subscription) => {
@@ -175,6 +247,7 @@ export function SourcesSection() {
                       </Button>
                     </span>
                   )}
+                  {subscription.mode === 'recent' && !isDraftingNumbers && <FetchOlderMergedButton repo={subscription.repo} />}
                   <Button
                     disabled={busy}
                     title="Hides its rows (kept, with their notes) and stops its background updates. PRs added from it stay."

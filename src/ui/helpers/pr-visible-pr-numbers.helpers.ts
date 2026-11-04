@@ -8,8 +8,8 @@ import { buildPrEntryKey } from "./pr-entry-keys.helpers.ts";
 // (useVisiblePrNumbers wires it to Context). Composes the injected scope
 // and row-filter helpers (resolveScopedRows/buildRowFilterCriteria/
 // applyRowUiFilters) rather than reimplementing them. Returns
-// `{ visiblePrKeys, scopeLabel }`: useAppliedFilterSummary needs the
-// scope label too, and it falls out of the same scope-resolution pass.
+// `{ visiblePrKeys, scopeLabel }`: the scope label names the scope that
+// applied, and falls out of the same scope-resolution pass.
 export interface RowFilterSelections {
   includeLabels?: string[];
   excludeLabels?: string[];

@@ -12,7 +12,7 @@ import type { SchedulerSnapshot } from '../helpers/pr-job-events.helpers.ts';
  *
  * Its own Context rather than another field of `usePrData()`, on purpose:
  * the writers that call these (useRunScript/useAckLabelActions/
- * useBackfillActions/useRequestMoreMerged, called high in the tree: AppShell
+ * useBackfillActions, called high in the tree: AppShell
  * and the Settings drawer's sections) would otherwise subscribe to the whole
  * PR-data value, which changes on every payload/repo/stats update -
  * re-rendering them and everything under them each time. These functions never change, so this Context's value
@@ -29,6 +29,7 @@ export type RequestActivityKey =
   | 'ackClear'
   | 'singlePr'
   | 'dataLoad'
+  | 'olderMerged'
   | 'backfill'
   | 'labelApply'
   | 'checkboxToggle'

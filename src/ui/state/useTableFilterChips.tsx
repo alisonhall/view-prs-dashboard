@@ -9,8 +9,8 @@ import type { RowFilterListId } from './RowFilterSelectionContext';
 
 const { buildTableFilterChipsViewModel } = createPrTableFilterChipsHelpers();
 
-// Used without a <FilterStateProvider> ancestor, as useVisiblePrNumbers.tsx/
-// useAppliedFilterSummary.tsx do. No openMode: it's a Run Script option,
+// Used without a <FilterStateProvider> ancestor, as useVisiblePrNumbers.tsx
+// is. No openMode: it's a Run Script option,
 // not a row-visibility filter (rowMatchesUiFilters never reads it), so a
 // chip for it would falsely imply clearing it changes the table.
 const DEFAULT_FILTER_STATE_VALUES: FilterValues = {
@@ -36,7 +36,7 @@ const DEFAULT_FILTER_STATE_VALUES: FilterValues = {
  * indistinguishable from the user unchecking/clearing the control itself.
  *
  * filterPrNumbers specifically is debounced here the same way
- * useVisiblePrNumbers.tsx/useAppliedFilterSummary.tsx both already debounce
+ * useVisiblePrNumbers.tsx already debounces
  * it (same FILTER_PR_NUMBERS_DEBOUNCE_MS) - without this, the chip would
  * flicker through every intermediate keystroke (e.g. briefly showing
  * "PRs: 1" while typing "12") out of step with the table's own debounced

@@ -35,9 +35,8 @@ const isInReviewEnabled = (row: PrData): boolean => {
 };
 
 // How long the PR-number filter waits after typing. Exported so
-// useAppliedFilterSummary.tsx and useTableFilterChips.tsx debounce their
-// display of it the same way; otherwise their text would disagree with the
-// (debounced) table while typing.
+// useTableFilterChips.tsx debounces its display of it the same way;
+// otherwise its chip would disagree with the (debounced) table while typing.
 export const FILTER_PR_NUMBERS_DEBOUNCE_MS = 150;
 
 // Used when there's no <FilterStateProvider> ancestor at all (e.g.
@@ -70,9 +69,8 @@ const DEFAULT_FILTER_STATE_VALUES: FilterValues = {
  * Per-entry results are cached across renders (createEntryDerivedCache).
  *
  * Returns `{ visiblePrKeys, scopeLabel }`: `scopeLabel` (e.g. "all
- * stored rows"/"needs attention rows") falls out of the same scope pass and
- * feeds the "Applied filters" text (useAppliedFilterSummary.tsx calls this
- * same hook rather than re-deriving scope).
+ * stored rows"/"needs attention rows") falls out of the same scope pass,
+ * naming the scope that applied.
  *
  * `filterPrNumbers` is debounced (FILTER_PR_NUMBERS_DEBOUNCE_MS) so typing
  * a PR number doesn't re-filter on every keystroke and flicker through

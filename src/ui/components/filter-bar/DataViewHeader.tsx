@@ -1,31 +1,26 @@
 import { usePrData } from '../../state/PrDataContext';
-import { useAppliedFilterSummary } from '../../state/useAppliedFilterSummary';
+import { useFilteredPrRows } from '../../state/useVisiblePrNumbers';
 import { usePrTableOpenSections } from '../../state/PrTableUiStateContext';
 import { FilterBar } from './FilterBar';
 
 /**
- * What sits above the PR table: the PR data summary (#data-meta) and the
- * filter bar, from one useAppliedFilterSummary() call - each call runs the
- * whole row-filtering derivation again, so they share it.
+ * What sits above the PR table: the filter bar, with how many rows the
+ * filters show (useFilteredPrRows - the table's own derivation) of every
+ * stored row. Its chips say which filters apply; the header says when the
+ * data was last updated, and Activity what's running.
  *
  * Mount inside the data Providers (PrDataProvider, FilterOptionsProvider,
- * the selection Providers, JobEventsProvider). The summary says
- * "Loading..." until the first real data load: before it, the empty seed
- * payload would give a real-looking "Rows: 0".
+ * the selection Providers). The count waits for the first real data load:
+ * before it, the empty seed payload would give a real-looking "0 of 0".
  */
 export function DataViewHeader() {
   const { payload } = usePrData();
-  const { summaryText, shownCount, totalCount } = useAppliedFilterSummary();
+  const { visiblePrKeys, totalCount } = useFilteredPrRows();
   const { hiddenPrCount } = usePrTableOpenSections();
   const loaded = Boolean(payload?.ok);
   return (
-    <>
-      <pre id="data-meta" style={{ whiteSpace: 'break-spaces' }} role="region" aria-label="PR data summary">
-        {loaded ? summaryText : 'Loading...'}
-      </pre>
-      <div id="filter-bar-root">
-        <FilterBar shownCount={shownCount} totalCount={totalCount} loaded={loaded} hiddenCount={hiddenPrCount} />
-      </div>
-    </>
+    <div id="filter-bar-root">
+      <FilterBar shownCount={visiblePrKeys.length} totalCount={totalCount} loaded={loaded} hiddenCount={hiddenPrCount} />
+    </div>
   );
 }
