@@ -223,6 +223,20 @@ describe("pr data polling helpers", () => {
     expect(afterFullRun.lastFullRun).toEqual({ updatedAt: "2026-01-01T00:15:00Z" });
   });
 
+  test("mergeDataDeltaPayload takes new per-repo runs, or keeps the ones it had", () => {
+    const { mergeDataDeltaPayload } = createPrDataPollingHelpers();
+    const byRepo = { "acme/api": { repo: "acme/api", updatedAt: "2026-01-01T00:00:00Z" } };
+    const basePayload = { byPrNumber: {}, lastRunByRepo: byRepo, lastFullRunByRepo: byRepo };
+
+    const kept = mergeDataDeltaPayload({ basePayload, deltaByPrNumber: {} });
+    expect(kept.lastFullRunByRepo).toEqual(byRepo);
+
+    const next = { ...byRepo, "acme/web": { repo: "acme/web", updatedAt: "2026-01-01T00:15:00Z" } };
+    const moved = mergeDataDeltaPayload({ basePayload, deltaByPrNumber: {}, nextLastRunByRepo: next, nextLastFullRunByRepo: next });
+    expect(moved.lastRunByRepo).toEqual(next);
+    expect(moved.lastFullRunByRepo).toEqual(next);
+  });
+
   test("mergeDataDeltaPayload takes the manifest's user state (an Ack cleared by a run), or keeps the stored one", () => {
     const basePayload = {
       byPrNumber: {},

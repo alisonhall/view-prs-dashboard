@@ -25,9 +25,34 @@
           "type": "null"
         }
       ]
+    },
+    "lastFullRun": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/lastRun"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "lastRunByRepo": {
+      "$ref": "#/$defs/runByRepo"
+    },
+    "lastFullRunByRepo": {
+      "$ref": "#/$defs/runByRepo"
     }
   },
   "$defs": {
+    "runByRepo": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/repoKey"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/lastRun"
+      }
+    },
     "isoDateTime": {
       "type": "string",
       "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"

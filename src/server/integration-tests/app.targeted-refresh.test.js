@@ -79,6 +79,24 @@ describe("the last run and the last full run", () => {
     fs.writeFileSync(dataFile, JSON.stringify({ byPrNumber: {}, lastRun }));
     expect(appModule.readViewPrsData()).toMatchObject({ lastRun, lastFullRun: lastRun });
   });
+
+  // Several repos' runs take turns, so each has its own; data from before
+  // the per-repo ones has the global one for its repo.
+  test("each repo's reach the page too, with the global ones filling in for their repo where missing", () => {
+    const otherRun = { repo: "acme-org/other", updatedAt: "2026-10-31T08:00:00Z" };
+    const lastRun = { repo: REPO, updatedAt: "2026-10-31T10:00:00Z" };
+    fs.writeFileSync(
+      dataFile,
+      JSON.stringify({ byPrNumber: {}, lastRun, lastRunByRepo: { "acme-org/other": otherRun }, lastFullRunByRepo: { "acme-org/other": otherRun } }),
+    );
+    expect(appModule.readViewPrsData()).toMatchObject({
+      lastRunByRepo: { "acme-org/other": otherRun, [REPO]: lastRun },
+      lastFullRunByRepo: { "acme-org/other": otherRun, [REPO]: lastRun },
+    });
+
+    fs.writeFileSync(dataFile, JSON.stringify({ byPrNumber: {} }));
+    expect(appModule.readViewPrsData()).toMatchObject({ lastRunByRepo: {}, lastFullRunByRepo: {} });
+  });
 });
 
 describe("runViewPrsAutoRefresh with prNumbersByRepo", () => {

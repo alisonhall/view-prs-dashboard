@@ -85,7 +85,8 @@ export function useAppliedFilterSummary(): AppliedFilterSummary {
       alwaysShowInReview: selectedFilters.alwaysShowInReview,
       openModeFilter: selectedFilters.openModeFilter,
       rowsCount: visiblePrKeys.length,
-      // The stamp "Last run rows" matches (see useVisiblePrNumbers).
+      // The latest repo's last full run ("Last run rows" matches each
+      // repo's own - see useVisiblePrNumbers).
       lastRunUpdatedAt: (payload?.lastFullRun || payload?.lastRun)?.updatedAt,
       scheduler: schedulerSummary,
     });

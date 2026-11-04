@@ -35,6 +35,8 @@ export interface MergeDataDeltaInput {
   nextScheduler?: unknown;
   nextLastRun?: PrDataPayload["lastRun"] | null;
   nextLastFullRun?: PrDataPayload["lastFullRun"] | null;
+  nextLastRunByRepo?: PrDataPayload["lastRunByRepo"] | null;
+  nextLastFullRunByRepo?: PrDataPayload["lastFullRunByRepo"] | null;
   nextManifest?: PrManifest | null;
   // The user state's per-repo maps (the manifest's userState): replace the
   // stored ones when given.
@@ -65,6 +67,7 @@ const computePrDataMetaFingerprint = (payload: PrDataPayload | null | undefined)
   JSON.stringify({
     lastRun: payload?.lastRun || null,
     lastFullRun: payload?.lastFullRun || null,
+    lastFullRunByRepo: payload?.lastFullRunByRepo || null,
     dataMeta: payload?.dataMeta || null,
     scheduler: payload?.scheduler || null,
     // Not the rows', but shown in them and the pane (Ack'd, the Activity
@@ -152,6 +155,8 @@ const mergeDataDeltaPayload = ({
   nextScheduler = null,
   nextLastRun = null,
   nextLastFullRun = null,
+  nextLastRunByRepo = null,
+  nextLastFullRunByRepo = null,
   nextManifest = null,
   nextUserState = null,
 }: MergeDataDeltaInput = {}): PrDataPayload => {
@@ -174,6 +179,8 @@ const mergeDataDeltaPayload = ({
     scheduler: nextScheduler || basePayload?.scheduler || null,
     lastRun: nextLastRun || basePayload?.lastRun || null,
     lastFullRun: nextLastFullRun || basePayload?.lastFullRun || null,
+    lastRunByRepo: nextLastRunByRepo || basePayload?.lastRunByRepo || {},
+    lastFullRunByRepo: nextLastFullRunByRepo || basePayload?.lastFullRunByRepo || {},
     dataManifest:
       nextManifest ||
       computePrDataManifest({ byPrNumber: mergedByPrNumber }),

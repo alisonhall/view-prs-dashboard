@@ -1578,6 +1578,15 @@ const getViewPrsViewerLogin = () => {
   return cachedViewPrsViewerLogin;
 };
 
+// A per-repo run map, with the global run under its repo when the map
+// lacks it (data written before the maps existed).
+const withRunForItsRepo = (byRepo, run) => {
+  const map = isObject(byRepo) ? { ...byRepo } : {};
+  const repo = toTrimmedString(run?.repo);
+  if (repo && !map[repo]) map[repo] = run;
+  return map;
+};
+
 const readViewPrsData = () => {
   const rawUserState = readJsonFileIfExists(viewPrsUserStateFile, {});
   const normalizedUserState = normalizeViewPrsUserState(rawUserState);
@@ -1587,6 +1596,8 @@ const readViewPrsData = () => {
       byPrNumber: {},
       lastRun: null,
       lastFullRun: null,
+      lastRunByRepo: {},
+      lastFullRunByRepo: {},
       viewerLogin: getViewPrsViewerLogin(),
       actorsMap: {},
       actorLoginAliases: readViewPrsActorLoginAliases(),
@@ -1672,6 +1683,10 @@ const readViewPrsData = () => {
       // The last full run (lastRun is any run, including one of chosen PRs);
       // data from before it had one: its lastRun.
       lastFullRun: parsed.lastFullRun || parsed.lastRun || null,
+      // Each repo's (the global ones are only the latest repo's); data from
+      // before them: the global one, for its repo.
+      lastRunByRepo: withRunForItsRepo(parsed.lastRunByRepo, parsed.lastRun),
+      lastFullRunByRepo: withRunForItsRepo(parsed.lastFullRunByRepo, parsed.lastFullRun || parsed.lastRun),
       viewerLogin:
         Object.values(byPrNumber)
           .map((entry) => toTrimmedString(entry?.data?.viewerLogin))
@@ -1690,6 +1705,8 @@ const readViewPrsData = () => {
       byPrNumber: {},
       lastRun: null,
       lastFullRun: null,
+      lastRunByRepo: {},
+      lastFullRunByRepo: {},
       viewerLogin: getViewPrsViewerLogin(),
       actorsMap: {},
       actorLoginAliases: readViewPrsActorLoginAliases(),

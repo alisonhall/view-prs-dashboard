@@ -1003,9 +1003,15 @@ upsert_pr_state_unlocked() {
   # A run of chosen PRs (is_targeted_run) keeps an existing row's updatedAt
   # and lastFullRun: they mark which rows the last full run saw - the "last
   # run rows" view - which refreshing a few PRs doesn't change. A row it
-  # adds takes the last full run's stamp too, so a new PR shows there
-  # straight away. lastRun is every run's, for "updated N minutes ago".
-  # (Data from before lastFullRun takes its lastRun as one.)
+  # adds takes its repo's last full run's stamp too, so a new PR shows there
+  # straight away - or, in a repo with no full run yet (one whose PRs were
+  # only ever added one by one), this run's, recorded as the repo's full run
+  # so the rows it adds show there too. lastRun is every run's, for
+  # "updated N minutes ago".
+  # (Data from before lastFullRun takes its lastRun as one.) Each repo has
+  # its own as well - lastRunByRepo and lastFullRunByRepo - since several
+  # repos' runs take turns: the global ones are only the latest repo's.
+  # (Data from before those takes the global one for its repo.)
   #
   # Written straight over the file, without replace_state_file's backup and
   # second parse: the run backed the file up once before its first row
@@ -1027,7 +1033,12 @@ upsert_pr_state_unlocked() {
       .byPrNumber //= {} |
       ([pr_row($repo; $number)] | first // {}) as $existing |
       (if ((.byPrNumber[$number].repo // "") == $repo) then del(.byPrNumber[$number]) else . end) |
-      ($existing.updatedAt // (.lastFullRun // .lastRun).updatedAt // null) as $existingUpdatedAt |
+      (
+        (.lastFullRunByRepo // {})[$repo]
+        // ((.lastFullRun // .lastRun) | select(type == "object" and (.repo // "") == $repo))
+        // null
+      ) as $repoFullRun |
+      ($existing.updatedAt // $repoFullRun.updatedAt // null) as $existingUpdatedAt |
       .byPrNumber[$key] = (($existing | del(.notes)) + {
         prNumber: $number,
         repo: $repo,
@@ -1049,7 +1060,12 @@ upsert_pr_state_unlocked() {
       .lastRun = {
         repo: $repo,
         updatedAt: $updatedAt
-      }
+      } |
+      .lastFullRunByRepo = (
+        (.lastFullRunByRepo // {})
+        | .[$repo] = ((if $targeted then $repoFullRun else null end) // {repo: $repo, updatedAt: $updatedAt})
+      ) |
+      .lastRunByRepo = ((.lastRunByRepo // {}) | .[$repo] = {repo: $repo, updatedAt: $updatedAt})
     ' "$PR_STATE_FILE" >"$tmp" || [[ ! -s "$tmp" ]]; then
     rm -f "$row_file" "$tmp"
     echo "Refusing to replace $PR_STATE_FILE: couldn't add row" >&2
@@ -1063,6 +1079,31 @@ upsert_pr_state() {
   local row_json="$1"
   local section="$2"
   with_pr_state_lock upsert_pr_state_unlocked "$row_json" "$section"
+}
+
+# A full run's records of its repo's run, which each row it saves writes
+# (upsert_pr_state_unlocked) - and this, at its end, for a run that saved
+# none: the repo kept its previous run's stamp otherwise, and the rows that
+# run saw stayed "last run rows" after dropping out of its listings.
+record_repo_full_run_unlocked() {
+  local tmp
+
+  tmp=$(state_file_tmp_path "$PR_STATE_FILE")
+  if ! jq \
+    --arg repo "$REPO" \
+    --arg updatedAt "$RUN_TS" \
+    '
+      {repo: $repo, updatedAt: $updatedAt} as $run |
+      .lastFullRun = $run |
+      .lastRun = $run |
+      .lastFullRunByRepo = ((.lastFullRunByRepo // {}) | .[$repo] = $run) |
+      .lastRunByRepo = ((.lastRunByRepo // {}) | .[$repo] = $run)
+    ' "$PR_STATE_FILE" >"$tmp" || [[ ! -s "$tmp" ]]; then
+    rm -f "$tmp"
+    echo "Refusing to replace $PR_STATE_FILE: couldn't record the run" >&2
+    return 1
+  fi
+  command mv -f "$tmp" "$PR_STATE_FILE"
 }
 
 apply_ack_changes() {
@@ -3378,6 +3419,10 @@ main() {
   done <<<"$merged_prs_b64"
 
   [[ "$merged_printed" -eq 0 ]] && echo '(none)'
+
+  if ((RUN_ROW_INDEX == 0)) && ! is_targeted_run; then
+    with_pr_state_lock record_repo_full_run_unlocked || exit 1
+  fi
 
   echo
   echo 'Summary:'

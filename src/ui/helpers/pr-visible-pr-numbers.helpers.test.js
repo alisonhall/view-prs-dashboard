@@ -99,6 +99,31 @@ describe("pr-visible-pr-numbers helpers", () => {
     ).toEqual(["owner/repo#1", "owner/repo#2"]);
   });
 
+  // Several repos' full runs take turns: each row is its own repo's last
+  // run row or not, whichever repo ran last.
+  test("given \"Last run rows\" with several repos, then each repo's rows from its own last full run are shown", () => {
+    const computeVisiblePrNumbers = makeComputeVisiblePrNumbers();
+    const apiRun = { repo: "acme/api", updatedAt: "2026-10-31T10:00:00Z" };
+    const webRun = { repo: "acme/web", updatedAt: "2026-10-31T10:30:00Z" };
+    const payload = {
+      byPrNumber: {
+        "acme/api#1": makeEntry(1, { repo: "acme/api", updatedAt: apiRun.updatedAt }),
+        "acme/api#2": makeEntry(2, { repo: "acme/api", updatedAt: "2026-10-30T10:00:00Z" }),
+        "acme/web#7": makeEntry(7, { repo: "acme/web", updatedAt: webRun.updatedAt }),
+        // Stamped with the latest (web's) run, but api's run isn't that one.
+        "acme/api#3": makeEntry(3, { repo: "acme/api", updatedAt: webRun.updatedAt }),
+      },
+      lastRun: webRun,
+      lastFullRun: webRun,
+      lastFullRunByRepo: { "acme/api": apiRun, "acme/web": webRun },
+    };
+
+    const { visiblePrKeys, scopeLabel } = computeVisiblePrNumbers({ payload, scopeMode: "last-run", filterPrNumbersRaw: "" });
+
+    expect(visiblePrKeys.sort()).toEqual(["acme/api#1", "acme/web#7"]);
+    expect(scopeLabel).toBe("last run rows");
+  });
+
   test("given a PR-number filter, when called, then only that PR is visible, regardless of scope", () => {
     const computeVisiblePrNumbers = makeComputeVisiblePrNumbers();
     const payload = { byPrNumber: { 1: makeEntry(1), 2: makeEntry(2) } };

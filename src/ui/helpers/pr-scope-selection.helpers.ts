@@ -30,7 +30,11 @@ export interface PrScopeSelectionDeps {
 export interface ResolveScopedRowsInput<E extends PrEntry> {
   rowsForRepo?: E[] | null;
   ignoreScopeForPrNumberFilter?: boolean;
+  // "Last run rows": a row is one when its updatedAt is its repo's last
+  // full run's (runStampsByRepo), or - for a repo without one, as in data
+  // from before them - runStamp, the latest repo's.
   runStamp?: string;
+  runStampsByRepo?: Record<string, string>;
   useLastRunScope?: boolean;
   selectedScope?: string;
   attentionConfig?: AttentionConfig;
@@ -67,6 +71,7 @@ const createPrScopeSelectionHelpers = ({
     rowsForRepo,
     ignoreScopeForPrNumberFilter,
     runStamp,
+    runStampsByRepo = {},
     useLastRunScope,
     selectedScope,
     attentionConfig,
@@ -75,8 +80,11 @@ const createPrScopeSelectionHelpers = ({
     let scopeLabel = "all stored rows";
 
     if (!ignoreScopeForPrNumberFilter) {
-      if (runStamp && useLastRunScope) {
-        const lastRunRows = rows.filter((entry) => entry?.updatedAt === runStamp);
+      if (useLastRunScope && (runStamp || Object.keys(runStampsByRepo).length > 0)) {
+        const lastRunRows = rows.filter((entry) => {
+          const stamp = runStampsByRepo[String(entry?.repo || "")] || runStamp;
+          return Boolean(stamp) && entry?.updatedAt === stamp;
+        });
         if (lastRunRows.length > 0) {
           rows = lastRunRows;
           scopeLabel = "last run rows";

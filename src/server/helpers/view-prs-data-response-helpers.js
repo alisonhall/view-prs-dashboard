@@ -70,6 +70,8 @@ const createViewPrsDataResponseHelpers = ({
     scheduler: getViewPrsSchedulerPublicState(),
     lastRun: data?.lastRun || null,
     lastFullRun: data?.lastFullRun || null,
+    lastRunByRepo: data?.lastRunByRepo || {},
+    lastFullRunByRepo: data?.lastFullRunByRepo || {},
   });
 
   return {

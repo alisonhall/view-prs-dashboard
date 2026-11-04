@@ -41,6 +41,8 @@ interface DeltaResult {
   scheduler?: unknown;
   lastRun?: PrDataPayload["lastRun"];
   lastFullRun?: PrDataPayload["lastFullRun"];
+  lastRunByRepo?: PrDataPayload["lastRunByRepo"];
+  lastFullRunByRepo?: PrDataPayload["lastFullRunByRepo"];
 }
 
 export interface PrDataPollingOrchestrationDeps {
@@ -262,6 +264,8 @@ const createPrDataPollingOrchestrationHelpers = ({
                   nextScheduler: deltaResult?.scheduler || null,
                   nextLastRun: deltaResult?.lastRun || null,
                   nextLastFullRun: deltaResult?.lastFullRun || null,
+                  nextLastRunByRepo: deltaResult?.lastRunByRepo || null,
+                  nextLastFullRunByRepo: deltaResult?.lastFullRunByRepo || null,
                   nextManifest,
                   nextUserState: manifestResult?.userState || null,
                 });

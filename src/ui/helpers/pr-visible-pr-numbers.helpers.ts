@@ -22,6 +22,7 @@ interface ScopedRowsInput {
   rowsForRepo: PrEntry[];
   ignoreScopeForPrNumberFilter: boolean;
   runStamp: string;
+  runStampsByRepo: Record<string, string>;
   useLastRunScope: boolean;
   selectedScope: string;
   attentionConfig: AttentionConfig | undefined;
@@ -99,6 +100,13 @@ const createPrVisiblePrNumbersHelpers = ({
     // lastRun, which a refresh of a few PRs moves too).
     const lastFullRun = payload?.lastFullRun || payload?.lastRun || null;
     const runStamp = String(lastFullRun?.updatedAt || "").trim();
+    // Each repo's own last full run: several repos' runs take turns, and
+    // the global one is only the latest's.
+    const runStampsByRepo = Object.fromEntries(
+      Object.entries(payload?.lastFullRunByRepo || {})
+        .map(([repo, run]) => [repo, String(run?.updatedAt || "").trim()])
+        .filter(([, stamp]) => stamp),
+    );
 
     const filterPrNumbers = parseCsvTokens(filterPrNumbersRaw)
       .map((value) => String(value || "").trim())
@@ -112,6 +120,7 @@ const createPrVisiblePrNumbersHelpers = ({
       rowsForRepo: allEntries,
       ignoreScopeForPrNumberFilter,
       runStamp,
+      runStampsByRepo,
       useLastRunScope,
       selectedScope,
       attentionConfig,

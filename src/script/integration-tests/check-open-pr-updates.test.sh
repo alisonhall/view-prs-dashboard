@@ -1404,7 +1404,7 @@ JSON
 JSON
 
   run_prs() {
-    PATH="$mock_bin:$PATH" MOCK_OPEN_JSON="$mock_data/unlisted.json" MOCK_CLOSED_JSON="$mock_data/unlisted.json" MOCK_MERGED_JSON="$mock_data/unlisted.json" MOCK_PR_VIEW_DIR="$mock_data/view" MOCK_DETAILS_DIR="$mock_data/details" MOCK_THREADS_DIR="$mock_data/threads" PR_STATE_FILE="$prs_state" PR_STATE_LOCK_DIR="$prs_state_lock" JOBS=2 bash "$SCRIPT_PATH" --open none --quiet --repo owner/repo --prs "$1" >"$mock_data/run.log" 2>&1 || {
+    PATH="$mock_bin:$PATH" MOCK_OPEN_JSON="$mock_data/unlisted.json" MOCK_CLOSED_JSON="$mock_data/unlisted.json" MOCK_MERGED_JSON="$mock_data/unlisted.json" MOCK_PR_VIEW_DIR="$mock_data/view" MOCK_DETAILS_DIR="$mock_data/details" MOCK_THREADS_DIR="$mock_data/threads" PR_STATE_FILE="$prs_state" PR_STATE_LOCK_DIR="$prs_state_lock" JOBS=2 bash "$SCRIPT_PATH" --open none --quiet --repo "${2:-owner/repo}" --prs "$1" >"$mock_data/run.log" 2>&1 || {
       cat "$mock_data/run.log"
       echo "FAIL: --prs $1 run failed"
       exit 1
@@ -1422,12 +1422,25 @@ JSON
   # before lastFullRun has none.
   assert_eq "$(jq -c '.lastFullRun' "$prs_state")" '{"repo":"owner/repo","updatedAt":"2026-03-05T00:00:00Z"}' '--prs should keep the last full run'
   assert_true "[[ \"$(jq -r '.lastRun.updatedAt' "$prs_state")\" > '2026-03-05T00:00:00Z' ]]" '--prs should still move lastRun'
+  # And the repo's own: its last full run kept (from the global one, as
+  # data from before the per-repo ones has none), its last run moved.
+  assert_eq "$(jq -c '.lastFullRunByRepo["owner/repo"]' "$prs_state")" '{"repo":"owner/repo","updatedAt":"2026-03-05T00:00:00Z"}' '--prs should keep the repo'"'"'s last full run'
+  assert_eq "$(jq -c '.lastRunByRepo["owner/repo"] == .lastRun' "$prs_state")" 'true' '--prs should move the repo'"'"'s last run'
   assert_true "[[ \"$(jq -r '.byPrNumber["owner/repo#1"].fetchedAt' "$prs_state")\" > '2026-03-05T00:00:00Z' ]]" '--prs should stamp refreshed rows with when they were written'
 
+  # Another repo's full run is the latest now: a row --prs adds still joins
+  # its own repo's last full run, not the latest repo's.
+  jq '.lastFullRun = {"repo":"other/repo","updatedAt":"2026-03-09T00:00:00Z"} | .lastFullRunByRepo["other/repo"] = .lastFullRun' "$prs_state" >"$prs_state.tmp" && command mv -f "$prs_state.tmp" "$prs_state"
   run_prs '2'
   assert_eq "$(jq -r '.byPrNumber["owner/repo#2"].section' "$prs_state")" 'draft' '--prs should add a chosen PR not saved yet'
-  assert_eq "$(jq -r '.byPrNumber["owner/repo#2"].updatedAt' "$prs_state")" '2026-03-05T00:00:00Z' 'a row --prs adds should join the last full run, so "Last run rows" shows it'
-  assert_eq "$(jq -c '.lastFullRun' "$prs_state")" '{"repo":"owner/repo","updatedAt":"2026-03-05T00:00:00Z"}' 'a second --prs run should keep the last full run too'
+  assert_eq "$(jq -r '.byPrNumber["owner/repo#2"].updatedAt' "$prs_state")" '2026-03-05T00:00:00Z' 'a row --prs adds should join its repo'"'"'s last full run, so "Last run rows" shows it'
+  assert_eq "$(jq -c '[.lastFullRun.repo, .lastFullRunByRepo["owner/repo"].updatedAt, .lastFullRunByRepo["other/repo"].updatedAt]' "$prs_state")" '["other/repo","2026-03-05T00:00:00Z","2026-03-09T00:00:00Z"]' 'a second --prs run should keep every last full run too'
+
+  # A repo with no full run (its PRs only ever added one by one): the run
+  # becomes its last full run, so the rows it adds show in "Last run rows".
+  run_prs '2' 'third/repo'
+  assert_eq "$(jq -c '[.byPrNumber["third/repo#2"].updatedAt == .lastFullRunByRepo["third/repo"].updatedAt, .lastFullRunByRepo["third/repo"].updatedAt == .lastRun.updatedAt]' "$prs_state")" '[true,true]' 'a --prs run in a repo with no full run should record its run as the repo'"'"'s last full run'
+  assert_eq "$(jq -c '[.lastFullRun.repo, .lastFullRunByRepo["owner/repo"].updatedAt, .lastFullRunByRepo["other/repo"].updatedAt]' "$prs_state")" '["other/repo","2026-03-05T00:00:00Z","2026-03-09T00:00:00Z"]' 'a --prs run in a repo with no full run should leave the others'"'"' last full runs'
 
   local prs_err prs_status
   # One chosen PR that can't be fetched (999 has no summary file, so the
@@ -1541,6 +1554,8 @@ JSON
   assert_true 'fetched_details 1' 'a PR with no stored row should be fetched'
   assert_true 'fetched_details 10' 'a merged PR with no stored row should be fetched'
   assert_true "[[ -n \"$(jq -r '.byPrNumber["owner/repo#1"].data.localStateKey // ""' "$reuse_state")\" ]]" 'a computed row should record the local state it was computed from'
+  # Each repo's own runs, beside the global ones (only the latest repo's).
+  assert_eq "$(jq -c '[.lastFullRunByRepo["owner/repo"] == .lastFullRun, .lastRunByRepo["owner/repo"] == .lastRun, .lastFullRun.repo]' "$reuse_state")" '[true,true,"owner/repo"]' 'a full run should record its repo'"'"'s last run and last full run'
   local open_fetched_at merged_fetched_at
   open_fetched_at=$(jq -r '.byPrNumber["owner/repo#1"].fetchedAt' "$reuse_state")
   merged_fetched_at=$(jq -r '.byPrNumber["owner/repo#10"].fetchedAt' "$reuse_state")
@@ -1575,6 +1590,19 @@ JSON
 
   run_full VIEW_PRS_SKIP_UNCHANGED=0
   assert_true 'fetched_details 1 && fetched_details 10' 'VIEW_PRS_SKIP_UNCHANGED=0 should fetch every PR'
+
+  # A run that lists nothing (every PR has dropped out of the listings, and
+  # none is open to reconcile) still records the repo's run, so the rows the
+  # previous one saw stop being "last run rows".
+  jq '.byPrNumber |= map_values(.section = "merged")' "$reuse_state" >"$reuse_state.tmp" && command mv -f "$reuse_state.tmp" "$reuse_state"
+  local previous_full_run
+  previous_full_run=$(jq -r '.lastFullRunByRepo["owner/repo"].updatedAt' "$reuse_state")
+  printf '%s' '[]' >"$mock_data/open.json"
+  printf '%s' '[]' >"$mock_data/merged.json"
+  run_full
+  assert_true "[[ \"$(jq -r '.lastFullRunByRepo["owner/repo"].updatedAt' "$reuse_state")\" > '$previous_full_run' ]]" 'a full run that saved no rows should still record its repo'"'"'s last full run'
+  assert_eq "$(jq -c '[.lastFullRunByRepo["owner/repo"] == .lastFullRun, .lastRunByRepo["owner/repo"] == .lastRun]' "$reuse_state")" '[true,true]' 'a full run that saved no rows should record its repo'"'"'s last run and the global ones'
+  assert_eq "$(jq -r --arg stamp "$previous_full_run" '[.byPrNumber[] | select(.updatedAt == $stamp)] | length' "$reuse_state")" '2' 'a full run that saved no rows should leave the rows as they were'
 }
 
 run_all_tests() {

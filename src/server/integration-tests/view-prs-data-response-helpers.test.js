@@ -150,7 +150,12 @@ describe("view-prs data response helpers", () => {
           missingPrNumbers: ["999"],
           requestedCount: 2,
         },
-        data: { lastRun: "2026-07-22T12:00:00.000Z", lastFullRun: "2026-07-22T11:45:00.000Z" },
+        data: {
+          lastRun: "2026-07-22T12:00:00.000Z",
+          lastFullRun: "2026-07-22T11:45:00.000Z",
+          lastRunByRepo: { "acme/api": { repo: "acme/api", updatedAt: "2026-07-22T12:00:00Z" } },
+          lastFullRunByRepo: { "acme/api": { repo: "acme/api", updatedAt: "2026-07-22T11:45:00Z" } },
+        },
       }),
     ).toEqual({
       ok: true,
@@ -161,6 +166,8 @@ describe("view-prs data response helpers", () => {
       scheduler: { running: false, intervalMs: 30000 },
       lastRun: "2026-07-22T12:00:00.000Z",
       lastFullRun: "2026-07-22T11:45:00.000Z",
+      lastRunByRepo: { "acme/api": { repo: "acme/api", updatedAt: "2026-07-22T12:00:00Z" } },
+      lastFullRunByRepo: { "acme/api": { repo: "acme/api", updatedAt: "2026-07-22T11:45:00Z" } },
     });
   });
 
@@ -190,6 +197,8 @@ describe("view-prs data response helpers", () => {
       scheduler: { running: false },
       lastRun: null,
       lastFullRun: null,
+      lastRunByRepo: {},
+      lastFullRunByRepo: {},
     });
   });
 });

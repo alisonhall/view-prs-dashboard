@@ -292,6 +292,9 @@ export interface PrDataPayload {
   // chosen PRs (a fast-follow, the refresh after an Ack) moves lastRun but
   // not this.
   lastFullRun?: LastRun | null;
+  // Each repo's: the global ones above are only the latest repo's.
+  lastRunByRepo?: Record<string, LastRun | undefined>;
+  lastFullRunByRepo?: Record<string, LastRun | undefined>;
   dataMeta?: PrDataMeta | null;
   scheduler?: unknown;
   // Login -> display name for every actor seen (ActorsMap).
