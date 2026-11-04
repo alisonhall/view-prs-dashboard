@@ -500,7 +500,31 @@ const runWithConcurrency = async ({
   await Promise.all(workers);
 };
 
-const runRefresh = ({ refreshScriptPath, repo, prNumber, jobs }) =>
+// The GitHub Enterprise host each repo is on, from the server's sources
+// file (beside the data file, or VIEW_PRS_SOURCES_FILE): a subscription's,
+// else a PR added from it. Read as it is - not through the server's
+// storage, which sets an unreadable file aside - and none when it can't be.
+const readRepoHosts = (dataPath) => {
+  const sourcesFile =
+    process.env.VIEW_PRS_SOURCES_FILE || path.join(path.dirname(dataPath), "check-open-pr-updates.sources.json");
+  try {
+    const sources = JSON.parse(fs.readFileSync(sourcesFile, "utf8"));
+    const hosts = {};
+    [...(Array.isArray(sources?.subscriptions) ? sources.subscriptions : []), ...(Array.isArray(sources?.trackedPrs) ? sources.trackedPrs : [])].forEach(
+      (entry) => {
+        const repo = String(entry?.repo || "").trim();
+        const host = String(entry?.host || "").trim().toLowerCase();
+        if (repo && host && !hosts[repo]) hosts[repo] = host;
+      },
+    );
+    return hosts;
+  } catch (_error) {
+    return {};
+  }
+};
+
+// ghHost: GH_HOST for the run, for a repo on a GitHub Enterprise host.
+const runRefresh = ({ refreshScriptPath, repo, prNumber, jobs, ghHost = "" }) =>
   new Promise((resolve) => {
     const args = [
       refreshScriptPath,
@@ -520,7 +544,7 @@ const runRefresh = ({ refreshScriptPath, repo, prNumber, jobs }) =>
     const child = spawn("bash", args, {
       cwd: viewPrsDir,
       stdio: ["ignore", "pipe", "pipe"],
-      env: process.env,
+      env: ghHost ? { ...process.env, GH_HOST: ghHost } : process.env,
     });
 
     let stdout = "";
@@ -596,6 +620,7 @@ const main = async () => {
   }
 
   const toProcess = candidates.slice(0, options.maxPrs);
+  const repoHosts = readRepoHosts(options.dataPath);
   console.log(
     `[backfill] processing ${toProcess.length} row(s) (max-prs=${options.maxPrs}, delay-ms=${options.delayMs}, jobs=${options.jobs}, concurrency=${options.concurrency}, dry-run=${options.dryRun})`,
   );
@@ -620,6 +645,7 @@ const main = async () => {
         repo: item.repo,
         prNumber: item.prNumber,
         jobs: options.jobs,
+        ghHost: repoHosts[item.repo] || "",
       });
 
       if (!result.ok) {
@@ -648,6 +674,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  readRepoHosts,
   buildDefaultOptions,
   collectBackfillCandidates,
   migrateLegacyStories,

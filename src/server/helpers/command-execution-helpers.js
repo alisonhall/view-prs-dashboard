@@ -106,6 +106,7 @@ function createCommandExecutionHelpers({
    * @param {number} [maxBufferBytes=10*1024*1024] - Max buffer size
    * @param {Object} [options={}] - Execution options
    * @param {number} [options.timeoutMs] - Timeout in milliseconds
+   * @param {Object} [options.env] - Additional environment variables
    * @returns {Promise<{stdout: string, stderr: string}>} Command output
    */
   const runViewPrsCommand = (
@@ -133,6 +134,8 @@ function createCommandExecutionHelpers({
         env: {
           ...process.env,
           GH_PAGER: "cat",
+          // GH_HOST for a GitHub Enterprise repo, say.
+          ...(options?.env || {}),
         },
       });
 

@@ -97,6 +97,10 @@ const createViewPrsSchedulerHelpers = ({
         viewPrsSchedulerState.manualFullRunAtByRepo = parsed.manualFullRunAtByRepo;
       }
 
+      if (isPlainObject(parsed.unreachablePrSince)) {
+        viewPrsSchedulerState.unreachablePrSince = parsed.unreachablePrSince;
+      }
+
       // Per-repo dispatcher registry (see view-prs-dispatcher-helpers.js) -
       // a plain data copy only. A persisted file without dispatcherVersion:2
       // (i.e. written before the dispatcher existed) is left alone here -
@@ -178,6 +182,7 @@ const createViewPrsSchedulerHelpers = ({
       lastMergedDrainAt: viewPrsSchedulerState.lastMergedDrainAt || null,
       pendingByRepo: viewPrsSchedulerState.pendingByRepo || {},
       manualFullRunAtByRepo: viewPrsSchedulerState.manualFullRunAtByRepo || {},
+      unreachablePrSince: viewPrsSchedulerState.unreachablePrSince || {},
       dispatcherVersion: 2,
       entries: getPersistableDispatcherEntries(),
     };

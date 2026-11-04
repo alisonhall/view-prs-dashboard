@@ -219,6 +219,9 @@ const viewPrsSchedulerState = {
   lastMergedDrainAt: null,
   isMergedDrainInProgress: false,
   pendingByRepo: {},
+  // PRs fetched on their own that their last run couldn't fetch:
+  // "repo#number" => since when (recordUnreachablePrs).
+  unreachablePrSince: {},
   // { [repo | "*"]: iso } - each repo's last manual full refresh, which its
   // auto refresh waits out (see setLastManualRunNow).
   manualFullRunAtByRepo: {},
@@ -446,6 +449,8 @@ const {
   extractRawDiffText,
   buildPrDiffCacheFilePath,
   runViewPrsCommand: callRunViewPrsCommand,
+  // Lazily: the sources' helpers are made further down.
+  getRepoGhEnv: (repo) => getRepoGhEnv(repo),
   viewPrsPrDiffDir,
   viewPrsPrDiffTimeoutMs,
   viewPrsPrDiffConcurrency,
@@ -462,6 +467,7 @@ const {
   fs,
   liveSummaryFile: viewPrsLiveSummaryFile,
   runViewPrsCommand: callRunViewPrsCommand,
+  getRepoGhEnv: (repo) => getRepoGhEnv(repo),
 });
 // Overridable like callRunViewPrsCommand, so tests can stand in for it.
 const callRefreshRepoLiveSummary = (...args) =>
@@ -1199,7 +1205,7 @@ const listMergedPrCandidates = async ({ repo, limit = 100 }) => {
       `GH_PAGER=cat gh pr list -R ${safeRepo} --state merged --limit ${safeLimit} --json number,mergedAt --jq '.'`,
     ],
     2 * 1024 * 1024,
-    { timeoutMs: 120000 },
+    { timeoutMs: 120000, env: getRepoGhEnv(safeRepo) },
   );
 
   const parsed = (() => {
@@ -1252,7 +1258,7 @@ const listRepoLabels = async ({ repo }) => {
       `GH_PAGER=cat gh label list -R ${shellQuoteSingle(safeRepo)} --limit 200 --json name,color --jq '.'`,
     ],
     1 * 1024 * 1024,
-    { timeoutMs: 30000 },
+    { timeoutMs: 30000, env: getRepoGhEnv(safeRepo) },
   );
 
   // A login shell (`bash -lc`) can echo unrelated startup noise (e.g. a
@@ -1304,7 +1310,7 @@ const applyLabelToPr = async ({ repo, prNumber, label }) => {
       `gh pr edit ${shellQuoteSingle(safePrNumber)} -R ${shellQuoteSingle(safeRepo)} --add-label ${shellQuoteSingle(safeLabel)}`,
     ],
     1 * 1024 * 1024,
-    { timeoutMs: 30000 },
+    { timeoutMs: 30000, env: getRepoGhEnv(safeRepo) },
   );
 };
 
@@ -1352,7 +1358,7 @@ const fetchGithubPrLabels = async ({ repo, prNumber }) => {
       `gh pr view ${shellQuoteSingle(safePrNumber)} -R ${shellQuoteSingle(safeRepo)} --json labels --jq '.labels | map(.name)'`,
     ],
     64 * 1024,
-    { timeoutMs: 20000 },
+    { timeoutMs: 20000, env: getRepoGhEnv(safeRepo) },
   );
 
   const stdout = String(result?.stdout || "[]");
@@ -1777,8 +1783,15 @@ const readViewPrsDataVersion = () => {
   // rows (readVisibleViewPrsData).
   const sourcesStats = fs.existsSync(viewPrsSourcesFile) ? fs.statSync(viewPrsSourcesFile) : null;
   const sourcesVersion = sourcesStats ? `${Math.trunc(sourcesStats.mtimeMs) || 0}-${sourcesStats.size}` : "none";
+  // And the PRs that couldn't be fetched, which the page shows with the
+  // sources: a run that fetched none of its PRs writes no row, so nothing
+  // else would move.
+  const unreachableKeys = Object.keys(viewPrsSchedulerState.unreachablePrSince || {}).sort().join(",");
+  const unreachableVersion = unreachableKeys
+    ? crypto.createHash("sha1").update(unreachableKeys).digest("hex").slice(0, 12)
+    : "none";
   return {
-    dataVersion: `${mtimeMs}:${stats.size}:${getLiveSummaryVersion()}:${pendingVersion}:${userStateVersion}:${sourcesVersion}`,
+    dataVersion: `${mtimeMs}:${stats.size}:${getLiveSummaryVersion()}:${pendingVersion}:${userStateVersion}:${sourcesVersion}:${unreachableVersion}`,
     mtimeMs,
     sizeBytes: Number.isFinite(stats.size) ? stats.size : 0,
   };
@@ -1810,16 +1823,27 @@ const filterToVisibleRows = (data) => {
 const readVisibleViewPrsData = () => filterToVisibleRows(callReadViewPrsData());
 
 // PRs fetched on their own that the last run of them couldn't fetch
-// (deleted, or no longer visible to gh): repo#number => since when. Kept in
-// memory - a restart finds them again on their next run.
-const unreachablePrSince = new Map();
+// (deleted, or no longer visible to gh): viewPrsSchedulerState's
+// unreachablePrSince, repo#number => since when - saved with the scheduler
+// state, so a restart keeps them. Only PRs still fetched on their own: one
+// removed (or its repo subscribed in full) drops out.
 const recordUnreachablePrs = (repo, attemptedNumbers, missingNumbers) => {
+  const before = JSON.stringify(viewPrsSchedulerState.unreachablePrSince || {});
+  const next = { ...(viewPrsSchedulerState.unreachablePrSince || {}) };
   const missing = new Set((missingNumbers || []).map(String));
   (attemptedNumbers || []).map(String).forEach((number) => {
     const key = `${repo}#${number}`;
-    if (!missing.has(number)) unreachablePrSince.delete(key);
-    else if (!unreachablePrSince.has(key)) unreachablePrSince.set(key, new Date().toISOString());
+    if (!missing.has(number)) delete next[key];
+    else if (!next[key]) next[key] = new Date().toISOString();
   });
+  const explicitKeys = getRowVisibility()?.prKeys;
+  if (explicitKeys) {
+    Object.keys(next).forEach((key) => {
+      if (!explicitKeys.has(key)) delete next[key];
+    });
+  }
+  viewPrsSchedulerState.unreachablePrSince = next;
+  if (JSON.stringify(next) !== before) persistViewPrsSchedulerState();
 };
 
 // A manual run of chosen PRs in a repo not fetched in full adds them, as
@@ -1851,9 +1875,16 @@ const trackRunPrs = (repo, numbers) => {
 const getSourcesForPage = () => {
   const sources = viewPrsSourcesStorage.loadSources({ seedRepos: seedSubscriptionRepos });
   if (!sources) return null;
+  const explicitByRepo = viewPrsSourcesStorage.getExplicitPrNumbersByRepo(sources);
   return {
     ...sources,
-    unreachable: Object.fromEntries(unreachablePrSince),
+    // Still fetched on their own (one removed since isn't).
+    unreachable: Object.fromEntries(
+      Object.entries(viewPrsSchedulerState.unreachablePrSince || {}).filter(([key]) => {
+        const hashIndex = key.lastIndexOf("#");
+        return (explicitByRepo[key.slice(0, hashIndex)] || []).includes(key.slice(hashIndex + 1));
+      }),
+    ),
     envRepos: parseRepoCsv(process.env.VIEW_PRS_AUTO_REPOS || "").filter((repo) => isRepoSlug(repo)),
   };
 };

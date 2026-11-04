@@ -355,3 +355,58 @@ describe("what the page shows", () => {
     expect(Object.keys((await supertest(server).get("/view-prs/sources")).body.sources.unreachable)).not.toContain("other-org/lib#10");
   });
 });
+
+describe("a GitHub Enterprise repo's other gh calls, and the PRs that couldn't be fetched", () => {
+  const savedRunViewPrsBashCommand = appModule.runViewPrsBashCommand;
+  let server;
+  beforeEach(() => {
+    server = appModule.createViewPrsApp().listen(0);
+  });
+  afterEach(async () => {
+    appModule.runViewPrsBashCommand = savedRunViewPrsBashCommand;
+    server.closeAllConnections?.();
+    await new Promise((resolve) => server.close(resolve));
+  });
+
+  test("its labels are listed on its host (GH_HOST)", async () => {
+    const calls = [];
+    appModule.runViewPrsBashCommand = async (args, _maxBuffer, options) => {
+      calls.push({ args, env: options?.env || {} });
+      return { stdout: "[]", stderr: "" };
+    };
+
+    await supertest(server).get("/view-prs/labels").query({ repo: "corp/tool" });
+
+    expect(calls[0].args.join(" ")).toContain("gh label list -R 'corp/tool'");
+    expect(calls[0].env).toEqual({ GH_HOST: "github.example.com" });
+  });
+
+  test("move the data version, so the page shows them though a run that fetched none of its PRs wrote no row", async () => {
+    // None left by the tests before.
+    viewPrsSchedulerState.unreachablePrSince = {};
+    const versionBefore = (await supertest(server).get("/view-prs/data-meta")).body.dataVersion;
+    appModule.runViewPrsScript = async (args) => {
+      scriptCalls.push({ args, env: {} });
+      throw Object.assign(new Error("Command exited with code 1"), { stderr: "Could not fetch PR(s): 4\n" });
+    };
+
+    await runViewPrsAutoRefresh({ skipCooldownChecks: true, reposOverride: ["acme-org/picked"] });
+
+    const meta = (await supertest(server).get("/view-prs/data-meta")).body;
+    expect(meta.dataVersion).not.toBe(versionBefore);
+    expect(Object.keys(meta.sources.unreachable)).toContain("acme-org/picked#4");
+  });
+
+  test("are saved with the scheduler state, so a restart keeps them, and leave the page once removed", async () => {
+    appModule.runViewPrsScript = async (args) => {
+      scriptCalls.push({ args, env: {} });
+      throw Object.assign(new Error("Command exited with code 1"), { stderr: "Could not fetch PR(s): 10\n" });
+    };
+    await runViewPrsAutoRefresh({ skipCooldownChecks: true, reposOverride: ["other-org/lib"] });
+
+    expect(Object.keys(JSON.parse(fs.readFileSync(viewPrsSchedulerFile, "utf8")).unreachablePrSince)).toContain("other-org/lib#10");
+
+    await supertest(server).delete("/view-prs/tracked-prs").send({ repo: "other-org/lib", number: "10" });
+    expect(Object.keys((await supertest(server).get("/view-prs/sources")).body.sources.unreachable)).not.toContain("other-org/lib#10");
+  });
+});

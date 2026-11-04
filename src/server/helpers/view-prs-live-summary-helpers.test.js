@@ -307,6 +307,21 @@ describe("createViewPrsLiveSummaryHelpers", () => {
   const create = (runViewPrsCommand, isoNow = "2026-10-31T10:05:00.000Z") =>
     createViewPrsLiveSummaryHelpers({ fs, liveSummaryFile, runViewPrsCommand, now: () => new Date(isoNow) });
 
+  test("lists a GitHub Enterprise repo's PRs on its host (GH_HOST)", async () => {
+    const run = jest.fn().mockResolvedValue(page([prNode({ number: 12 })]));
+    const helpers = createViewPrsLiveSummaryHelpers({
+      fs,
+      liveSummaryFile,
+      runViewPrsCommand: run,
+      getRepoGhEnv: (repo) => (repo === "corp/tool" ? { GH_HOST: "github.example.com" } : {}),
+      now: () => new Date("2026-10-31T10:05:00.000Z"),
+    });
+
+    await helpers.refreshRepoLiveSummary("corp/tool");
+
+    expect(run.mock.calls[0][3]).toMatchObject({ env: { GH_HOST: "github.example.com" } });
+  });
+
   test("lists every page of the repo's open PRs and saves them with when they were listed", async () => {
     const run = jest
       .fn()

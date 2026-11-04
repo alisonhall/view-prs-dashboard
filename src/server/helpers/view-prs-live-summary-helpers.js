@@ -277,6 +277,9 @@ const createViewPrsLiveSummaryHelpers = ({
   fs,
   liveSummaryFile,
   runViewPrsCommand,
+  // (repo) => the env gh needs for it (GH_HOST for a GitHub Enterprise
+  // repo); none without it.
+  getRepoGhEnv = () => ({}),
   timeoutMs = 60 * 1000,
   now = () => new Date(),
 }) => {
@@ -303,14 +306,14 @@ const createViewPrsLiveSummaryHelpers = ({
     fs.renameSync(tmpFile, liveSummaryFile);
   };
 
-  const fetchPage = async (owner, name, after) => {
+  const fetchPage = async (owner, name, after, env) => {
     const args = ["api", "graphql", "-f", `query=${LIVE_SUMMARY_QUERY}`, "-f", `owner=${owner}`, "-f", `name=${name}`];
     if (after) {
       args.push("-f", `after=${after}`);
     }
     let stdout;
     try {
-      ({ stdout } = await runViewPrsCommand("gh", args, 20 * 1024 * 1024, { timeoutMs }));
+      ({ stdout } = await runViewPrsCommand("gh", args, 20 * 1024 * 1024, { timeoutMs, env }));
     } catch (failure) {
       // gh exits non-zero on a GraphQL error, with the reason on stdout.
       stdout = failure?.stdout;
@@ -338,7 +341,7 @@ const createViewPrsLiveSummaryHelpers = ({
     const prs = {};
     let after = null;
     for (let page = 0; page < LIVE_SUMMARY_MAX_PAGES; page += 1) {
-      const connection = await fetchPage(owner, name, after);
+      const connection = await fetchPage(owner, name, after, getRepoGhEnv(repo));
       asArray(connection.nodes).forEach((node) => {
         const summary = normalizeLiveSummaryPr(node);
         if (summary.number) prs[summary.number] = summary;
