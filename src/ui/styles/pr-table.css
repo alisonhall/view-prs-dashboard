@@ -704,3 +704,57 @@ a.pr-summary-file {
   display: flex;
   justify-content: flex-end;
 }
+
+/* The PR table's legend (PrLegendPopover): each column's icons and cues,
+   an icon (or sample) beside what it means. */
+.pr-legend-popover {
+  width: min(460px, calc(100vw - 16px));
+}
+
+.pr-legend-content {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.pr-legend-group {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.pr-legend-list {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+}
+
+.pr-legend-entry {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+}
+
+.pr-legend-entry dd {
+  margin: 0;
+}
+
+.pr-legend-mark {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.pr-legend-sample {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+/* The Activity column's cues (.pr-activity[data-stale], [data-details-behind]). */
+.pr-legend-stale {
+  text-decoration: underline dotted;
+}
+
+.pr-legend-behind {
+  opacity: 0.6;
+}

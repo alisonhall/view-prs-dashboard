@@ -17,6 +17,8 @@ export interface MultiSelectDropdownProps {
   checked: ReadonlySet<string>;
   onToggle: (value: string) => void;
   className?: string;
+  // What picking options does, at the top of the open list, describing it.
+  description?: string;
 }
 
 export const getCheckboxId = (idPrefix: string, value: string, index: number): string => {
@@ -28,14 +30,20 @@ export const getCheckboxId = (idPrefix: string, value: string, index: number): s
   return `${idPrefix}-${normalized || 'item'}-${index}`;
 };
 
-export function MultiSelectDropdown({ listId, label, idPrefix, options, checked, onToggle, className }: MultiSelectDropdownProps) {
+export function MultiSelectDropdown({ listId, label, idPrefix, options, checked, onToggle, className, description }: MultiSelectDropdownProps) {
+  const descriptionId = description ? `${listId}-hint` : undefined;
   return (
     <details className={['multi-select-dropdown', className].filter(Boolean).join(' ')}>
       <summary className="multi-select-summary">
         <span>{label}</span>
         {checked.size > 0 && <span className="multi-select-picked">{checked.size} selected</span>}
       </summary>
-      <div id={listId} className="multi-select-list" role="group" aria-label={label}>
+      <div id={listId} className="multi-select-list" role="group" aria-label={label} aria-describedby={descriptionId}>
+        {description && (
+          <p id={descriptionId} className="multi-select-hint">
+            {description}
+          </p>
+        )}
         {options.length === 0 ? (
           <p className="multi-select-none">No options</p>
         ) : (

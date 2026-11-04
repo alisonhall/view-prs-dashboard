@@ -6,7 +6,8 @@ import { AlwaysShowInReviewCheckbox } from './AlwaysShowInReviewCheckbox';
 import { FilterMultiSelect } from './FilterMultiSelect';
 import { FilterOptionSelect } from './FilterOptionSelect';
 import { PrNumberFilterInput } from './PrNumberFilterInput';
-import { ScopeFilterSelect } from './ScopeFilterSelect';
+import { SCOPE_DESCRIPTIONS, SCOPE_HINT_ID, ScopeFilterSelect } from './ScopeFilterSelect';
+import { useFilterState } from '../../state/FilterStateContext';
 import { NOTES_FILTER_FIELDS, ROW_FILTER_LISTS } from './filter-bar-fields';
 
 // Whether the bar was left open, per browser (like the detail pane's
@@ -54,6 +55,8 @@ export interface FilterBarProps {
  */
 export function FilterBar({ shownCount, totalCount, loaded, hiddenCount = 0 }: FilterBarProps) {
   const { chips } = useTableFilterChips();
+  // The scope's description follows the scope chosen.
+  const { values } = useFilterState();
   const [open, setOpen] = useState(readOpen);
   const panelId = useId();
   const headingIds = { rows: useId(), people: useId(), notes: useId() };
@@ -112,15 +115,26 @@ export function FilterBar({ shownCount, totalCount, loaded, hiddenCount = 0 }: F
           <div className="filter-bar-field">
             <label htmlFor="scope-mode">View scope</label>
             <ScopeFilterSelect />
+            <p id={SCOPE_HINT_ID} className="filter-bar-hint">
+              {SCOPE_DESCRIPTIONS[String(values.scopeMode || 'all')] || SCOPE_DESCRIPTIONS.all}
+            </p>
           </div>
           <div className="filter-bar-field">
             <label htmlFor="filter-pr-numbers">PRs</label>
             <PrNumberFilterInput />
+            <p id="filter-pr-numbers-hint" className="filter-bar-hint">
+              Numbers (any repo), owner/repo#12, PR or repo URLs, or a repo. The PRs named show whatever the scope.
+            </p>
           </div>
-          <label className="filter-bar-check">
-            <AlwaysShowInReviewCheckbox />
-            Always show PRs in review
-          </label>
+          <div className="filter-bar-field">
+            <label className="filter-bar-check">
+              <AlwaysShowInReviewCheckbox />
+              Always show PRs in review
+            </label>
+            <p id="always-show-in-review-hint" className="filter-bar-hint">
+              PRs you've marked in review stay in view, whatever the other filters say.
+            </p>
+          </div>
         </div>
 
         <div className="filter-bar-group" role="group" aria-labelledby={headingIds.people}>
@@ -139,7 +153,16 @@ export function FilterBar({ shownCount, totalCount, loaded, hiddenCount = 0 }: F
           {NOTES_FILTER_FIELDS.map((field) => (
             <div key={field.id} className="filter-bar-field">
               <label htmlFor={field.id}>{field.label}</label>
-              <FilterOptionSelect id={field.id} name={field.key} filterStateKey={field.key} options={field.options} />
+              <FilterOptionSelect
+                id={field.id}
+                name={field.key}
+                filterStateKey={field.key}
+                options={field.options}
+                describedBy={`${field.id}-hint`}
+              />
+              <p id={`${field.id}-hint`} className="filter-bar-hint">
+                {field.description}
+              </p>
             </div>
           ))}
         </div>

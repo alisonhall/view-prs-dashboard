@@ -21,6 +21,7 @@ export function FilterMultiSelect({ list }: { list: RowFilterList }) {
       options={options}
       checked={checkedByListId[list.listId] ?? NONE_CHECKED}
       onToggle={(value) => toggle(list.listId, value)}
+      description={list.description}
     />
   );
 }

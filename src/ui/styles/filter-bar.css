@@ -151,3 +151,11 @@
   gap: 6px;
   font-size: var(--font-size-md);
 }
+
+/* What a filter does, under it (its control's aria-describedby). */
+.filter-bar-hint {
+  margin: 0;
+  max-width: 34em;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}

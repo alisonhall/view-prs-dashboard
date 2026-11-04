@@ -14,7 +14,8 @@ export interface HeaderPopover {
 }
 
 /**
- * A header button's popover (ActivityPopover, AddPrPopover): a non-modal
+ * A button's popover (the header's ActivityPopover and AddPrPopover, the
+ * table toolbar's PrLegendPopover): a non-modal
  * dialog under the button (fixed, kept in the window like the row menu,
  * following it on resize). Esc, a click or focus moving outside it, or the
  * page scrolling (the header isn't sticky, so it would carry the popover

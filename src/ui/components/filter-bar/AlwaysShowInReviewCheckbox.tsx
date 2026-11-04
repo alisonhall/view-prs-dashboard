@@ -12,6 +12,7 @@ export function AlwaysShowInReviewCheckbox() {
     <input
       type="checkbox"
       id="always-show-in-review"
+      aria-describedby="always-show-in-review-hint"
       name="alwaysShowInReview"
       checked={Boolean(values.alwaysShowInReview)}
       onChange={(event) => setValue('alwaysShowInReview', event.target.checked)}

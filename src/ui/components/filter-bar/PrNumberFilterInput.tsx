@@ -17,8 +17,8 @@ export function PrNumberFilterInput() {
       type="text"
       id="filter-pr-numbers"
       name="filterPrNumbers"
+      aria-describedby="filter-pr-numbers-hint"
       placeholder="912, acme/api#921, acme/web"
-      title={'PR numbers, PRs by repo (acme/api#921) or URL, and repos (acme/web).\nA number and a repo together pick that repo\'s PR.'}
       {...NON_CREDENTIAL_INPUT_PROPS}
       value={values.filterPrNumbers ?? ''}
       onChange={(event) => setValue('filterPrNumbers', event.target.value)}

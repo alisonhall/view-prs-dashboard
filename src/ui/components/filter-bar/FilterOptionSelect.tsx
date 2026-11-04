@@ -8,14 +8,22 @@ export interface FilterOptionSelectProps {
   id: string;
   name: string;
   filterStateKey: string;
+  // The id of what describes it (the filter bar's hint under it).
+  describedBy?: string;
   options: ReadonlyArray<{ value: string; label: string }>;
 }
 
-export function FilterOptionSelect({ id, name, options, filterStateKey }: FilterOptionSelectProps) {
+export function FilterOptionSelect({ id, name, options, filterStateKey, describedBy }: FilterOptionSelectProps) {
   const { values, setValue } = useFilterState();
 
   return (
-    <select id={id} name={name} value={String(values[filterStateKey] ?? '')} onChange={(event) => setValue(filterStateKey, event.target.value)}>
+    <select
+      id={id}
+      name={name}
+      aria-describedby={describedBy}
+      value={String(values[filterStateKey] ?? '')}
+      onChange={(event) => setValue(filterStateKey, event.target.value)}
+    >
       {options.map((option) => (
         <option key={option.value} value={option.value}>
           {option.label}

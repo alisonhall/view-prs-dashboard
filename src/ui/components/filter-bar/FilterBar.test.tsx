@@ -234,3 +234,21 @@ describe('FilterBar list selections (ListSelectionSeeding, mounted beside it)', 
     expect(checked('author-list')).toEqual([]);
   });
 });
+
+describe('FilterBar descriptions', () => {
+  test("each filter says what it does, the scope's following the scope chosen", async () => {
+    const user = userEvent.setup();
+    renderBar();
+    await user.click(toggle());
+
+    const scope = screen.getByRole('combobox', { name: 'View scope' });
+    expect(scope).toHaveAccessibleDescription('Every stored row: all the PRs your sources follow.');
+    await user.selectOptions(scope, 'needs-attention');
+    expect(scope).toHaveAccessibleDescription(/need your attention/);
+
+    expect(screen.getByRole('textbox', { name: 'PRs' })).toHaveAccessibleDescription(/Numbers \(any repo\), owner\/repo#12/);
+    expect(screen.getByRole('checkbox', { name: 'Always show PRs in review' })).toHaveAccessibleDescription(/stay in view/);
+    expect(screen.getByRole('combobox', { name: 'PR difficulty' })).toHaveAccessibleDescription(/difficulty \(1 to 5\)/);
+    expect(screen.getByRole('group', { name: 'Excluded labels', hidden: true })).toHaveAccessibleDescription('Hides PRs with any of these labels.');
+  });
+});

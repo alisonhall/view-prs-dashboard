@@ -66,14 +66,14 @@ Improvements noted once PRs could come from several repos and sources (subscript
 
 #### PR table
 
-- [ ] A legend for the signals and icons. In particular, the Signals column's first slot: a blue (accent) dot means the PR changed since your last Ack (its tooltip says what changed), a grey (muted) ring means it's had no recent activity, and an empty slot means no change since your Ack. None of that is explained anywhere on the page.
+- [x] ~~A legend for the signals and icons~~ - done (2026-11-04): `Legend`, beside `Detail pane` above the table, opens what each column's icons and cues mean - Signals (the blue dot: changed since your last Ack; the grey ring: no recent activity; an empty slot: nothing new), Pull request, Review, CHK·MRG and Activity (dotted and dimmed ages).
 - [x] ~~Fix the Review column's spacing: its "files viewed" count sometimes wraps onto the next line~~ - done (2026-11-04): the table lets cell text break anywhere, so from three digits the count split ("120/" over "134"). A slot's number no longer breaks, the slots are 8px apart (were 10px), and the column is 180px (was 170px), which fits four-digit counts; past that, or in the docked pane's narrower column, whole slots wrap.
 - [x] ~~Sorting options for each section~~ - done (2026-11-04): a sort menu at the end of each section's table header row (the `Actions` header) - PR number or last updated, and in the Merged and Closed sections the date merged or closed, and the order - saved with the section's preferences (Appearance's `Restore default sections` leaves it). Defaults: Merged by date merged, Closed by date closed, every other section by PR number, newest first (the smart groups - Flagged, Needs Attention and the rest - used the order rows were first stored in). Rows don't store when a PR was created, so there's no "Created" sort yet.
 - [ ] Stop rows jumping around under the "Last updated" sort: rows move as PRs change on GitHub and the page refreshes, so working down the list, a row can move away from under you (or the next one change). For example, hold the order while you're interacting with the section (scrolled into it, a row selected, a menu open) and say when there's a newer order to apply ("Order changed - re-sort").
 
 #### Filters and search
 
-- [ ] Explain each filter better, so it's clear what it filters (help text or tooltips in the filter bar).
+- [x] ~~Explain each filter better~~ - done (2026-11-04): a line under each filter says what it does (the `View scope` one following the scope chosen), and each label or people list says it at the top when open - all as the control's description, so screen readers read it too.
 - [ ] A search box for the page. Decided (2026-11-04): it searches PR titles, authors, branch names, and every field you type in yourself - notes (comments, other notes, difficulty, stories) and the like. The `PRs` filter stays for picking PRs by number, `owner/repo#n`, URL or repo.
 - [x] ~~Remove the "Applied filters" text at the top of the page~~ - done (2026-11-04): the filter bar's chips and "Showing N of M PRs" replace it (the header pill says when the data was updated, Activity what's running).
 

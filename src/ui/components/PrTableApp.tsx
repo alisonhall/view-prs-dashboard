@@ -40,6 +40,7 @@ import * as prSectionConfigHelperFactory from '../helpers/pr-section-config.help
 import * as prSmartGroupsHelperFactory from '../helpers/pr-smart-groups.helpers.ts';
 import * as prSectionGroupingHelperFactory from '../helpers/pr-section-grouping.helpers.ts';
 import { ShowRowRepoContext } from '../state/ShowRowRepoContext';
+import { PrLegendPopover } from './PrLegendPopover';
 import { groupRowsByRepo } from '../helpers/pr-repo-grouping.helpers.ts';
 import { sortSectionRows } from '../helpers/pr-section-sort.helpers.ts';
 import type { PrData, PrDataPayload, PrEntry } from '../types/pr-data.ts';
@@ -1099,6 +1100,7 @@ export function PrTableApp() {
             <Button icon="panel" pressed={isPaneVisible} onClick={handleTogglePane}>
               Detail pane
             </Button>
+            <PrLegendPopover />
           </div>
           <div ref={workspaceRef} className="pr-workspace" data-pane={isPaneDocked ? 'docked' : undefined}>
             <div className="pr-workspace-list">

@@ -458,6 +458,8 @@ UI filter behavior:
 - The controls are in three groups: `Rows` (`View scope`, `PRs`, `Always show PRs in review`), `Labels and people` (`Labels`, `Excluded labels`, `Authors`, `Assigned to`, `Approved by`) and `Your notes` (the custom metadata filters below).
 - Filters affect only what is shown in local views; changing one updates the table at once from existing JSON, without new GitHub CLI requests. They're saved to `view-prs/data/user-defaults.json` and restored on reload.
 - `View scope` includes `All stored rows`, `Last run rows`, `Needs attention rows`, `Needs attention or interacted rows`, and `Conversations resolved for you to check` (PRs with a thread you started that someone else resolved, until you confirm it - see the Conversations tab below).
+- Each filter has a line under it saying what it does (the `View scope` one following the scope chosen); the label and people lists say it at the top when open.
+- `Legend`, above the table beside `Detail pane`, explains what each column's icons and cues mean.
 - `PRs` takes PR numbers (`912`: that PR in any repo), PRs by repo (`acme/api#921`) or by URL (any page of it; a GitHub Enterprise one too), and repos (`acme/web`, or its URL), comma- or space-separated; repo names match whatever their case. The PRs it names show whatever the scope and the other filters; a repo filters like the rest, and with a number picks that repo's PR (`acme/api 12`).
 - `Labels` and `Excluded labels` are checkbox dropdowns populated from labels found on currently loaded stored PR rows for the active repo view.
 - The `Authors` dropdown displays resolved real names (from `actorsMap`) instead of raw GitHub logins.
