@@ -223,6 +223,17 @@
 }
 
 .ui-menu-group + .ui-menu-group,
+/* A choice's check mark: kept in place, so the labels line up, and only
+   seen on the one chosen. */
+.ui-menu-item-check {
+  visibility: hidden;
+}
+
+.ui-menu-item-check.is-checked {
+  visibility: visible;
+  color: var(--color-accent);
+}
+
 .ui-menu-item + .ui-menu-group,
 .ui-menu-group + .ui-menu-item {
   margin-top: var(--space-1);

@@ -24,6 +24,8 @@ import { Tooltip } from './Tooltip';
  *   doesn't also act.
  * - Items can sit in a labelled group (Add label > each label). A group
  *   with no items shows `emptyText` instead.
+ * - An item with `checked` is one of a set of choices (a section's sort):
+ *   a menuitemradio, with a check mark when it's the one chosen.
  *
  * The menu is portaled to <body> with fixed positioning (like Tooltip), so
  * the PR sections' `overflow: hidden` can't clip it. It opens below the
@@ -33,6 +35,11 @@ export interface MenuItemDef {
   id: string;
   label: string;
   icon?: IconName;
+  // Set: a choice among others in its group, chosen or not.
+  checked?: boolean;
+  // Chosen without closing the menu (a retry, whose result shows in it);
+  // focus moves to the first item, as this one may go.
+  keepOpen?: boolean;
   onSelect: () => void;
 }
 
@@ -186,6 +193,11 @@ export function MenuButton({ icon, label, entries, onOpen }: MenuButtonProps) {
   };
 
   const choose = (item: MenuItemDef) => {
+    if (item.keepOpen) {
+      itemRefs.current[0]?.focus();
+      item.onSelect();
+      return;
+    }
     close(true);
     item.onSelect();
   };
@@ -198,11 +210,15 @@ export function MenuButton({ icon, label, entries, onOpen }: MenuButtonProps) {
         if (node) itemRefs.current.push(node);
       }}
       type="button"
-      role="menuitem"
+      role={item.checked === undefined ? 'menuitem' : 'menuitemradio'}
+      aria-checked={item.checked}
       tabIndex={-1}
       className="ui-menu-item"
       onClick={() => choose(item)}
     >
+      {item.checked !== undefined && (
+        <Icon name="check" className={item.checked ? 'ui-menu-item-check is-checked' : 'ui-menu-item-check'} />
+      )}
       {item.icon && <Icon name={item.icon} />}
       {item.label}
     </button>

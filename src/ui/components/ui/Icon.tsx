@@ -223,6 +223,15 @@ const ICON_SHAPES = {
       <path d="M17 16h6" />
     </>
   ),
+  // Up and down arrows side by side: a section's sort (PrSectionSortMenu).
+  sort: (
+    <>
+      <path d="m3 16 4 4 4-4" />
+      <path d="M7 20V4" />
+      <path d="m21 8-4-4-4 4" />
+      <path d="M17 4v16" />
+    </>
+  ),
   tag: (
     <>
       <path d="M12 2H2v10l9.3 9.3a1 1 0 0 0 1.4 0l6.6-6.6a1 1 0 0 0 0-1.4z" />

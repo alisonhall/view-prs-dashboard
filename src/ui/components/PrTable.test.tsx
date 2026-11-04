@@ -31,7 +31,7 @@ const headers = () => within(screen.getAllByRole('rowgroup')[0] as HTMLElement).
 // What each header shows (the abbreviation), and its name for screen
 // readers (the visually hidden full name, when there is one).
 const headerShown = () =>
-  headers().map((header) => header.querySelector('[aria-hidden="true"]')?.textContent ?? header.textContent);
+  headers().map((header) => header.querySelector('span[aria-hidden="true"]')?.textContent ?? header.textContent);
 const headerNames = () =>
   headers().map((header) => header.querySelector('.ui-visually-hidden')?.textContent ?? header.textContent);
 
@@ -174,6 +174,7 @@ describe('PrTable with rows from several repos', () => {
     isReady: true,
     setSectionHidden: jest.fn(),
     setSectionStartsOpen: jest.fn(),
+    setSectionSort: jest.fn(),
     resetSections: jest.fn(),
     groupByRepo,
     setGroupByRepo: jest.fn(),
@@ -212,5 +213,19 @@ describe('PrTable with rows from several repos', () => {
   test('not grouped when the option is off', () => {
     renderRows(false, true);
     expect(document.querySelector('.pr-repo-group-row')).toBeNull();
+  });
+});
+
+describe('PrTable section sort', () => {
+  test("the Actions header holds the section's sort menu, keeping its own name; a section of one PR has none", () => {
+    const { unmount } = render(
+      <PrTable prs={[entry('2'), entry('1')]} repo="owner/repo" sectionKey="open" label="Open PRs" expandedInsights={{}} onToggleInsights={jest.fn()} />,
+    );
+    const actions = screen.getByRole('columnheader', { name: 'Actions' });
+    expect(within(actions).getByRole('button', { name: 'Sort Open PRs: PR number, highest first' })).toBeInTheDocument();
+    unmount();
+
+    render(<PrTable prs={[entry('2')]} repo="owner/repo" sectionKey="open" label="Open PRs" expandedInsights={{}} onToggleInsights={jest.fn()} />);
+    expect(screen.queryByRole('button', { name: /^Sort Open PRs/ })).not.toBeInTheDocument();
   });
 });

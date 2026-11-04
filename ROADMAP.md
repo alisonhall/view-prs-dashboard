@@ -68,12 +68,13 @@ Improvements noted once PRs could come from several repos and sources (subscript
 
 - [ ] A legend for the signals and icons. In particular, the Signals column's first slot: a blue (accent) dot means the PR changed since your last Ack (its tooltip says what changed), a grey (muted) ring means it's had no recent activity, and an empty slot means no change since your Ack. None of that is explained anywhere on the page.
 - [x] ~~Fix the Review column's spacing: its "files viewed" count sometimes wraps onto the next line~~ - done (2026-11-04): the table lets cell text break anywhere, so from three digits the count split ("120/" over "134"). A slot's number no longer breaks, the slots are 8px apart (were 10px), and the column is 180px (was 170px), which fits four-digit counts; past that, or in the docked pane's narrower column, whole slots wrap.
-- [ ] Sorting options for each section. Default: the Merged section by date merged (newest first), every other section by PR number.
+- [x] ~~Sorting options for each section~~ - done (2026-11-04): a sort menu at the end of each section's table header row (the `Actions` header) - PR number or last updated, and in the Merged and Closed sections the date merged or closed, and the order - saved with the section's preferences (Appearance's `Restore default sections` leaves it). Defaults: Merged by date merged, Closed by date closed, every other section by PR number, newest first (the smart groups - Flagged, Needs Attention and the rest - used the order rows were first stored in). Rows don't store when a PR was created, so there's no "Created" sort yet.
+- [ ] Stop rows jumping around under the "Last updated" sort: rows move as PRs change on GitHub and the page refreshes, so working down the list, a row can move away from under you (or the next one change). For example, hold the order while you're interacting with the section (scrolled into it, a row selected, a menu open) and say when there's a newer order to apply ("Order changed - re-sort").
 
 #### Filters and search
 
 - [ ] Explain each filter better, so it's clear what it filters (help text or tooltips in the filter bar).
-- [ ] A search box for the page - unless the `PRs` filter (numbers, `owner/repo#n`, URLs, repos) already covers it. Decide first what search would add (titles, authors, notes, branch names?).
+- [ ] A search box for the page. Decided (2026-11-04): it searches PR titles, authors, branch names, and every field you type in yourself - notes (comments, other notes, difficulty, stories) and the like. The `PRs` filter stays for picking PRs by number, `owner/repo#n`, URL or repo.
 - [x] ~~Remove the "Applied filters" text at the top of the page~~ - done (2026-11-04): the filter bar's chips and "Showing N of M PRs" replace it (the header pill says when the data was updated, Activity what's running).
 
 #### Header, Activity and checks
@@ -86,7 +87,9 @@ Improvements noted once PRs could come from several repos and sources (subscript
 #### Settings
 
 - [ ] Reorganize the Settings drawer so items are grouped by what they do, and describe every option so it makes sense to someone with no context.
-- [ ] Decide whether Settings › Background updates belongs in Sources. If it stays separate, list every source there (each subscription, and the repos of PRs added one by one), not only the repos the dispatcher has scheduled.
+- [ ] Keep Settings › Background updates separate from Sources, and link the two. Decided (2026-11-04): Background updates is per repo (how often each check runs, and priority), while Sources also has PRs added one by one, whose repo shares one schedule - and the env var's repos need timing too. Merging would crowd Sources' everyday list with expert settings, and mix its saving (the sources file) with Background updates' (`user-defaults.json`). So:
+  - Background updates lists every source's repo - each subscription, and the repos of PRs added one by one - with a "From your sources" note, not only the repos the dispatcher has scheduled.
+  - Sources gets a "Timing…" link beside each repo that opens Background updates at that repo.
 - [x] ~~Rethink `Request more`~~ - done (2026-11-04): it fetched older merged PRs for whichever repo the last run was of. It's now `Fetch older merged PRs` in Settings › Sources, beside each repo followed for its recent PRs; the server refuses it for a repo followed for listed PRs, or one with only PRs added by URL, whose new rows wouldn't show.
 - [ ] Make the Action log scannable, and log background requests (quick checks, refreshes, drains) as well as actions you started.
 

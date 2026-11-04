@@ -9,7 +9,8 @@
  * cells then take two lines where they need to; pr-table.css).
  *
  * With Settings › Appearance's "Group rows by repo", rows from more than
- * one repo go in a body per repo, under its heading (groupRowsByRepo).
+ * one repo go in a body per repo, under its heading (groupRowsByRepo). The
+ * Actions header holds the section's sort (PrSectionSortMenu).
  *
  * The detail pane's keyboard selection, while focus is in the table (on
  * any row control, not while typing or when the key was already used):
@@ -28,6 +29,7 @@ import { useTooltipController } from './ui/Tooltip';
 import { usePrSectionPreferences } from '../state/PrSectionPreferencesProvider';
 import { groupRowsByRepo } from '../helpers/pr-repo-grouping.helpers.ts';
 import { ShowRowRepoContext } from '../state/ShowRowRepoContext';
+import { PrSectionSortMenu } from './PrSectionSortMenu';
 
 import type { ActorsMap } from '../helpers/pr-actor-identity.helpers.ts';
 type PrFlags = { isFlagged: boolean; isInReview: boolean; isAcknowledged: boolean };
@@ -180,7 +182,14 @@ export function PrTable({
       <thead>
         <tr>
           {columns.map((column) => (
-            <th key={column.key} scope="col" className={`pr-head-${column.key}`}>
+            <th
+              key={column.key}
+              scope="col"
+              className={`pr-head-${column.key}`}
+              // Its name stays "Actions" with the sort menu in it: a header's
+              // name is read out with every cell of its column.
+              aria-label={column.key === 'actions' && prs.length > 1 ? column.label : undefined}
+            >
               {column.hideLabel ? (
                 <span className="ui-visually-hidden">{column.label}</span>
               ) : column.fullLabel ? (
@@ -192,6 +201,13 @@ export function PrTable({
                   </span>
                   <span className="ui-visually-hidden">{column.fullLabel}</span>
                 </>
+              ) : column.key === 'actions' && prs.length > 1 ? (
+                // The section's sort, at the row's end: only where there's
+                // an order to choose.
+                <span className="pr-head-actions-content">
+                  {column.label}
+                  <PrSectionSortMenu sectionKey={sectionKey} sectionTitle={label || sectionKey} />
+                </span>
               ) : (
                 column.label
               )}

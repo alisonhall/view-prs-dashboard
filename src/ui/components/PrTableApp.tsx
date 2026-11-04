@@ -27,7 +27,7 @@ import { useNotesDirty } from '../state/NotesDirtyContext';
 import { useMediaQuery } from '../state/useMediaQuery';
 import { usePrSectionPreferences } from '../state/PrSectionPreferencesProvider';
 import { useSettingsDrawer } from '../state/SettingsDrawerContext';
-import { isPrSectionHidden, prSectionStartsOpen } from '../helpers/pr-section-preferences.helpers.ts';
+import { isPrSectionHidden, prSectionSort, prSectionStartsOpen } from '../helpers/pr-section-preferences.helpers.ts';
 import { buildPrEntryKey } from '../helpers/pr-entry-keys.helpers.ts';
 import { captureRowAnchor, restoreRowAnchor, type RowAnchor } from '../helpers/row-scroll-anchor.helpers.ts';
 import { dockedPaneRoom } from '../helpers/docked-pane-room.helpers.ts';
@@ -41,6 +41,7 @@ import * as prSmartGroupsHelperFactory from '../helpers/pr-smart-groups.helpers.
 import * as prSectionGroupingHelperFactory from '../helpers/pr-section-grouping.helpers.ts';
 import { ShowRowRepoContext } from '../state/ShowRowRepoContext';
 import { groupRowsByRepo } from '../helpers/pr-repo-grouping.helpers.ts';
+import { sortSectionRows } from '../helpers/pr-section-sort.helpers.ts';
 import type { PrData, PrDataPayload, PrEntry } from '../types/pr-data.ts';
 
 type PrNumber = string | number | undefined;
@@ -644,18 +645,23 @@ export function PrTableApp() {
 
   // Settings › Appearance's choices: hidden sections are left out entirely
   // (so they're not in previous/next, Export or View in table either), and
-  // a saved "Open when the page loads" replaces the built-in default. With
-  // "Group rows by repo", each section's rows in their repos' order (A-Z),
-  // so previous/next and Export follow the headings PrTable draws.
+  // a saved "Open when the page loads" replaces the built-in default. Each
+  // section's rows in its sort (its own choice, else its default: merged by
+  // date merged, closed by date closed, the rest by PR number). With "Group
+  // rows by repo", then in their repos' order (A-Z), keeping that sort
+  // within each - so previous/next follows the headings PrTable draws.
   const sections = useMemo(
     () =>
       builtSections
         .filter((section) => !isPrSectionHidden(sectionPreferences, section.key))
-        .map((section) => ({
-          ...section,
-          prs: groupByRepo ? groupRowsByRepo(section.prs, true).flatMap((group) => group.rows) : section.prs,
-          defaultOpen: prSectionStartsOpen(sectionPreferences, section.key, section.defaultOpen),
-        })),
+        .map((section) => {
+          const sorted = sortSectionRows(section.prs, prSectionSort(sectionPreferences, section.key));
+          return {
+            ...section,
+            prs: groupByRepo ? groupRowsByRepo(sorted, true).flatMap((group) => group.rows) : sorted,
+            defaultOpen: prSectionStartsOpen(sectionPreferences, section.key, section.defaultOpen),
+          };
+        }),
     [builtSections, sectionPreferences, groupByRepo],
   );
   // Rows say their repo once those in view (not just those filtered to)

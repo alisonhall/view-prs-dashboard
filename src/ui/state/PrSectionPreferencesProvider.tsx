@@ -11,6 +11,7 @@ import {
   withPrSectionPreference,
   type PrSectionPreferences,
 } from '../helpers/pr-section-preferences.helpers.ts';
+import type { SectionSort } from '../helpers/pr-section-sort.helpers.ts';
 
 const { readUiSessionOverridesOrNull, updateUiSessionOverride } = createPrUiOptionPersistenceHelpers({
   fetch: (input, init) => fetch(input, init),
@@ -24,6 +25,7 @@ export interface PrSectionPreferencesValue {
   isReady: boolean;
   setSectionHidden: (key: string, hidden: boolean) => void;
   setSectionStartsOpen: (key: string, open: boolean) => void;
+  setSectionSort: (key: string, sort: SectionSort) => void;
   resetSections: () => void;
   // "Group rows by repo".
   groupByRepo: boolean;
@@ -35,6 +37,7 @@ export const PrSectionPreferencesContext = createContext<PrSectionPreferencesVal
   isReady: true,
   setSectionHidden: () => {},
   setSectionStartsOpen: () => {},
+  setSectionSort: () => {},
   resetSections: () => {},
   groupByRepo: false,
   setGroupByRepo: () => {},
@@ -102,7 +105,23 @@ export function PrSectionPreferencesProvider({ children }: { children: ReactNode
     (key: string, open: boolean) => save(withPrSectionPreference(preferencesRef.current, key, { open })),
     [save],
   );
-  const resetSections = useCallback(() => save({}), [save]);
+  const setSectionSort = useCallback(
+    (key: string, sort: SectionSort) => save(withPrSectionPreference(preferencesRef.current, key, { sort })),
+    [save],
+  );
+  // Which sections show and start open, back to the defaults - not their
+  // sorts, chosen in each section (PrSectionSortMenu).
+  const resetSections = useCallback(
+    () =>
+      save(
+        Object.fromEntries(
+          Object.entries(preferencesRef.current)
+            .filter(([, preference]) => preference.sort)
+            .map(([key, preference]) => [key, { sort: preference.sort }]),
+        ),
+      ),
+    [save],
+  );
   const setGroupByRepo = useCallback((next: boolean) => {
     hasChosenGroupingRef.current = true;
     setGroupByRepoState(next);
@@ -111,8 +130,8 @@ export function PrSectionPreferencesProvider({ children }: { children: ReactNode
   }, []);
 
   const value = useMemo(
-    () => ({ preferences, isReady, setSectionHidden, setSectionStartsOpen, resetSections, groupByRepo, setGroupByRepo }),
-    [preferences, isReady, setSectionHidden, setSectionStartsOpen, resetSections, groupByRepo, setGroupByRepo],
+    () => ({ preferences, isReady, setSectionHidden, setSectionStartsOpen, setSectionSort, resetSections, groupByRepo, setGroupByRepo }),
+    [preferences, isReady, setSectionHidden, setSectionStartsOpen, setSectionSort, resetSections, groupByRepo, setGroupByRepo],
   );
   return <PrSectionPreferencesContext.Provider value={value}>{children}</PrSectionPreferencesContext.Provider>;
 }

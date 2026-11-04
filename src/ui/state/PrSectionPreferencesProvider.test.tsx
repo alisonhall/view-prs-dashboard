@@ -106,6 +106,28 @@ describe('Settings › Appearance sections', () => {
     await waitFor(() => expect(saved).toEqual({ repo: 'owner/repo' }));
   });
 
+  test("Restore default sections keeps each section's sort, and isn't offered for a sort alone", async () => {
+    const user = userEvent.setup();
+    saved = {
+      repo: 'owner/repo',
+      prSections: { closed: { hidden: true, sort: { by: 'number', direction: 'asc' } }, open: { sort: { by: 'updated', direction: 'desc' } } },
+    };
+    renderSettings();
+    await waitFor(() => expect(showBox('Closed PRs')).not.toBeChecked());
+
+    await user.click(screen.getByRole('button', { name: 'Restore default sections' }));
+
+    await waitFor(() =>
+      expect(saved).toEqual({
+        repo: 'owner/repo',
+        prSections: { closed: { sort: { by: 'number', direction: 'asc' } }, open: { sort: { by: 'updated', direction: 'desc' } } },
+      }),
+    );
+    expect(showBox('Closed PRs')).toBeChecked();
+    // Only sorts left: nothing for it to restore.
+    expect(screen.getByRole('button', { name: 'Restore default sections' })).toBeDisabled();
+  });
+
   test('a choice made before the saved ones arrive is kept', async () => {
     const user = userEvent.setup();
     let release = () => {};

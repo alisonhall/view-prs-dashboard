@@ -81,7 +81,11 @@ export function AppearanceSection() {
           </tbody>
         </table>
         <div className="settings-actions">
-          <Button onClick={resetSections} disabled={Object.keys(preferences).length === 0}>
+          {/* Only show/open choices: a section's sort isn't one of these. */}
+          <Button
+            onClick={resetSections}
+            disabled={!Object.values(preferences).some((preference) => preference.hidden || preference.open !== undefined)}
+          >
             Restore default sections
           </Button>
         </div>
