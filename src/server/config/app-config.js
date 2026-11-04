@@ -69,6 +69,11 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
   const viewPrsLiveSummaryFile =
     env.VIEW_PRS_LIVE_SUMMARY_FILE ||
     path.join(path.dirname(viewPrsDataFile), "check-open-pr-updates.live-summary.json");
+  // Which PRs are in view: repo subscriptions and PRs added one by one
+  // (view-prs-sources-storage.js), beside the data file like the above.
+  const viewPrsSourcesFile =
+    env.VIEW_PRS_SOURCES_FILE ||
+    path.join(path.dirname(viewPrsDataFile), "check-open-pr-updates.sources.json");
 
   // Test environment validation
   if (isTestEnv) {
@@ -143,6 +148,7 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
       VIEW_PRS_ACTION_LOG_FILE: viewPrsActionLogFile,
       VIEW_PRS_PR_DETAIL_DIR: viewPrsPrDetailDir,
       VIEW_PRS_LIVE_SUMMARY_FILE: viewPrsLiveSummaryFile,
+      VIEW_PRS_SOURCES_FILE: viewPrsSourcesFile,
       VIEW_PRS_BACKFILL_PID_FILE: viewPrsBackfillPidFile,
       VIEW_PRS_BACKFILL_LOG_FILE: viewPrsBackfillLogFile,
       VIEW_PRS_USER_DEFAULTS_FILE: viewPrsUserDefaultsFile,
@@ -362,6 +368,7 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
     viewPrsUiBuildIndexFile,
     viewPrsDataFile,
     viewPrsLiveSummaryFile,
+    viewPrsSourcesFile,
     viewPrsUserStateFile,
     viewPrsAuthorCommentsFile,
     viewPrsSchedulerFile,

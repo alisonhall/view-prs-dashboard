@@ -16,6 +16,10 @@ const registerViewPrsMutationRoutes = ({
   viewPrsAckTotalRefreshTimeoutMs,
   defaultViewPrsRepo,
   setLastManualRunNow,
+  // Subscribes a repo to its recent PRs (the sources file) - a full manual
+  // run of a repo does, as running it always added it to the background
+  // updates. Safely no-ops if absent (e.g. in tests that don't wire it).
+  subscribeRepoToRecent,
   clearPendingForRepo,
   clearPendingNumbersForRepo,
   appendActionLogEntry,
@@ -67,6 +71,8 @@ const registerViewPrsMutationRoutes = ({
 }) => {
   const emitDataChangedSafe =
     typeof emitDataChanged === "function" ? emitDataChanged : () => {};
+  const subscribeRepoToRecentSafe =
+    typeof subscribeRepoToRecent === "function" ? subscribeRepoToRecent : () => false;
   const runAutoGhReservationCostSafe =
     Number.isFinite(runAutoGhReservationCost) && runAutoGhReservationCost > 0
       ? runAutoGhReservationCost
@@ -185,6 +191,9 @@ const registerViewPrsMutationRoutes = ({
         // A full-repo manual run (no single --pr target) covers everything
         // the quick-check may have queued, so it's resolved now too; a run
         // of one PR, just that PR.
+        if (!detail.prNumber) {
+          subscribeRepoToRecentSafe(detail.repo || defaultViewPrsRepo);
+        }
         if (detail.repo && !detail.prNumber) {
           clearPendingForRepo(detail.repo);
         } else if (detail.repo && detail.prNumber && typeof clearPendingNumbersForRepo === "function") {

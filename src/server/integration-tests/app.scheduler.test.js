@@ -4,6 +4,8 @@ const {
   parseTimestamp,
   getManualCooldownSkipReason,
   getViewPrsAutoRefreshRepos,
+  inferTrackedRepos,
+  viewPrsSourcesStorage,
   getViewPrsAutoCircuitOpenState,
   buildAckRefreshBudgetSkipErrors,
   runViewPrsAutoRefresh,
@@ -18,6 +20,15 @@ const {
   viewPrsSchedulerState,
   viewPrsSchedulerFile,
 } = appModule;
+
+// Puts the sources file back as a test found it - removed if there was none.
+const restoreSources = (saved) => {
+  if (saved) {
+    viewPrsSourcesStorage.writeSources(saved);
+  } else {
+    fs.rmSync(viewPrsSourcesStorage.sourcesFile, { force: true });
+  }
+};
 
 const resetSchedulerState = () => {
   viewPrsSchedulerState.isAutoRunInProgress = false;
@@ -103,9 +114,11 @@ describe("scheduler helper behavior", () => {
     });
   });
 
-  describe("getViewPrsAutoRefreshRepos", () => {
+  // The repos tracked before the sources file - which seed its first
+  // subscriptions.
+  describe("inferTrackedRepos", () => {
     test("includes configured repos, stored repos, and last-run repo without duplicates, and does not add the hardcoded default repo when real repos are already known", () => {
-      const result = getViewPrsAutoRefreshRepos(
+      const result = inferTrackedRepos(
         {
           byPrNumber: {
             1: { repo: "owner/one" },
@@ -122,7 +135,7 @@ describe("scheduler helper behavior", () => {
     });
 
     test("given placeholder owner/repo values, when building auto-refresh repos, then excludes placeholder entries and does not add the hardcoded default repo since a real repo is still known", () => {
-      const result = getViewPrsAutoRefreshRepos(
+      const result = inferTrackedRepos(
         {
           byPrNumber: {
             1: { repo: "owner/repo" },
@@ -143,9 +156,58 @@ describe("scheduler helper behavior", () => {
     // bootstrapping against some other user's repo - see
     // app-config.test.js's own "no fallback" test for that case).
     test("given no configured repos, no stored data, and no last-run repo, when building auto-refresh repos, then falls back to VIEW_PRS_REPO so a fresh install can still bootstrap", () => {
-      const result = getViewPrsAutoRefreshRepos({ byPrNumber: {}, lastRun: null }, "");
+      const result = inferTrackedRepos({ byPrNumber: {}, lastRun: null }, "");
 
       expect(result).toEqual(["test-org/test-repo"]);
+    });
+  });
+
+  // The sources file decides now: VIEW_PRS_AUTO_REPOS and the "recent"
+  // subscriptions, not every repo with a stored row.
+  describe("getViewPrsAutoRefreshRepos", () => {
+    let savedSources;
+    beforeEach(() => {
+      savedSources = viewPrsSourcesStorage.readSources();
+    });
+    afterEach(() => {
+      restoreSources(savedSources);
+    });
+
+    test("lists VIEW_PRS_AUTO_REPOS and the recent subscriptions, not numbers-only ones or repos only tracked PRs come from", () => {
+      viewPrsSourcesStorage.writeSources({
+        subscriptions: [
+          { repo: "acme/api", mode: "recent" },
+          { repo: "acme/web", mode: "numbers", numbers: ["4"] },
+        ],
+        trackedPrs: [{ repo: "other/lib", number: "9" }],
+      });
+
+      expect(getViewPrsAutoRefreshRepos("acme/extra, acme/api")).toEqual(["acme/extra", "acme/api"]);
+    });
+
+    // Seeded from data that couldn't be read, the file would stand empty
+    // for good - every repo dropped from the background updates.
+    test("without a sources file, data that can't be read seeds nothing: the repos are inferred until it can", () => {
+      const savedRead = appModule.readViewPrsData;
+      fs.rmSync(viewPrsSourcesStorage.sourcesFile, { force: true });
+      try {
+        appModule.readViewPrsData = () => ({ byPrNumber: {}, lastRun: null, readError: "Unexpected end of JSON input" });
+        expect(getViewPrsAutoRefreshRepos("")).toEqual(["test-org/test-repo"]);
+        expect(fs.existsSync(viewPrsSourcesStorage.sourcesFile)).toBe(false);
+
+        appModule.readViewPrsData = () => ({ byPrNumber: { "acme/api#1": { repo: "acme/api" } }, lastRun: null });
+        expect(getViewPrsAutoRefreshRepos("")).toEqual(["acme/api"]);
+        expect(viewPrsSourcesStorage.readSources().subscriptions).toEqual([{ repo: "acme/api", mode: "recent" }]);
+      } finally {
+        appModule.readViewPrsData = savedRead;
+      }
+    });
+
+    test("falls back to VIEW_PRS_REPO when nothing is subscribed, without writing it to the sources", () => {
+      viewPrsSourcesStorage.writeSources({ subscriptions: [] });
+
+      expect(getViewPrsAutoRefreshRepos("")).toEqual(["test-org/test-repo"]);
+      expect(viewPrsSourcesStorage.readSources().subscriptions).toEqual([]);
     });
   });
 
@@ -361,7 +423,12 @@ describe("runViewPrsAutoRefresh behavior", () => {
   const savedRunViewPrsScript = appModule.runViewPrsScript;
   const savedReadViewPrsData = appModule.readViewPrsData;
 
+  // The fixture's repo, subscribed (the sources file decides which repos
+  // auto refresh fetches), and the sources as they were put back after.
+  let savedSources;
   beforeAll(() => {
+    savedSources = viewPrsSourcesStorage.readSources();
+    viewPrsSourcesStorage.writeSources({ subscriptions: [{ repo: "acme-org/acme-repo", mode: "recent" }] });
     appModule.getDependencyStatus = () => ({ ok: true, missing: [] });
     appModule.runViewPrsScript = async () => ({ stdout: "", stderr: "" });
     // "owner/repo" is deliberately NOT used here even though it reads like
@@ -390,6 +457,7 @@ describe("runViewPrsAutoRefresh behavior", () => {
   });
 
   afterAll(() => {
+    restoreSources(savedSources);
     if (savedDependencyStatus !== undefined) {
       appModule.getDependencyStatus = savedDependencyStatus;
     } else {

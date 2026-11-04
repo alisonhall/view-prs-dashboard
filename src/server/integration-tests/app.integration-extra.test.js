@@ -817,6 +817,38 @@ describe("integration behavior", () => {
     }
   });
 
+  // Running a repo in full always added it to the background updates; it
+  // subscribes it (the sources file) now. A run of one PR doesn't.
+  test("a full manual run subscribes its repo to its recent PRs, and a run of one PR doesn't", async () => {
+    const app = require("../app.js");
+    const orig = app.runViewPrsScript;
+    const origDep = app.getDependencyStatus;
+    const savedSources = app.viewPrsSourcesStorage.readSources();
+    app.runViewPrsScript = () => Promise.resolve({ stdout: "ok", stderr: "" });
+    app.getDependencyStatus = () => ({ ok: true, missing: [] });
+    app.viewPrsSourcesStorage.writeSources({ subscriptions: [] });
+    const testServer = createViewPrsApp().listen(0);
+    const testRequest = supertest(testServer);
+    try {
+      await testRequest.post("/view-prs/run").send({ repo: "acme-org/run-whole", openMode: "none" }).expect(200);
+      await testRequest.post("/view-prs/run").send({ repo: "acme-org/run-one", prNumber: "5", openMode: "none" }).expect(200);
+      await testRequest.post("/view-prs/run").send({ repo: "owner/repo", openMode: "none" }).expect(200);
+
+      expect(app.viewPrsSourcesStorage.readSources().subscriptions).toEqual([{ repo: "acme-org/run-whole", mode: "recent" }]);
+      expect(app.getViewPrsAutoRefreshRepos("")).toEqual(["acme-org/run-whole"]);
+    } finally {
+      app.runViewPrsScript = orig;
+      app.getDependencyStatus = origDep;
+      if (savedSources) {
+        app.viewPrsSourcesStorage.writeSources(savedSources);
+      } else {
+        fs.rmSync(app.viewPrsSourcesStorage.sourcesFile, { force: true });
+      }
+      testServer.closeAllConnections?.();
+      await new Promise((resolve) => testServer.close(resolve));
+    }
+  });
+
   test("returns success when GET /view-prs/data alias is requested", async () => {
     const testApp = createViewPrsApp();
     const testServer = testApp.listen(0);

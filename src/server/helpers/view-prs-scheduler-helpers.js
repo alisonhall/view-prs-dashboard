@@ -31,6 +31,10 @@ const createViewPrsSchedulerHelpers = ({
   // supplies the real function via a late-bound reference (see app.js's
   // own comment at the call site) to avoid a circular construction order.
   getDispatcherDerivedFields = () => ({}),
+  // The sources file (view-prs-sources-storage.js): which repos are
+  // subscribed. Without it (tests building these helpers alone), the repos
+  // are inferred from the stored data as before it existed.
+  sourcesStorage = null,
 }) => {
   const getManualCooldownSkipReason = ({
     nowMs,
@@ -605,7 +609,10 @@ const createViewPrsSchedulerHelpers = ({
     resetAutoCircuitBreaker();
   };
 
-  const getViewPrsAutoRefreshRepos = (
+  // The repos tracked before the sources file existed: VIEW_PRS_AUTO_REPOS,
+  // every repo with a stored row, and the last run's - which seeds the
+  // file's subscriptions the first time.
+  const inferTrackedRepos = (
     data = readViewPrsData(),
     extraReposRaw = process.env.VIEW_PRS_AUTO_REPOS || "",
   ) => {
@@ -647,6 +654,63 @@ const createViewPrsSchedulerHelpers = ({
     return repos;
   };
 
+  // The repos the background updates fetch in full: VIEW_PRS_AUTO_REPOS
+  // and the "recent" subscriptions - not every repo with a stored row, or
+  // a single PR added from another repo would bring in all of that repo's.
+  // VIEW_PRS_REPO when there are none, so a fresh install still starts.
+  // Until the sources file is seeded (no file, and no repo to seed it from
+  // yet - or data that couldn't be read), inferred as before.
+  const getViewPrsAutoRefreshRepos = (extraReposRaw = process.env.VIEW_PRS_AUTO_REPOS || "") => {
+    const sources = sourcesStorage ? sourcesStorage.loadSources({ seedRepos: seedSubscriptionRepos }) : null;
+    if (!sources) {
+      return inferTrackedRepos(readViewPrsData(), extraReposRaw);
+    }
+    const repos = [];
+    const seen = new Set();
+    const addRepo = (repo) => {
+      const normalizedRepo = toTrimmedString(repo);
+      if (!isRepoSlug(normalizedRepo) || normalizedRepo.toLowerCase() === "owner/repo" || seen.has(normalizedRepo)) {
+        return;
+      }
+      seen.add(normalizedRepo);
+      repos.push(normalizedRepo);
+    };
+    parseRepoCsv(extraReposRaw).forEach(addRepo);
+    sourcesStorage.getRecentSubscriptionRepos(sources).forEach(addRepo);
+    if (repos.length === 0) {
+      addRepo(defaultViewPrsRepo);
+    }
+    return repos;
+  };
+
+  // The first sources file's subscriptions: the repos tracked until then,
+  // without VIEW_PRS_AUTO_REPOS's (read each time instead) or the
+  // VIEW_PRS_REPO fallback (likewise). Null when the data couldn't be read
+  // (readViewPrsData then gives no rows and a readError): that's not "no
+  // repos".
+  const seedSubscriptionRepos = () => {
+    const data = readViewPrsData();
+    if (data?.readError) return null;
+    const seed = [];
+    const add = (repo) => {
+      const normalizedRepo = toTrimmedString(repo);
+      if (isRepoSlug(normalizedRepo) && normalizedRepo.toLowerCase() !== "owner/repo" && !seed.includes(normalizedRepo)) {
+        seed.push(normalizedRepo);
+      }
+    };
+    Object.values(data?.byPrNumber || {}).forEach((entry) => add(entry?.repo));
+    add(data?.lastRun?.repo);
+    return seed;
+  };
+
+  // A full manual run of a repo subscribes it, as running it always added
+  // it to the background updates (a run of chosen PRs doesn't).
+  // Not the "owner/repo" placeholder, which nothing fetches.
+  const subscribeRepoToRecent = (repo) =>
+    sourcesStorage && toTrimmedString(repo).toLowerCase() !== "owner/repo"
+      ? sourcesStorage.subscribeRepo(repo, { seedRepos: seedSubscriptionRepos })
+      : false;
+
   return {
     getManualCooldownSkipReason,
     readViewPrsSchedulerState,
@@ -662,6 +726,8 @@ const createViewPrsSchedulerHelpers = ({
     resetAutoCircuitBreaker,
     getOpenAutoCircuitRepos,
     getViewPrsAutoRefreshRepos,
+    inferTrackedRepos,
+    subscribeRepoToRecent,
     setPendingForRepo,
     clearPendingForRepo,
     clearPendingNumbersForRepo,

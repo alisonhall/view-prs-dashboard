@@ -81,6 +81,7 @@ const { createFileIoHelpers } = require("./helpers/file-io-helpers");
 const { createCommandExecutionHelpers, describeFailure } = require("./helpers/command-execution-helpers");
 const { createSchedulerHelpers } = require("./helpers/scheduler-helpers");
 const { createRequestOriginGuard, isLoopbackHostname } = require("./helpers/request-origin-guard");
+const { createViewPrsSourcesStorage } = require("./storage/view-prs-sources-storage");
 
 // Configuration and constants
 // Initialize configuration from config module
@@ -100,6 +101,7 @@ const {
   viewPrsUiBuildIndexFile,
   viewPrsDataFile,
   viewPrsLiveSummaryFile,
+  viewPrsSourcesFile,
   viewPrsUserStateFile,
   viewPrsAuthorCommentsFile,
   viewPrsSchedulerFile,
@@ -982,6 +984,14 @@ const callReadViewPrsData = (...args) =>
 // factories have run, since this is all synchronous module-load-time code).
 let dispatcherHelpersRef = null;
 
+// Which repos and PRs are in view (view-prs-sources-storage.js).
+const viewPrsSourcesStorage = createViewPrsSourcesStorage({
+  fs,
+  sourcesFile: viewPrsSourcesFile,
+  isRepoSlug,
+  console,
+});
+
 const {
   getManualCooldownSkipReason,
   readViewPrsSchedulerState,
@@ -997,6 +1007,8 @@ const {
   resetAutoCircuitBreaker,
   getOpenAutoCircuitRepos,
   getViewPrsAutoRefreshRepos,
+  inferTrackedRepos,
+  subscribeRepoToRecent,
   setPendingForRepo,
   clearPendingForRepo,
   clearPendingNumbersForRepo,
@@ -1011,6 +1023,7 @@ const {
   toTrimmedString,
   isRepoSlug,
   parseRepoCsv,
+  sourcesStorage: viewPrsSourcesStorage,
   getDispatcherDerivedFields: () => dispatcherHelpersRef?.getPublicStateFields() || {},
   // callReadViewPrsData, not readViewPrsDataRef: getViewPrsAutoRefreshRepos
   // below (the only consumer) reads via this as a lazy default parameter
@@ -3389,6 +3402,7 @@ const createViewPrsApp = ({ production = isProductionEnv } = {}) => {
     viewPrsAckTotalRefreshTimeoutMs,
     defaultViewPrsRepo,
     setLastManualRunNow,
+    subscribeRepoToRecent,
     clearPendingForRepo,
     clearPendingNumbersForRepo,
     appendActionLogEntry,
@@ -3695,6 +3709,9 @@ module.exports = {
   resetAutoCircuitBreaker,
   getOpenAutoCircuitRepos,
   getViewPrsAutoRefreshRepos,
+  inferTrackedRepos,
+  subscribeRepoToRecent,
+  viewPrsSourcesStorage,
   setPendingForRepo,
   clearPendingForRepo,
   clearPendingNumbersForRepo,
