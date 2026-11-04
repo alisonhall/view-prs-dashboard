@@ -265,6 +265,39 @@ describe("quick checks list each repo's open PRs", () => {
     expect(result).toMatchObject({ newPendingOpenCount: 1, reposWithPendingOpen: ["acme/api"] });
   });
 
+  // Merged before the script's merged listing reaches back (while the app
+  // was off, say): only the open listing shows it's gone.
+  test("an open row the complete listing no longer has is queued as merged or closed, to be fetched again", async () => {
+    const row = (number) => ({
+      prNumber: String(number),
+      repo: "acme/api",
+      section: "open",
+      fetchedAt: "2026-10-31T09:00:00Z",
+      updatedAt: "2026-10-31T09:00:00Z",
+      data: { number: String(number) },
+    });
+    fs.writeFileSync(dataFile, JSON.stringify({ byPrNumber: { "acme/api#12": row(12), "acme/api#20": row(20) } }));
+    fs.writeFileSync(
+      liveSummaryFile,
+      JSON.stringify({ byRepo: { "acme/api": { checkedAt: "2026-10-31T10:00:00.000Z", complete: true, prs: { 12: { number: "12" } } } } }),
+    );
+    viewPrsSchedulerState.pendingByRepo = {};
+    const savedTick = appModule.runDispatcherTick;
+    appModule.runDispatcherTick = async () => {};
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+    let result;
+    try {
+      result = await runViewPrsQuickCheck({ repo: "acme/api" });
+    } finally {
+      warn.mockRestore();
+      appModule.runDispatcherTick = savedTick;
+      writeData();
+      fs.rmSync(liveSummaryFile, { force: true });
+    }
+    expect(result).toMatchObject({ newPendingOpenCount: 0, newPendingMergedClosedCount: 1 });
+    expect(viewPrsSchedulerState.pendingByRepo["acme/api"]).toMatchObject({ open: [], mergedClosed: ["20"] });
+  });
+
   test("VIEW_PRS_DISABLE_LIVE_SUMMARY turns it off", async () => {
     process.env.VIEW_PRS_DISABLE_LIVE_SUMMARY = "1";
     await runViewPrsQuickCheck();

@@ -69,6 +69,7 @@ const { mergePrDetailFields } = require("./helpers/view-prs-pr-detail-storage");
 const {
   applyLiveSummaryToEntry,
   findPrsWithChangedThreads,
+  findPrsNoLongerOpen,
   createViewPrsLiveSummaryHelpers,
 } = require("./helpers/view-prs-live-summary-helpers");
 const {
@@ -2184,8 +2185,20 @@ const runViewPrsAutoRefresh = async ({
       const repoStartMs = Date.now();
       let repoFirstPrProgressMs = null;
 
-      // The repo's run, of these PRs or (null) the whole repo.
-      const runScriptForRepo = (prNumbers) =>
+      // The repo's run, of these PRs or (null) the whole repo. What a run
+      // that succeeds still warns about (a PR it couldn't look up, say) goes
+      // to the server's log - not its progress markers.
+      const runScriptForRepo = async (prNumbers) => {
+        const result = await runScriptForRepoQuietly(prNumbers);
+        String(result?.stderr || "")
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter((line) => line && !line.startsWith("__VIEW_PRS_PROGRESS__:"))
+          .slice(0, 10)
+          .forEach((line) => console.warn(`[view-prs] ${repo}: ${line}`));
+        return result;
+      };
+      const runScriptForRepoQuietly = (prNumbers) =>
         callRunViewPrsScript(
           [
             viewPrsRunScriptRelativePath,
@@ -2726,8 +2739,12 @@ const runViewPrsQuickCheck = async ({
       // and doesn't fail the check.
       // Open PRs whose review threads changed since their rows were fetched
       // (findPrsWithChangedThreads): queued with the ones the script finds,
-      // so the targeted refresh fetches them.
+      // so the targeted refresh fetches them. And open rows the listing no
+      // longer has (findPrsNoLongerOpen): queued as merged/closed changes,
+      // as the script's listing of merged PRs may not reach back to when
+      // they merged.
       let threadChangedNumbers = [];
+      let noLongerOpenNumbers = [];
       if (!extraArgs.includes("--quick-check-numbers") && !isLiveSummaryDisabled()) {
         const liveSummaryResult = await callRefreshRepoLiveSummary(repo);
         if (!liveSummaryResult?.ok) {
@@ -2737,7 +2754,9 @@ const runViewPrsQuickCheck = async ({
         } else {
           try {
             const rawEntries = Object.values(JSON.parse(fs.readFileSync(viewPrsDataFile, "utf8"))?.byPrNumber || {});
-            threadChangedNumbers = findPrsWithChangedThreads(rawEntries, repo, readLiveSummary().byRepo[repo]);
+            const repoSummary = readLiveSummary().byRepo[repo];
+            threadChangedNumbers = findPrsWithChangedThreads(rawEntries, repo, repoSummary);
+            noLongerOpenNumbers = findPrsNoLongerOpen(rawEntries, repo, repoSummary);
           } catch (_error) {
             // No data file yet, or unreadable: nothing to compare.
           }
@@ -2753,9 +2772,11 @@ const runViewPrsQuickCheck = async ({
         const pendingOpen = [
           ...new Set([...(Array.isArray(parsed.pendingOpen) ? parsed.pendingOpen : []), ...threadChangedNumbers]),
         ];
-        const pendingMergedClosed = Array.isArray(parsed.pendingMergedClosed)
-          ? parsed.pendingMergedClosed
-          : [];
+        const pendingMergedClosed = [
+          ...new Set(
+            [...(Array.isArray(parsed.pendingMergedClosed) ? parsed.pendingMergedClosed : []), ...noLongerOpenNumbers].map(String),
+          ),
+        ];
 
         reposChecked.push(repo);
         newPendingOpenCount += pendingOpen.length;

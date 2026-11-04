@@ -2071,7 +2071,7 @@ classify_pr_section() {
 reconcile_missing_open_rows() {
   local current_open_numbers="$1"
   local current_open_tmp stale_tmp stale_count number
-  local limit fresh_pr_b64 fresh_pr_json fresh_section row_json
+  local limit fresh_pr_b64 fresh_pr_json fresh_section row_json fetch_err_file fetch_err
 
   # A run of chosen PRs didn't list the open ones, so every other saved
   # open row would look missing.
@@ -2113,8 +2113,16 @@ reconcile_missing_open_rows() {
       break
     fi
 
-    fresh_pr_b64=$(gh_with_retry gh pr view "$number" -R "$REPO" --json number,title,url,labels,isDraft,author,mergedAt,closedAt,mergedBy,createdAt,updatedAt,headRefName,baseRefName,additions,deletions --jq '. | @base64' 2>/dev/null || true)
-    [[ -z "$fresh_pr_b64" ]] && continue
+    # A PR it can't look up keeps its open row - and says so: it used to be
+    # skipped silently, every run, while the row still showed it open.
+    fetch_err_file=$(mktemp)
+    fresh_pr_b64=$(gh_with_retry gh pr view "$number" -R "$REPO" --json number,title,url,labels,isDraft,author,mergedAt,closedAt,mergedBy,createdAt,updatedAt,headRefName,baseRefName,additions,deletions --jq '. | @base64' 2>"$fetch_err_file" || true)
+    fetch_err=$(tail -n 1 "$fetch_err_file" 2>/dev/null || true)
+    rm -f "$fetch_err_file"
+    if [[ -z "$fresh_pr_b64" ]]; then
+      echo "Could not check whether PR #$number (stored as open, not in the open listing) is still open: ${fetch_err:-gh pr view failed}" >&2
+      continue
+    fi
 
     fresh_pr_json=$(printf '%s' "$fresh_pr_b64" | base64 --decode)
     fresh_section=$(classify_pr_section "$fresh_pr_json")

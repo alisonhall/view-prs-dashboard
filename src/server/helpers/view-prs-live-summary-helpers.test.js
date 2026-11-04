@@ -7,6 +7,7 @@ const {
   normalizeLiveSummaryPr,
   applyLiveSummaryToEntry,
   findPrsWithChangedThreads,
+  findPrsNoLongerOpen,
   createViewPrsLiveSummaryHelpers,
 } = require("./view-prs-live-summary-helpers");
 
@@ -285,6 +286,35 @@ describe("findPrsWithChangedThreads", () => {
   test("nothing without a listing", () => {
     expect(findPrsWithChangedThreads([row(12, 2)], "acme/api", undefined)).toEqual([]);
     expect(findPrsWithChangedThreads([row(12, 2)], "acme/api", { prs: summary.prs })).toEqual([]);
+  });
+});
+
+describe("findPrsNoLongerOpen", () => {
+  const summary = { checkedAt: "2026-10-31T10:00:00Z", complete: true, prs: { 12: {}, 13: {} } };
+  const row = (number, overrides = {}) => ({
+    prNumber: String(number),
+    repo: "acme/api",
+    section: "open",
+    fetchedAt: "2026-10-31T09:00:00Z",
+    data: { number: String(number) },
+    ...overrides,
+  });
+
+  test("open and draft rows a complete listing made after them doesn't have - merged or closed since", () => {
+    const entries = [
+      row(12), // listed: still open
+      row(20), // gone: queued
+      row(21, { section: "draft" }), // drafts too
+      row(22, { fetchedAt: "2026-10-31T10:01:00Z" }), // fetched after the listing: its own section is newer
+      row(23, { section: "merged" }), // already merged
+      row(24, { repo: "acme/web" }), // another repo
+    ];
+    expect(findPrsNoLongerOpen(entries, "acme/api", summary)).toEqual([20, 21]);
+  });
+
+  test("nothing from a listing cut off at its page limit, or without one", () => {
+    expect(findPrsNoLongerOpen([row(20)], "acme/api", { ...summary, complete: false })).toEqual([]);
+    expect(findPrsNoLongerOpen([row(20)], "acme/api", undefined)).toEqual([]);
   });
 });
 

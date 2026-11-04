@@ -1313,6 +1313,8 @@ run_reconcile_missing_open_rows_tests() {
 
   stale_open_row=$(jq -cn '{number:"967",title:"Stale Open",url:"https://example.com/967",mergedAt:"",closedAt:"",sourceUpdatedAt:"2026-04-09T06:45:02Z",status:"NO_CHANGE",approved:"NO",approvalCount:"0",inReview:"false",approvers:[],openConversationCount:"0",viewedFilesCount:"0",changedFilesCount:"0",viewedFilesSummary:"0/0 viewed",comments:[],reviews:[],commits:[],reviewThreads:[],commentEvents:[],activityEvents:[],metrics:{counts:{}},activityTimelineSummary:"-",activityTimeline:[],baseline:"-"}')
   upsert_pr_state "$stale_open_row" 'open'
+  # One gh can't look up (the mock doesn't know it): kept open, and said so.
+  upsert_pr_state "$(printf '%s' "$stale_open_row" | jq -c '.number = "968" | .url = "https://example.com/968"')" 'open'
 
   mkdir -p "$mock_bin"
   cat >"$mock_bin/gh" <<'MOCK'
@@ -1361,13 +1363,17 @@ MOCK
     printf '%s' "$pr_json" | jq -c '{number:(.number|tostring),title:(.title//""),url:(.url//""),mergedAt:(.mergedAt//""),closedAt:(.closedAt//""),sourceUpdatedAt:(.updatedAt//""),status:"NO_CHANGE",approved:"NO",approvalCount:"0",inReview:"false",approvers:[],openConversationCount:"0",viewedFilesCount:"0",changedFilesCount:"0",viewedFilesSummary:"0/0 viewed",comments:[],reviews:[],commits:[],reviewThreads:[],commentEvents:[],activityEvents:[],metrics:{counts:{}},activityTimelineSummary:"-",activityTimeline:[],baseline:"-"}'
   }
 
-  reconcile_missing_open_rows $'100\n101'
+  local reconcile_err
+  reconcile_err=$({ reconcile_missing_open_rows $'100\n101'; } 2>&1 >/dev/null)
 
   updated_section=$(jq -r '.byPrNumber["owner/repo#967"].section' "$PR_STATE_FILE")
   assert_eq "$updated_section" 'closed' 'reconcile_missing_open_rows should reclassify stale open rows when they are now closed'
 
   updated_closed_at=$(jq -r '.byPrNumber["owner/repo#967"].data.closedAt' "$PR_STATE_FILE")
   assert_eq "$updated_closed_at" '2026-04-23T20:00:00Z' 'reconcile_missing_open_rows should persist refreshed closedAt timestamp'
+
+  assert_eq "$(jq -r '.byPrNumber["owner/repo#968"].section' "$PR_STATE_FILE")" 'open' 'reconcile_missing_open_rows should keep a PR it could not look up as it was'
+  assert_true "[[ \"$reconcile_err\" == *'Could not check whether PR #968'*'unsupported mock gh call'* ]]" 'reconcile_missing_open_rows should say which PR it could not look up, and why, rather than skip it silently'
 
   PATH="$old_path"
 }

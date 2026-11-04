@@ -190,7 +190,8 @@ const overlayLiveSummaryFields = (data = {}, summary, { includeCi = true } = {})
 //   detailsBehind  - GitHub has activity the full refresh hasn't fetched;
 //   stillOpen      - true.
 // A row a complete listing after its refresh didn't have (merged or closed
-// since; the quick check queues it) gets `data.live = { stillOpen: false }`.
+// since) gets `data.live = { stillOpen: false }` - and the quick check queues
+// it to be fetched again (findPrsNoLongerOpen).
 // When the repo was listed is per repo, in the data meta
 // (getLiveSummaryMeta), not per row: a listing that changes nothing for a
 // row leaves the row as it was, so the page doesn't refetch every open row
@@ -268,6 +269,30 @@ const findPrsWithChangedThreads = (entries, repo, repoSummary) => {
         stored !== undefined &&
         String(stored) !== String(listed.openConversationCount)
       );
+    })
+    .map((entry) => Number(entry.prNumber || entry.data?.number))
+    .filter((number) => Number.isInteger(number) && number > 0);
+};
+
+// The open and draft rows of a repo that a complete listing, made after
+// they were written, doesn't have: merged or closed since - the rows
+// applyLiveSummaryToEntry marks "No longer open". The quick check queues
+// them as merged/closed changes, so they're fetched again whenever they
+// merged: its listing of merged PRs only goes back a few days of merges, so
+// one merged before then (while the app was off, say) waited for a full
+// refresh to notice.
+const findPrsNoLongerOpen = (entries, repo, repoSummary) => {
+  const checkedAtMs = toMs(repoSummary?.checkedAt);
+  if (!repoSummary?.prs || repoSummary.complete !== true || !Number.isFinite(checkedAtMs)) {
+    return [];
+  }
+  return asArray(entries)
+    .filter((entry) => {
+      const section = asString(entry?.section);
+      if (asString(entry?.repo) !== repo || (section !== "open" && section !== "draft")) {
+        return false;
+      }
+      return checkedAtMs > toMs(entry.fetchedAt || entry.updatedAt) && !repoSummary.prs[asString(entry.prNumber || entry.data?.number)];
     })
     .map((entry) => Number(entry.prNumber || entry.data?.number))
     .filter((number) => Number.isInteger(number) && number > 0);
@@ -408,5 +433,6 @@ module.exports = {
   normalizeLiveSummaryPr,
   applyLiveSummaryToEntry,
   findPrsWithChangedThreads,
+  findPrsNoLongerOpen,
   createViewPrsLiveSummaryHelpers,
 };
