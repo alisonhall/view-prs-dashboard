@@ -223,6 +223,9 @@ const viewPrsSchedulerState = {
   // PRs fetched on their own that their last run couldn't fetch:
   // "repo#number" => since when (recordUnreachablePrs).
   unreachablePrSince: {},
+  // Open rows the quick check queued as no longer open: "repo#number" =>
+  // when (takeNoLongerOpenToQueue).
+  noLongerOpenQueuedAt: {},
   // { [repo | "*"]: iso } - each repo's last manual full refresh, which its
   // auto refresh waits out (see setLastManualRunNow).
   manualFullRunAtByRepo: {},
@@ -1958,6 +1961,38 @@ const getViewPrsDataManifest = (dataOverride = null) => {
   }
 };
 
+// How long before a PR queued as no longer open is queued again: one that
+// can't be fetched (access lost, the repo moved) would otherwise fail a run
+// of its repo after every quick check, and its circuit breaker would pause
+// the whole repo. A merged one is fetched with its first, and isn't open
+// any more.
+const NO_LONGER_OPEN_REQUEUE_MS = 6 * 60 * 60 * 1000;
+
+// Of a repo's open rows the listing no longer has, those to queue now: not
+// queued in the last NO_LONGER_OPEN_REQUEUE_MS - and records when. The
+// repo's other entries go (those PRs are open again, or fetched), saved
+// with the scheduler state so a restart doesn't queue them all again.
+const takeNoLongerOpenToQueue = (repo, numbers, nowMs = Date.now()) => {
+  const before = viewPrsSchedulerState.noLongerOpenQueuedAt || {};
+  const next = Object.fromEntries(Object.entries(before).filter(([key]) => !key.startsWith(`${repo}#`)));
+  const toQueue = [];
+  numbers.map(String).forEach((number) => {
+    const key = `${repo}#${number}`;
+    const queuedAtMs = Date.parse(String(before[key] || ''));
+    if (Number.isFinite(queuedAtMs) && nowMs - queuedAtMs < NO_LONGER_OPEN_REQUEUE_MS) {
+      next[key] = before[key];
+      return;
+    }
+    next[key] = new Date(nowMs).toISOString();
+    toQueue.push(number);
+  });
+  if (JSON.stringify(next) !== JSON.stringify(before)) {
+    viewPrsSchedulerState.noLongerOpenQueuedAt = next;
+    persistViewPrsSchedulerState();
+  }
+  return toQueue;
+};
+
 // The PR numbers a run of chosen PRs couldn't fetch: its "Could not fetch
 // PR(s): 9,10" line, which it prints at its end - so having it, the run
 // got through the rest.
@@ -2240,7 +2275,12 @@ const runViewPrsAutoRefresh = async ({
           await runScriptForRepo(targetPrNumbers);
         } catch (failure) {
           missingPrNumbers = targetPrNumbers ? parseUnfetchedPrNumbers(failure) : [];
-          if (missingPrNumbers.length > 0) recordUnreachablePrs(repo, targetPrNumbers, missingPrNumbers);
+          if (missingPrNumbers.length > 0) {
+            recordUnreachablePrs(repo, targetPrNumbers, missingPrNumbers);
+            // Off the queue, so the next run of its repo doesn't fail on
+            // them again - fetched once more when a new change queues them.
+            clearPendingNumbersForRepo(repo, missingPrNumbers);
+          }
           if (missingPrNumbers.length === 0 || missingPrNumbers.length >= targetPrNumbers.length) {
             throw failure;
           }
@@ -2756,7 +2796,7 @@ const runViewPrsQuickCheck = async ({
             const rawEntries = Object.values(JSON.parse(fs.readFileSync(viewPrsDataFile, "utf8"))?.byPrNumber || {});
             const repoSummary = readLiveSummary().byRepo[repo];
             threadChangedNumbers = findPrsWithChangedThreads(rawEntries, repo, repoSummary);
-            noLongerOpenNumbers = findPrsNoLongerOpen(rawEntries, repo, repoSummary);
+            noLongerOpenNumbers = takeNoLongerOpenToQueue(repo, findPrsNoLongerOpen(rawEntries, repo, repoSummary));
           } catch (_error) {
             // No data file yet, or unreadable: nothing to compare.
           }

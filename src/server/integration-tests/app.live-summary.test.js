@@ -282,20 +282,33 @@ describe("quick checks list each repo's open PRs", () => {
       JSON.stringify({ byRepo: { "acme/api": { checkedAt: "2026-10-31T10:00:00.000Z", complete: true, prs: { 12: { number: "12" } } } } }),
     );
     viewPrsSchedulerState.pendingByRepo = {};
+    viewPrsSchedulerState.noLongerOpenQueuedAt = {};
     const savedTick = appModule.runDispatcherTick;
     appModule.runDispatcherTick = async () => {};
     const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
     let result;
+    let again;
+    let afterCoolOff;
     try {
       result = await runViewPrsQuickCheck({ repo: "acme/api" });
+      expect(viewPrsSchedulerState.pendingByRepo["acme/api"]).toMatchObject({ open: [], mergedClosed: ["20"] });
+      // Its run couldn't fetch it, and took it off the queue: the next
+      // check doesn't queue it again straight away...
+      viewPrsSchedulerState.pendingByRepo = {};
+      again = await runViewPrsQuickCheck({ repo: "acme/api" });
+      // ...only once 6 hours have passed.
+      viewPrsSchedulerState.noLongerOpenQueuedAt["acme/api#20"] = new Date(Date.now() - 7 * 60 * 60 * 1000).toISOString();
+      afterCoolOff = await runViewPrsQuickCheck({ repo: "acme/api" });
     } finally {
       warn.mockRestore();
       appModule.runDispatcherTick = savedTick;
+      viewPrsSchedulerState.noLongerOpenQueuedAt = {};
       writeData();
       fs.rmSync(liveSummaryFile, { force: true });
     }
     expect(result).toMatchObject({ newPendingOpenCount: 0, newPendingMergedClosedCount: 1 });
-    expect(viewPrsSchedulerState.pendingByRepo["acme/api"]).toMatchObject({ open: [], mergedClosed: ["20"] });
+    expect(again).toMatchObject({ newPendingMergedClosedCount: 0 });
+    expect(afterCoolOff).toMatchObject({ newPendingMergedClosedCount: 1 });
   });
 
   test("VIEW_PRS_DISABLE_LIVE_SUMMARY turns it off", async () => {

@@ -407,6 +407,19 @@ describe("a GitHub Enterprise repo's other gh calls, and the PRs that couldn't b
     expect(Object.keys(meta.sources.unreachable)).toContain("acme-org/picked#4");
   });
 
+  test("leave the queue, so the repo's next run doesn't fail on them again", async () => {
+    viewPrsSchedulerState.pendingByRepo["acme-org/picked"] = { open: [], mergedClosed: ["4"] };
+    appModule.runViewPrsScript = async (args) => {
+      scriptCalls.push({ args, env: {} });
+      throw Object.assign(new Error("Command exited with code 1"), { stderr: "Could not fetch PR(s): 4\n" });
+    };
+
+    await runViewPrsAutoRefresh({ skipCooldownChecks: true, reposOverride: ["acme-org/picked"] });
+
+    const pending = viewPrsSchedulerState.pendingByRepo["acme-org/picked"];
+    expect([...(pending?.open || []), ...(pending?.mergedClosed || [])]).not.toContain("4");
+  });
+
   test("are saved with the scheduler state, so a restart keeps them, and leave the page once removed", async () => {
     appModule.runViewPrsScript = async (args) => {
       scriptCalls.push({ args, env: {} });
