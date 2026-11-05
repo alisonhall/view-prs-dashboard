@@ -183,6 +183,11 @@
   color: var(--color-surface);
 }
 
+/* Activity with a problem (a repo paused, live updates lost). */
+.app-header-count[data-tone="danger"] {
+  background: var(--color-danger);
+}
+
 /* The header's popovers (ActivityPopover.tsx, AddPrPopover.tsx -
    useHeaderPopover): fixed under their button, kept in the window; their
    top and max height are set inline. Above the page, below the Settings

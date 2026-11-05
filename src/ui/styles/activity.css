@@ -1,7 +1,6 @@
 /*
- * The activity popover's sections (ActivityDrawer*Section) and the
- * scheduler badges it shares with Backfill. Moved from index.css (phase
- * 10-1).
+ * The scheduler badges (Settings › Backfill), and the activity popover's
+ * lists (shell/ActivityPopover.tsx). Moved from index.css (phase 10-1).
  */
 
 .scheduler-badges {
@@ -66,276 +65,158 @@
   }
 }
 
-.activity-drawer-section {
-  margin-bottom: 20px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid var(--color-border);
+
+/* The activity popover's lists (shell/ActivityPopover.tsx): Problems, Now,
+   Up next, Just finished. */
+.activity-section + .activity-section {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border-subtle);
 }
 
-.activity-drawer-section-title {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--color-text);
-  margin: 0 0 4px;
-}
-
-.activity-drawer-section-caption {
-  font-size: 11px;
-  color: var(--color-text-muted);
-  margin: 0 0 8px;
-}
-
-.activity-drawer-connection-banner {
-  font-size: 11px;
-  color: var(--color-attention-text);
-  background: var(--color-attention-subtle);
-  border: 1px solid var(--color-pending);
-  border-radius: 6px;
-  padding: 4px 8px;
-  margin-bottom: 8px;
-}
-
-.activity-drawer-job-row {
-  margin-bottom: 10px;
-}
-
-.activity-drawer-job-row-header {
+.activity-section-heading {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
+  gap: var(--space-2);
 }
 
-.activity-drawer-job-label {
-  font-size: 12px;
+.activity-section-title {
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+}
+
+.activity-list {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.activity-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+}
+
+.activity-item-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--space-2);
+  min-width: 0;
+}
+
+.activity-item-label {
   font-weight: 600;
   color: var(--color-text);
 }
 
-.activity-drawer-job-status {
-  font-size: 11px;
-  font-weight: 600;
-  padding: 2px 6px;
-  border-radius: 999px;
+.activity-item-detail {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--color-text-muted);
 }
 
-.activity-drawer-job-status.is-running {
+.activity-item-meta {
+  display: flex;
+  flex: none;
+  align-items: baseline;
+  gap: var(--space-2);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+}
+
+.activity-origin {
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-hover);
+}
+
+.activity-origin[data-origin='you'] {
   background: var(--color-accent-subtle);
   color: var(--color-accent-text);
 }
 
-.activity-drawer-job-status.is-idle {
-  background: var(--color-surface-hover);
-  color: var(--color-text-muted);
+.activity-elapsed {
+  font-variant-numeric: tabular-nums;
 }
 
-.activity-drawer-job-waiting {
-  font-size: 11px;
+.activity-elapsed[data-severity='warning'] {
   color: var(--color-attention-text);
-  margin-top: 2px;
 }
 
-.activity-drawer-job-detail {
-  font-size: 11px;
-  color: var(--color-text-muted);
-  margin-top: 2px;
-}
-
-.activity-drawer-job-skip {
-  font-size: 11px;
-  color: var(--color-text-muted);
-  margin-top: 2px;
-  font-style: italic;
-}
-
-.activity-drawer-badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.activity-drawer-details-text {
-  font-size: 11px;
-  color: var(--color-text-muted);
-  white-space: pre-wrap;
-  margin-top: 6px;
-}
-
-.activity-drawer-batch {
-  margin-bottom: 12px;
-}
-
-.activity-drawer-batch-header {
-  font-size: 12px;
+.activity-elapsed[data-severity='critical'] {
+  color: var(--color-danger);
   font-weight: 600;
-  color: var(--color-text);
-  margin-bottom: 4px;
 }
 
-.activity-drawer-batch-chunks {
-  margin: 0;
-  padding-left: 18px;
-}
-
-.activity-drawer-batch-chunk {
-  font-size: 11px;
-  color: var(--color-text-muted);
-  margin-bottom: 2px;
-}
-
-.activity-drawer-batch-chunk.is-done {
+.activity-outcome {
+  width: 1em;
   color: var(--color-success);
 }
 
-.activity-drawer-batch-chunk.is-in-flight {
-  color: var(--color-accent-text);
-  font-weight: 600;
-}
-
-.activity-drawer-batch-chunk.is-failed {
+.activity-item[data-outcome='failed'] .activity-outcome,
+.activity-item[data-outcome='failed'] .activity-item-detail {
   color: var(--color-danger);
-  font-weight: 600;
 }
 
-.activity-drawer-batch-failed-count {
-  color: var(--color-danger);
-  font-weight: 600;
-}
-
-.activity-drawer-recent-group {
-  margin-bottom: 10px;
-}
-
-.activity-drawer-recent-group-label {
-  font-size: 11px;
-  font-weight: 600;
+.activity-item[data-outcome='done'] .activity-outcome,
+.activity-item[data-outcome='skipped'] .activity-outcome {
   color: var(--color-text-muted);
-  margin-bottom: 2px;
 }
 
-.activity-drawer-recent-list {
+.activity-empty {
   margin: 0;
-  padding-left: 18px;
-}
-
-.activity-drawer-recent-item {
-  font-size: 11px;
-  color: var(--color-text);
-  margin-bottom: 2px;
-}
-
-.activity-drawer-recent-item.is-failed {
-  color: var(--color-danger);
-}
-
-.activity-drawer-dispatcher-legend {
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   color: var(--color-text-muted);
-  margin: 0 0 6px;
-  cursor: help;
-  border-bottom: 1px dotted var(--color-text-muted);
-  display: inline-block;
 }
 
-.activity-drawer-dispatcher-queue {
-  margin: 0;
-  padding-left: 18px;
-}
-
-.activity-drawer-dispatcher-entry {
-  font-size: 11px;
-  color: var(--color-text-muted);
-  margin-bottom: 4px;
+.activity-problem {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
   align-items: baseline;
-}
-
-.activity-drawer-dispatcher-entry-repo {
-  font-weight: 600;
-  color: var(--color-text);
-}
-
-.activity-drawer-dispatcher-entry-priority {
-  color: var(--color-text-muted);
-  cursor: help;
-  border-bottom: 1px dotted var(--color-text-muted);
-}
-
-.activity-drawer-dispatcher-entry-status {
-  cursor: help;
-  border-bottom: 1px dotted transparent;
-}
-
-.activity-drawer-dispatcher-entry-due {
-  color: var(--color-text-muted);
-}
-
-.activity-drawer-dispatcher-entry-bump {
-  font-size: 11px;
-  padding: 1px 6px;
-  border: 1px solid var(--color-text-muted);
-  border-radius: 4px;
-  background: var(--color-surface);
-  color: var(--color-text);
-  cursor: pointer;
-}
-
-.activity-drawer-dispatcher-entry-bump:hover:not(:disabled) {
-  background: var(--color-surface-inset);
-}
-
-.activity-drawer-dispatcher-entry-bump:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
-
-.activity-drawer-dispatcher-entry.is-running .activity-drawer-dispatcher-entry-status {
-  color: var(--color-accent-text);
-  font-weight: 600;
-}
-
-.activity-drawer-dispatcher-entry.is-due .activity-drawer-dispatcher-entry-status {
-  color: var(--color-pending);
-  font-weight: 600;
-}
-
-.activity-drawer-dispatcher-entry.is-circuit-open .activity-drawer-dispatcher-entry-status {
-  color: var(--color-danger);
-  font-weight: 600;
-}
-
-.activity-drawer-dispatcher-entry.is-scheduled .activity-drawer-dispatcher-entry-status {
-  color: var(--color-text-muted);
-}
-
-.activity-drawer-circuit-breaker-repos {
-  margin: 0 0 8px;
-  padding-left: 18px;
-  font-size: 11px;
-  color: var(--color-pending);
-  font-weight: 600;
-}
-
-.activity-drawer-circuit-breaker-repo {
-  margin-bottom: 2px;
-}
-
-.activity-drawer-circuit-breaker-reset {
-  font-size: 11px;
-  padding: 3px 8px;
-  border: 1px solid var(--color-danger);
-  border-radius: 4px;
-  background: var(--color-surface);
-  color: var(--color-danger);
-  cursor: pointer;
-}
-
-.activity-drawer-circuit-breaker-reset:hover:not(:disabled) {
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
   background: var(--color-danger-subtle);
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
 }
 
-.activity-drawer-circuit-breaker-reset:disabled {
-  opacity: 0.6;
+.activity-action,
+.activity-link {
+  flex: none;
+  padding: 1px 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+}
+
+.activity-link {
+  border-color: transparent;
+  background: none;
+  color: var(--color-accent-text);
+}
+
+.activity-action:hover,
+.activity-link:hover {
+  text-decoration: underline;
+}
+
+.activity-action:disabled {
   cursor: default;
+  opacity: 0.6;
 }

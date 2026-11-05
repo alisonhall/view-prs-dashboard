@@ -358,6 +358,12 @@ test("the activity popover closes when the page scrolls, but not when its own co
   await page.getByRole("banner").getByRole("button", { name: /^Activity/ }).click();
   const activityPanel = page.getByRole("dialog", { name: "Activity", exact: true });
   const content = activityPanel.locator(".activity-popover-content");
+  // Idle, it's too short to scroll: made long, as a busy one gets.
+  await content.evaluate((element) => {
+    const filler = document.createElement("div");
+    filler.style.height = "1200px";
+    element.append(filler);
+  });
 
   const contentBox = await content.boundingBox();
   await page.mouse.move(contentBox.x + contentBox.width / 2, contentBox.y + contentBox.height / 2);
@@ -3709,7 +3715,7 @@ test("Snackbar shows a real failure as an error and a real poll failure as a war
   await expect(snackbar).toBeHidden();
 });
 
-test("the activity popover opens, connects over real SSE (not the jsdom-faked EventSource), and shows all sections", async ({ page }) => {
+test("the activity popover opens, connects over real SSE (not the jsdom-faked EventSource), and shows what's running and next", async ({ page }) => {
   // Activity drawer feature (see REACT_MIGRATION_PLAN.md) - a real gap this
   // closes: every other test for this feature (JobEventsProvider.test.jsx,
   // ActivityPopover.test.tsx, etc.) runs under jsdom with a hand-rolled fake
@@ -3741,27 +3747,16 @@ test("the activity popover opens, connects over real SSE (not the jsdom-faked Ev
   const buttonBox = await activityButton.boundingBox();
   const panelBox = await activityPanel.boundingBox();
   expect(panelBox.y).toBeGreaterThanOrEqual(buttonBox.y + buttonBox.height);
-  await expect(activityPanel.getByText("Scheduled background jobs")).toBeVisible();
-  await expect(activityPanel.getByRole("heading", { name: "Backfill" })).toBeVisible();
-  await expect(activityPanel.getByText("In-flight user actions")).toBeVisible();
+  await expect(activityPanel.getByRole("region", { name: "Now", exact: true })).toBeVisible();
 
-  // No "connecting/reconnecting/offline/unsupported" banner should still be
-  // showing a few seconds after open - the real EventSource must have
-  // actually reached `open`, not be stuck retrying or unsupported.
-  await expect(activityPanel.getByRole("status", { name: "Connection status", exact: true })).toHaveCount(0, { timeout: 10000 });
-
-  // Matched by each row's own label specifically (not the row's full text
-  // content) - the Quick check row's "Waiting on auto refresh..." copy
-  // would otherwise ambiguously match a loose "Auto refresh" text filter.
-  for (const jobLabel of ["Auto refresh", "Quick check", "Merged/closed drain"]) {
-    await expect(
-      activityPanel.getByRole("group", { name: jobLabel, exact: true }),
-    ).toBeVisible();
-  }
+  // No live-updates problem should still be showing a few seconds after
+  // open - the real EventSource must have actually reached `open`, not be
+  // stuck retrying or unsupported.
+  await expect(activityPanel.getByRole("region", { name: "Problems", exact: true })).toHaveCount(0, { timeout: 10000 });
 
   // Escape closes it, focus back on its button; a click outside closes it.
   await page.keyboard.press("Escape");
-  await expect(page.getByText("Scheduled background jobs")).toBeHidden();
+  await expect(activityPanel).toBeHidden();
   await expect(activityButton).toBeFocused();
   await activityButton.click();
   await expect(activityPanel).toBeVisible();
@@ -3790,10 +3785,8 @@ test("a Quick check pushes a real 'running' state into the open activity popover
   await waitForPrTable(page);
 
   await page.getByRole("banner").getByRole("button", { name: /^Activity/ }).click();
-  const quickCheckRow = page
-    .getByRole("dialog", { name: "Activity", exact: true })
-    .getByRole("group", { name: "Quick check", exact: true });
-  await expect(quickCheckRow.getByRole("status")).toHaveText("Idle");
+  const now = page.getByRole("dialog", { name: "Activity", exact: true }).getByRole("region", { name: "Now", exact: true });
+  await expect(now.getByRole("listitem").filter({ hasText: "Quick check" })).toHaveCount(0);
 
   // Starts it as Run & check's Quick check button does (the same POST, an
   // empty PR-numbers field sending {}), with the popover kept open: a click
@@ -3804,7 +3797,7 @@ test("a Quick check pushes a real 'running' state into the open activity popover
     void fetch("/view-prs/quick-check", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
   });
 
-  await expect(quickCheckRow.getByRole("status")).toHaveText("Running", {
+  await expect(now.getByRole("listitem").filter({ hasText: "Quick check" })).toContainText("Background", {
     timeout: 10000,
   });
 });

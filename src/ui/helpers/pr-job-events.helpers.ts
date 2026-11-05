@@ -16,6 +16,9 @@ export interface JobState {
   lastSkip: { reason: string | null; at: string } | null;
   // Only quickCheck: the job it's waiting for, when deferred.
   waitingOn?: { job: string | null; since: string } | null;
+  // While running: its start event's detail (the repos it's working on,
+  // for the activity popover). Not in the connect-time snapshot.
+  runningDetail?: Record<string, unknown> | null;
 }
 
 export interface FinishedJob {
@@ -170,6 +173,15 @@ const createPrJobEventsHelpers = ({ now }: { now?: () => string } = {}) => {
       },
     };
 
+    // A job the snapshot says is idle isn't working on anything any more;
+    // one it says is running that wasn't before (a reconnect mid-run)
+    // started at a time - and on repos - the snapshot doesn't say, not
+    // those of an earlier run.
+    (Object.keys(jobs) as JobKey[]).forEach((key) => {
+      if (jobs[key].status !== "running") jobs[key] = { ...jobs[key], runningDetail: null };
+      else if (state.jobs[key].status !== "running") jobs[key] = { ...jobs[key], startedAt: null, runningDetail: null };
+    });
+
     return {
       ...state,
       connection: "open",
@@ -225,6 +237,7 @@ const createPrJobEventsHelpers = ({ now }: { now?: () => string } = {}) => {
           ...previousJob,
           status: "running",
           startedAt: at,
+          runningDetail: envelope.detail || null,
           ...(isQuickCheck ? { waitingOn: null } : {}),
         };
         break;
@@ -232,6 +245,7 @@ const createPrJobEventsHelpers = ({ now }: { now?: () => string } = {}) => {
         nextJob = {
           ...previousJob,
           status: "idle",
+          runningDetail: null,
           lastFinishedAt: at,
           lastOk: envelope.ok ?? null,
           lastError: envelope.detail?.error ?? null,

@@ -1,14 +1,12 @@
 import { createContext, useContext } from 'react';
-import type { ActivityBadge } from '../helpers/pr-activity-badges.helpers.ts';
 import type { SchedulerSnapshot } from '../helpers/pr-job-events.helpers.ts';
 
 /**
  * Request activity, published by <RequestActivityProvider />:
  * `beginRequestActivity(key)` starts tracking an in-flight request (and
- * returns the function that ends it), `renderRequestActivity()` refreshes
- * the badges, and `renderSchedulerStatus(scheduler)` records the scheduler
- * state the "Auto run" badge reads and announces the scheduler's active PRs
- * to the table.
+ * returns the function that ends it), `renderRequestActivity()` publishes
+ * the requests in flight again, and `renderSchedulerStatus(scheduler)`
+ * announces the scheduler's active PRs to the table.
  *
  * Its own Context rather than another field of `usePrData()`, on purpose:
  * the writers that call these (useRunScript/useAckLabelActions/
@@ -56,9 +54,9 @@ export function useRequestActivity(): RequestActivityValue {
 }
 
 /**
- * What the activity popover displays - the current request-activity badges
- * and the recent finished requests. Separate from the functions above
- * because this changes on every activity tick: only its readers re-render,
+ * What the activity popover displays - the requests in flight from this
+ * tab and the recent finished ones. Separate from the functions above
+ * because this changes on every request: only its readers re-render,
  * never the many callers of the stable functions.
  */
 export interface RecentRequestActivity {
@@ -67,13 +65,28 @@ export interface RecentRequestActivity {
   finishedAt: string;
 }
 
+// When a request has run long enough to warn, then to look stuck.
+export interface RequestActivityThresholds {
+  warnMs: number;
+  criticalMs: number;
+}
+
+// One kind of request in flight: how many, and since when (the oldest).
+export interface ActiveRequestActivity {
+  key: string;
+  label: string;
+  count: number;
+  startedAtMs: number;
+  thresholds: RequestActivityThresholds;
+}
+
 export interface RequestActivityDisplayValue {
-  requestActivityBadges: ActivityBadge[];
+  activeRequests: ActiveRequestActivity[];
   recentRequestActivity: RecentRequestActivity[];
 }
 
 export const RequestActivityDisplayContext = createContext<RequestActivityDisplayValue>({
-  requestActivityBadges: [],
+  activeRequests: [],
   recentRequestActivity: [],
 });
 

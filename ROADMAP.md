@@ -89,7 +89,7 @@ Improvements noted once PRs could come from several repos and sources (subscript
 
 #### Header, Activity and checks
 
-- [ ] Reorganize the Activity popover so it's clear what's running now and what's coming up next, whether it's a background job or something you started.
+- [x] ~~Reorganize the Activity popover so it's clear what's running now and what's coming up next, whether it's a background job or something you started.~~ - done (2026-11-05): `Problems` (only when there are some), `Now` (everything running, background or yours, with repos and elapsed times), `Up next` (the dispatcher's queue in order, `due now`/`in 6m`, `Run now`) and `Just finished` (jobs and your requests, newest first, with errors and skip reasons). The button turns red with a problem.
 - [ ] Have the server report progress on long requests, shown in Activity: `Fetch older merged PRs` refreshes up to 30 PRs one at a time, and today Activity only knows it started ("Fetch older merged PRs (4m)"), not how far it's got ("12 of 30"). Announced as a server job, it would also show in every open tab - a request's tracking is per tab now, so only the tab it was started from lists it. Its badge warns after 10 minutes and turns critical after 20 (other requests: 2 and 6), as several minutes is normal for it.
 - [ ] Move the header's `Quick check all` button into Settings › Run & check.
 - [ ] Add a `Quick check open and latest merged` button: quick-check the open PRs plus the most recently merged ones, not every stored row.
