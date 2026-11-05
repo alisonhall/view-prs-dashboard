@@ -46,7 +46,8 @@ export const FILTER_SEARCH_DEBOUNCE_MS = 150;
 // integration-tests/index.html.test.js's isolated PrTableApp mount, which
 // deliberately never mounts one).
 const DEFAULT_FILTER_STATE_VALUES: FilterValues = {
-  scopeMode: 'all',
+  onlyNeedsAttention: false,
+  onlyThreadsToCheck: false,
   filterPrNumbers: '',
   alwaysShowInReview: false,
   filterCustomComments: '',
@@ -64,16 +65,12 @@ const DEFAULT_FILTER_STATE_VALUES: FilterValues = {
  * stable-children reconciliation-bailout bug NeedsAttentionProvider.tsx
  * had to work around (see its comment).
  *
- * Composes the pure row-filtering helpers (resolveScopedRows/
+ * Composes the pure row-filtering helpers (narrowRows/
  * buildRowFilterCriteria/applyRowUiFilters/rowMatchesUiFilters), with the
  * actor-identity pieces (collectAssignedUsers/collectApproversFromRow/
  * getPreferredActorKey) from useActorIdentity() and attentionConfig/
- * entryNeedsAttention/entryHasYourLastActivity from useNeedsAttention().
+ * entryNeedsAttention from useNeedsAttention().
  * Per-entry results are cached across renders (createEntryDerivedCache).
- *
- * Returns `{ visiblePrKeys, scopeLabel }`: `scopeLabel` (e.g. "all
- * stored rows"/"needs attention rows") falls out of the same scope pass,
- * naming the scope that applied.
  *
  * `filterSearch` (the search box) is debounced the same way.
  *
@@ -90,7 +87,7 @@ export function useFilteredPrRows(): VisiblePrNumbersResult {
   const { payload } = usePrData();
   const filterState = useContext(FilterStateContext);
   const values = filterState?.values || DEFAULT_FILTER_STATE_VALUES;
-  const { attentionConfig, entryNeedsAttention, entryHasYourLastActivity } = useNeedsAttention();
+  const { attentionConfig, entryNeedsAttention } = useNeedsAttention();
   const { checkedByListId } = useRowFilterSelection();
   const { normalizeActorLogin, resolveActorDisplayName, getPreferredActorKey, getEffectiveViewerLogin } = useActorIdentity();
   const debouncedFilterPrNumbers = useDebouncedValue(values.filterPrNumbers, FILTER_PR_NUMBERS_DEBOUNCE_MS);
@@ -106,9 +103,9 @@ export function useFilteredPrRows(): VisiblePrNumbersResult {
   const threadChecksByRepo = payload?.threadChecksByRepo;
   const actorsMap = payload?.actorsMap;
   const helpers = useMemo(() => {
-    const { resolveScopedRows, normalizeSelectedScope } = createPrScopeSelectionHelpers({
+    const { narrowRows } = createPrScopeSelectionHelpers({
       entryNeedsAttention,
-      entryHasYourLastActivity,
+      isInReviewEnabled,
       entryHasThreadsToCheck: (entry) => {
         const pr = entry?.data || {};
         return (
@@ -151,15 +148,13 @@ export function useFilteredPrRows(): VisiblePrNumbersResult {
       getOrComputeLatest: cache.getOrComputeLatest,
     });
     return createPrVisiblePrNumbersHelpers({
-      resolveScopedRows,
-      normalizeSelectedScope,
+      narrowRows,
       buildRowFilterCriteria,
       applyRowUiFilters,
     });
   }, [
     cache,
     entryNeedsAttention,
-    entryHasYourLastActivity,
     normalizeActorLogin,
     resolveActorDisplayName,
     getPreferredActorKey,
@@ -172,7 +167,8 @@ export function useFilteredPrRows(): VisiblePrNumbersResult {
     () =>
       helpers.computeVisiblePrNumbers({
         payload,
-        scopeMode: values.scopeMode,
+        onlyNeedsAttention: Boolean(values.onlyNeedsAttention),
+        onlyThreadsToCheck: Boolean(values.onlyThreadsToCheck),
         filterPrNumbersRaw: debouncedFilterPrNumbers,
         attentionConfig,
         rowFilterSelections: {

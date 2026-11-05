@@ -27,7 +27,6 @@ const { useFilteredPrRows, useVisiblePrKeys, FILTER_SEARCH_DEBOUNCE_MS } = requi
 
 // The hook's own fallback shape (it isn't exported) - just the fields it reads.
 const BASE_FILTER_VALUES = {
-  scopeMode: 'all',
   filterPrNumbers: '',
   alwaysShowInReview: false,
   filterCustomComments: '',

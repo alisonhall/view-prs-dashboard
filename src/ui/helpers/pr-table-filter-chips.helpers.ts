@@ -14,7 +14,8 @@ export interface FilterChip {
 }
 
 export interface TableFilterChipsInput {
-  scopeMode?: string;
+  onlyNeedsAttention?: boolean;
+  onlyThreadsToCheck?: boolean;
   filterPrNumbers?: string;
   includeLabels?: string[];
   excludeLabels?: string[];
@@ -54,7 +55,8 @@ const createPrTableFilterChipsHelpers = () => {
     }));
 
   const buildTableFilterChipsViewModel = ({
-    scopeMode,
+    onlyNeedsAttention,
+    onlyThreadsToCheck,
     filterPrNumbers,
     includeLabels,
     excludeLabels,
@@ -75,8 +77,11 @@ const createPrTableFilterChipsHelpers = () => {
       chips.push(fieldChip("filterSearch", `Search: ${String(filterSearch).trim()}`, "filterSearch", ""));
     }
 
-    if (scopeMode && scopeMode !== "all") {
-      chips.push(fieldChip("scopeMode", `Scope: ${scopeMode}`, "scopeMode", "all"));
+    if (onlyNeedsAttention) {
+      chips.push(fieldChip("onlyNeedsAttention", "Needs attention", "onlyNeedsAttention", false));
+    }
+    if (onlyThreadsToCheck) {
+      chips.push(fieldChip("onlyThreadsToCheck", "Conversations resolved for you", "onlyThreadsToCheck", false));
     }
     if (String(filterPrNumbers || "").trim()) {
       chips.push(

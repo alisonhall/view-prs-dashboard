@@ -399,8 +399,9 @@ export function PrTableApp() {
   const checkNeedsAttention = useMemo(() => {
     return (entry: PrEntry) => {
       // The "In Review" checkbox is a manual, user-set flag (see
-      // isInReviewEnabled/AlwaysShowInReviewCheckbox) and deliberately does
-      // NOT feed into needs-attention - it's independent of whether the PR
+      // isInReviewEnabled, and the filter bar's "Always show PRs in
+      // review") and deliberately does NOT feed into needs-attention - it's
+      // independent of whether the PR
       // actually has unreviewed activity per the attention rules.
       try {
         return entryNeedsAttention(entry, attentionConfig);

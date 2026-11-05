@@ -6,11 +6,9 @@ import { buildPrEntryKey } from "./pr-entry-keys.helpers.ts";
 import { parseSearchTerms } from "./pr-row-search.helpers.ts";
 
 // Which PRs the table shows for the current filters, computed reactively
-// (useVisiblePrNumbers wires it to Context). Composes the injected scope
-// and row-filter helpers (resolveScopedRows/buildRowFilterCriteria/
-// applyRowUiFilters) rather than reimplementing them. Returns
-// `{ visiblePrKeys, scopeLabel }`: the scope label names the scope that
-// applied, and falls out of the same scope-resolution pass.
+// (useVisiblePrNumbers wires it to Context). Composes the injected
+// narrowing and row-filter helpers (narrowRows/buildRowFilterCriteria/
+// applyRowUiFilters) rather than reimplementing them.
 export interface RowFilterSelections {
   includeLabels?: string[];
   excludeLabels?: string[];
@@ -19,26 +17,27 @@ export interface RowFilterSelections {
   approverLogins?: string[];
 }
 
-interface ScopedRowsInput {
-  rowsForRepo: PrEntry[];
-  ignoreScopeForPrNumberFilter: boolean;
-  runStamp: string;
-  runStampsByRepo: Record<string, string>;
-  useLastRunScope: boolean;
-  selectedScope: string;
+interface NarrowRowsInput {
+  rows: PrEntry[];
+  picksPrs: boolean;
+  alwaysShowInReview: boolean;
+  onlyNeedsAttention: boolean;
+  onlyThreadsToCheck: boolean;
   attentionConfig: AttentionConfig | undefined;
 }
 
 export interface PrVisiblePrNumbersDeps {
-  resolveScopedRows?: (input: ScopedRowsInput) => { rows: PrEntry[]; scopeLabel: string };
-  normalizeSelectedScope?: (scopeMode: unknown) => string;
+  narrowRows?: (input: NarrowRowsInput) => PrEntry[];
   buildRowFilterCriteria?: (input: RowFilterCriteriaInput) => RowFilterCriteria;
   applyRowUiFilters?: (rows: PrEntry[], criteria: RowFilterCriteria) => PrEntry[];
 }
 
 export interface VisiblePrNumbersInput {
   payload?: PrDataPayload | null;
-  scopeMode?: string;
+  // The filter bar's "Only PRs that need attention", and Conversations'
+  // "Resolved for you to check".
+  onlyNeedsAttention?: boolean;
+  onlyThreadsToCheck?: boolean;
   filterPrNumbersRaw?: string;
   attentionConfig?: AttentionConfig;
   rowFilterSelections?: RowFilterSelections;
@@ -56,28 +55,19 @@ export interface VisiblePrNumbersResult {
   // Each shown row's repo-and-number key ("owner/repo#123"): a bare
   // number would also match another repo's PR with it.
   visiblePrKeys: string[];
-  scopeLabel: string;
-  // Every stored row, before scope and filters (the filter bar's "of M").
+  // Every stored row, before any filter (the filter bar's "of M").
   totalCount: number;
   // The search box's words, as applied.
   searchTerms: string[];
 }
 
 const createPrVisiblePrNumbersHelpers = ({
-  resolveScopedRows,
-  normalizeSelectedScope,
+  narrowRows,
   buildRowFilterCriteria,
   applyRowUiFilters,
 }: PrVisiblePrNumbersDeps = {}) => {
-  const resolveScopedRowsSafe =
-    typeof resolveScopedRows === "function"
-      ? resolveScopedRows
-      : ({ rowsForRepo }: ScopedRowsInput) => ({
-          rows: Array.isArray(rowsForRepo) ? rowsForRepo : [],
-          scopeLabel: "all stored rows",
-        });
-  const normalizeSelectedScopeSafe =
-    typeof normalizeSelectedScope === "function" ? normalizeSelectedScope : () => "all";
+  const narrowRowsSafe =
+    typeof narrowRows === "function" ? narrowRows : ({ rows }: NarrowRowsInput) => (Array.isArray(rows) ? rows : []);
   // Without the real builder, the input object stands in for the criteria
   // (as before conversion); only tests rely on this.
   const buildRowFilterCriteriaSafe =
@@ -89,7 +79,8 @@ const createPrVisiblePrNumbersHelpers = ({
 
   const computeVisiblePrNumbers = ({
     payload,
-    scopeMode,
+    onlyNeedsAttention = false,
+    onlyThreadsToCheck = false,
     filterPrNumbersRaw,
     attentionConfig,
     rowFilterSelections = {},
@@ -102,33 +93,19 @@ const createPrVisiblePrNumbersHelpers = ({
     search,
   }: VisiblePrNumbersInput = {}): VisiblePrNumbersResult => {
     const allEntries = Object.values(payload?.byPrNumber || {});
-    // "Last run rows": the rows the last full run saw (lastFullRun - not
-    // lastRun, which a refresh of a few PRs moves too).
-    const lastFullRun = payload?.lastFullRun || payload?.lastRun || null;
-    const runStamp = String(lastFullRun?.updatedAt || "").trim();
-    // Each repo's own last full run: several repos' runs take turns, and
-    // the global one is only the latest's.
-    const runStampsByRepo = Object.fromEntries(
-      Object.entries(payload?.lastFullRunByRepo || {})
-        .map(([repo, run]) => [repo, String(run?.updatedAt || "").trim()])
-        .filter(([, stamp]) => stamp),
-    );
 
     const prFilter = parsePrFilterInput(filterPrNumbersRaw);
     const searchTerms = parseSearchTerms(search);
 
-    const selectedScope = normalizeSelectedScopeSafe(scopeMode);
-    // PRs picked by number (or repo and number) show whatever the scope.
-    const ignoreScopeForPrNumberFilter = prFilterPicksPrs(prFilter);
-    const useLastRunScope = selectedScope === "last-run";
-
-    const { rows: scopedRows, scopeLabel } = resolveScopedRowsSafe({
-      rowsForRepo: allEntries,
-      ignoreScopeForPrNumberFilter,
-      runStamp,
-      runStampsByRepo,
-      useLastRunScope,
-      selectedScope,
+    // PRs picked by number (or repo and number), and those marked In review
+    // with "Always show PRs in review", show whatever the "only" checkboxes
+    // say.
+    const narrowedRows = narrowRowsSafe({
+      rows: allEntries,
+      picksPrs: prFilterPicksPrs(prFilter),
+      alwaysShowInReview: Boolean(alwaysShowInReview),
+      onlyNeedsAttention: Boolean(onlyNeedsAttention),
+      onlyThreadsToCheck: Boolean(onlyThreadsToCheck),
       attentionConfig,
     });
 
@@ -150,7 +127,7 @@ const createPrVisiblePrNumbersHelpers = ({
       searchTerms,
     });
 
-    const filteredRows = applyRowUiFiltersSafe(scopedRows, criteria);
+    const filteredRows = applyRowUiFiltersSafe(narrowedRows, criteria);
 
     const visiblePrKeys = filteredRows
       .map((entry) => {
@@ -159,7 +136,7 @@ const createPrVisiblePrNumbersHelpers = ({
       })
       .filter(Boolean);
 
-    return { visiblePrKeys, scopeLabel, totalCount: allEntries.length, searchTerms };
+    return { visiblePrKeys, totalCount: allEntries.length, searchTerms };
   };
 
   return {

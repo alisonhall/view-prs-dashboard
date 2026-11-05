@@ -1,122 +1,55 @@
 import type { PrEntry } from "../types/pr-data.ts";
 import type { AttentionConfig } from "./pr-needs-attention.helpers.ts";
 
-// The "View scope" filter: normalizes the selected scope and narrows the
-// repo's rows to it (last run, needs attention, needs attention or
-// interacted with, or with conversations you started that someone else
-// resolved, to check), with a label for the applied-filters summary.
-export type SelectedScope =
-  | "all"
-  | "last-run"
-  | "needs-attention"
-  | "needs-attention-or-interacted"
-  | "resolved-for-me";
-
-const SELECTED_SCOPES: readonly string[] = [
-  "all",
-  "last-run",
-  "needs-attention",
-  "needs-attention-or-interacted",
-  "resolved-for-me",
-];
+// The filter bar's "only" checkboxes, which narrow every section's rows:
+// "Only PRs that need attention", and Conversations' "Resolved for you to
+// check" (conversations you started that someone else resolved, until you
+// confirm them). They replaced the "View scope" select (2026-11-05).
 
 export interface PrScopeSelectionDeps {
   entryNeedsAttention?: (entry: PrEntry, attentionConfig: AttentionConfig | undefined) => boolean;
-  entryHasYourLastActivity?: (entry: PrEntry) => boolean;
   // Threads you started that someone else resolved, not confirmed yet.
   entryHasThreadsToCheck?: (entry: PrEntry) => boolean;
+  // Whether a PR is marked In review: with "Always show PRs in review",
+  // it shows whatever these say.
+  isInReviewEnabled?: (row: NonNullable<PrEntry["data"]>) => boolean;
 }
 
-export interface ResolveScopedRowsInput<E extends PrEntry> {
-  rowsForRepo?: E[] | null;
-  ignoreScopeForPrNumberFilter?: boolean;
-  // "Last run rows": a row is one when its updatedAt is its repo's last
-  // full run's (runStampsByRepo), or - for a repo without one, as in data
-  // from before them - runStamp, the latest repo's.
-  runStamp?: string;
-  runStampsByRepo?: Record<string, string>;
-  useLastRunScope?: boolean;
-  selectedScope?: string;
+export interface NarrowRowsInput<E extends PrEntry> {
+  rows?: E[] | null;
+  // PRs picked by number (the PRs filter) show whatever these say, and
+  // so do PRs marked In review with "Always show PRs in review".
+  picksPrs?: boolean;
+  alwaysShowInReview?: boolean;
+  onlyNeedsAttention?: boolean;
+  onlyThreadsToCheck?: boolean;
   attentionConfig?: AttentionConfig;
 }
 
-const createPrScopeSelectionHelpers = ({
-  entryNeedsAttention,
-  entryHasYourLastActivity,
-  entryHasThreadsToCheck,
-}: PrScopeSelectionDeps = {}) => {
-  const entryNeedsAttentionSafe =
-    typeof entryNeedsAttention === "function"
-      ? entryNeedsAttention
-      : () => false;
-  const entryHasYourLastActivitySafe =
-    typeof entryHasYourLastActivity === "function"
-      ? entryHasYourLastActivity
-      : () => false;
-  const entryHasThreadsToCheckSafe =
-    typeof entryHasThreadsToCheck === "function"
-      ? entryHasThreadsToCheck
-      : () => false;
+const createPrScopeSelectionHelpers = ({ entryNeedsAttention, entryHasThreadsToCheck, isInReviewEnabled }: PrScopeSelectionDeps = {}) => {
+  const entryNeedsAttentionSafe = typeof entryNeedsAttention === "function" ? entryNeedsAttention : () => false;
+  const entryHasThreadsToCheckSafe = typeof entryHasThreadsToCheck === "function" ? entryHasThreadsToCheck : () => false;
+  const isInReviewEnabledSafe = typeof isInReviewEnabled === "function" ? isInReviewEnabled : () => false;
 
-  const normalizeSelectedScope = (scopeModeValue: unknown): SelectedScope => {
-    const normalizedValue = String(scopeModeValue || "all")
-      .trim()
-      .toLowerCase();
-    return SELECTED_SCOPES.includes(normalizedValue)
-      ? (normalizedValue as SelectedScope)
-      : "all";
-  };
-
-  const resolveScopedRows = <E extends PrEntry>({
-    rowsForRepo,
-    ignoreScopeForPrNumberFilter,
-    runStamp,
-    runStampsByRepo = {},
-    useLastRunScope,
-    selectedScope,
+  const narrowRows = <E extends PrEntry>({
+    rows,
+    picksPrs,
+    alwaysShowInReview,
+    onlyNeedsAttention,
+    onlyThreadsToCheck,
     attentionConfig,
-  }: ResolveScopedRowsInput<E> = {}): { rows: E[]; scopeLabel: string } => {
-    let rows = Array.isArray(rowsForRepo) ? rowsForRepo : [];
-    let scopeLabel = "all stored rows";
-
-    if (!ignoreScopeForPrNumberFilter) {
-      if (useLastRunScope && (runStamp || Object.keys(runStampsByRepo).length > 0)) {
-        const lastRunRows = rows.filter((entry) => {
-          const stamp = runStampsByRepo[String(entry?.repo || "")] || runStamp;
-          return Boolean(stamp) && entry?.updatedAt === stamp;
-        });
-        if (lastRunRows.length > 0) {
-          rows = lastRunRows;
-          scopeLabel = "last run rows";
-        }
-      } else if (selectedScope === "needs-attention") {
-        rows = rows.filter((entry) =>
-          entryNeedsAttentionSafe(entry, attentionConfig),
-        );
-        scopeLabel = "needs attention rows";
-      } else if (selectedScope === "needs-attention-or-interacted") {
-        rows = rows.filter(
-          (entry) =>
-            entryNeedsAttentionSafe(entry, attentionConfig) ||
-            entryHasYourLastActivitySafe(entry),
-        );
-        scopeLabel = "needs attention or interacted rows";
-      } else if (selectedScope === "resolved-for-me") {
-        rows = rows.filter((entry) => entryHasThreadsToCheckSafe(entry));
-        scopeLabel = "rows with conversations resolved for you to check";
-      }
-    }
-
-    return {
-      rows,
-      scopeLabel,
-    };
+  }: NarrowRowsInput<E> = {}): E[] => {
+    const safeRows = Array.isArray(rows) ? rows : [];
+    if (picksPrs || (!onlyNeedsAttention && !onlyThreadsToCheck)) return safeRows;
+    return safeRows.filter(
+      (entry) =>
+        (alwaysShowInReview && isInReviewEnabledSafe(entry?.data || {})) ||
+        ((!onlyNeedsAttention || entryNeedsAttentionSafe(entry, attentionConfig)) &&
+          (!onlyThreadsToCheck || entryHasThreadsToCheckSafe(entry))),
+    );
   };
 
-  return {
-    normalizeSelectedScope,
-    resolveScopedRows,
-  };
+  return { narrowRows };
 };
 
 export { createPrScopeSelectionHelpers };

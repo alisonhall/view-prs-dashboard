@@ -20,7 +20,8 @@ const createPrUiOptionPersistenceHelpers = ({ fetch: fetchFn }: PrUiOptionPersis
     "ack-changed": false,
     "show-reason": true,
     quiet: false,
-    "scope-mode": "all",
+    "only-needs-attention": false,
+    "only-threads-to-check": false,
     "filter-pr-numbers": "",
     label: "",
     "exclude-label": "",
@@ -49,7 +50,8 @@ const createPrUiOptionPersistenceHelpers = ({ fetch: fetchFn }: PrUiOptionPersis
   // FilterStateProvider Context key - both the restore effect and the
   // persist callbacks (FilterStateProvider.tsx) need it.
   const FILTER_STATE_FIELD_MAP: Record<string, string> = {
-    "scope-mode": "scopeMode",
+    "only-needs-attention": "onlyNeedsAttention",
+    "only-threads-to-check": "onlyThreadsToCheck",
     "always-show-in-review": "alwaysShowInReview",
     "attention-no-activity-mode": "attentionNoActivityMode",
     "attention-include-pending-comments": "attentionIncludePendingComments",

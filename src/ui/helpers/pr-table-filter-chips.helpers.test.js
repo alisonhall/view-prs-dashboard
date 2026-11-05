@@ -9,7 +9,8 @@ describe("pr table filter chips helpers", () => {
 
       expect(
         buildTableFilterChipsViewModel({
-          scopeMode: "all",
+          onlyNeedsAttention: false,
+          onlyThreadsToCheck: false,
           filterPrNumbers: "",
           includeLabels: [],
           excludeLabels: [],
@@ -32,16 +33,21 @@ describe("pr table filter chips helpers", () => {
       expect(buildTableFilterChipsViewModel()).toEqual([]);
     });
 
-    test("given a non-default scopeMode, when building chips, then includes a Scope chip clearing back to 'all'", () => {
+    test("given the \"only\" checkboxes checked, when building chips, then a chip each, unchecking it", () => {
       const { buildTableFilterChipsViewModel } = createPrTableFilterChipsHelpers();
 
-      const chips = buildTableFilterChipsViewModel({ scopeMode: "needs-attention" });
+      const chips = buildTableFilterChipsViewModel({ onlyNeedsAttention: true, onlyThreadsToCheck: true });
 
       expect(chips).toEqual([
         {
-          id: "scopeMode",
-          label: "Scope: needs-attention",
-          clear: { kind: "field", key: "scopeMode", value: "all" },
+          id: "onlyNeedsAttention",
+          label: "Needs attention",
+          clear: { kind: "field", key: "onlyNeedsAttention", value: false },
+        },
+        {
+          id: "onlyThreadsToCheck",
+          label: "Conversations resolved for you",
+          clear: { kind: "field", key: "onlyThreadsToCheck", value: false },
         },
       ]);
     });
@@ -202,7 +208,7 @@ describe("pr table filter chips helpers", () => {
       const { buildTableFilterChipsViewModel } = createPrTableFilterChipsHelpers();
 
       const chips = buildTableFilterChipsViewModel({
-        scopeMode: "needs-attention",
+        onlyNeedsAttention: true,
         filterPrNumbers: "42",
         includeLabels: ["bug"],
         authorLogins: ["alice"],
@@ -210,7 +216,7 @@ describe("pr table filter chips helpers", () => {
       });
 
       expect(chips.map((chip) => chip.id)).toEqual([
-        "scopeMode",
+        "onlyNeedsAttention",
         "filterPrNumbers",
         "label-list:bug",
         "author-list:alice",

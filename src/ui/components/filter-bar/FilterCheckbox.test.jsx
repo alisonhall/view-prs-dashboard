@@ -3,7 +3,7 @@
 const { render, screen, act } = require('@testing-library/react');
 const userEvent = require('@testing-library/user-event').default;
 require('@testing-library/jest-dom');
-const { AlwaysShowInReviewCheckbox } = require('./AlwaysShowInReviewCheckbox');
+const { FilterCheckbox } = require('./FilterCheckbox');
 const { FilterStateProvider } = require('../../state/FilterStateProvider');
 const { createFilterStateProbe } = require('../../test-fixtures/filter-state-probe');
 const { RowFilterSelectionProvider } = require('../../state/RowFilterSelectionProvider');
@@ -17,24 +17,24 @@ const filterStateProbe = createFilterStateProbe();
 // useRowFilterSelection()/useAuthorThreadResolutionSelection()/
 // useChangeFilterActorSelection() directly (all 3 throw without a real
 // Provider ancestor), so every render here needs them too.
-const renderWithProvider = (initialValues = { scopeMode: 'all', alwaysShowInReview: false }) =>
+const renderWithProvider = (initialValues = { alwaysShowInReview: false }) =>
   render(
     <RowFilterSelectionProvider>
       <AuthorThreadResolutionSelectionProvider>
         <ChangeFilterActorSelectionProvider>
           <FilterStateProvider initialValues={initialValues}>
             <filterStateProbe.FilterStateProbe />
-            <AlwaysShowInReviewCheckbox />
+            <FilterCheckbox id="always-show-in-review" valueKey="alwaysShowInReview" />
           </FilterStateProvider>
         </ChangeFilterActorSelectionProvider>
       </AuthorThreadResolutionSelectionProvider>
     </RowFilterSelectionProvider>,
   );
 
-describe('AlwaysShowInReviewCheckbox', () => {
+describe('FilterCheckbox (always-show-in-review)', () => {
 
   test('given the provider seeds false, when rendering, then starts unchecked', () => {
-    renderWithProvider({ scopeMode: 'all', alwaysShowInReview: false });
+    renderWithProvider({ alwaysShowInReview: false });
     const checkbox = screen.getByRole('checkbox');
     expect(checkbox).toHaveAttribute('id', 'always-show-in-review');
     expect(checkbox).toHaveAttribute('name', 'alwaysShowInReview');
@@ -42,7 +42,7 @@ describe('AlwaysShowInReviewCheckbox', () => {
   });
 
   test('given the provider seeds true, when rendering, then starts checked', () => {
-    renderWithProvider({ scopeMode: 'all', alwaysShowInReview: true });
+    renderWithProvider({ alwaysShowInReview: true });
     expect(screen.getByRole('checkbox')).toBeChecked();
   });
 

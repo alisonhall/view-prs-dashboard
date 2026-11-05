@@ -49,7 +49,7 @@ const tree = (
   <RowFilterSelectionProvider>
     <AuthorThreadResolutionSelectionProvider>
       <ChangeFilterActorSelectionProvider>
-        <FilterStateProvider initialValues={{ scopeMode: 'all', filterPrNumbers: '', alwaysShowInReview: false, filterStories: '', ...initialValues }}>
+        <FilterStateProvider initialValues={{ onlyNeedsAttention: false, onlyThreadsToCheck: false, filterPrNumbers: '', alwaysShowInReview: false, filterStories: '', ...initialValues }}>
           <FilterOptionsContext.Provider value={options}>
             <SelectionProbe />
             {seeding && <ListSelectionSeeding />}
@@ -80,7 +80,7 @@ describe('FilterBar header', () => {
     renderBar();
     expect(screen.getByRole('region', { name: 'Filters' })).toBeInTheDocument();
     expect(toggle()).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.queryByRole('combobox', { name: 'View scope' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: 'PRs' })).not.toBeInTheDocument();
     expect(screen.getByText('Showing 3 of 5 PRs')).toBeInTheDocument();
   });
 
@@ -105,7 +105,7 @@ describe('FilterBar header', () => {
     const { unmount } = renderBar();
     await user.click(toggle());
     expect(toggle()).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByRole('combobox', { name: 'View scope' })).toBeVisible();
+    expect(screen.getByRole('textbox', { name: 'PRs' })).toBeVisible();
     expect(window.localStorage.getItem(FILTER_BAR_OPEN_STORAGE_KEY)).toBe('true');
 
     unmount();
@@ -135,7 +135,7 @@ describe('FilterBar header', () => {
 
   test('shows a removable chip per applied filter, how many on the button, and "Clear all"', async () => {
     const user = userEvent.setup();
-    renderBar(LABELS, {}, { scopeMode: 'last-run', filterStories: 'none' });
+    renderBar(LABELS, {}, { onlyNeedsAttention: true, filterStories: 'none' });
     const chips = screen.getByRole('group', { name: 'Applied table filters' });
     expect(within(chips).getAllByRole('button', { name: /^Remove filter: / })).toHaveLength(2);
     expect(toggle()).toHaveAccessibleName('Filters, 2 applied');
@@ -169,13 +169,14 @@ describe('FilterBar header', () => {
 describe('FilterBar panel', () => {
   const open = async (user: ReturnType<typeof userEvent.setup>) => user.click(toggle());
 
-  test('groups its controls: rows, labels and people, your notes', async () => {
+  test('groups its controls: rows, labels and people, your notes, conversations', async () => {
     const user = userEvent.setup();
     renderBar();
     await open(user);
     const rows = screen.getByRole('group', { name: 'Rows' });
-    expect(within(rows).getByRole('combobox', { name: 'View scope' })).toBeInTheDocument();
+    expect(within(rows).queryByRole('combobox')).not.toBeInTheDocument();
     expect(within(rows).getByRole('textbox', { name: 'PRs' })).toBeInTheDocument();
+    expect(within(rows).getByRole('checkbox', { name: 'Only PRs that need attention' })).toBeInTheDocument();
     expect(within(rows).getByRole('checkbox', { name: 'Always show PRs in review' })).toBeInTheDocument();
     const people = screen.getByRole('group', { name: 'Labels and people' });
     ['Labels', 'Excluded labels', 'Authors', 'Assigned to', 'Approved by'].forEach((name) => {
@@ -189,6 +190,22 @@ describe('FilterBar panel', () => {
       'filter-stories',
       'filter-analysis-of-pr',
     ]);
+    const conversations = screen.getByRole('group', { name: 'Conversations' });
+    expect(within(conversations).getByRole('checkbox', { name: 'Resolved for you to check' })).toBeInTheDocument();
+  });
+
+  test('the "only" checkboxes set their filter, and add a chip that unchecks them', async () => {
+    const user = userEvent.setup();
+    renderBar();
+    await open(user);
+    await user.click(screen.getByRole('checkbox', { name: 'Only PRs that need attention' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Resolved for you to check' }));
+    const chips = screen.getByRole('group', { name: 'Applied table filters' });
+    expect(within(chips).getByRole('button', { name: 'Remove filter: Needs attention' })).toBeInTheDocument();
+
+    await user.click(within(chips).getByRole('button', { name: 'Remove filter: Conversations resolved for you' }));
+    expect(screen.getByRole('checkbox', { name: 'Resolved for you to check' })).not.toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Only PRs that need attention' })).toBeChecked();
   });
 
   test('a list\'s checkboxes set the selection the table filters by, and its summary counts them', async () => {
@@ -252,15 +269,13 @@ describe('FilterBar list selections (ListSelectionSeeding, mounted beside it)', 
 });
 
 describe('FilterBar descriptions', () => {
-  test("each filter says what it does, the scope's following the scope chosen", async () => {
+  test('each filter says what it does', async () => {
     const user = userEvent.setup();
     renderBar();
     await user.click(toggle());
 
-    const scope = screen.getByRole('combobox', { name: 'View scope' });
-    expect(scope).toHaveAccessibleDescription('Every stored row: all the PRs your sources follow.');
-    await user.selectOptions(scope, 'needs-attention');
-    expect(scope).toHaveAccessibleDescription(/need your attention/);
+    expect(screen.getByRole('checkbox', { name: 'Only PRs that need attention' })).toHaveAccessibleDescription(/warning icon/);
+    expect(screen.getByRole('checkbox', { name: 'Resolved for you to check' })).toHaveAccessibleDescription(/someone else resolved/);
 
     expect(screen.getByRole('textbox', { name: 'PRs' })).toHaveAccessibleDescription(/Numbers \(any repo\), owner\/repo#12/);
     expect(screen.getByRole('checkbox', { name: 'Always show PRs in review' })).toHaveAccessibleDescription(/stay in view/);

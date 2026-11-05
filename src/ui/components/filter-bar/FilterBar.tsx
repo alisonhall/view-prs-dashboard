@@ -2,13 +2,11 @@ import { useId, useState } from 'react';
 import { Button } from '../ui/Button';
 import { Icon } from '../ui/Icon';
 import { useTableFilterChips } from '../../state/useTableFilterChips';
-import { AlwaysShowInReviewCheckbox } from './AlwaysShowInReviewCheckbox';
+import { FilterCheckbox } from './FilterCheckbox';
 import { FilterMultiSelect } from './FilterMultiSelect';
 import { FilterOptionSelect } from './FilterOptionSelect';
 import { FilterSearchInput } from './FilterSearchInput';
 import { PrNumberFilterInput } from './PrNumberFilterInput';
-import { SCOPE_DESCRIPTIONS, SCOPE_HINT_ID, ScopeFilterSelect } from './ScopeFilterSelect';
-import { useFilterState } from '../../state/FilterStateContext';
 import { NOTES_FILTER_FIELDS, ROW_FILTER_LISTS } from './filter-bar-fields';
 
 // Whether the bar was left open, per browser (like the detail pane's
@@ -44,8 +42,9 @@ export interface FilterBarProps {
 
 /**
  * The filter bar above the PR table (UI_REDESIGN_PLAN.md, phase 8): the
- * row filters - scope, PR numbers, the label/author/assigned/approver
- * lists, the notes filters, and "Always show PRs in review".
+ * row filters - PR numbers, "Only PRs that need attention", "Always show
+ * PRs in review", the label/author/assigned/approver lists, the notes
+ * filters, and Conversations' "Resolved for you to check".
  *
  * Its header always shows: the Filters button (with how many are applied),
  * the search box, "Showing N of M PRs", and a removable chip per applied
@@ -57,11 +56,9 @@ export interface FilterBarProps {
  */
 export function FilterBar({ shownCount, totalCount, loaded, hiddenCount = 0 }: FilterBarProps) {
   const { chips } = useTableFilterChips();
-  // The scope's description follows the scope chosen.
-  const { values } = useFilterState();
   const [open, setOpen] = useState(readOpen);
   const panelId = useId();
-  const headingIds = { rows: useId(), people: useId(), notes: useId() };
+  const headingIds = { rows: useId(), people: useId(), notes: useId(), conversations: useId() };
 
   const toggleOpen = () => {
     setOpen(!open);
@@ -116,22 +113,25 @@ export function FilterBar({ shownCount, totalCount, loaded, hiddenCount = 0 }: F
           {/* Labels by "for", not wrapping: a wrapping label's text would
               take in a select's option texts. */}
           <div className="filter-bar-field">
-            <label htmlFor="scope-mode">View scope</label>
-            <ScopeFilterSelect />
-            <p id={SCOPE_HINT_ID} className="filter-bar-hint">
-              {SCOPE_DESCRIPTIONS[String(values.scopeMode || 'all')] || SCOPE_DESCRIPTIONS.all}
-            </p>
-          </div>
-          <div className="filter-bar-field">
             <label htmlFor="filter-pr-numbers">PRs</label>
             <PrNumberFilterInput />
             <p id="filter-pr-numbers-hint" className="filter-bar-hint">
-              Numbers (any repo), owner/repo#12, PR or repo URLs, or a repo. The PRs named show whatever the scope.
+              Numbers (any repo), owner/repo#12, PR or repo URLs, or a repo. The PRs named show whatever the
+              checkboxes below say.
             </p>
           </div>
           <div className="filter-bar-field">
             <label className="filter-bar-check">
-              <AlwaysShowInReviewCheckbox />
+              <FilterCheckbox id="only-needs-attention" valueKey="onlyNeedsAttention" />
+              Only PRs that need attention
+            </label>
+            <p id="only-needs-attention-hint" className="filter-bar-hint">
+              Every section shows only the PRs with the warning icon - Settings › Attention rules decides which.
+            </p>
+          </div>
+          <div className="filter-bar-field">
+            <label className="filter-bar-check">
+              <FilterCheckbox id="always-show-in-review" valueKey="alwaysShowInReview" />
               Always show PRs in review
             </label>
             <p id="always-show-in-review-hint" className="filter-bar-hint">
@@ -168,6 +168,21 @@ export function FilterBar({ shownCount, totalCount, loaded, hiddenCount = 0 }: F
               </p>
             </div>
           ))}
+        </div>
+
+        <div className="filter-bar-group" role="group" aria-labelledby={headingIds.conversations}>
+          <h3 id={headingIds.conversations} className="filter-bar-heading">
+            Conversations
+          </h3>
+          <div className="filter-bar-field">
+            <label className="filter-bar-check">
+              <FilterCheckbox id="only-threads-to-check" valueKey="onlyThreadsToCheck" />
+              Resolved for you to check
+            </label>
+            <p id="only-threads-to-check-hint" className="filter-bar-hint">
+              Only PRs with conversations you started that someone else resolved, until you confirm them.
+            </p>
+          </div>
         </div>
       </div>
     </section>

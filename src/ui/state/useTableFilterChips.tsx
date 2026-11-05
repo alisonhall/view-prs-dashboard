@@ -14,7 +14,8 @@ const { buildTableFilterChipsViewModel } = createPrTableFilterChipsHelpers();
 // not a row-visibility filter (rowMatchesUiFilters never reads it), so a
 // chip for it would falsely imply clearing it changes the table.
 const DEFAULT_FILTER_STATE_VALUES: FilterValues = {
-  scopeMode: 'all',
+  onlyNeedsAttention: false,
+  onlyThreadsToCheck: false,
   filterPrNumbers: '',
   alwaysShowInReview: false,
   filterCustomComments: '',
@@ -60,7 +61,8 @@ export function useTableFilterChips(): { chips: TableFilterChip[] } {
   return useMemo(() => {
     const descriptors = buildTableFilterChipsViewModel({
       filterSearch: debouncedSearch,
-      scopeMode: values.scopeMode,
+      onlyNeedsAttention: Boolean(values.onlyNeedsAttention),
+      onlyThreadsToCheck: Boolean(values.onlyThreadsToCheck),
       filterPrNumbers: debouncedFilterPrNumbers,
       includeLabels: Array.from(checkedByListId['label-list'] || []),
       excludeLabels: Array.from(checkedByListId['exclude-label-list'] || []),

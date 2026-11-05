@@ -39,7 +39,6 @@ const TEXT_FIELD_IDS = [
   'jobs',
   'pr-numbers',
   'open-mode',
-  'scope-mode',
   'filter-pr-numbers',
   'attention-no-activity-mode',
   'attention-author-thread-resolution-mode',
@@ -55,6 +54,8 @@ const CHECKBOX_FIELD_IDS = [
   'show-reason',
   'quiet',
   'always-show-in-review',
+  'only-needs-attention',
+  'only-threads-to-check',
   'attention-include-pending-comments',
   'attention-ignore-merge-only-commits',
   'attention-include-closed-merged',
@@ -213,6 +214,15 @@ export function FilterStateProvider({
           mapped[contextKey] = overrides[fieldId];
         }
       });
+      // A "View scope" saved before its select went: the checkbox that
+      // keeps those rows ("Last run rows" has none). The next save drops it.
+      const savedScope = String(overrides['scope-mode'] || '');
+      if (!Object.prototype.hasOwnProperty.call(overrides, 'only-needs-attention') && savedScope.startsWith('needs-attention')) {
+        mapped.onlyNeedsAttention = true;
+      }
+      if (!Object.prototype.hasOwnProperty.call(overrides, 'only-threads-to-check') && savedScope === 'resolved-for-me') {
+        mapped.onlyThreadsToCheck = true;
+      }
 
       const changeFilters = asChangeFilters(overrides.changeFilters);
       const mergeCommitRules = asMergeCommitRules(overrides.mergeCommitRules);
@@ -459,7 +469,8 @@ export function FilterStateProvider({
     if (!existingOverrides) return;
     const overrides = buildOverrides(
       [
-        'scope-mode',
+        'only-needs-attention',
+        'only-threads-to-check',
         'filter-pr-numbers',
         'label',
         'exclude-label',
@@ -492,6 +503,9 @@ export function FilterStateProvider({
     // with/without values don't carry over.
     delete overrides['filter-rally-stories'];
     delete overrides['filter-rally-links'];
+    // The "View scope" select the "only" checkboxes replaced (restored as
+    // them above).
+    delete overrides['scope-mode'];
     await writeUiSessionOverrides(overrides, { unchangedFrom: existingOverrides });
   }, [buildOverrides]);
 

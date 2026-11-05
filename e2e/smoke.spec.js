@@ -1107,7 +1107,7 @@ test("the detail pane's Conversations tab lists unresolved threads by file and o
   expect(consoleErrors).toEqual([]);
 });
 
-test("a conversation you started that someone else resolved: found by the view scope, flagged on the row, confirmed in the Conversations tab", async ({ page }) => {
+test("a conversation you started that someone else resolved: found by \"Resolved for you to check\", flagged on the row, confirmed in the Conversations tab", async ({ page }) => {
   // Adds to PR #2 (in the e2e run's temp copy, put back after the test, as
   // changeServerData does) a thread the viewer started that hubot resolved;
   // the user state the confirmation writes, and the saved filters (the
@@ -1146,11 +1146,11 @@ test("a conversation you started that someone else resolved: found by the view s
   await page.goto("/");
   await waitForPrTable(page);
 
-  // The view scope leaves only PR #2.
+  // Conversations' "Resolved for you to check" leaves only PR #2.
   await openFilterBar(page);
-  const scope = filterBar(page).getByLabel("View scope", { exact: true });
-  await scope.selectOption("resolved-for-me");
-  await expect(filterChips(page)).toContainText("Scope: resolved-for-me");
+  const resolvedForMe = filterBar(page).getByRole("checkbox", { name: "Resolved for you to check", exact: true });
+  await resolvedForMe.check();
+  await expect(filterChips(page)).toContainText("Conversations resolved for you");
   // A PR can be in more than one section: the distinct PRs shown.
   const shownPrs = async () =>
     [...new Set(await prTables(page).getByRole("button", { name: /^Show summary for PR #\d+$/, includeHidden: true }).evaluateAll((buttons) => buttons.map((button) => button.getAttribute("aria-label"))))];
@@ -1179,8 +1179,8 @@ test("a conversation you started that someone else resolved: found by the view s
     "octocat/hello-world": { 2: { "e2e-t3": "hubot|2|e2e-t3-c2" } },
   });
 
-  // Back to the default scope, for the tests after this one (the shared server keeps it).
-  await scope.selectOption("all");
+  // Unchecked again, for the tests after this one (the shared server keeps it).
+  await resolvedForMe.uncheck();
   await waitForFilterPersist(page);
   expect(consoleErrors).toEqual([]);
 });
@@ -1225,7 +1225,7 @@ test("the filter bar starts closed with the row count, opens as it was left afte
 
   const toggle = filterBar(page).getByRole("button", { name: /^Filters/ });
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
-  await expect(filterBar(page).getByLabel("View scope", { exact: true })).toBeHidden();
+  await expect(filterBar(page).getByLabel("PRs", { exact: true })).toBeHidden();
   await expect(filterBar(page)).toContainText("Showing 3 of 3 PRs");
 
   await openFilterBar(page);
@@ -1719,7 +1719,7 @@ test("React-owned PR-number filter input survives a persisted-value restore on p
   await waitForFilterPersist(page);
 });
 
-test("React-owned scope <select> survives a persisted-value restore, and selecting still applies filters", async ({ page }) => {
+test("React-owned notes <select> survives a persisted-value restore, and selecting still applies filters", async ({ page }) => {
   // Same restore-race class as the PR-number filter test above, this time
   // for a <select> (Phase 2's second slice) - confirms the fix generalizes
   // beyond <input>. <select> elements need a native 'change' event
@@ -1729,22 +1729,22 @@ test("React-owned scope <select> survives a persisted-value restore, and selecti
   await waitForPrTable(page);
 
   await openFilterBar(page);
-  await filterBar(page).getByLabel("View scope", { exact: true }).selectOption("last-run");
+  await filterBar(page).getByLabel("Other notes", { exact: true }).selectOption("without");
   await waitForFilterPersist(page);
 
   await page.reload();
   await waitForPrTable(page);
   await openFilterBar(page);
 
-  await expect(filterBar(page).getByLabel("View scope", { exact: true })).toHaveValue("last-run");
+  await expect(filterBar(page).getByLabel("Other notes", { exact: true })).toHaveValue("without");
 
   // Confirm the restored control still works, not just its displayed value,
-  // and leave scope back at the "all" default so this test's persisted
-  // state doesn't affect whatever unrelated test happens to load next
-  // against this suite's one shared webServer.
-  await filterBar(page).getByLabel("View scope", { exact: true }).selectOption("all");
+  // and leave it back at its "Any" default so this test's persisted state
+  // doesn't affect whatever unrelated test happens to load next against
+  // this suite's one shared webServer.
+  await filterBar(page).getByLabel("Other notes", { exact: true }).selectOption("");
   await waitForFilterPersist(page);
-  await expect(filterBar(page).getByText(/^Scope:/)).toHaveCount(0);
+  await expect(filterChips(page).getByText(/^Other notes:/)).toHaveCount(0);
 });
 
 test("React-owned checkbox survives a persisted-value restore, and toggling still applies filters", async ({ page }) => {
@@ -1824,9 +1824,10 @@ test("changing a React-owned filter auto-applies without clicking \"Apply filter
   // listener that was attached to the old static/fallback node. Every
   // other test in this file that checks filtering clicks the "Apply
   // filters (local)" button explicitly, which has its own separate click
-  // handler unaffected by this - so this bug went uncaught until scope-mode
-  // was changed with nothing but selectOption(). Fixed by delegating these
-  // listeners on the stable <form id="run-script-form"> ancestor (never
+  // handler unaffected by this - so this bug went uncaught until the (since
+  // removed) View scope was changed with nothing but selectOption().
+  // Fixed by delegating these listeners on the stable
+  // <form id="run-script-form"> ancestor (never
   // replaced by React) instead of on each field directly - the native
   // "change" event still bubbles up to the form regardless of which side
   // rendered the field that changed.
@@ -1834,23 +1835,24 @@ test("changing a React-owned filter auto-applies without clicking \"Apply filter
   await waitForPrTable(page);
 
   await openFilterBar(page);
-  await expect(filterBar(page).getByText(/^Scope:/)).toHaveCount(0);
+  const onlyAttention = filterBar(page).getByRole("checkbox", { name: "Only PRs that need attention", exact: true });
+  await expect(filterChips(page)).toHaveCount(0);
 
-  await filterBar(page).getByLabel("View scope", { exact: true }).selectOption("last-run");
-  await expect(filterChips(page)).toContainText("Scope: last-run");
+  await onlyAttention.check();
+  await expect(filterChips(page)).toContainText("Needs attention");
 
   // Reset so this test's change doesn't affect whatever loads next against
   // this suite's one shared webServer. Waiting for "a" save isn't enough:
-  // the "last-run" save could still be in flight and be the one caught,
-  // and then this reset's save (150ms behind it) never went out before the
-  // page closed - leaving scope at "last run rows" for every later test
-  // (CI, 2026-10-30). So wait for saving to settle, then check the file.
-  await filterBar(page).getByLabel("View scope", { exact: true }).selectOption("all");
-  await expect(filterBar(page).getByText(/^Scope:/)).toHaveCount(0);
+  // the first save could still be in flight and be the one caught, and
+  // then this reset's save (150ms behind it) never went out before the
+  // page closed - leaving the filter on for every later test (CI,
+  // 2026-10-30). So wait for saving to settle, then check the file.
+  await onlyAttention.uncheck();
+  await expect(filterChips(page)).toHaveCount(0);
   await waitForFilterPersist(page);
   await expect
-    .poll(async () => (await (await page.request.get("/view-prs/user-defaults")).json()).overrides?.["scope-mode"] ?? "all")
-    .toBe("all");
+    .poll(async () => (await (await page.request.get("/view-prs/user-defaults")).json()).overrides?.["only-needs-attention"] ?? false)
+    .toBe(false);
 });
 
 test("typing a PR-number filter updates the rendered React table live, with no \"Apply filters (local)\" click at all", async ({ page }) => {
@@ -2172,7 +2174,7 @@ test("React-owned Run Script options (text inputs, select, checkboxes) survive a
   // fields have no "change" listener of their own - they're only ever read
   // via .value/.checked when the real "Run script" button is clicked (see
   // persistRunScriptOptionOverrides in index.page.js) - so unlike the
-  // scope-mode/attention-rule fields, there's no live auto-apply behavior
+  // filter/attention-rule fields, there's no live auto-apply behavior
   // to verify here, just that mounting doesn't clobber a value
   // restoreUiOptionOverrides() already wrote (or vice versa). Persists
   // directly via the same /view-prs/user-defaults PUT the real "Run

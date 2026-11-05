@@ -15,7 +15,9 @@ describe("pr-ui-option-persistence helpers", () => {
     const { FILTER_STATE_FIELD_MAP } = createPrUiOptionPersistenceHelpers({ fetch: jest.fn() });
 
     expect(FILTER_STATE_FIELD_MAP.repo).toBe("repo");
-    expect(FILTER_STATE_FIELD_MAP["scope-mode"]).toBe("scopeMode");
+    expect(FILTER_STATE_FIELD_MAP["only-needs-attention"]).toBe("onlyNeedsAttention");
+    expect(FILTER_STATE_FIELD_MAP["only-threads-to-check"]).toBe("onlyThreadsToCheck");
+    expect(FILTER_STATE_FIELD_MAP["scope-mode"]).toBeUndefined();
     expect(FILTER_STATE_FIELD_MAP["change-filter-ignore-commit-patterns"]).toBe(
       "changeFilterIgnoreCommitPatterns",
     );

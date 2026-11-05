@@ -177,7 +177,7 @@ const { createPrSmartGroupsHelpers } = require('../helpers/pr-smart-groups.helpe
 // (see REACT_MIGRATION_PLAN.md's cleanup entry). FilterStateProvider/
 // RowFilterSelectionProvider are required ancestors for useVisiblePrNumbers()
 // - `filterStateValues` lets an individual test override the defaults
-// below (e.g. to exercise a specific scope/PR-number filter) without every
+// below (e.g. to exercise a specific PR-number filter) without every
 // existing call site needing to pass a full values object.
 // `dirtyPrKeys`: PRs with unsaved notes (NotesDirtyContext).
 // `sectionPreferences`: Settings › Appearance's saved section choices
@@ -210,7 +210,6 @@ const renderPrTableApp = ({
         <prDataProbe.PrDataProbe />
         <FilterStateProvider
           initialValues={{
-            scopeMode: 'all',
             filterPrNumbers: '',
             alwaysShowInReview: false,
             filterCustomComments: '',
@@ -720,7 +719,7 @@ describe('PrTableApp', () => {
       const buildTree = (attentionFlag) => (
         <AllSelectionProviders>
           <PrDataProvider initialPayload={payload} initialSelectedRepo="">
-            <FilterStateProvider initialValues={{ scopeMode: 'all', filterPrNumbers: '' }}>
+            <FilterStateProvider initialValues={{ filterPrNumbers: '' }}>
               <NeedsAttentionContext.Provider value={{ ...defaultNeedsAttention, entryNeedsAttention: () => attentionFlag }}>
                 <PrTableApp onCheckboxChange={() => {}} onAckAction={() => {}} />
               </NeedsAttentionContext.Provider>
@@ -812,7 +811,7 @@ describe('PrTableApp', () => {
       const buildTree = (attentionFlag) => (
         <AllSelectionProviders>
           <PrDataProvider initialPayload={payload} initialSelectedRepo="">
-            <FilterStateProvider initialValues={{ scopeMode: 'all', filterPrNumbers: '' }}>
+            <FilterStateProvider initialValues={{ filterPrNumbers: '' }}>
               <NeedsAttentionContext.Provider value={{ ...defaultNeedsAttention, entryNeedsAttention: () => attentionFlag }}>
                 <PrTableApp />
               </NeedsAttentionContext.Provider>

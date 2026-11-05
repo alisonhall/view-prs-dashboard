@@ -41,7 +41,6 @@ const renderProbe = ({ filterStateValues, seedListId, seedValues } = {}) =>
         <ChangeFilterActorSelectionProvider>
           <FilterStateProvider
             initialValues={{
-              scopeMode: 'all',
               filterPrNumbers: '',
               alwaysShowInReview: false,
               filterCustomComments: '',

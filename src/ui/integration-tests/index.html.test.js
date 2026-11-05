@@ -1881,15 +1881,14 @@ describe("index page rendering with Testing Library", () => {
   // cluster 1): "Apply filters (local)" (the button) is deleted outright -
   // view-filter fields now auto-persist on their own real "change" event
   // instead of needing an explicit click (same mechanism the other,
-  // already-auto-persisting fields always used). Changing scope-mode
-  // directly is this test's new trigger.
+  // already-auto-persisting fields always used). Checking "Only PRs that
+  // need attention" directly is this test's new trigger.
   test("given a view-filter field changes, when the change event fires, then view-filter defaults are persisted", async () => {
     const user = userEvent.setup();
     fetchMock.mockClear();
 
 
-    const scopeField = document.getElementById("scope-mode");
-    await user.selectOptions(scopeField, "needs-attention");
+    await user.click(document.getElementById("only-needs-attention"));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalled();
@@ -1917,8 +1916,7 @@ describe("index page rendering with Testing Library", () => {
     // itself its own explicit trigger instead of depending on another
     // test's side effect, same pattern the "view-filter defaults are
     // persisted" test just above uses.
-    const scopeField = document.getElementById("scope-mode");
-    await user.selectOptions(scopeField, "needs-attention");
+    await user.click(document.getElementById("only-needs-attention"));
 
     await waitFor(() => {
       const putCall = fetchMock.mock.calls.find((call) => {
@@ -2742,14 +2740,14 @@ describe("index page rendering with Testing Library", () => {
     const user = userEvent.setup();
 
 
-    const scopeField = document.getElementById("scope-mode");
+    const onlyAttentionField = document.getElementById("only-needs-attention");
     const prFilterField = document.getElementById("filter-pr-numbers");
     const labelList = getMultiSelectList("label-list");
     const excludeLabelList = getMultiSelectList("exclude-label-list");
     const authorList = getMultiSelectList("author-list");
     const assignedList = getMultiSelectList("assigned-list");
 
-    expect(scopeField).toBeInTheDocument();
+    expect(onlyAttentionField).toBeInTheDocument();
     expect(prFilterField).toBeInTheDocument();
     expect(labelList).toBeInTheDocument();
     expect(excludeLabelList).toBeInTheDocument();
@@ -2771,7 +2769,7 @@ describe("index page rendering with Testing Library", () => {
     // not user.type: by the time enough of this suite has run, user.type's
     // per-keystroke events stop reliably reaching a field's onChange (see
     // renderCleanNotesSection()'s comment), while one change event does.
-    fireEvent.change(scopeField, { target: { value: "needs-attention-or-interacted" } });
+    fireEvent.click(onlyAttentionField);
     fireEvent.change(prFilterField, { target: { value: "1" } });
     await clickMultiSelectCheckbox("label-list", "frontend", user);
     await clickMultiSelectCheckbox("exclude-label-list", "bug", user);
@@ -2806,7 +2804,7 @@ describe("index page rendering with Testing Library", () => {
     });
   });
 
-  test("given needs-attention scope variants when applying locally then each scope yields the expected row set", async () => {
+  test("given \"Only PRs that need attention\" checked, then only those rows show, and unchecked, all of them", async () => {
     initTestPage({
       dataPayload: createMultiPrPayload({
         prs: [
@@ -2876,12 +2874,12 @@ describe("index page rendering with Testing Library", () => {
       }),
     });
 
-    const scopeField = document.getElementById("scope-mode");
-    expect(scopeField).toBeInTheDocument();
+    const onlyAttentionField = document.getElementById("only-needs-attention");
+    expect(onlyAttentionField).toBeInTheDocument();
 
-    // The filter bar's real scope select (one change event - see the
-    // PR-number precedence test above).
-    fireEvent.change(scopeField, { target: { value: "needs-attention" } });
+    // The filter bar's real checkbox (one click event - see the PR-number
+    // precedence test above).
+    fireEvent.click(onlyAttentionField);
 
     // PR #4 is only in-review (not CHANGED), so it no longer counts as
     // needing attention on its own - the in-review override was
@@ -2892,13 +2890,11 @@ describe("index page rendering with Testing Library", () => {
       expect(dataMetaText).toContain("Showing 1 of");
     });
 
-    fireEvent.change(scopeField, { target: { value: "needs-attention-or-interacted" } });
+    fireEvent.click(onlyAttentionField);
 
-    // PR #1 (needs attention) + PR #2 (interacted) = 2. PR #4's in-review
-    // flag alone no longer qualifies it for either scope.
     await waitFor(() => {
       const dataMetaText = document.querySelector(".filter-bar-count")?.textContent || "";
-      expect(dataMetaText).toContain("Showing 2 of");
+      expect(dataMetaText).toContain("Showing 4 of");
     });
   });
 
@@ -4094,10 +4090,10 @@ describe("index page rendering with Testing Library", () => {
     const user = userEvent.setup();
 
 
-    const scopeSelect = document.getElementById("scope-mode");
+    const onlyAttentionField = document.getElementById("only-needs-attention");
     const authorList = getMultiSelectList("author-list");
     expect(authorList).toBeInTheDocument();
-    expect(scopeSelect).toBeInTheDocument();
+    expect(onlyAttentionField).toBeInTheDocument();
 
     await waitFor(() => {
       const authorLogins = Array.from(authorList.querySelectorAll("input[type='checkbox']")).map((cb) => cb.value);
@@ -4110,7 +4106,7 @@ describe("index page rendering with Testing Library", () => {
       expect(getSelectedMultiSelectValues("author-list")).toEqual(["zuser"]);
     });
 
-    await user.selectOptions(scopeSelect, "needs-attention-or-interacted");
+    await user.click(onlyAttentionField);
 
     await waitFor(() => {
       expect(getSelectedMultiSelectValues("author-list")).toEqual(["zuser"]);
@@ -4477,7 +4473,7 @@ describe("index page rendering with Testing Library", () => {
     expect(within(assigned).getByRole("img", { name: "Alison Hall" })).toBeInTheDocument();
   });
 
-  test("given approver filter applied, when scope changes and filters are reapplied, then approver selection is preserved", async () => {
+  test("given approver filter applied, when \"Only PRs that need attention\" is checked, then approver selection is preserved", async () => {
     initTestPage({
       dataPayload: createMultiPrPayload({
         prs: [
@@ -4549,9 +4545,9 @@ describe("index page rendering with Testing Library", () => {
 
 
     const approverList = getMultiSelectList("approver-list");
-    const scopeSelect = document.getElementById("scope-mode");
+    const onlyAttentionField = document.getElementById("only-needs-attention");
     expect(approverList).toBeInTheDocument();
-    expect(scopeSelect).toBeInTheDocument();
+    expect(onlyAttentionField).toBeInTheDocument();
 
     await waitFor(() => {
       const approverLogins = Array.from(approverList.querySelectorAll("input[type='checkbox']")).map((cb) => cb.value);
@@ -4564,7 +4560,7 @@ describe("index page rendering with Testing Library", () => {
       expect(getSelectedMultiSelectValues("approver-list")).toEqual(["david"]);
     });
 
-    await user.selectOptions(scopeSelect, "needs-attention-or-interacted");
+    await user.click(onlyAttentionField);
 
     await waitFor(() => {
       expect(getSelectedMultiSelectValues("approver-list")).toEqual(["david"]);
