@@ -70,8 +70,8 @@ Improvements noted once PRs could come from several repos and sources (subscript
 - [x] ~~Fix the Review column's spacing: its "files viewed" count sometimes wraps onto the next line~~ - done (2026-11-04): the table lets cell text break anywhere, so from three digits the count split ("120/" over "134"). A slot's number no longer breaks, the slots are 8px apart (were 10px), and the column is 180px (was 170px), which fits four-digit counts; past that, or in the docked pane's narrower column, whole slots wrap.
 - [x] ~~Sorting options for each section~~ - done (2026-11-04): a sort menu at the end of each section's table header row (the `Actions` header) - PR number or last updated, and in the Merged and Closed sections the date merged or closed, and the order - saved with the section's preferences (Appearance's `Restore default sections` leaves it). Defaults: Merged by date merged, Closed by date closed, every other section by PR number, newest first (the smart groups - Flagged, Needs Attention and the rest - used the order rows were first stored in). Rows don't store when a PR was created, so there's no "Created" sort yet.
 - [ ] Stop rows jumping around under the "Last updated" sort: rows move as PRs change on GitHub and the page refreshes, so working down the list, a row can move away from under you (or the next one change). For example, hold the order while you're interacting with the section (scrolled into it, a row selected, a menu open) and say when there's a newer order to apply ("Order changed - re-sort").
-- [ ] An open-in-new-tab icon button beside the PR number in each row, opening the PR on GitHub in a new tab.
-- [ ] Fix the repo name in a row overlapping the Author column: it never wraps (`.pr-title-repo`), so a long `owner/repo` runs past the Pull request column's edge.
+- [x] ~~An open-in-new-tab icon button beside the PR number in each row, opening the PR on GitHub in a new tab~~ - done (2026-11-04): the `#number` link already opened GitHub in a new tab, with nothing to say so. It now ends in the external-link icon (as the detail pane's does), and screen readers hear "opens GitHub in a new tab" - one control, not a second one doing the same.
+- [x] ~~Fix the repo name in a row overlapping the Author column: it never wraps (`.pr-title-repo`), so a long `owner/repo` runs past the Pull request column's edge~~ - done (2026-11-04): a long one is cut short with "…" at the column's edge; its tooltip has it in full.
 - [ ] Find a better way to show a row's repo: on its own line it makes every row taller when PRs come from several repos. Options: an abbreviation or the repo name alone (not the owner), a small chip on the number line, the repo only on hover, or relying on "Group rows by repo" headings.
 
 #### Filters and search
@@ -84,8 +84,8 @@ Improvements noted once PRs could come from several repos and sources (subscript
 
 #### Detail pane
 
-- [ ] Make the source and target branch names clearer about what they are (labelled, e.g. "From `feature/x` into `main`").
-- [ ] Put the source branch's copy button on the same line as its name, not the next line.
+- [x] ~~Make the source and target branch names clearer about what they are (labelled, e.g. "From `feature/x` into `main`")~~ - done (2026-11-04): the pane's header reads "From `feature/x` into `main`" (was "`feature/x` → `main`"), and the Overview's "Merged to" is "Target branch", as most rows there are open.
+- [x] ~~Put the source branch's copy button on the same line as its name, not the next line~~ - done (2026-11-04): the name and its button are kept together, and a long name breaks first.
 
 #### Header, Activity and checks
 

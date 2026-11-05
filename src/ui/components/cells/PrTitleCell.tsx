@@ -26,7 +26,7 @@ const labelHue = (label: string) => [...label].reduce((sum, char) => sum + char.
  * The Pull request column. The title wraps rather than being cut off, and
  * is followed by:
  * - the repo, when rows from more than one are in view (ShowRowRepoContext)
- * - the #number link
+ * - the #number link, opening GitHub in a new tab (its icon says so)
  * - a busy indicator while the PR is refreshing or queued
  * - a copy button (on row hover/focus)
  * - the label chips
@@ -105,6 +105,7 @@ export function PrTitleCell({
             )}
             <a className="pr-link" href={url} target="_blank" rel="noopener noreferrer">
               #{prNumber}
+              <Icon name="externalLink" size={11} label="opens GitHub in a new tab" />
             </a>
             {lifecycle && <Signal icon={lifecycle.icon} tone={lifecycle.tone} label={lifecycle.label} />}
             {isActive ? (

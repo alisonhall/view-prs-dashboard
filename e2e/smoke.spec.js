@@ -514,7 +514,7 @@ test("the detail pane docks beside the table, follows ↑/↓ in the table, and 
 
   // ↓ from a row's link selects that row; ↓ again moves to the next one.
   const table = prTables(page).getByRole("table").first();
-  const links = table.getByRole("link", { name: /^#\d+$/ });
+  const links = table.getByRole("link", { name: /^#\d+ opens GitHub in a new tab$/ });
   const firstNumber = (await links.first().textContent()).slice(1);
   await links.first().focus();
   await page.keyboard.press("ArrowDown");
@@ -906,17 +906,21 @@ test("with the detail pane docked, the Review labels and Size counts never break
   await page.goto("/");
   await waitForPrTable(page);
   await expect(prTables(page).locator(".pr-workspace")).toHaveAttribute("data-pane", "docked");
-  // Each text on one line: its boxes (one per text node and line) all
-  // share a top.
+  // Each text on one line: its text's boxes (one per text node and line)
+  // all share a top - its text only, as the PR link's icon sits higher.
   const lineCounts = await prTables(page)
     .locator(".pr-people-label, .pr-size-added, .pr-size-deleted, .pr-title-number-line .pr-link")
     .evaluateAll((elements) =>
       elements
         .filter((element) => element.getClientRects().length > 0)
         .map((element) => {
-          const range = document.createRange();
-          range.selectNodeContents(element);
-          const tops = new Set(Array.from(range.getClientRects(), (rect) => Math.round(rect.top)));
+          const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+          const tops = new Set();
+          for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+            const range = document.createRange();
+            range.selectNodeContents(node);
+            Array.from(range.getClientRects(), (rect) => tops.add(Math.round(rect.top)));
+          }
           return { text: element.textContent, lines: tops.size };
         }),
     );
@@ -1644,7 +1648,7 @@ test("'View in table' for a flagged PR shows and focuses it in an open section, 
   await page.getByRole("combobox", { name: /^Author/ }).selectOption("hubot");
   await page.getByRole("button", { name: "View in table", exact: true }).first().click();
 
-  const visiblePrLinks = prTables(page).getByRole("link", { name: "#2", exact: true }).filter({ visible: true });
+  const visiblePrLinks = prTables(page).getByRole("link", { name: "#2 opens GitHub in a new tab", exact: true }).filter({ visible: true });
   await expect(visiblePrLinks.first()).toBeFocused();
   await expect(detailPane(page).getByRole("tablist", { name: "PR #2 details", exact: true })).toBeVisible();
 });

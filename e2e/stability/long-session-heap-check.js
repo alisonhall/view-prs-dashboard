@@ -173,7 +173,7 @@ async function runInteractionCycle(page, cycleIndex) {
   // link selects that row, or the next one when it's already selected, so
   // each cycle swaps the PR the pane shows and remounts its content; the
   // tab changes in turn too.
-  const firstLink = prTables.getByRole("table").first().getByRole("link", { name: /^#\d+$/ }).first();
+  const firstLink = prTables.getByRole("table").first().getByRole("link", { name: /^#\d+ opens GitHub in a new tab$/ }).first();
   if (await firstLink.count()) {
     await firstLink.focus();
     await page.keyboard.press("ArrowDown");

@@ -150,6 +150,17 @@
   font-family: var(--font-mono);
   font-size: var(--font-size-sm);
   color: var(--color-text);
+  overflow-wrap: anywhere;
+}
+
+/* The source branch and its copy button (which a long name used to push
+   onto the next line), and "into" with the target: each kept together,
+   the name breaking first. */
+.pr-pane-branch-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
 }
 
 .pr-pane-actions {

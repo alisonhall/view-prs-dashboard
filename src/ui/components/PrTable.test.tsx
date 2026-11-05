@@ -94,7 +94,7 @@ describe('PrTable', () => {
 
   describe('keyboard selection', () => {
     const rows = () => Array.from(document.querySelectorAll<HTMLElement>('tr.pr-row'));
-    const prLink = (number: string) => screen.getAllByRole('link', { name: `#${number}` })[0] as HTMLElement;
+    const prLink = (number: string) => screen.getAllByRole('link', { name: `#${number} opens GitHub in a new tab` })[0] as HTMLElement;
 
     test('↓ with nothing selected selects the row with focus', () => {
       const onSelectPr = jest.fn(() => true);

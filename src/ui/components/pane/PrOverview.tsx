@@ -115,7 +115,8 @@ export function PrOverview({ entry, pr, actorsMap }: PrOverviewProps) {
   const changes: Row[] = [
     // Its copy button is in the pane's header.
     { label: 'Source branch', value: String(pr.sourceBranch || '-') },
-    { label: 'Merged to', value: String(pr.targetBranch || '-') },
+    // Not "Merged to": most rows here are open.
+    { label: 'Target branch', value: String(pr.targetBranch || '-') },
     { label: 'Lines changed', value: <LinesChangedInsight pr={pr} /> },
     { label: 'Viewed files', value: getViewedFilesSummary(pr) },
   ];

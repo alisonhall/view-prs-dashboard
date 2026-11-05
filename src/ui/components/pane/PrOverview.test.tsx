@@ -38,7 +38,7 @@ describe('PrOverview', () => {
     expect(Object.keys(groupRows('People'))).toEqual(['Approvers', 'Reviewers', 'Assigned']);
     expect(groupRows('Changes')).toMatchObject({
       'Source branch': 'feature/x',
-      'Merged to': 'main',
+      'Target branch': 'main',
       'Lines changed': '2 files changed, +3 additions, -1 deletions (4 lines changed)',
     });
   });

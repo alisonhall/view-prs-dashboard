@@ -274,13 +274,18 @@ function PaneContent({
           </span>
           {sourceBranch && (
             <span className="pr-pane-branch">
-              <code>{sourceBranch}</code>
-              <CopyIconButton text={sourceBranch} label="Copy branch name" />
+              From{' '}
+              {/* The copy button stays on the name's line. */}
+              <span className="pr-pane-branch-name">
+                <code>{sourceBranch}</code>
+                <CopyIconButton text={sourceBranch} label="Copy branch name" />
+              </span>
+              {/* "into" stays with the branch it's about. */}
+              {targetBranch && ' '}
               {targetBranch && (
-                <>
-                  {' → '}
-                  <code>{targetBranch}</code>
-                </>
+                <span className="pr-pane-branch-name">
+                  into <code>{targetBranch}</code>
+                </span>
               )}
             </span>
           )}

@@ -30,14 +30,14 @@ describe('PrTitleCell', () => {
     renderCell({ pr: { number: '101', title: 'Fix bug', titleDisplay: 'Fix bug [CHK:PASS][MRG:YES]', url: 'https://github.com/o/r/pull/101' } });
 
     expect(screen.getByText(/Fix bug/)).not.toHaveTextContent('CHK');
-    const link = screen.getByRole('link', { name: '#101' });
+    const link = screen.getByRole('link', { name: '#101 opens GitHub in a new tab' });
     expect(link).toHaveAttribute('href', 'https://github.com/o/r/pull/101');
     expect(link).toHaveClass('pr-link');
   });
 
   test('builds the link from the repo when the PR has no url', () => {
     renderCell({ pr: { number: '7', title: 'No url' }, repo: 'org/repo' });
-    expect(screen.getByRole('link', { name: '#7' })).toHaveAttribute('href', 'https://github.com/org/repo/pull/7');
+    expect(screen.getByRole('link', { name: '#7 opens GitHub in a new tab' })).toHaveAttribute('href', 'https://github.com/org/repo/pull/7');
   });
 
   test('carries data-pr-number and data-repo, which "Jump to PR" looks for', () => {
@@ -70,7 +70,7 @@ describe('PrTitleCell', () => {
   test('puts the PR number first, on a line of its own above the title, so it is in the same place on every row', () => {
     renderCell({ pr: { number: '101', title: 'A long title that wraps onto more lines' } });
     const numberLine = document.querySelector('.pr-title-number-line');
-    const link = screen.getByRole('link', { name: '#101' });
+    const link = screen.getByRole('link', { name: '#101 opens GitHub in a new tab' });
     expect(numberLine?.firstElementChild).toBe(link);
     expect(numberLine?.nextElementSibling).toBe(document.querySelector('.pr-title-line'));
     expect(document.querySelector('.pr-title-line')).not.toContainElement(link);
@@ -80,7 +80,7 @@ describe('PrTitleCell', () => {
     renderCell({ pr: { number: '101', title: 'Fix', labels: ['bug'] } });
     const numberLine = document.querySelector('.pr-title-number-line');
     const titleLine = document.querySelector('.pr-title-line');
-    expect(numberLine?.firstElementChild).toBe(screen.getByRole('link', { name: '#101' }));
+    expect(numberLine?.firstElementChild).toBe(screen.getByRole('link', { name: '#101 opens GitHub in a new tab' }));
     expect(numberLine).toContainElement(screen.getByText('bug'));
     expect(titleLine).toHaveTextContent('Fix');
     expect(titleLine).not.toContainElement(screen.getByText('bug'));

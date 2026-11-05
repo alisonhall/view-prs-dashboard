@@ -90,7 +90,7 @@ describe('PrDetailPane', () => {
       expect(within(pane).getByRole('heading', { level: 2 })).toHaveTextContent('Fix the parser');
       expect(within(pane).getByRole('link', { name: /#7/ })).toHaveAttribute('href', 'https://github.com/owner/repo/pull/7');
       expect(pane).toHaveTextContent('by The Octocat');
-      expect(pane).toHaveTextContent('fix/parser → main');
+      expect(pane).toHaveTextContent('From fix/parser into main');
       expect(within(pane).getByRole('button', { name: 'Copy branch name' })).toBeEnabled();
       expect(pane).not.toHaveTextContent(', with');
     });
