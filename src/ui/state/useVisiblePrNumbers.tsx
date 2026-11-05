@@ -7,6 +7,7 @@ import { useActorIdentity } from './ActorIdentityContext';
 import { useDebouncedValue } from './useDebouncedValue';
 import type { FilterValues } from './filterValuesStore';
 import { createPrScopeSelectionHelpers } from '../helpers/pr-scope-selection.helpers.ts';
+import { createPrOpenConversationCountHelpers } from '../helpers/pr-open-conversation-count.helpers.ts';
 import { createPrRowFilteringHelpers } from '../helpers/pr-row-filtering.helpers.ts';
 import { createPrRowMatchFiltersHelpers } from '../helpers/pr-row-match-filters.helpers.ts';
 import {
@@ -21,7 +22,7 @@ import { extractRowLabelNames, normalizeFilterToken } from '../helpers/pr-filter
 import { getManualNotesFieldSummary } from '../helpers/pr-manual-notes-summary.helpers.ts';
 import { createEntryDerivedCache, type EntryDerivedCache } from '../helpers/pr-entry-derived-cache.helpers.ts';
 import { countThreadsToCheck, threadConfirmationsFor } from '../helpers/pr-review-threads.helpers.ts';
-import type { PrData } from '../types/pr-data.ts';
+import type { PrData, PrEntry } from '../types/pr-data.ts';
 
 const { formatIsoDatetime } = createPrFormattingHelpers();
 
@@ -47,6 +48,8 @@ export const FILTER_SEARCH_DEBOUNCE_MS = 150;
 // deliberately never mounts one).
 const DEFAULT_FILTER_STATE_VALUES: FilterValues = {
   onlyNeedsAttention: false,
+  onlyOpenConversationsWithMe: false,
+  onlyWaitingOnMe: false,
   onlyThreadsToCheck: false,
   filterPrNumbers: '',
   alwaysShowInReview: false,
@@ -103,9 +106,26 @@ export function useFilteredPrRows(): VisiblePrNumbersResult {
   const threadChecksByRepo = payload?.threadChecksByRepo;
   const actorsMap = payload?.actorsMap;
   const helpers = useMemo(() => {
+    // The Review column's conversations: with a known viewer, those they
+    // took part in (the speech bubble), and those waiting on them (filled).
+    // Counted once per row for both checkboxes, until the rows or the
+    // viewer lookup (which remakes these helpers) change.
+    const { getOpenConversationCountWithMe } = createPrOpenConversationCountHelpers({ getEffectiveViewerLogin, asArray });
+    const conversationCounts = new WeakMap<PrEntry, { count: number; waitingCount: number }>();
+    const conversationsWithMe = (entry: PrEntry) => {
+      let counts = conversationCounts.get(entry);
+      if (!counts) {
+        const conversations = getOpenConversationCountWithMe(entry?.data);
+        counts = conversations.isViewerSpecific ? conversations : { count: 0, waitingCount: 0 };
+        conversationCounts.set(entry, counts);
+      }
+      return counts;
+    };
     const { narrowRows } = createPrScopeSelectionHelpers({
       entryNeedsAttention,
       isInReviewEnabled,
+      entryHasOpenConversationsWithMe: (entry) => conversationsWithMe(entry).count > 0,
+      entryHasConversationWaitingOnMe: (entry) => conversationsWithMe(entry).waitingCount > 0,
       entryHasThreadsToCheck: (entry) => {
         const pr = entry?.data || {};
         return (
@@ -168,6 +188,8 @@ export function useFilteredPrRows(): VisiblePrNumbersResult {
       helpers.computeVisiblePrNumbers({
         payload,
         onlyNeedsAttention: Boolean(values.onlyNeedsAttention),
+        onlyOpenConversationsWithMe: Boolean(values.onlyOpenConversationsWithMe),
+        onlyWaitingOnMe: Boolean(values.onlyWaitingOnMe),
         onlyThreadsToCheck: Boolean(values.onlyThreadsToCheck),
         filterPrNumbersRaw: debouncedFilterPrNumbers,
         attentionConfig,

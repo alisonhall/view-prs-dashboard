@@ -36,13 +36,28 @@ describe("pr table filter chips helpers", () => {
     test("given the \"only\" checkboxes checked, when building chips, then a chip each, unchecking it", () => {
       const { buildTableFilterChipsViewModel } = createPrTableFilterChipsHelpers();
 
-      const chips = buildTableFilterChipsViewModel({ onlyNeedsAttention: true, onlyThreadsToCheck: true });
+      const chips = buildTableFilterChipsViewModel({
+        onlyNeedsAttention: true,
+        onlyOpenConversationsWithMe: true,
+        onlyWaitingOnMe: true,
+        onlyThreadsToCheck: true,
+      });
 
       expect(chips).toEqual([
         {
           id: "onlyNeedsAttention",
           label: "Needs attention",
           clear: { kind: "field", key: "onlyNeedsAttention", value: false },
+        },
+        {
+          id: "onlyOpenConversationsWithMe",
+          label: "Open conversations with me",
+          clear: { kind: "field", key: "onlyOpenConversationsWithMe", value: false },
+        },
+        {
+          id: "onlyWaitingOnMe",
+          label: "Waiting on me",
+          clear: { kind: "field", key: "onlyWaitingOnMe", value: false },
         },
         {
           id: "onlyThreadsToCheck",

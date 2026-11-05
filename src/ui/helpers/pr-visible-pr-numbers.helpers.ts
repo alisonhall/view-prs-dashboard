@@ -22,6 +22,8 @@ interface NarrowRowsInput {
   picksPrs: boolean;
   alwaysShowInReview: boolean;
   onlyNeedsAttention: boolean;
+  onlyOpenConversationsWithMe: boolean;
+  onlyWaitingOnMe: boolean;
   onlyThreadsToCheck: boolean;
   attentionConfig: AttentionConfig | undefined;
 }
@@ -35,8 +37,11 @@ export interface PrVisiblePrNumbersDeps {
 export interface VisiblePrNumbersInput {
   payload?: PrDataPayload | null;
   // The filter bar's "Only PRs that need attention", and Conversations'
-  // "Resolved for you to check".
+  // "Open conversations with me", "Waiting on me" and "Resolved for you
+  // to check".
   onlyNeedsAttention?: boolean;
+  onlyOpenConversationsWithMe?: boolean;
+  onlyWaitingOnMe?: boolean;
   onlyThreadsToCheck?: boolean;
   filterPrNumbersRaw?: string;
   attentionConfig?: AttentionConfig;
@@ -80,6 +85,8 @@ const createPrVisiblePrNumbersHelpers = ({
   const computeVisiblePrNumbers = ({
     payload,
     onlyNeedsAttention = false,
+    onlyOpenConversationsWithMe = false,
+    onlyWaitingOnMe = false,
     onlyThreadsToCheck = false,
     filterPrNumbersRaw,
     attentionConfig,
@@ -105,6 +112,8 @@ const createPrVisiblePrNumbersHelpers = ({
       picksPrs: prFilterPicksPrs(prFilter),
       alwaysShowInReview: Boolean(alwaysShowInReview),
       onlyNeedsAttention: Boolean(onlyNeedsAttention),
+      onlyOpenConversationsWithMe: Boolean(onlyOpenConversationsWithMe),
+      onlyWaitingOnMe: Boolean(onlyWaitingOnMe),
       onlyThreadsToCheck: Boolean(onlyThreadsToCheck),
       attentionConfig,
     });

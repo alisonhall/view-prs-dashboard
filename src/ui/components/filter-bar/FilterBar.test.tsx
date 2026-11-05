@@ -191,7 +191,11 @@ describe('FilterBar panel', () => {
       'filter-analysis-of-pr',
     ]);
     const conversations = screen.getByRole('group', { name: 'Conversations' });
-    expect(within(conversations).getByRole('checkbox', { name: 'Resolved for you to check' })).toBeInTheDocument();
+    expect(within(conversations).getAllByRole('checkbox').map((checkbox) => checkbox.getAttribute('id'))).toEqual([
+      'only-open-conversations-with-me',
+      'only-waiting-on-me',
+      'only-threads-to-check',
+    ]);
   });
 
   test('the "only" checkboxes set their filter, and add a chip that unchecks them', async () => {
@@ -276,6 +280,8 @@ describe('FilterBar descriptions', () => {
 
     expect(screen.getByRole('checkbox', { name: 'Only PRs that need attention' })).toHaveAccessibleDescription(/warning icon/);
     expect(screen.getByRole('checkbox', { name: 'Resolved for you to check' })).toHaveAccessibleDescription(/someone else resolved/);
+    expect(screen.getByRole('checkbox', { name: 'Open conversations with me' })).toHaveAccessibleDescription(/started or replied in/);
+    expect(screen.getByRole('checkbox', { name: 'Waiting on me' })).toHaveAccessibleDescription(/latest comment is someone else's/);
 
     expect(screen.getByRole('textbox', { name: 'PRs' })).toHaveAccessibleDescription(/Numbers \(any repo\), owner\/repo#12/);
     expect(screen.getByRole('checkbox', { name: 'Always show PRs in review' })).toHaveAccessibleDescription(/stay in view/);

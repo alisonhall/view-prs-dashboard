@@ -15,6 +15,8 @@ const { buildTableFilterChipsViewModel } = createPrTableFilterChipsHelpers();
 // chip for it would falsely imply clearing it changes the table.
 const DEFAULT_FILTER_STATE_VALUES: FilterValues = {
   onlyNeedsAttention: false,
+  onlyOpenConversationsWithMe: false,
+  onlyWaitingOnMe: false,
   onlyThreadsToCheck: false,
   filterPrNumbers: '',
   alwaysShowInReview: false,
@@ -62,6 +64,8 @@ export function useTableFilterChips(): { chips: TableFilterChip[] } {
     const descriptors = buildTableFilterChipsViewModel({
       filterSearch: debouncedSearch,
       onlyNeedsAttention: Boolean(values.onlyNeedsAttention),
+      onlyOpenConversationsWithMe: Boolean(values.onlyOpenConversationsWithMe),
+      onlyWaitingOnMe: Boolean(values.onlyWaitingOnMe),
       onlyThreadsToCheck: Boolean(values.onlyThreadsToCheck),
       filterPrNumbers: debouncedFilterPrNumbers,
       includeLabels: Array.from(checkedByListId['label-list'] || []),

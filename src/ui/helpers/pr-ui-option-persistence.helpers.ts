@@ -21,6 +21,8 @@ const createPrUiOptionPersistenceHelpers = ({ fetch: fetchFn }: PrUiOptionPersis
     "show-reason": true,
     quiet: false,
     "only-needs-attention": false,
+    "only-open-conversations-with-me": false,
+    "only-waiting-on-me": false,
     "only-threads-to-check": false,
     "filter-pr-numbers": "",
     label: "",
@@ -51,6 +53,8 @@ const createPrUiOptionPersistenceHelpers = ({ fetch: fetchFn }: PrUiOptionPersis
   // persist callbacks (FilterStateProvider.tsx) need it.
   const FILTER_STATE_FIELD_MAP: Record<string, string> = {
     "only-needs-attention": "onlyNeedsAttention",
+    "only-open-conversations-with-me": "onlyOpenConversationsWithMe",
+    "only-waiting-on-me": "onlyWaitingOnMe",
     "only-threads-to-check": "onlyThreadsToCheck",
     "always-show-in-review": "alwaysShowInReview",
     "attention-no-activity-mode": "attentionNoActivityMode",

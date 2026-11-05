@@ -33,10 +33,13 @@ export interface FilterValues {
   showReason?: boolean;
   quiet?: boolean;
   // Row filters
-  // "Only PRs that need attention", and Conversations' "Resolved for you
-  // to check" - which replaced the "View scope" select (its saved
-  // "scope-mode" becomes them: FilterStateProvider's restore).
+  // "Only PRs that need attention", and Conversations' "Open conversations
+  // with me", "Waiting on me" and "Resolved for you to check". The first
+  // and last replaced the "View scope" select (its saved "scope-mode"
+  // becomes them: FilterStateProvider's restore).
   onlyNeedsAttention?: boolean;
+  onlyOpenConversationsWithMe?: boolean;
+  onlyWaitingOnMe?: boolean;
   onlyThreadsToCheck?: boolean;
   filterPrNumbers?: string;
   alwaysShowInReview?: boolean;

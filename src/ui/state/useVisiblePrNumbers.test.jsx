@@ -162,3 +162,48 @@ describe('useFilteredPrRows search', () => {
     }
   });
 });
+
+describe('useFilteredPrRows conversation filters', () => {
+  const thread = (comments, extra = {}) => ({ isResolved: false, comments, participants: comments.map((c) => c.authorLogin), ...extra });
+  const comment = (authorLogin, createdAt, body = 'A note') => ({ authorLogin, createdAt, body, state: 'SUBMITTED' });
+  const payload = {
+    byPrNumber: {
+      // Waiting on me: the latest comment is someone else's.
+      'owner/repo#1': { prNumber: '1', repo: 'owner/repo', data: { number: 1, viewerLogin: 'me', reviewThreads: [thread([comment('me', '2026-11-01T00:00:00Z'), comment('ann', '2026-11-02T00:00:00Z')])] } },
+      // With me, answered: the latest comment is mine.
+      'owner/repo#2': { prNumber: '2', repo: 'owner/repo', data: { number: 2, viewerLogin: 'me', reviewThreads: [thread([comment('ann', '2026-11-01T00:00:00Z'), comment('me', '2026-11-02T00:00:00Z')])] } },
+      // Someone else's conversation, and a resolved one of mine.
+      'owner/repo#3': {
+        prNumber: '3',
+        repo: 'owner/repo',
+        data: {
+          number: 3,
+          viewerLogin: 'me',
+          reviewThreads: [thread([comment('ann', '2026-11-01T00:00:00Z')]), thread([comment('me', '2026-11-01T00:00:00Z'), comment('ann', '2026-11-02T00:00:00Z')], { isResolved: true })],
+        },
+      },
+    },
+  };
+  const visibleWith = (values) => {
+    let latest;
+    function Probe() {
+      latest = useFilteredPrRows();
+      return null;
+    }
+    render(
+      <PrDataContext.Provider value={{ payload }}>
+        <FilterStateContext.Provider value={{ values: { ...BASE_FILTER_VALUES, ...values } }}>
+          <RowFilterSelectionProvider>
+            <Probe />
+          </RowFilterSelectionProvider>
+        </FilterStateContext.Provider>
+      </PrDataContext.Provider>,
+    );
+    return [...latest.visiblePrKeys].sort();
+  };
+
+  test('Open conversations with me: unresolved ones I took part in; Waiting on me: of those, the ones someone else spoke last in', () => {
+    expect(visibleWith({ onlyOpenConversationsWithMe: true })).toEqual(['owner/repo#1', 'owner/repo#2']);
+    expect(visibleWith({ onlyWaitingOnMe: true })).toEqual(['owner/repo#1']);
+  });
+});

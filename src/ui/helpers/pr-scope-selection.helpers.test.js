@@ -23,6 +23,17 @@ describe("the filter bar's \"only\" checkboxes (narrowRows)", () => {
     expect(ids(narrowRows({ rows, onlyThreadsToCheck: true }))).toEqual([2, 3]);
   });
 
+  test("Open conversations with me, and Waiting on me: by the checks given, all of those checked", () => {
+    const { narrowRows: conversations } = createPrScopeSelectionHelpers({
+      entryHasOpenConversationsWithMe: (entry) => entry.id !== 3,
+      entryHasConversationWaitingOnMe: (entry) => entry.id === 2,
+      entryHasThreadsToCheck: (entry) => entry.id !== 2,
+    });
+    expect(ids(conversations({ rows, onlyOpenConversationsWithMe: true }))).toEqual([1, 2]);
+    expect(ids(conversations({ rows, onlyWaitingOnMe: true }))).toEqual([2]);
+    expect(ids(conversations({ rows, onlyOpenConversationsWithMe: true, onlyThreadsToCheck: true }))).toEqual([1]);
+  });
+
   test("both: the PRs that are both", () => {
     expect(ids(narrowRows({ rows, onlyNeedsAttention: true, onlyThreadsToCheck: true, attentionConfig: { marker: "rules" } }))).toEqual([3]);
   });

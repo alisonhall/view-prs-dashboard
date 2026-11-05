@@ -55,6 +55,8 @@ const CHECKBOX_FIELD_IDS = [
   'quiet',
   'always-show-in-review',
   'only-needs-attention',
+  'only-open-conversations-with-me',
+  'only-waiting-on-me',
   'only-threads-to-check',
   'attention-include-pending-comments',
   'attention-ignore-merge-only-commits',
@@ -470,6 +472,8 @@ export function FilterStateProvider({
     const overrides = buildOverrides(
       [
         'only-needs-attention',
+        'only-open-conversations-with-me',
+        'only-waiting-on-me',
         'only-threads-to-check',
         'filter-pr-numbers',
         'label',

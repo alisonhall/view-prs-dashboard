@@ -15,6 +15,8 @@ export interface FilterChip {
 
 export interface TableFilterChipsInput {
   onlyNeedsAttention?: boolean;
+  onlyOpenConversationsWithMe?: boolean;
+  onlyWaitingOnMe?: boolean;
   onlyThreadsToCheck?: boolean;
   filterPrNumbers?: string;
   includeLabels?: string[];
@@ -56,6 +58,8 @@ const createPrTableFilterChipsHelpers = () => {
 
   const buildTableFilterChipsViewModel = ({
     onlyNeedsAttention,
+    onlyOpenConversationsWithMe,
+    onlyWaitingOnMe,
     onlyThreadsToCheck,
     filterPrNumbers,
     includeLabels,
@@ -79,6 +83,12 @@ const createPrTableFilterChipsHelpers = () => {
 
     if (onlyNeedsAttention) {
       chips.push(fieldChip("onlyNeedsAttention", "Needs attention", "onlyNeedsAttention", false));
+    }
+    if (onlyOpenConversationsWithMe) {
+      chips.push(fieldChip("onlyOpenConversationsWithMe", "Open conversations with me", "onlyOpenConversationsWithMe", false));
+    }
+    if (onlyWaitingOnMe) {
+      chips.push(fieldChip("onlyWaitingOnMe", "Waiting on me", "onlyWaitingOnMe", false));
     }
     if (onlyThreadsToCheck) {
       chips.push(fieldChip("onlyThreadsToCheck", "Conversations resolved for you", "onlyThreadsToCheck", false));

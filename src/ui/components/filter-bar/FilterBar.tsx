@@ -44,7 +44,8 @@ export interface FilterBarProps {
  * The filter bar above the PR table (UI_REDESIGN_PLAN.md, phase 8): the
  * row filters - PR numbers, "Only PRs that need attention", "Always show
  * PRs in review", the label/author/assigned/approver lists, the notes
- * filters, and Conversations' "Resolved for you to check".
+ * filters, and Conversations' "Open conversations with me", "Waiting on
+ * me" and "Resolved for you to check".
  *
  * Its header always shows: the Filters button (with how many are applied),
  * the search box, "Showing N of M PRs", and a removable chip per applied
@@ -174,6 +175,25 @@ export function FilterBar({ shownCount, totalCount, loaded, hiddenCount = 0 }: F
           <h3 id={headingIds.conversations} className="filter-bar-heading">
             Conversations
           </h3>
+          <div className="filter-bar-field">
+            <label className="filter-bar-check">
+              <FilterCheckbox id="only-open-conversations-with-me" valueKey="onlyOpenConversationsWithMe" />
+              Open conversations with me
+            </label>
+            <p id="only-open-conversations-with-me-hint" className="filter-bar-hint">
+              Only PRs with an unresolved conversation you started or replied in (the Review column's speech bubble).
+            </p>
+          </div>
+          <div className="filter-bar-field">
+            <label className="filter-bar-check">
+              <FilterCheckbox id="only-waiting-on-me" valueKey="onlyWaitingOnMe" />
+              Waiting on me
+            </label>
+            <p id="only-waiting-on-me-hint" className="filter-bar-hint">
+              Only PRs with an unresolved conversation you took part in whose latest comment is someone else's or mentions
+              you (the filled bubble).
+            </p>
+          </div>
           <div className="filter-bar-field">
             <label className="filter-bar-check">
               <FilterCheckbox id="only-threads-to-check" valueKey="onlyThreadsToCheck" />
