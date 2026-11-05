@@ -66,6 +66,41 @@ describe('useSectionInteraction', () => {
     }
   });
 
+  test("onto a tooltip it opened (outside it, on <body>): still in use, until the pointer goes on from there", () => {
+    const onChange = jest.fn();
+    render(<Section onChange={onChange} />);
+    const section = screen.getByTestId('section');
+    const tooltip = document.createElement('div');
+    tooltip.className = 'ui-tooltip';
+    tooltip.innerHTML = '<span>Approved by Ann</span>';
+    const elsewhere = document.createElement('p');
+    document.body.append(tooltip, elsewhere);
+    // (By hand: jsdom's pointer events don't carry relatedTarget.)
+    const pointer = (type: string, target: Element, relatedTarget: Element | null = null) =>
+      act(() => {
+        target.dispatchEvent(new MouseEvent(type, { bubbles: true, relatedTarget }));
+      });
+    try {
+      fireEvent.pointerEnter(section, { pointerType: 'mouse' });
+      pointer('pointerout', section, tooltip.firstElementChild);
+      pointer('pointerover', tooltip.firstElementChild as Element);
+      act(() => jest.advanceTimersByTime(SECTION_INTERACTION_RELEASE_MS * 2));
+      expect(onChange.mock.calls).toEqual([[true]]);
+
+      // Back into the section, then onto the tooltip and away: free.
+      pointer('pointerover', section);
+      act(() => jest.advanceTimersByTime(SECTION_INTERACTION_RELEASE_MS * 2));
+      expect(onChange.mock.calls).toEqual([[true]]);
+      pointer('pointerout', section, tooltip);
+      pointer('pointerover', elsewhere);
+      act(() => jest.advanceTimersByTime(SECTION_INTERACTION_RELEASE_MS));
+      expect(onChange).toHaveBeenLastCalledWith(false);
+    } finally {
+      tooltip.remove();
+      elsewhere.remove();
+    }
+  });
+
   test('free when the section goes', () => {
     const onChange = jest.fn();
     const { unmount } = render(<Section onChange={onChange} />);
