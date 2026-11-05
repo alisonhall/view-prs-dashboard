@@ -1871,6 +1871,17 @@ describe('PrTableApp', () => {
       expect(openProps().section.orderChanged).toBeFalsy();
     });
 
+    test('given the pane hidden (its row still selected), then the section is no longer held', async () => {
+      await renderByLastUpdated();
+      React.act(() => openProps().onSelectRow('1', 'owner/repo'));
+      React.act(() => prDataProbe.applyFreshTablePayload(after));
+      expect(order()).toEqual(['2', '1']);
+
+      React.act(() => screen.getByRole('button', { name: 'Detail pane' }).click());
+      expect(capturedUiState.selectedPr).toEqual({ repo: 'owner/repo', prNumber: '1' });
+      expect(order()).toEqual(['1', '2']);
+    });
+
     test('given the pointer in it, then a refresh keeps the order until you leave it', async () => {
       await renderByLastUpdated();
       React.act(() => openProps().onInteractingChange('open', true));

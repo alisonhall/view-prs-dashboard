@@ -668,12 +668,13 @@ export function PrTableApp() {
     [builtSections, sectionPreferences, groupByRepo],
   );
   // The sections you're working in (PrSection reports the pointer or
-  // keyboard focus in one), and those with the selected row: a refresh
+  // keyboard focus in one), and those with the row open in the detail pane
+  // (not just selected: hiding the pane keeps the selection): a refresh
   // doesn't re-sort their rows (useHeldSectionOrder) - their tables offer
   // "Re-sort".
   const selectedSectionKeys = useMemo(() => {
     const keys = new Set<string>();
-    if (selectedPr) {
+    if (selectedPr && isPaneVisible) {
       sortedSections.forEach((section) => {
         if (section.prs.some((entry) => (entry?.repo || effectiveRepo) === selectedPr.repo && String(entry?.data?.number ?? entry?.prNumber ?? '') === selectedPr.prNumber)) {
           keys.add(section.key);
@@ -681,7 +682,7 @@ export function PrTableApp() {
       });
     }
     return keys;
-  }, [selectedPr, sortedSections, effectiveRepo]);
+  }, [selectedPr, isPaneVisible, sortedSections, effectiveRepo]);
   const sectionSortKey = useCallback(
     (section: { key: string }) => `${JSON.stringify(prSectionSort(sectionPreferences, section.key))}:${groupByRepo}`,
     [sectionPreferences, groupByRepo],

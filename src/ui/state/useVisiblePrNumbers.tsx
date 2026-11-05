@@ -140,7 +140,10 @@ export function useFilteredPrRows(): VisiblePrNumbersResult {
       normalizeFilterToken,
       getManualNotesFieldSummary,
       isInReviewEnabled,
-      getAuthorDisplayName: (row) => resolveActorDisplayName(row?.authorLogin, actorsMap || {}, row?.author),
+      // None for a PR without an author: not the resolver's "unknown",
+      // which a search for "no" would find.
+      getAuthorDisplayName: (row) =>
+        row?.authorLogin || row?.author ? resolveActorDisplayName(row?.authorLogin, actorsMap || {}, row?.author) : '',
     });
     const { buildRowFilterCriteria, applyRowUiFilters } = createPrRowFilteringHelpers({
       rowMatchesUiFilters,
@@ -192,11 +195,27 @@ export function useFilteredPrRows(): VisiblePrNumbersResult {
 }
 
 // PrTableApp's entry point: the visible rows' repo-and-number keys, and
-// the search's words - the same array while they're the same, so rows
-// reading them (SearchTermsContext) don't all render again for nothing.
+// the search's words - each the same array while its contents are the
+// same. The filtering runs again on every keystroke in a debounced field
+// (it reads all the values), giving new arrays of the same keys; PrTableApp
+// would rebuild and re-sort every section for them, and rows reading the
+// words (SearchTermsContext) would all render again.
 export function useVisiblePrKeys(): { visiblePrKeys: string[]; searchTerms: string[] } {
   const { visiblePrKeys, searchTerms } = useFilteredPrRows();
-  const searchKey = searchTerms.join(' ');
-  const stableSearchTerms = useMemo(() => (searchKey ? searchKey.split(' ') : []), [searchKey]);
-  return { visiblePrKeys, searchTerms: stableSearchTerms };
+  const stableVisiblePrKeys = useSameArray(visiblePrKeys);
+  const stableSearchTerms = useSameArray(searchTerms);
+  return { visiblePrKeys: stableVisiblePrKeys, searchTerms: stableSearchTerms };
+}
+
+// The last array given while each one given has the same items in order.
+function useSameArray<T>(items: T[]): T[] {
+  const ref = useRef(items);
+  const previous = ref.current;
+  if (
+    previous !== items &&
+    (!Array.isArray(previous) || !Array.isArray(items) || previous.length !== items.length || items.some((item, index) => !Object.is(item, previous[index])))
+  ) {
+    ref.current = items;
+  }
+  return ref.current;
 }
