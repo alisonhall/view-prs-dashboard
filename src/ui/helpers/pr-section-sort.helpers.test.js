@@ -1,5 +1,6 @@
 const {
   defaultSectionSort,
+  holdRowOrder,
   sectionSortFields,
   sortSectionRows,
 } = require('./pr-section-sort.helpers.ts');
@@ -40,5 +41,23 @@ describe('section sorting', () => {
 
     expect(numbers(sortSectionRows(rows, { by: 'merged', direction: 'desc' }))).toEqual(['3', '2', '4', '1']);
     expect(numbers(sortSectionRows(rows, { by: 'merged', direction: 'asc' }))).toEqual(['3', '2', '4', '1']);
+  });
+});
+
+describe('holdRowOrder', () => {
+  const keyOf = (entry) => entry.data.number;
+
+  test('keeps the rows in the order shown, whatever the sort now says', () => {
+    expect(numbers(holdRowOrder([row(3), row(1), row(2)], ['1', '2', '3'], keyOf))).toEqual(['1', '2', '3']);
+  });
+
+  test('leaves out rows no longer there, and puts new ones where the sort does among the rest', () => {
+    // Sorted 5, 3, 4, 1, 6; shown 1, 3, (2 gone). 5 goes above 3 (the next
+    // shown row after it in the sort), 4 above 1, and 6 at the end.
+    expect(numbers(holdRowOrder([row(5), row(3), row(4), row(1), row(6)], ['1', '3', '2'], keyOf))).toEqual(['4', '1', '5', '3', '6']);
+  });
+
+  test('nothing shown before: the sorted order', () => {
+    expect(numbers(holdRowOrder([row(2), row(1)], [], keyOf))).toEqual(['2', '1']);
   });
 });

@@ -8,7 +8,7 @@
  * @module components/PrTableApp
  */
 
-import { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from 'react';
 import { PrSection } from './PrSection';
 import { PrJsonModal } from './PrJsonModal';
 import { usePrData } from '../state/PrDataContext';
@@ -19,6 +19,7 @@ import { useVisiblePrKeys } from '../state/useVisiblePrNumbers';
 import { usePrActivityQueue } from '../state/PrActivityQueueContext';
 import { useSinglePrUpdate } from '../state/useSinglePrUpdate';
 import { useStableCallback } from '../state/useStableCallback';
+import { useHeldSectionOrder } from '../state/useHeldSectionOrder';
 import { useAckLabelActions } from '../state/useAckLabelActions';
 import { usePrTableUiState, type SelectedPr } from '../state/PrTableUiStateContext';
 import { NowProvider } from '../state/NowContext';
@@ -652,7 +653,7 @@ export function PrTableApp() {
   // date merged, closed by date closed, the rest by PR number). With "Group
   // rows by repo", then in their repos' order (A-Z), keeping that sort
   // within each - so previous/next follows the headings PrTable draws.
-  const sections = useMemo(
+  const sortedSections = useMemo(
     () =>
       builtSections
         .filter((section) => !isPrSectionHidden(sectionPreferences, section.key))
@@ -665,6 +666,35 @@ export function PrTableApp() {
           };
         }),
     [builtSections, sectionPreferences, groupByRepo],
+  );
+  // The sections you're working in (PrSection reports the pointer or
+  // keyboard focus in one), and those with the selected row: a refresh
+  // doesn't re-sort their rows (useHeldSectionOrder) - their tables offer
+  // "Re-sort".
+  const selectedSectionKeys = useMemo(() => {
+    const keys = new Set<string>();
+    if (selectedPr) {
+      sortedSections.forEach((section) => {
+        if (section.prs.some((entry) => (entry?.repo || effectiveRepo) === selectedPr.repo && String(entry?.data?.number ?? entry?.prNumber ?? '') === selectedPr.prNumber)) {
+          keys.add(section.key);
+        }
+      });
+    }
+    return keys;
+  }, [selectedPr, sortedSections, effectiveRepo]);
+  const sectionSortKey = useCallback(
+    (section: { key: string }) => `${JSON.stringify(prSectionSort(sectionPreferences, section.key))}:${groupByRepo}`,
+    [sectionPreferences, groupByRepo],
+  );
+  const { sections: heldSections, orderChangedKeys, resortSection, setSectionInteracting } = useHeldSectionOrder(
+    sortedSections,
+    selectedSectionKeys,
+    sectionSortKey,
+    effectiveRepo,
+  );
+  const sections = useMemo(
+    () => heldSections.map((section) => (orderChangedKeys.has(section.key) ? { ...section, orderChanged: true } : section)),
+    [heldSections, orderChangedKeys],
   );
   // Rows say their repo once those in view (not just those filtered to)
   // come from more than one, so filtering doesn't make it come and go.
@@ -1123,6 +1153,8 @@ export function PrTableApp() {
                     expandedInsights={expandedInsights}
                     selectedPrKey={selectedPrKey}
                     onToggleSection={handleToggleSection}
+                    onInteractingChange={setSectionInteracting}
+                    onResortSection={resortSection}
                     onToggleInsights={handleToggleInsights}
                     onSelectRow={handleSelectRow}
                     onSelectPr={handleSelectPr}

@@ -10,7 +10,9 @@
  *
  * With Settings › Appearance's "Group rows by repo", rows from more than
  * one repo go in a body per repo, under its heading (groupRowsByRepo). The
- * Actions header holds the section's sort (PrSectionSortMenu).
+ * Actions header holds the section's sort (PrSectionSortMenu), and
+ * "Re-sort" when the rows are held in an order the sort no longer gives
+ * (useHeldSectionOrder).
  *
  * The detail pane's keyboard selection, while focus is in the table (on
  * any row control, not while typing or when the key was already used):
@@ -76,6 +78,11 @@ export interface PrTableProps extends PrRowHandlers {
   getAttentionReasons?: (entry: PrEntry) => string[];
   activePrNumbers?: string[];
   queuedPrNumbers?: string[];
+  // The rows are held where they were while you work in the section, and
+  // its sort would now order them differently: the Actions header offers
+  // "Re-sort" (onResort) in place of its label.
+  orderChanged?: boolean;
+  onResort?: () => void;
 }
 
 const NO_FLAGS: PrFlags = { isFlagged: false, isInReview: false, isAcknowledged: false };
@@ -100,6 +107,8 @@ export function PrTable({
   getAttentionReasons,
   activePrNumbers,
   queuedPrNumbers,
+  orderChanged = false,
+  onResort,
   ...handlers
 }: PrTableProps) {
   useTooltipController();
@@ -205,7 +214,20 @@ export function PrTable({
                 // The section's sort, at the row's end: only where there's
                 // an order to choose.
                 <span className="pr-head-actions-content">
-                  {column.label}
+                  {orderChanged && onResort ? (
+                    <button
+                      type="button"
+                      className="pr-head-resort"
+                      data-tip="Order changed while you were working here - re-sort"
+                      data-tip-on="hover"
+                      onClick={onResort}
+                    >
+                      <span aria-hidden="true">Re-sort</span>
+                      <span className="ui-visually-hidden">Order changed - re-sort {label || sectionKey}</span>
+                    </button>
+                  ) : (
+                    column.label
+                  )}
                   <PrSectionSortMenu sectionKey={sectionKey} sectionTitle={label || sectionKey} />
                 </span>
               ) : (

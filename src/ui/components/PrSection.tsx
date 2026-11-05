@@ -7,6 +7,10 @@
  *
  * Named by its title (role "group"), and its table by the same title.
  *
+ * Says when you start and stop working in it - the pointer over it or
+ * focus in it (useSectionInteraction) - so a refresh doesn't re-sort its
+ * rows meanwhile (useHeldSectionOrder).
+ *
  * @module components/PrSection
  */
 
@@ -15,6 +19,7 @@ import type { PrEntry } from '../types/pr-data.ts';
 import { describeChecks, describeMergeable } from '../helpers/pr-row-signals.helpers.ts';
 import { Icon, type IconName } from './ui/Icon';
 import { PrTable, type PrTableProps } from './PrTable';
+import { useSectionInteraction } from '../state/useSectionInteraction';
 
 const SECTION_ICONS: Record<string, { icon: IconName; tone: string }> = {
   flagged: { icon: 'flag', tone: 'danger' },
@@ -40,12 +45,19 @@ export interface PrSectionData {
   dateHeader?: string;
   attentionCount?: number;
   defaultOpen?: boolean;
+  // Its rows are held where they were while you work in it, and its sort
+  // would now order them differently (useHeldSectionOrder).
+  orderChanged?: boolean;
 }
 
-export interface PrSectionProps extends Omit<PrTableProps, 'prs' | 'sectionKey' | 'label' | 'isSmartGroup' | 'lifecycleSection'> {
+export interface PrSectionProps
+  extends Omit<PrTableProps, 'prs' | 'sectionKey' | 'label' | 'isSmartGroup' | 'lifecycleSection' | 'orderChanged' | 'onResort'> {
   section: PrSectionData;
   isOpen: boolean;
   onToggleSection: (sectionKey: string, nextOpen?: boolean) => void;
+  // You started or stopped working in the section (useSectionInteraction).
+  onInteractingChange?: (sectionKey: string, interacting: boolean) => void;
+  onResortSection?: (sectionKey: string) => void;
 }
 
 interface SummaryItem {
@@ -70,8 +82,9 @@ const summarise = (prs: PrEntry[], attentionCount: number): SummaryItem[] => {
   return items.filter((item) => item.count > 0);
 };
 
-export function PrSection({ section, isOpen, onToggleSection, ...tableProps }: PrSectionProps) {
-  const { key, title, prs, totalCount, isSmartGroup, lifecycleSection, attentionCount = 0 } = section;
+export function PrSection({ section, isOpen, onToggleSection, onInteractingChange, onResortSection, ...tableProps }: PrSectionProps) {
+  const { key, title, prs, totalCount, isSmartGroup, lifecycleSection, attentionCount = 0, orderChanged = false } = section;
+  const interactionHandlers = useSectionInteraction(onInteractingChange && ((interacting) => onInteractingChange(key, interacting)));
   // `totalCount` is the full row count; fall back to the rendered rows.
   const displayedTotalCount = typeof totalCount === 'number' ? totalCount : prs.length;
   const sectionIcon = SECTION_ICONS[key];
@@ -108,6 +121,7 @@ export function PrSection({ section, isOpen, onToggleSection, ...tableProps }: P
       aria-label={title}
       data-pr-section={key}
       open={isOpen}
+      {...interactionHandlers}
       onToggle={(event) => {
         const nextOpen = (event.target as HTMLDetailsElement).open;
         if (nextOpen !== isOpen) onToggleSection(key, nextOpen);
@@ -150,6 +164,8 @@ export function PrSection({ section, isOpen, onToggleSection, ...tableProps }: P
             label={title}
             isSmartGroup={isSmartGroup}
             lifecycleSection={lifecycleSection}
+            orderChanged={orderChanged}
+            onResort={onResortSection && (() => onResortSection(key))}
           />
         ) : (
           <p className="pr-section-empty">No PRs in this section.</p>

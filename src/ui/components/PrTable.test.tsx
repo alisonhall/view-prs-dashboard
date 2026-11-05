@@ -228,4 +228,17 @@ describe('PrTable section sort', () => {
     render(<PrTable prs={[entry('2')]} repo="owner/repo" sectionKey="open" label="Open PRs" expandedInsights={{}} onToggleInsights={jest.fn()} />);
     expect(screen.queryByRole('button', { name: /^Sort Open PRs/ })).not.toBeInTheDocument();
   });
+
+  test('rows held in an order the sort no longer gives: "Re-sort" in place of the label, the header keeping its name', async () => {
+    const onResort = jest.fn();
+    const { rerender } = renderTable({ orderChanged: false, onResort });
+    expect(screen.queryByRole('button', { name: /re-sort/i })).not.toBeInTheDocument();
+
+    rerender(
+      <PrTable prs={[entry('2'), entry('1')]} repo="owner/repo" sectionKey="open" label="Open PRs" expandedInsights={{}} onToggleInsights={jest.fn()} orderChanged onResort={onResort} />,
+    );
+    const actions = screen.getByRole('columnheader', { name: 'Actions' });
+    await userEvent.click(within(actions).getByRole('button', { name: 'Order changed - re-sort Open PRs' }));
+    expect(onResort).toHaveBeenCalledTimes(1);
+  });
 });

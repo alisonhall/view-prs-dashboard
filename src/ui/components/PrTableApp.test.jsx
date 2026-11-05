@@ -1832,6 +1832,56 @@ describe('PrTableApp', () => {
     });
   });
 
+  describe('a section held while you work in it', () => {
+    afterEach(() => {
+      delete global.fetch;
+      window.localStorage.clear();
+    });
+
+    const payloadUpdatedAt = (times) => ({
+      byPrNumber: Object.fromEntries(
+        Object.entries(times).map(([number, at]) => [
+          `owner/repo#${number}`,
+          { prNumber: number, repo: 'owner/repo', section: 'open', data: { number, viewerLogin: '', sourceUpdatedAt: at } },
+        ]),
+      ),
+    });
+    const before = payloadUpdatedAt({ 1: '2026-11-01T00:00:00Z', 2: '2026-11-02T00:00:00Z' });
+    const after = payloadUpdatedAt({ 1: '2026-11-03T00:00:00Z', 2: '2026-11-02T00:00:00Z' });
+    const openProps = () => capturedSectionProps.filter((p) => p.section.key === 'open').at(-1);
+    const order = () => openProps().section.prs.map((entry) => entry.data.number);
+    const renderByLastUpdated = async () => {
+      renderPrTableApp({
+        initialPayload: before,
+        selectedRepo: 'owner/repo',
+        sectionPreferences: { open: { sort: { by: 'updated', direction: 'desc' } } },
+      });
+      await waitFor(() => expect(order()).toEqual(['2', '1']));
+    };
+
+    test('given its row selected, then a refresh keeps the rows where they were and says the order changed; Re-sort applies it', async () => {
+      await renderByLastUpdated();
+      React.act(() => openProps().onSelectRow('1', 'owner/repo'));
+      React.act(() => prDataProbe.applyFreshTablePayload(after));
+      expect(order()).toEqual(['2', '1']);
+      expect(openProps().section.orderChanged).toBe(true);
+
+      React.act(() => openProps().onResortSection('open'));
+      expect(order()).toEqual(['1', '2']);
+      expect(openProps().section.orderChanged).toBeFalsy();
+    });
+
+    test('given the pointer in it, then a refresh keeps the order until you leave it', async () => {
+      await renderByLastUpdated();
+      React.act(() => openProps().onInteractingChange('open', true));
+      React.act(() => prDataProbe.applyFreshTablePayload(after));
+      expect(order()).toEqual(['2', '1']);
+
+      React.act(() => openProps().onInteractingChange('open', false));
+      expect(order()).toEqual(['1', '2']);
+    });
+  });
+
   describe("Settings › Appearance section choices", () => {
     afterEach(() => {
       delete global.fetch;

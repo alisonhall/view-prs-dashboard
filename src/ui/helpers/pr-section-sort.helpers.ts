@@ -69,3 +69,26 @@ export const sortSectionRows = <E extends PrEntry>(rows: E[], { by, direction }:
     return prNumberOf(b) - prNumberOf(a);
   });
 };
+
+// The rows in the order they were shown (`shownKeys`), while you're working
+// in their section (useHeldSectionOrder): a refresh doesn't move them. Rows
+// no longer there are left out, and rows not shown before go where the
+// sort puts them - just above the shown row that follows them in `sorted`.
+export const holdRowOrder = <E>(sorted: E[], shownKeys: string[], keyOf: (entry: E) => string): E[] => {
+  const shownIndex = new Map(shownKeys.map((key, index) => [key, index]));
+  const newRowsBefore = new Map<string, E[]>();
+  let newRows: E[] = [];
+  sorted.forEach((entry) => {
+    const key = keyOf(entry);
+    if (!shownIndex.has(key)) {
+      newRows.push(entry);
+    } else if (newRows.length > 0) {
+      newRowsBefore.set(key, newRows);
+      newRows = [];
+    }
+  });
+  const held = sorted
+    .filter((entry) => shownIndex.has(keyOf(entry)))
+    .sort((a, b) => (shownIndex.get(keyOf(a)) ?? 0) - (shownIndex.get(keyOf(b)) ?? 0));
+  return [...held.flatMap((entry) => [...(newRowsBefore.get(keyOf(entry)) || []), entry]), ...newRows];
+};

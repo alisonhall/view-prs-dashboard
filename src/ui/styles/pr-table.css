@@ -206,6 +206,28 @@
   margin: -4px -4px -4px 0;
 }
 
+/* In the label's place while the rows are held in an order the sort no
+   longer gives (PrTable's "Re-sort"). */
+.pr-head-resort {
+  margin: -3px 0;
+  padding: 2px 3px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--color-accent-subtle);
+  color: var(--color-accent-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.pr-head-resort:hover {
+  text-decoration: underline;
+}
+
+.pr-head-resort:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
 .pr-table thead th {
   padding: var(--space-2);
   background: var(--color-surface);
