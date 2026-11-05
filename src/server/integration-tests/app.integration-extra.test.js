@@ -827,6 +827,37 @@ describe("integration behavior", () => {
     }
   });
 
+  test("a Run script is a task of yours counting the PRs it finishes - of how many for chosen PRs; gone when it ends", async () => {
+    const app = require("../app.js");
+    const orig = app.runViewPrsScript;
+    const origDep = app.getDependencyStatus;
+    const savedSources = app.viewPrsSourcesStorage.readSources();
+    const seen = [];
+    app.runViewPrsScript = async (_args, _maxBuffer, options) => {
+      options.progressTracker.onEnd("5");
+      seen.push(app.getViewPrsSchedulerPublicState().tasks);
+      return { stdout: "ok", stderr: "" };
+    };
+    app.getDependencyStatus = () => ({ ok: true, missing: [] });
+    const testServer = createViewPrsApp().listen(0);
+    const testRequest = supertest(testServer);
+    try {
+      await testRequest.post("/view-prs/run").send({ repo: "acme-org/run-task", prNumber: "5, 6", openMode: "none" }).expect(200);
+      await testRequest.post("/view-prs/run").send({ repo: "acme-org/run-task", openMode: "none" }).expect(200);
+
+      expect(seen[0]).toEqual([
+        expect.objectContaining({ kind: "runScript", origin: "you", repos: ["acme-org/run-task"], unit: "PR", done: 1, total: 2 }),
+      ]);
+      expect(seen[1]).toEqual([expect.objectContaining({ kind: "runScript", done: 1, total: null })]);
+      expect(app.getViewPrsSchedulerPublicState().tasks).toEqual([]);
+    } finally {
+      app.runViewPrsScript = orig;
+      app.getDependencyStatus = origDep;
+      app.viewPrsSourcesStorage.writeSources(savedSources);
+      await new Promise((resolve) => testServer.close(resolve));
+    }
+  });
+
   // Running a repo in full always added it to the background updates; it
   // subscribes it (the sources file) now. A run of one PR adds just it, so
   // its row stays in view.

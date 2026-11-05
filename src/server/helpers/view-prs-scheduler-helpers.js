@@ -31,6 +31,9 @@ const createViewPrsSchedulerHelpers = ({
   // supplies the real function via a late-bound reference (see app.js's
   // own comment at the call site) to avoid a circular construction order.
   getDispatcherDerivedFields = () => ({}),
+  // () => what's running and how far it's got (view-prs-progress-helpers.js),
+  // for the Activity popover. None without it (tests).
+  getProgressTasks = () => [],
   // The sources file (view-prs-sources-storage.js): which repos are
   // subscribed. Without it (tests building these helpers alone), the repos
   // are inferred from the stored data as before it existed.
@@ -309,6 +312,8 @@ const createViewPrsSchedulerHelpers = ({
       dispatcherQueue: Array.isArray(dispatcherFields.dispatcherQueue)
         ? dispatcherFields.dispatcherQueue
         : [],
+      // What's running and how far it's got - the Activity popover's Now.
+      tasks: getProgressTasks(),
     };
   };
 

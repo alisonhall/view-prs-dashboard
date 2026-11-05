@@ -222,6 +222,27 @@ describe("quick checks list each repo's open PRs", () => {
     }
   });
 
+  test("a quick check is a task counting the repos it's checked, of how many; gone when it ends", async () => {
+    const seen = [];
+    appModule.runViewPrsScript = async () => {
+      seen.push(appModule.getViewPrsSchedulerPublicState().tasks);
+      return { stdout: JSON.stringify({ pendingOpen: [], pendingMergedClosed: [] }), stderr: "" };
+    };
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await runViewPrsQuickCheck();
+    } finally {
+      warn.mockRestore();
+      appModule.runViewPrsScript = async () => ({ stdout: JSON.stringify({ pendingOpen: [], pendingMergedClosed: [] }), stderr: "" });
+    }
+    expect(seen[0]).toEqual([
+      expect.objectContaining({ kind: "quickCheck", origin: "background", unit: "repo", total: 2, repos: expect.arrayContaining(["acme/api", "acme/web"]) }),
+    ]);
+    // The repos are checked together: by the second's run, at most one done.
+    expect(seen.map((tasks) => tasks[0].done).every((done) => done <= 1)).toBe(true);
+    expect(appModule.getViewPrsSchedulerPublicState().tasks).toEqual([]);
+  });
+
   test("a check of entered PR numbers doesn't list the repo", async () => {
     await runViewPrsQuickCheck({ repo: "acme/api", prNumbers: "12" });
     expect(listed).toEqual([]);

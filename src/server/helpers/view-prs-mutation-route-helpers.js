@@ -499,6 +499,8 @@ const createViewPrsMutationRouteHelpers = ({ formatScriptFailureMessage }) => {
     viewPrsAckRefreshScriptTimeoutMs,
     viewPrsAckTotalRefreshTimeoutMs,
     buildAckRefreshBudgetSkipErrors,
+    // Moved on per PR tried (view-prs-progress-helpers.js), when given.
+    progressTask = null,
   }) => {
     const refreshDeadlineMs = Date.now() + viewPrsAckTotalRefreshTimeoutMs;
     const refreshedPrs = [];
@@ -536,6 +538,8 @@ const createViewPrsMutationRouteHelpers = ({ formatScriptFailureMessage }) => {
           prNumber,
           error: formatScriptFailureMessage(refreshFailure, "Refresh failed"),
         });
+      } finally {
+        progressTask?.advance();
       }
     }
 
@@ -612,6 +616,8 @@ const createViewPrsMutationRouteHelpers = ({ formatScriptFailureMessage }) => {
     callRunViewPrsScript,
     viewPrsAckRefreshScriptTimeoutMs,
     env = {},
+    // Moved on per PR tried (view-prs-progress-helpers.js), when given.
+    progressTask = null,
   }) => {
     const refreshedPrs = [];
     const refreshErrors = [];
@@ -634,6 +640,8 @@ const createViewPrsMutationRouteHelpers = ({ formatScriptFailureMessage }) => {
           prNumber: candidate.number,
           error: formatScriptFailureMessage(failure, "Refresh failed"),
         });
+      } finally {
+        progressTask?.advance();
       }
     }
 

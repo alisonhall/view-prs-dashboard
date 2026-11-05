@@ -161,3 +161,61 @@ describe("a running job's repos (job events)", () => {
     expect(running.jobs.autoRefresh).toEqual(expect.objectContaining({ startedAt: "2026-11-05T11:00:00Z", runningDetail: { repos: ["acme/api"] } }));
   });
 });
+
+describe("the server's tasks, with progress", () => {
+  const { describeProgress, countActivity } = require("./pr-activity-view.helpers.ts");
+  const jobs = getInitialJobEventsState().jobs;
+  const task = (overrides) => ({ id: "t1", kind: "autoRefresh", origin: "background", repos: ["acme/api"], unit: "PR", done: 0, total: null, startedAt: ago(30_000), ...overrides });
+  const request = (key, label) => ({ key, label, count: 1, startedAtMs: NOW - 11 * 60_000, thresholds: { warnMs: 600_000, criticalMs: 1_200_000 } });
+
+  test("describeProgress: done of how many, or how many so far; nothing for one of one or none yet", () => {
+    expect(describeProgress({ done: 12, total: 30, unit: "PR" })).toBe("12 of 30 PRs");
+    expect(describeProgress({ done: 1, total: 2, unit: "repo" })).toBe("1 of 2 repos");
+    expect(describeProgress({ done: 3, total: null, unit: "PR" })).toBe("3 PRs so far");
+    expect(describeProgress({ done: 1, total: null, unit: "PR" })).toBe("1 PR so far");
+    expect(describeProgress({ done: 0, total: 1, unit: "PR" })).toBe("");
+    expect(describeProgress({ done: 0, total: null, unit: "PR" })).toBe("");
+    expect(describeProgress({ done: 31, total: 30, unit: "PR" })).toBe("30 of 30 PRs");
+  });
+
+  test("Now: each task with its repos and progress, in place of the running jobs; one someone started stands in for this tab's request of its kind", () => {
+    const items = buildActivityNow({
+      // A running job the tasks already show isn't listed again.
+      jobs: { ...jobs, autoRefresh: { ...jobs.autoRefresh, status: "running", startedAt: ago(30_000) } },
+      tasks: [
+        task({ id: "a", done: 4, total: null }),
+        task({ id: "b", kind: "olderMerged", origin: "you", repos: ["acme/web"], done: 12, total: 30, startedAt: ago(11 * 60_000) }),
+      ],
+      activeRequests: [request("olderMerged", "Fetch older merged PRs"), request("notesSave", "Notes save")],
+      bulkBatches: [],
+      isBackfillRunning: false,
+      nowMs: NOW,
+    });
+    expect(items.map(({ label, detail, origin, elapsed, severity }) => [label, detail, origin, elapsed, severity])).toEqual([
+      ["Auto refresh", "acme/api · 4 PRs so far", "background", "30s", ""],
+      // Its thresholds from this tab's request of its kind.
+      ["Fetch older merged PRs", "acme/web · 12 of 30 PRs", "you", "11m", "warning"],
+      ["Notes save", "", "you", "11m", "warning"],
+    ]);
+  });
+
+  test("the button counts the tasks and the requests they don't show (from a server without tasks, the running jobs)", () => {
+    const tasks = [task({ id: "a" }), task({ id: "b", kind: "olderMerged", origin: "you" })];
+    const activeRequests = [request("olderMerged", "Fetch older merged PRs"), request("notesSave", "Notes save"), request("dataLoad", "Data refresh")];
+    expect(countActivity({ jobs, tasks, activeRequests })).toBe(3);
+    const running = { ...jobs, quickCheck: { ...jobs.quickCheck, status: "running" } };
+    expect(countActivity({ jobs: running, tasks: null, activeRequests })).toBe(3);
+  });
+
+  test("carried by every live update; null from a server that doesn't send them", () => {
+    const tasks = [task({})];
+    let state = applyJobEventsSnapshot(getInitialJobEventsState(), { scheduler: { tasks } });
+    expect(state.tasks).toEqual(tasks);
+    state = applyJobEvent(state, { seq: 1, scheduler: { tasks: [] } });
+    expect(state.tasks).toEqual([]);
+    // A frame without scheduler state keeps them.
+    state = applyJobEvent({ ...state, tasks }, { seq: 2, job: "quickCheck", phase: "start" });
+    expect(state.tasks).toEqual(tasks);
+    expect(applyJobEventsSnapshot(getInitialJobEventsState(), { scheduler: {} }).tasks).toBeNull();
+  });
+});

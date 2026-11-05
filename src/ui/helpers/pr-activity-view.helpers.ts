@@ -1,4 +1,4 @@
-import type { FinishedJob, JobKey, JobState } from "./pr-job-events.helpers.ts";
+import type { FinishedJob, JobKey, JobState, ProgressTask } from "./pr-job-events.helpers.ts";
 import type { ActiveRequestActivity, RecentRequestActivity } from "../state/RequestActivityContext";
 import { formatShortAge } from "./pr-row-signals.helpers.ts";
 
@@ -14,6 +14,22 @@ export const JOB_LABELS: Record<string, string> = {
   quickCheck: "Quick check",
   mergedQueueDrain: "Merged/closed drain",
   mergedDrain: "Merged/closed drain",
+};
+
+// The server's tasks someone started, by kind - the same keys as this
+// tab's own requests (RequestActivityProvider), which they stand in for.
+const REQUEST_TASK_LABELS: Record<string, string> = {
+  runScript: "Run script",
+  olderMerged: "Fetch older merged PRs",
+  ackClear: "Ack/Clear",
+};
+
+// "12 of 30 PRs", "3 PRs so far", or nothing (one of one, none yet). Never
+// more done than there are.
+export const describeProgress = ({ done, total, unit }: Pick<ProgressTask, "done" | "total" | "unit">): string => {
+  const plural = (count: number) => `${unit}${count === 1 ? "" : "s"}`;
+  if (total !== null && total !== undefined) return total > 1 ? `${Math.min(done, total)} of ${total} ${plural(total)}` : "";
+  return done > 0 ? `${done} ${plural(done)} so far` : "";
 };
 
 const asStrings = (value: unknown): string[] =>
@@ -119,34 +135,79 @@ const DATA_LOAD_KEY = "dataLoad";
 export const SLOW_DATA_LOAD_MS = 5000;
 export const countsAsActivity = (request: ActiveRequestActivity): boolean => request.key !== DATA_LOAD_KEY;
 
+// The requests of this tab the server's tasks don't already show (a task
+// someone started stands in for the request of the same kind, with its
+// progress - and shows in every tab).
+const requestsNotInTasks = (activeRequests: ActiveRequestActivity[], tasks: ProgressTask[] | null) => {
+  const taskKinds = new Set((tasks || []).filter((task) => task.origin === "you").map((task) => task.kind));
+  return activeRequests.filter((request) => !taskKinds.has(request.key));
+};
+
+// What the Activity button counts: the tasks (or, from a server without
+// them, the running jobs), and this tab's requests they don't show - not
+// the page's own data load.
+export const countActivity = ({
+  jobs,
+  tasks,
+  activeRequests,
+}: {
+  jobs: Record<JobKey, JobState>;
+  tasks: ProgressTask[] | null;
+  activeRequests: ActiveRequestActivity[];
+}): number =>
+  (tasks ? tasks.length : Object.values(jobs).filter((job) => job.status === "running").length) +
+  requestsNotInTasks(activeRequests, tasks).filter(countsAsActivity).length;
+
 export const buildActivityNow = ({
   jobs,
+  tasks = null,
   activeRequests,
   bulkBatches,
   isBackfillRunning,
   nowMs,
 }: {
   jobs: Record<JobKey, JobState>;
+  // The server's, with progress; null from a server without them (the
+  // running jobs stand in).
+  tasks?: ProgressTask[] | null;
   activeRequests: ActiveRequestActivity[];
   bulkBatches: BulkBatchSummary[];
   isBackfillRunning: boolean;
   nowMs: number;
 }): ActivityNowItem[] => {
   const elapsedSince = (startMs: number) => (Number.isFinite(startMs) && startMs > 0 ? formatDuration(nowMs - startMs) : "");
+  const severityOf = (runMs: number, request: ActiveRequestActivity | undefined): ActivityNowItem["severity"] =>
+    !request ? "" : runMs >= request.thresholds.criticalMs ? "critical" : runMs >= request.thresholds.warnMs ? "warning" : "";
   const items: ActivityNowItem[] = [];
-  JOB_ORDER.forEach((key) => {
-    const job = jobs[key];
-    if (job?.status !== "running") return;
-    items.push({
-      key: `job:${key}`,
-      label: JOB_LABELS[key] || key,
-      detail: describeRepos(asStrings(job.runningDetail?.repos)),
-      origin: "background",
-      elapsed: elapsedSince(parseMs(job.startedAt)),
-      severity: "",
+  if (tasks) {
+    tasks.forEach((task) => {
+      const startMs = parseMs(task.startedAt);
+      // A request's thresholds, from this tab's own request of its kind.
+      const request = task.origin === "you" ? activeRequests.find((candidate) => candidate.key === task.kind) : undefined;
+      items.push({
+        key: `task:${task.id}`,
+        label: JOB_LABELS[task.kind] || REQUEST_TASK_LABELS[task.kind] || task.kind,
+        detail: [describeRepos(asStrings(task.repos)), describeProgress(task)].filter(Boolean).join(" · "),
+        origin: task.origin === "you" ? "you" : "background",
+        elapsed: elapsedSince(startMs),
+        severity: severityOf(Number.isFinite(startMs) ? nowMs - startMs : 0, request),
+      });
     });
-  });
-  activeRequests.forEach((request) => {
+  } else {
+    JOB_ORDER.forEach((key) => {
+      const job = jobs[key];
+      if (job?.status !== "running") return;
+      items.push({
+        key: `job:${key}`,
+        label: JOB_LABELS[key] || key,
+        detail: describeRepos(asStrings(job.runningDetail?.repos)),
+        origin: "background",
+        elapsed: elapsedSince(parseMs(job.startedAt)),
+        severity: "",
+      });
+    });
+  }
+  requestsNotInTasks(activeRequests, tasks).forEach((request) => {
     const runMs = request.startedAtMs > 0 ? nowMs - request.startedAtMs : 0;
     if (!countsAsActivity(request) && runMs < SLOW_DATA_LOAD_MS) return;
     items.push({
@@ -155,7 +216,7 @@ export const buildActivityNow = ({
       detail: request.count > 1 ? `${request.count} at once` : "",
       origin: "you",
       elapsed: elapsedSince(request.startedAtMs),
-      severity: runMs >= request.thresholds.criticalMs ? "critical" : runMs >= request.thresholds.warnMs ? "warning" : "",
+      severity: severityOf(runMs, request),
     });
   });
   bulkBatches.forEach((batch) => {

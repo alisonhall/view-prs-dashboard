@@ -1807,6 +1807,8 @@ describe("runViewPrsMergedQueueDrain behavior", () => {
     expect(receivedArgs).toEqual({
       reposOverride: ["owner/repo-drain-override"],
       prNumbersByRepo: { "owner/repo-drain-override": ["301"] },
+      // Shown as the drain's run, not auto refresh's.
+      progressKind: "mergedQueueDrain",
     });
   });
 

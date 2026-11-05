@@ -39,6 +39,22 @@ export interface JobEventsState {
   recentFinished: FinishedJob[];
   dispatcherQueue: unknown[];
   openAutoCircuitRepos: unknown[];
+  // What's running and how far it's got (the server's
+  // view-prs-progress-helpers.js); null from a server without it.
+  tasks: ProgressTask[] | null;
+}
+
+// One task the server is running: a background job's run, or a request
+// someone made - counting PRs or repos done, of how many when known.
+export interface ProgressTask {
+  id: string;
+  kind: string;
+  origin: "background" | "you";
+  repos: string[];
+  unit: "PR" | "repo";
+  done: number;
+  total: number | null;
+  startedAt: string;
 }
 
 // The scheduler state the server bundles with every SSE frame.
@@ -60,6 +76,7 @@ export interface SchedulerSnapshot {
   pendingMergedClosedCount?: unknown;
   dispatcherQueue?: unknown;
   openAutoCircuitRepos?: unknown;
+  tasks?: unknown;
 }
 
 // A `job` envelope ({job, phase, ok, detail, seq}) or a job-agnostic
@@ -115,10 +132,18 @@ const createPrJobEventsHelpers = ({ now }: { now?: () => string } = {}) => {
     // (see autoCircuitByRepo in app.js) - same job-agnostic,
     // whole-scheduler-snapshot category as dispatcherQueue above.
     openAutoCircuitRepos: [],
+    tasks: null,
   });
 
   const extractDispatcherQueue = (scheduler: SchedulerSnapshot | undefined): unknown[] =>
     Array.isArray(scheduler?.dispatcherQueue) ? scheduler.dispatcherQueue : [];
+
+  // Kept when a frame has no scheduler state at all; null from a server
+  // that doesn't send tasks.
+  const extractTasks = (scheduler: SchedulerSnapshot | undefined, previous: ProgressTask[] | null): ProgressTask[] | null => {
+    if (!scheduler) return previous;
+    return Array.isArray(scheduler.tasks) ? (scheduler.tasks as ProgressTask[]) : null;
+  };
 
   const extractOpenAutoCircuitRepos = (scheduler: SchedulerSnapshot | undefined): unknown[] =>
     Array.isArray(scheduler?.openAutoCircuitRepos) ? scheduler.openAutoCircuitRepos : [];
@@ -192,6 +217,7 @@ const createPrJobEventsHelpers = ({ now }: { now?: () => string } = {}) => {
       ...extractPendingCounts(scheduler),
       dispatcherQueue: extractDispatcherQueue(scheduler),
       openAutoCircuitRepos: extractOpenAutoCircuitRepos(scheduler),
+      tasks: extractTasks(payload?.scheduler, state.tasks),
     };
   };
 
@@ -215,6 +241,7 @@ const createPrJobEventsHelpers = ({ now }: { now?: () => string } = {}) => {
     const pendingCounts = extractPendingCounts(envelope.scheduler);
     const dispatcherQueue = extractDispatcherQueue(envelope.scheduler);
     const openAutoCircuitRepos = extractOpenAutoCircuitRepos(envelope.scheduler);
+    const tasks = extractTasks(envelope.scheduler, state.tasks);
 
     if (!previousJob || !isJobKey(jobKey)) {
       return {
@@ -225,6 +252,7 @@ const createPrJobEventsHelpers = ({ now }: { now?: () => string } = {}) => {
         ...pendingCounts,
         dispatcherQueue,
         openAutoCircuitRepos,
+        tasks,
       };
     }
 
@@ -289,6 +317,7 @@ const createPrJobEventsHelpers = ({ now }: { now?: () => string } = {}) => {
       ...pendingCounts,
       dispatcherQueue,
       openAutoCircuitRepos,
+      tasks,
     };
   };
 

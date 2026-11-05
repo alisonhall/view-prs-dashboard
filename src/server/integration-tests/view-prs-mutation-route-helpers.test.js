@@ -660,6 +660,37 @@ describe("view-prs mutation route helpers", () => {
     });
   });
 
+  test("given a progress task, the request-more and Ack refreshes move it on per PR tried, refreshed or not", async () => {
+    const helpers = createHelpers();
+    const failing = async (args) => {
+      if (args.includes("102")) throw new Error("failed");
+      return { stdout: "", stderr: "" };
+    };
+    const olderMergedTask = { advance: jest.fn() };
+    await helpers.runRequestMoreRefreshes({
+      missingCandidates: [{ number: "101" }, { number: "102" }],
+      viewPrsRunScriptRelativePath: "run-prs/check-open-pr-updates.sh",
+      repo: "owner/repo",
+      callRunViewPrsScript: failing,
+      viewPrsAckRefreshScriptTimeoutMs: 5000,
+      progressTask: olderMergedTask,
+    });
+    expect(olderMergedTask.advance).toHaveBeenCalledTimes(2);
+
+    const ackTask = { advance: jest.fn() };
+    await helpers.runAckRefreshes({
+      refreshList: ["101", "102", "103"],
+      effectiveRepo: "owner/repo",
+      viewPrsRunScriptRelativePath: "run-prs/check-open-pr-updates.sh",
+      runScript: failing,
+      viewPrsAckRefreshScriptTimeoutMs: 5000,
+      viewPrsAckTotalRefreshTimeoutMs: 60000,
+      buildAckRefreshBudgetSkipErrors: () => [],
+      progressTask: ackTask,
+    });
+    expect(ackTask.advance).toHaveBeenCalledTimes(3);
+  });
+
   test("given merged request-more success and failure contexts, when building results, then route contracts and summary text are preserved", () => {
     const helpers = createHelpers();
     const prData = { byPrNumber: { 1: { number: 1 } } };

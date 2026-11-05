@@ -12,7 +12,7 @@ import {
   buildActivityNow,
   buildActivityProblems,
   buildActivityUpNext,
-  countsAsActivity,
+  countActivity,
   type ActivityUpNextItem,
 } from '../../helpers/pr-activity-view.helpers.ts';
 import { useHeaderPopover } from './useHeaderPopover';
@@ -57,7 +57,7 @@ function useIsMounted() {
 
 function ActivityContent({ onOpenActionLog }: { onOpenActionLog: () => void }) {
   const nowMs = useNow();
-  const { jobs, dispatcherQueue, pendingOpenCount, pendingMergedClosedCount, recentFinished } = useJobEvents();
+  const { jobs, tasks, dispatcherQueue, pendingOpenCount, pendingMergedClosedCount, recentFinished } = useJobEvents();
   const { bulkBatches } = usePrActivityQueue();
   const { isBackfillRunning } = useBackfillStatus();
   const { activeRequests, recentRequestActivity } = useRequestActivityDisplay();
@@ -66,7 +66,7 @@ function ActivityContent({ onOpenActionLog }: { onOpenActionLog: () => void }) {
   const isMounted = useIsMounted();
   const [pendingKey, setPendingKey] = useState<string | null>(null);
 
-  const now = buildActivityNow({ jobs, activeRequests, bulkBatches, isBackfillRunning, nowMs });
+  const now = buildActivityNow({ jobs, tasks, activeRequests, bulkBatches, isBackfillRunning, nowMs });
   const upNext = buildActivityUpNext({
     dispatcherQueue: Array.isArray(dispatcherQueue) ? dispatcherQueue : [],
     quickCheckWaitingOn: jobs.quickCheck.waitingOn?.job || null,
@@ -236,16 +236,15 @@ export function ActivityPopover() {
   const titleId = useId();
   const panelId = useId();
   const { isOpen, open, close, buttonRef, panelRef, panelStyle } = useHeaderPopover();
-  const { jobs } = useJobEvents();
+  const { jobs, tasks } = useJobEvents();
   const { bulkBatches } = usePrActivityQueue();
   const { activeRequests } = useRequestActivityDisplay();
   const problems = useActivityProblems();
   const settings = useSettingsDrawer();
 
-  const runningJobCount = Object.values(jobs).filter((job) => job.status === 'running').length;
   // Chunks still waiting or in flight across every tracked bulk batch.
   const queuedChunkCount = bulkBatches.reduce((sum, batch) => sum + (batch.totalChunks - batch.doneCount - batch.failedCount), 0);
-  const activityCount = runningJobCount + queuedChunkCount + activeRequests.filter(countsAsActivity).length;
+  const activityCount = countActivity({ jobs, tasks, activeRequests }) + queuedChunkCount;
   const buttonLabel = [
     'Activity',
     activityCount > 0 ? `${activityCount} running or queued` : '',

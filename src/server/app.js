@@ -23,6 +23,7 @@ const {
 const {
   createViewPrsJobEventsHelpers,
 } = require("./helpers/view-prs-job-events-helpers");
+const { createViewPrsProgressHelpers } = require("./helpers/view-prs-progress-helpers");
 const {
   registerViewPrsEventsRoutes,
 } = require("./routes/view-prs-events-routes");
@@ -1003,6 +1004,15 @@ const viewPrsSourcesStorage = createViewPrsSourcesStorage({
   console,
 });
 
+
+// What's running and how far it's got (each change pushes a scheduler
+// frame, throttled), for the Activity popover's Now.
+const {
+  startTask: startProgressTask,
+  getProgressTasks,
+  countFinishedPrs,
+} = createViewPrsProgressHelpers({ onChange: () => callEmitSchedulerStateChanged() });
+
 const {
   getManualCooldownSkipReason,
   readViewPrsSchedulerState,
@@ -1033,6 +1043,7 @@ const {
   getReposWithPendingMergedClosed,
   getPendingUpdatePrNumberKeys,
 } = createViewPrsSchedulerHelpers({
+  getProgressTasks: () => getProgressTasks(),
   fs,
   console,
   parseTimestamp,
@@ -2023,6 +2034,9 @@ const runViewPrsAutoRefresh = async ({
   skipCooldownChecks = false,
   reposOverride = null,
   prNumbersByRepo = {},
+  // Whose run it is in the Activity popover: the merged/closed drain's,
+  // when it's the drain running it.
+  progressKind = "autoRefresh",
 } = {}) => {
   // Each repo's PR numbers to refresh, or null for the whole repo: those
   // asked for, or else - for a repo not fetched in full (only PRs added
@@ -2189,6 +2203,7 @@ const runViewPrsAutoRefresh = async ({
   const autoStartedAt = viewPrsSchedulerState.lastAutoAttemptAt;
   const autoTriggerMs = Date.now();
   let emittedAutoRefreshStart = false;
+  let progressTask = null;
   let finishSuccessCount = 0;
   let finishFailureCount = 0;
   let finishRepos = [];
@@ -2207,6 +2222,13 @@ const runViewPrsAutoRefresh = async ({
       detail: { repos: reposToRefresh, repoCount: reposToRefresh.length },
     });
     emittedAutoRefreshStart = true;
+    const targetCounts = reposToRefresh.map((repo) => getTargetPrNumbers(repo)?.length ?? null);
+    progressTask = startProgressTask({
+      kind: progressKind,
+      repos: reposToRefresh,
+      unit: "PR",
+      total: targetCounts.every((count) => count !== null) ? targetCounts.reduce((sum, count) => sum + count, 0) : null,
+    });
     const refreshResults = new Array(reposToRefresh.length);
     const repoConcurrency = Math.min(
       reposToRefresh.length,
@@ -2259,6 +2281,7 @@ const runViewPrsAutoRefresh = async ({
                   repoFirstPrProgressMs = Date.now();
                 }
               },
+              ...countFinishedPrs(progressTask),
             },
           },
         );
@@ -2540,6 +2563,7 @@ const runViewPrsAutoRefresh = async ({
     );
     viewPrsSchedulerState.isAutoRunInProgress =
       viewPrsSchedulerState.autoRefreshInProgressRepos.size > 0;
+    progressTask?.finish();
     if (emittedAutoRefreshStart) {
       callEmitJobEvent({
         job: JOB_NAMES.AUTO_REFRESH,
@@ -2726,7 +2750,14 @@ const runViewPrsQuickCheck = async ({
   callEmitJobEvent({
     job: JOB_NAMES.QUICK_CHECK,
     phase: JOB_PHASES.START,
-    detail: { scope: quickCheckScope },
+    detail: { scope: quickCheckScope, repos: reposAboutToBeChecked },
+  });
+  // Repos checked, of this call's.
+  const quickCheckTask = startProgressTask({
+    kind: "quickCheck",
+    repos: reposAboutToBeChecked,
+    unit: "repo",
+    total: reposAboutToBeChecked.length,
   });
   let finishReposCheckedCount = 0;
   let finishReposFailedCount = 0;
@@ -2867,6 +2898,7 @@ const runViewPrsQuickCheck = async ({
       // circuit-open, so reaching here means it's free of every skip
       // reason - no extra filtering needed for this one-repo branch.
       await runQuickCheckForRepo(targetRepo, ["--quick-check-numbers", prNumbers]);
+      quickCheckTask.advance();
     } else if (Array.isArray(repoRequests) && repoRequests.length > 0) {
       // Sequential, not Promise.all: each repo's own script call already
       // runs up to --jobs `gh pr view` processes concurrently, so checking
@@ -2889,6 +2921,7 @@ const runViewPrsQuickCheck = async ({
           extraArgs.push("--quick-check-numbers", repoPrNumbers);
         }
         await runQuickCheckForRepo(repo, extraArgs, viewPrsQuickCheckAllScriptTimeoutMs);
+        quickCheckTask.advance();
       }
     } else {
       // Excludes quickCheck-busy/circuit-open repos up front, but
@@ -2899,7 +2932,7 @@ const runViewPrsQuickCheck = async ({
       const reposForUnscopedSweep = quickCheckTargetRepos.filter(
         (repo) => !reposBusyWithQuickCheck.includes(repo) && !reposWithOpenCircuit.includes(repo),
       );
-      await Promise.all(reposForUnscopedSweep.map((repo) => runQuickCheckForRepo(repo)));
+      await Promise.all(reposForUnscopedSweep.map((repo) => runQuickCheckForRepo(repo).finally(() => quickCheckTask.advance())));
     }
 
     viewPrsSchedulerState.lastQuickCheckAt = new Date().toISOString();
@@ -3012,6 +3045,7 @@ const runViewPrsQuickCheck = async ({
     );
     viewPrsSchedulerState.isQuickCheckInProgress =
       viewPrsSchedulerState.quickCheckInProgressRepos.size > 0;
+    quickCheckTask.finish();
     callEmitJobEvent({
       job: JOB_NAMES.QUICK_CHECK,
       phase: JOB_PHASES.FINISH,
@@ -3096,7 +3130,7 @@ const runViewPrsMergedQueueDrain = async ({ reposOverride } = {}) => {
       const numbers = getTargetedRefreshNumbers(repo, ["mergedClosed"]);
       if (numbers) prNumbersByRepo[repo] = numbers;
     });
-    innerResult = await callRunViewPrsAutoRefresh({ reposOverride: reposToDrain, prNumbersByRepo });
+    innerResult = await callRunViewPrsAutoRefresh({ reposOverride: reposToDrain, prNumbersByRepo, progressKind: "mergedQueueDrain" });
   } finally {
     viewPrsSchedulerState.isMergedDrainInProgress = false;
     if (innerResult?.skipped) {
@@ -3711,6 +3745,8 @@ const createViewPrsApp = ({ production = isProductionEnv } = {}) => {
 
   registerViewPrsMutationRoutes({
     app,
+    startProgressTask,
+    countFinishedPrs,
     viewPrsRunScriptRelativePath,
     callGetDependencyStatus,
     callRunViewPrsScript,

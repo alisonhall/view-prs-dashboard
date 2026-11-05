@@ -146,11 +146,11 @@ describe("the merged/closed drain", () => {
 
     setPendingForRepo(REPO, { open: [], mergedClosed: [40, 41] });
     await runViewPrsMergedQueueDrain({ reposOverride: [REPO] });
-    expect(calls[0]).toEqual({ reposOverride: [REPO], prNumbersByRepo: { [REPO]: ["40", "41"] } });
+    expect(calls[0]).toEqual({ reposOverride: [REPO], prNumbersByRepo: { [REPO]: ["40", "41"] }, progressKind: "mergedQueueDrain" });
 
     setPendingForRepo(REPO, { open: [], mergedClosed: Array.from({ length: 26 }, (_, index) => 100 + index) });
     await runViewPrsMergedQueueDrain({ reposOverride: [REPO] });
-    expect(calls[1]).toEqual({ reposOverride: [REPO], prNumbersByRepo: {} });
+    expect(calls[1]).toEqual({ reposOverride: [REPO], prNumbersByRepo: {}, progressKind: "mergedQueueDrain" });
   });
 });
 
@@ -387,5 +387,42 @@ describe("a quick check of entered numbers", () => {
     await appModule.runViewPrsQuickCheck({ repoRequests: [{ repo: REPO }] });
 
     expect(viewPrsSchedulerState.pendingByRepo[REPO]).toBeUndefined();
+  });
+});
+
+describe("progress in the scheduler state (the Activity popover's Now)", () => {
+  test("a refresh is a task counting the PRs its run finishes, of how many it was given; gone when it ends", async () => {
+    const seen = [];
+    appModule.runViewPrsScript = async (_args, _maxBuffer, options) => {
+      seen.push(appModule.getViewPrsSchedulerPublicState().tasks);
+      options.progressTracker.onEnd("12");
+      seen.push(appModule.getViewPrsSchedulerPublicState().tasks);
+      return { stdout: "", stderr: "" };
+    };
+
+    await runViewPrsAutoRefresh({ skipCooldownChecks: true, reposOverride: [REPO], prNumbersByRepo: { [REPO]: ["12", "13"] } });
+
+    expect(seen[0]).toEqual([
+      expect.objectContaining({ kind: "autoRefresh", origin: "background", repos: [REPO], unit: "PR", done: 0, total: 2, startedAt: expect.any(String) }),
+    ]);
+    expect(seen[1]).toEqual([expect.objectContaining({ done: 1, total: 2 })]);
+    expect(appModule.getViewPrsSchedulerPublicState().tasks).toEqual([]);
+  });
+
+  test("the merged/closed drain's refresh is the drain's task; a full refresh's total is unknown", async () => {
+    // The real refresh (a test above leaves a stand-in).
+    appModule.runViewPrsAutoRefresh = savedRunViewPrsAutoRefresh;
+    const seen = [];
+    appModule.runViewPrsScript = async () => {
+      seen.push(appModule.getViewPrsSchedulerPublicState().tasks);
+      return { stdout: "", stderr: "" };
+    };
+    setPendingForRepo(REPO, { open: [], mergedClosed: [40] });
+
+    await runViewPrsMergedQueueDrain({ reposOverride: [REPO] });
+    expect(seen[0]).toEqual([expect.objectContaining({ kind: "mergedQueueDrain", total: 1 })]);
+
+    await runViewPrsAutoRefresh({ skipCooldownChecks: true, reposOverride: [REPO] });
+    expect(seen[1]).toEqual([expect.objectContaining({ kind: "autoRefresh", total: null })]);
   });
 });
