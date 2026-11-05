@@ -1185,6 +1185,66 @@ test("a conversation you started that someone else resolved: found by \"Resolved
   expect(consoleErrors).toEqual([]);
 });
 
+test("under \"Last updated\", a refresh holds the rows while the pointer is over the section; Re-sort or leaving it applies the new order", async ({ page }) => {
+  // The real browser's events, which jsdom only imitates: the section's
+  // pointer leave/enter, and focus moving to the sort menu.
+  const tempDir = path.resolve(String(process.env.VIEW_PRS_E2E_TEMP_DIR || ""));
+  if (!process.env.VIEW_PRS_E2E_TEMP_DIR || !tempDir.startsWith(path.resolve(os.tmpdir()) + path.sep)) {
+    throw new Error(`VIEW_PRS_E2E_TEMP_DIR must be a temp dir, got "${process.env.VIEW_PRS_E2E_TEMP_DIR}"`);
+  }
+  const dataFile = path.join(tempDir, "check-open-pr-updates.data.json");
+  const original = fs.readFileSync(dataFile, "utf8");
+  pendingServerDataRestores.push(() => fs.writeFileSync(dataFile, original));
+  // PR number's sourceUpdatedAt, under its repo key once a script run has
+  // migrated the file, else its bare number.
+  const setUpdatedAt = (prNumber, at) => {
+    const data = JSON.parse(fs.readFileSync(dataFile, "utf8"));
+    const key = Object.keys(data.byPrNumber).find((candidate) => candidate === String(prNumber) || candidate.endsWith(`#${prNumber}`));
+    data.byPrNumber[key].data = { ...data.byPrNumber[key].data, sourceUpdatedAt: at };
+    fs.writeFileSync(dataFile, JSON.stringify(data, null, 2));
+  };
+
+  await clearSavedSettings(page.request, ["prSections"]);
+  try {
+    await page.goto("/?dataPollMs=300");
+    await waitForPrTable(page);
+    const openSection = prSection(page, "Open PRs");
+    if (!(await openSection.evaluate((el) => el.open))) {
+      await openSection.getByText("Open PRs", { exact: true }).click();
+    }
+    const order = () => openSection.locator("tr.pr-row").evaluateAll((rows) => rows.map((row) => row.getAttribute("data-pr-number")));
+    const sortMenu = openSection.getByRole("button", { name: /^Sort Open PRs/ });
+    await sortMenu.click();
+    await page.getByRole("menuitemradio", { name: "Last updated", exact: true }).click();
+    // #2 was updated after #1.
+    await expect.poll(order).toEqual(["2", "1"]);
+    const resort = openSection.getByRole("button", { name: "Order changed - re-sort Open PRs", exact: true });
+
+    // #1 updated since: held while the pointer is over the section.
+    await openSection.locator("tr.pr-row").first().hover();
+    setUpdatedAt(1, "2026-01-03T09:00:00Z");
+    await expect(resort).toBeVisible();
+    expect(await order()).toEqual(["2", "1"]);
+    // Re-sort applies it, keeping focus in the section.
+    await resort.click();
+    await expect.poll(order).toEqual(["1", "2"]);
+    await expect(sortMenu).toBeFocused();
+    await expect(resort).toHaveCount(0);
+
+    // #2 updated since: held again, until the pointer leaves the section.
+    await page.locator("body").click({ position: { x: 1, y: 1 } });
+    await openSection.locator("tr.pr-row").first().hover();
+    setUpdatedAt(2, "2026-01-04T09:00:00Z");
+    await expect(resort).toBeVisible();
+    expect(await order()).toEqual(["1", "2"]);
+    await page.mouse.move(1, 1);
+    await expect.poll(order).toEqual(["2", "1"]);
+    await expect(resort).toHaveCount(0);
+  } finally {
+    await clearSavedSettings(page.request, ["prSections"]);
+  }
+});
+
 test("hiding the detail pane is remembered after a reload", async ({ page }) => {
   await page.goto("/");
   await waitForPrTable(page);
