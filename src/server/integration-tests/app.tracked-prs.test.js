@@ -242,11 +242,21 @@ describe("the tracked PR routes", () => {
   test("while its repo's run is in progress, waits for that to finish, then fetches it", async () => {
     viewPrsSchedulerState.autoRefreshInProgressRepos.add("other-org/lib");
     setTimeout(() => viewPrsSchedulerState.autoRefreshInProgressRepos.delete("other-org/lib"), 200);
-
-    const res = await supertest(server).post("/view-prs/tracked-prs").send({ url: "other-org/lib#8" });
+    const savedEmitJobEvent = appModule.emitJobEvent;
+    const events = [];
+    appModule.emitJobEvent = (event) => events.push(event);
+    let res;
+    try {
+      res = await supertest(server).post("/view-prs/tracked-prs").send({ url: "other-org/lib#8" });
+    } finally {
+      appModule.emitJobEvent = savedEmitJobEvent;
+    }
 
     expect(res.body).toMatchObject({ added: true, fetched: true });
     expect(argAfter(callsFor("other-org/lib")[0].args, "--prs")).toBe("8");
+    // Waited without trying: no skip for Activity to show after it worked.
+    expect(events.filter((event) => event.phase === "skipped")).toEqual([]);
+    expect(events).toContainEqual(expect.objectContaining({ phase: "finish", ok: true, detail: expect.objectContaining({ kind: "addPr" }) }));
   });
 
   test("refuses what isn't a PR's URL, or one gh can't find, and tracks neither", async () => {

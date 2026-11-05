@@ -14,6 +14,9 @@ const registerViewPrsSourcesRoutes = ({
   verifyGithubPr,
   // Refreshes the PR, so its row appears: runViewPrsAutoRefresh.
   runViewPrsAutoRefresh,
+  // (repo) => whether a run of the repo is in progress, which the fetch
+  // waits out without trying (each try would be a skip, in Activity).
+  isRepoRefreshing = () => false,
   emitDataChanged,
   // () => the sources as the page gets them (with the PRs that couldn't be
   // fetched); the stored ones without it.
@@ -90,7 +93,12 @@ const registerViewPrsSourcesRoutes = ({
   // maxWaitMs.
   const fetchAddedPr = async (pr) => {
     const deadlineMs = Date.now() + maxWaitMs;
+    const wait = () => new Promise((resolve) => setTimeout(resolve, retryDelayMs));
     for (;;) {
+      if (isRepoRefreshing(pr.repo) && Date.now() < deadlineMs) {
+        await wait();
+        continue;
+      }
       const result = await runViewPrsAutoRefresh({
         reposOverride: [pr.repo],
         prNumbersByRepo: { [pr.repo]: [pr.number] },
@@ -98,8 +106,9 @@ const registerViewPrsSourcesRoutes = ({
         progressKind: "addPr",
         progressOrigin: "you",
       });
+      // A run of it began in between.
       if (result?.skipped && result.skipReason === "already-in-progress" && Date.now() < deadlineMs) {
-        await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+        await wait();
         continue;
       }
       if (result?.skipped) return { fetched: false, error: `Not fetched (${result.skipReason})` };

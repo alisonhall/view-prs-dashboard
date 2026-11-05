@@ -3824,6 +3824,7 @@ const createViewPrsApp = ({ production = isProductionEnv } = {}) => {
     seedSubscriptionRepos,
     verifyGithubPr: (...args) => (module.exports.verifyGithubPr || verifyGithubPr)(...args),
     runViewPrsAutoRefresh: (...args) => callRunViewPrsAutoRefresh(...args),
+    isRepoRefreshing: (repo) => viewPrsSchedulerState.autoRefreshInProgressRepos.has(repo),
     emitDataChanged: callEmitDataChanged,
     getSourcesForPage,
     console,
