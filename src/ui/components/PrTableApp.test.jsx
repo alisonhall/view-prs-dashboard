@@ -1331,6 +1331,44 @@ describe('PrTableApp', () => {
       }
     });
 
+    test("given the scheduler's active and queued PRs, then the rows are busy or queued - busy winning for a PR in both", () => {
+      const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
+      renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', onCheckboxChange: () => {} });
+
+      React.act(() => {
+        window.dispatchEvent(
+          new CustomEvent('pr-active-progress-update', {
+            detail: {
+              activePrNumbers: [{ repo: 'owner/repo', prNumber: '1' }],
+              queuedPrNumbers: [{ repo: 'owner/repo', prNumber: '1' }, { repo: 'owner/repo', prNumber: '2' }],
+            },
+          }),
+        );
+      });
+      expect(capturedSectionProps.at(-1).activePrNumbers).toEqual(['owner/repo::1']);
+      expect(capturedSectionProps.at(-1).queuedPrNumbers).toEqual(['owner/repo::2']);
+
+      // The same lists again (another frame of the run): nothing renders again.
+      const rendersBefore = capturedSectionProps.length;
+      React.act(() => {
+        window.dispatchEvent(
+          new CustomEvent('pr-active-progress-update', {
+            detail: {
+              activePrNumbers: [{ repo: 'owner/repo', prNumber: '1' }],
+              queuedPrNumbers: [{ repo: 'owner/repo', prNumber: '1' }, { repo: 'owner/repo', prNumber: '2' }],
+            },
+          }),
+        );
+      });
+      expect(capturedSectionProps.length).toBe(rendersBefore);
+
+      React.act(() => {
+        window.dispatchEvent(new CustomEvent('pr-active-progress-update', { detail: { activePrNumbers: [], queuedPrNumbers: [] } }));
+      });
+      expect(capturedSectionProps.at(-1).activePrNumbers).toEqual([]);
+      expect(capturedSectionProps.at(-1).queuedPrNumbers).toEqual([]);
+    });
+
     test('given a PR whose Ack action is in flight, when checking activePrNumbers passed to PrSection, then that PR number is included while pending and removed once it resolves', async () => {
       let resolvePostJson;
       postJson.mockImplementation(() => new Promise((resolve) => { resolvePostJson = resolve; }));

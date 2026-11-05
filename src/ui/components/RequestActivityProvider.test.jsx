@@ -84,12 +84,12 @@ describe('RequestActivityProvider', () => {
     });
 
     expect(read().display.activeRequests).toEqual([]);
-    expect(events).toEqual([{ activePrNumbers: [{ repo: 'owner/repo', prNumber: '7' }] }]);
+    expect(events).toEqual([{ activePrNumbers: [{ repo: 'owner/repo', prNumber: '7' }], queuedPrNumbers: [] }]);
 
     act(() => {
       read().actions.renderSchedulerStatus(null);
     });
-    expect(events.at(-1)).toEqual({ activePrNumbers: [] });
+    expect(events.at(-1)).toEqual({ activePrNumbers: [], queuedPrNumbers: [] });
     window.removeEventListener('pr-active-progress-update', listener);
   });
 
@@ -112,7 +112,7 @@ describe('RequestActivityProvider', () => {
 
     expect(global.fetch).toHaveBeenCalledTimes(1);
     expect(global.fetch).toHaveBeenCalledWith('/view-prs/scheduler');
-    expect(events).toEqual([{ activePrNumbers: [{ repo: 'owner/repo', prNumber: '9' }] }]);
+    expect(events).toEqual([{ activePrNumbers: [{ repo: 'owner/repo', prNumber: '9' }], queuedPrNumbers: [] }]);
   });
 
   test('given no loadOnMount, when mounted, then it never fetches; and a failed startup load is ignored', async () => {

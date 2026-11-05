@@ -66,7 +66,7 @@ describe("buildActivityNow", () => {
       nowMs: NOW,
     });
     expect(items.map(({ label, detail, origin, elapsed, severity }) => [label, detail, origin, elapsed, severity])).toEqual([
-      ["Auto refresh", "3 repos", "background", "40s", ""],
+      ["Full refresh", "3 repos", "background", "40s", ""],
       ["Quick check", "", "background", "5s", ""],
       ["Run script", "2 at once", "you", "3m", "warning"],
       ["Notes save", "", "you", "7m", "critical"],
@@ -97,10 +97,10 @@ describe("buildActivityUpNext", () => {
       nowMs: NOW,
     });
     expect(items.map(({ label, detail, when, canRunNow }) => [label, detail, when, Boolean(canRunNow)])).toEqual([
-      ["Quick check", "waiting for the auto refresh to finish", "next", false],
+      ["Quick check", "waiting for a refresh of the repo to finish", "next", false],
       ["Quick check", "acme/api", "due now", false],
       ["Merged/closed drain", "acme/web", "in 1m", true],
-      ["Auto refresh", "acme/web", "due now", true],
+      ["Full refresh", "acme/web", "due now", true],
       ["Queued for the drain", expect.stringContaining("3 open, 2 merged/closed"), "", false],
     ]);
   });
@@ -114,7 +114,9 @@ describe("buildActivityFinished", () => {
       recentFinished: [
         { job: "quickCheck", at: ago(60_000), ok: true, detail: { reposCheckedCount: 1 } },
         { job: "autoRefresh", at: ago(9 * 60_000), ok: false, detail: { repos: ["acme/api"], error: { message: "gh auth expired" } } },
+        // The drain, by its refresh's entry (its own finish isn't listed).
         { job: "mergedQueueDrain", at: ago(30 * 60_000), ok: null, detail: { repos: ["acme/api", "acme/web"] } },
+        { job: "autoRefresh", at: ago(30 * 60_000), ok: true, detail: { kind: "mergedQueueDrain", repos: ["acme/api", "acme/web"] } },
       ],
       recentRequestActivity: [
         { key: "ackClear", label: "Ack/Clear", finishedAt: ago(10_000) },
@@ -127,7 +129,7 @@ describe("buildActivityFinished", () => {
       ["Ack/Clear", "", "done", "just now"],
       ["Quick check", "1 repo", "ok", "1m ago"],
       ["Quick check", "skipped: auto refresh in progress", "skipped", "3m ago"],
-      ["Auto refresh", "gh auth expired", "failed", "9m ago"],
+      ["Full refresh", "gh auth expired", "failed", "9m ago"],
       ["Merged/closed drain", "acme/api, acme/web", "ok", "30m ago"],
     ]);
 
@@ -192,7 +194,7 @@ describe("the server's tasks, with progress", () => {
       nowMs: NOW,
     });
     expect(items.map(({ label, detail, origin, elapsed, severity }) => [label, detail, origin, elapsed, severity])).toEqual([
-      ["Auto refresh", "acme/api · 4 PRs so far", "background", "30s", ""],
+      ["Full refresh", "acme/api · 4 PRs so far", "background", "30s", ""],
       // Its thresholds from this tab's request of its kind.
       ["Fetch older merged PRs", "acme/web · 12 of 30 PRs", "you", "11m", "warning"],
       ["Notes save", "", "you", "11m", "warning"],
@@ -217,5 +219,105 @@ describe("the server's tasks, with progress", () => {
     state = applyJobEvent({ ...state, tasks }, { seq: 2, job: "quickCheck", phase: "start" });
     expect(state.tasks).toEqual(tasks);
     expect(applyJobEventsSnapshot(getInitialJobEventsState(), { scheduler: {} }).tasks).toBeNull();
+  });
+});
+
+describe("Full refresh, and Update changed PRs", () => {
+  const { describeActivityKind, ACTIVITY_KIND_GUIDE } = require("./pr-activity-view.helpers.ts");
+  const jobs = getInitialJobEventsState().jobs;
+
+  test("an auto refresh is named by what it is: in Now (a task, or a running job), Up next and Just finished", () => {
+    expect(
+      buildActivityNow({
+        jobs,
+        tasks: [{ id: "t", kind: "changedPrs", origin: "background", repos: ["acme/api"], unit: "PR", done: 1, total: 3, startedAt: ago(5_000) }],
+        activeRequests: [],
+        bulkBatches: [],
+        isBackfillRunning: false,
+        nowMs: NOW,
+      }).map((item) => [item.label, item.kind]),
+    ).toEqual([["Update changed PRs", "changedPrs"]]);
+    expect(
+      buildActivityNow({
+        jobs: { ...jobs, autoRefresh: { ...jobs.autoRefresh, status: "running", runningDetail: { kind: "changedPrs" } } },
+        activeRequests: [],
+        bulkBatches: [],
+        isBackfillRunning: false,
+        nowMs: NOW,
+      })[0].label,
+    ).toBe("Update changed PRs");
+
+    const upNext = buildActivityUpNext({
+      dispatcherQueue: [
+        { repo: "acme/api", taskType: "autoRefresh", status: "due", forChangedPrs: true },
+        { repo: "acme/web", taskType: "autoRefresh", status: "due" },
+      ],
+      quickCheckWaitingOn: null,
+      pendingOpenCount: 0,
+      pendingMergedClosedCount: 0,
+      nowMs: NOW,
+    });
+    expect(upNext.map((item) => item.label)).toEqual(["Update changed PRs", "Full refresh"]);
+
+    const finished = buildActivityFinished({
+      recentFinished: [
+        { job: "autoRefresh", at: ago(60_000), ok: true, detail: { kind: "changedPrs", repos: ["acme/api"] } },
+        // The drain once: its refresh's entry, with the result and error.
+        { job: "mergedQueueDrain", at: ago(2 * 60_000), ok: null, detail: { repos: ["acme/web"] } },
+        { job: "autoRefresh", at: ago(2 * 60_000), ok: false, detail: { kind: "mergedQueueDrain", repos: ["acme/web"], error: "gh auth expired" } },
+        { job: "autoRefresh", at: ago(3 * 60_000), ok: true, detail: { repos: ["acme/web"] } },
+      ],
+      recentRequestActivity: [],
+      nowMs: NOW,
+    });
+    expect(finished.map((item) => [item.label, item.outcome, item.detail])).toEqual([
+      ["Update changed PRs", "ok", "acme/api"],
+      ["Merged/closed drain", "failed", "gh auth expired"],
+      ["Full refresh", "ok", "acme/web"],
+    ]);
+
+    // A skip says which it was; the drain's refresh skipping, once (the drain's).
+    const skipped = buildActivityFinished({
+      jobs: {
+        ...jobs,
+        autoRefresh: { ...jobs.autoRefresh, lastSkip: { reason: "already-in-progress", at: ago(60_000), kind: "changedPrs" } },
+      },
+      recentFinished: [],
+      recentRequestActivity: [],
+      nowMs: NOW,
+    });
+    expect(skipped.map((item) => item.label)).toEqual(["Update changed PRs"]);
+    expect(
+      buildActivityFinished({
+        jobs: {
+          ...jobs,
+          autoRefresh: { ...jobs.autoRefresh, lastSkip: { reason: "busy", at: ago(60_000), kind: "mergedQueueDrain" } },
+          mergedQueueDrain: { ...jobs.mergedQueueDrain, lastSkip: { reason: "busy", at: ago(60_000) } },
+        },
+        recentFinished: [],
+        recentRequestActivity: [],
+        nowMs: NOW,
+      }).map((item) => item.label),
+    ).toEqual(["Merged/closed drain"]);
+  });
+
+  test("each kind says what it does and what it doesn't update - the tooltips and the guide", () => {
+    expect(ACTIVITY_KIND_GUIDE.map((guide) => guide.label)).toEqual([
+      "Quick check",
+      "Update changed PRs",
+      "Full refresh",
+      "Merged/closed drain",
+      "Run script",
+      "Fetch older merged PRs",
+      "Ack/Clear",
+    ]);
+    ACTIVITY_KIND_GUIDE.forEach((guide) => {
+      expect(guide.does).toBeTruthy();
+      expect(guide.doesNotUpdate).toBeTruthy();
+    });
+    expect(describeActivityKind("quickCheck")).toMatch(/^Every 5 minutes.*Doesn't update: Comments, reviews and approvals/);
+    // The dispatcher's name for the drain.
+    expect(describeActivityKind("mergedDrain")).toBe(describeActivityKind("mergedQueueDrain"));
+    expect(describeActivityKind("notesSave")).toBe("");
   });
 });

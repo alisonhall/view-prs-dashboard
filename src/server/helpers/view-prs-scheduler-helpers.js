@@ -245,6 +245,12 @@ const createViewPrsSchedulerHelpers = ({
     return { pendingOpenCount, pendingMergedClosedCount };
   };
 
+  // { repo, prNumber } pairs with a PR number, as app.js tracks them.
+  const toActivePrPairs = (list) =>
+    (Array.isArray(list) ? list : [])
+      .map((entry) => ({ repo: toTrimmedString(entry?.repo), prNumber: String(entry?.prNumber ?? "").trim() }))
+      .filter((entry) => /^\d+$/.test(entry.prNumber));
+
   const getViewPrsSchedulerPublicState = () => {
     // isXInProgress/lastXAt are now derived from the dispatcher's own
     // per-repo registry (see view-prs-dispatcher-helpers.js's
@@ -259,11 +265,13 @@ const createViewPrsSchedulerHelpers = ({
     const dispatcherFields = getDispatcherDerivedFields() || {};
 
     return {
-      activePrNumbers: Array.isArray(viewPrsSchedulerState.activePrNumbers)
-        ? viewPrsSchedulerState.activePrNumbers
-          .map((prNumber) => String(prNumber || "").trim())
-          .filter((prNumber) => /^\d+$/.test(prNumber))
-        : [],
+      // The PRs a run is fetching right now (the rows' spinners), and those
+      // a run of chosen PRs will fetch next ("queued"): { repo, prNumber }
+      // pairs, as PR numbers are only unique within a repo. (Before
+      // 2026-11-05 these were turned into strings and dropped as not
+      // numbers, so no background run's spinners reached the page.)
+      activePrNumbers: toActivePrPairs(viewPrsSchedulerState.activePrNumbers),
+      queuedPrNumbers: toActivePrPairs(viewPrsSchedulerState.queuedPrNumbers),
       intervalMinutes: Math.round(viewPrsAutoIntervalMs / 60000),
       manualCooldownMinutes: Math.round(viewPrsManualCooldownMs / 60000),
       quickCheckIntervalMinutes: Math.max(

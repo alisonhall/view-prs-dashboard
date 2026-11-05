@@ -111,7 +111,7 @@ describe('ActivityPopover', () => {
     expect(button()).toHaveAccessibleName('Activity, 2 running or queued');
     await user.click(button());
     const items = within(screen.getByRole('region', { name: 'Now' })).getAllByRole('listitem');
-    expect(items[0]).toHaveTextContent(/^Auto refreshacme\/api, acme\/webBackground4\ds$/);
+    expect(items[0]).toHaveTextContent(/^Full refreshacme\/api, acme\/webBackground4\ds$/);
     expect(items[1]).toHaveTextContent(/^Fetch older merged PRsYou2m$/);
   });
 
@@ -198,13 +198,27 @@ describe('ActivityPopover', () => {
     await user.click(button());
     const next = within(screen.getByRole('region', { name: 'Up next' })).getAllByRole('listitem');
     expect(next[0]).toHaveTextContent(/^Quick checkacme\/apidue now$/);
-    expect(next[1]).toHaveTextContent(/^Auto refreshacme\/webin 6mRun now$/);
-    await user.click(within(next[1]!).getByRole('button', { name: 'Run auto refresh for acme/web now' }));
+    expect(next[1]).toHaveTextContent(/^Full refreshacme\/webin 6mRun now$/);
+    await user.click(within(next[1]!).getByRole('button', { name: 'Run full refresh for acme/web now' }));
     expect(mockBump).toHaveBeenCalledWith('acme/web', 'autoRefresh');
 
     const finished = within(screen.getByRole('region', { name: 'Just finished' })).getAllByRole('listitem');
     expect(finished[0]).toHaveTextContent(/Quick check.*2 repos.*1m ago/);
-    expect(finished[1]).toHaveTextContent(/Auto refresh failed.*gh auth expired.*9m ago/);
+    expect(finished[1]).toHaveTextContent(/Full refresh failed.*gh auth expired.*9m ago/);
+  });
+
+  test("\"What these are\" explains each kind, and what it doesn't update; each item's name says it on hover", async () => {
+    const user = userEvent.setup();
+    renderPopover(jobEvents({ dispatcherQueue: [{ repo: 'acme/api', taskType: 'quickCheck', status: 'due', priority: 5 }] }));
+    await user.click(button());
+    const guide = screen.getByText('What these are').closest('details') as HTMLElement;
+    expect(guide).not.toHaveAttribute('open');
+    await user.click(screen.getByText('What these are'));
+    expect(within(guide).getByText('Update changed PRs')).toBeVisible();
+    expect(guide).toHaveTextContent(/Full refresh.*Doesn't update: PRs that look unchanged keep their stored details/);
+
+    const label = within(screen.getByRole('region', { name: 'Up next' })).getByText('Quick check');
+    expect(label.getAttribute('title')).toMatch(/^Every 5 minutes.*Doesn't update:.*\n\nPriority 5\./s);
   });
 
   test('Esc closes it and returns focus to the button; so does the close button', async () => {

@@ -173,6 +173,8 @@ const viewPrsSchedulerState = {
   // either call actually targets (see runViewPrsQuickCheck's own guard).
   autoRefreshInProgressRepos: new Set(),
   activePrNumbers: [],
+  // The PRs a run of chosen PRs hasn't reached yet (the rows' "queued").
+  queuedPrNumbers: [],
   // Back-compat aggregates derived from autoCircuitByRepo below (worst
   // case across every repo) - kept for existing consumers
   // (getViewPrsSchedulerPublicState, pr-applied-summary.helpers.ts's "Last
@@ -233,6 +235,8 @@ const viewPrsSchedulerState = {
 };
 
 const viewPrsActivePrCounts = new Map();
+// The same, for the PRs runs of chosen PRs are still to fetch.
+const viewPrsQueuedPrCounts = new Map();
 
 // Initialize scheduler helpers (uses only fs, path, config - no circular deps)
 const schedulerHelpers = createSchedulerHelpers({
@@ -280,15 +284,17 @@ const parseActivePrKey = (key) => {
   };
 };
 
+const toSortedActivePrPairs = (counts) =>
+  [...counts.keys()].map(parseActivePrKey).sort((left, right) => {
+    if (left.repo !== right.repo) {
+      return left.repo < right.repo ? -1 : 1;
+    }
+    return Number(left.prNumber) - Number(right.prNumber);
+  });
+
 const syncSchedulerActivePrNumbers = () => {
-  viewPrsSchedulerState.activePrNumbers = [...viewPrsActivePrCounts.keys()]
-    .map(parseActivePrKey)
-    .sort((left, right) => {
-      if (left.repo !== right.repo) {
-        return left.repo < right.repo ? -1 : 1;
-      }
-      return Number(left.prNumber) - Number(right.prNumber);
-    });
+  viewPrsSchedulerState.activePrNumbers = toSortedActivePrPairs(viewPrsActivePrCounts);
+  viewPrsSchedulerState.queuedPrNumbers = toSortedActivePrPairs(viewPrsQueuedPrCounts);
   // Pushes the same per-PR progress signal the 30s scheduler poll used to
   // surface, just live - see the "Polling retirement" section of the
   // activity-drawer plan for why this isn't tied to a specific job's
@@ -344,19 +350,25 @@ const viewPrsProgressTracker = {
   },
 };
 
-const addSchedulerActivePrNumbers = (prNumbers, repo) => {
-  const uniqueNumbers = Array.isArray(prNumbers) ? [...new Set(prNumbers)] : [];
-  uniqueNumbers.forEach((prNumber) => {
-    incrementActivePrNumber(prNumber, repo);
-  });
+// Queued: PRs a run of chosen PRs will fetch, until it starts each one
+// (then it's active, from its own progress marker) or the run ends.
+// Counted, as two runs may queue the same PR.
+const changeQueuedPrNumbers = (prNumbers, repo, delta) => {
+  const uniqueNumbers = Array.isArray(prNumbers) ? [...new Set(prNumbers.map((prNumber) => String(prNumber || "").trim()))] : [];
+  let changed = false;
+  uniqueNumbers
+    .filter((prNumber) => /^\d+$/.test(prNumber))
+    .forEach((prNumber) => {
+      const key = buildActivePrKey(prNumber, repo);
+      const count = (viewPrsQueuedPrCounts.get(key) || 0) + delta;
+      if (count > 0) viewPrsQueuedPrCounts.set(key, count);
+      else viewPrsQueuedPrCounts.delete(key);
+      changed = true;
+    });
+  if (changed) syncSchedulerActivePrNumbers();
 };
-
-const removeSchedulerActivePrNumbers = (prNumbers, repo) => {
-  const uniqueNumbers = Array.isArray(prNumbers) ? [...new Set(prNumbers)] : [];
-  uniqueNumbers.forEach((prNumber) => {
-    decrementActivePrNumber(prNumber, repo);
-  });
-};
+const addSchedulerQueuedPrNumbers = (prNumbers, repo) => changeQueuedPrNumbers(prNumbers, repo, 1);
+const removeSchedulerQueuedPrNumbers = (prNumbers, repo) => changeQueuedPrNumbers(prNumbers, repo, -1);
 
 // Initialize command execution helpers
 const commandHelpers = createCommandExecutionHelpers({
@@ -381,27 +393,6 @@ const {
   getDependencyStatus: _getDependencyStatus,
   isGhAuthenticated: _isGhAuthenticated,
 } = commandHelpers;
-
-const getLatestMergedPrNumbersForRepo = (repo, limit = 15) => {
-  const safeRepo = toTrimmedString(repo);
-  if (!safeRepo) {
-    return [];
-  }
-
-  const maxCount = Math.max(1, Math.min(15, Number.parseInt(String(limit), 10) || 15));
-  const data = callReadViewPrsData();
-  return Object.values(data?.byPrNumber || {})
-    .filter((entry) => entry?.repo === safeRepo)
-    .filter((entry) => String(entry?.section || "") === "merged")
-    .sort((left, right) => {
-      const leftMs = Date.parse(String(left?.data?.mergedAt || left?.mergedAt || "")) || 0;
-      const rightMs = Date.parse(String(right?.data?.mergedAt || right?.mergedAt || "")) || 0;
-      return rightMs - leftMs;
-    })
-    .slice(0, maxCount)
-    .map((entry) => String(entry?.prNumber || entry?.data?.number || "").trim())
-    .filter((prNumber) => /^\d+$/.test(prNumber));
-};
 
 // Use scheduler helpers for action log management
 const appendActionLogEntry = (entry) => _appendActionLogEntry(entry);
@@ -2034,8 +2025,10 @@ const runViewPrsAutoRefresh = async ({
   skipCooldownChecks = false,
   reposOverride = null,
   prNumbersByRepo = {},
-  // Whose run it is in the Activity popover: the merged/closed drain's,
-  // when it's the drain running it.
+  // What it is in the Activity popover: "autoRefresh" (a full refresh),
+  // "changedPrs" (just the PRs a quick check found changed - the
+  // dispatcher's fast-follow), or "mergedQueueDrain" (the drain running
+  // it). Also in its job events' detail, as `kind`.
   progressKind = "autoRefresh",
 } = {}) => {
   // Each repo's PR numbers to refresh, or null for the whole repo: those
@@ -2076,7 +2069,7 @@ const runViewPrsAutoRefresh = async ({
     callEmitJobEvent({
       job: JOB_NAMES.AUTO_REFRESH,
       phase: JOB_PHASES.SKIPPED,
-      detail: { reason: "nothing-to-fetch", repos: candidateAutoRefreshRepos },
+      detail: { kind: progressKind, reason: "nothing-to-fetch", repos: candidateAutoRefreshRepos },
     });
     return { skipped: true, skipReason: "nothing-to-fetch" };
   }
@@ -2095,7 +2088,7 @@ const runViewPrsAutoRefresh = async ({
     callEmitJobEvent({
       job: JOB_NAMES.AUTO_REFRESH,
       phase: JOB_PHASES.SKIPPED,
-      detail: { reason: "already-in-progress" },
+      detail: { kind: progressKind, reason: "already-in-progress" },
     });
     return { skipped: true, skipReason: "already-in-progress" };
   }
@@ -2128,6 +2121,7 @@ const runViewPrsAutoRefresh = async ({
           job: JOB_NAMES.AUTO_REFRESH,
           phase: JOB_PHASES.SKIPPED,
           detail: {
+            kind: progressKind,
             reason: "circuit-open",
             message: viewPrsSchedulerState.lastAutoSkipReason,
             repos: reposWithOpenCircuit,
@@ -2152,6 +2146,7 @@ const runViewPrsAutoRefresh = async ({
       job: JOB_NAMES.AUTO_REFRESH,
       phase: JOB_PHASES.SKIPPED,
       detail: {
+        kind: progressKind,
         reason: "missing-dependencies",
         missing: dependencyStatus.missing,
       },
@@ -2181,7 +2176,7 @@ const runViewPrsAutoRefresh = async ({
       callEmitJobEvent({
         job: JOB_NAMES.AUTO_REFRESH,
         phase: JOB_PHASES.SKIPPED,
-        detail: { reason: "manual-cooldown", message: skipReason },
+        detail: { kind: progressKind, reason: "manual-cooldown", message: skipReason },
       });
       return { skipped: true, skipReason: "manual-cooldown" };
     }
@@ -2219,7 +2214,7 @@ const runViewPrsAutoRefresh = async ({
     callEmitJobEvent({
       job: JOB_NAMES.AUTO_REFRESH,
       phase: JOB_PHASES.START,
-      detail: { repos: reposToRefresh, repoCount: reposToRefresh.length },
+      detail: { repos: reposToRefresh, repoCount: reposToRefresh.length, kind: progressKind },
     });
     emittedAutoRefreshStart = true;
     const targetCounts = reposToRefresh.map((repo) => getTargetPrNumbers(repo)?.length ?? null);
@@ -2238,7 +2233,11 @@ const runViewPrsAutoRefresh = async ({
 
     const runRepoRefresh = async (repo) => {
       const targetPrNumbers = getTargetPrNumbers(repo);
-      const seededPrNumbers = targetPrNumbers || getLatestMergedPrNumbersForRepo(repo, 15);
+      // Its chosen PRs, queued until each one's fetch starts (then the
+      // script's progress marker makes it active). A full refresh queues
+      // none: its PRs are active one by one as it reaches them.
+      const seededPrNumbers = targetPrNumbers || [];
+      const stillQueued = new Set(seededPrNumbers.map(String));
       const repoStartMs = Date.now();
       let repoFirstPrProgressMs = null;
 
@@ -2276,10 +2275,11 @@ const runViewPrsAutoRefresh = async ({
             // being scanned - see buildActivePrKey's own comment.
             repo,
             progressTracker: {
-              onStart: () => {
+              onStart: (prNumber) => {
                 if (repoFirstPrProgressMs === null) {
                   repoFirstPrProgressMs = Date.now();
                 }
+                if (stillQueued.delete(String(prNumber))) removeSchedulerQueuedPrNumbers([prNumber], repo);
               },
               ...countFinishedPrs(progressTask),
             },
@@ -2287,7 +2287,7 @@ const runViewPrsAutoRefresh = async ({
         );
 
       try {
-        addSchedulerActivePrNumbers(seededPrNumbers, repo);
+        addSchedulerQueuedPrNumbers(seededPrNumbers, repo);
         // A run of chosen PRs that fetched some of them did its job: the
         // ones it couldn't (deleted, or no longer visible) are reported,
         // not the repo's run failed - one gone PR added by URL would
@@ -2391,7 +2391,8 @@ const runViewPrsAutoRefresh = async ({
           },
         };
       } finally {
-        removeSchedulerActivePrNumbers(seededPrNumbers, repo);
+        removeSchedulerQueuedPrNumbers([...stillQueued], repo);
+        stillQueued.clear();
       }
     };
 
@@ -2575,6 +2576,7 @@ const runViewPrsAutoRefresh = async ({
           repos: finishRepos,
           durationMs: Date.now() - autoTriggerMs,
           error: viewPrsSchedulerState.lastAutoError || null,
+          kind: progressKind,
         },
       });
     }
@@ -3290,7 +3292,12 @@ const runTaskGroup = async (taskType, entries) => {
   }
   const result =
     taskType === "autoRefresh"
-      ? await callRunViewPrsAutoRefresh({ reposOverride: reposToRun, prNumbersByRepo })
+      ? await callRunViewPrsAutoRefresh({
+          reposOverride: reposToRun,
+          prNumbersByRepo,
+          // Every repo only for its changed PRs: that's what it is.
+          ...(reposToRun.every((repo) => prNumbersByRepo[repo]) ? { progressKind: "changedPrs" } : {}),
+        })
       : await callRunViewPrsMergedQueueDrain({ reposOverride: reposToRun });
   if (result?.skipped) {
     return {

@@ -13,7 +13,9 @@ export interface JobState {
   lastFinishedAt: string | null;
   lastOk: boolean | null;
   lastError: unknown;
-  lastSkip: { reason: string | null; at: string } | null;
+  // `kind`: an auto refresh's (a full refresh, or of changed PRs, or the
+  // drain's), when its event says.
+  lastSkip: { reason: string | null; at: string; kind?: string } | null;
   // Only quickCheck: the job it's waiting for, when deferred.
   waitingOn?: { job: string | null; since: string } | null;
   // While running: its start event's detail (the repos it's working on,
@@ -285,7 +287,11 @@ const createPrJobEventsHelpers = ({ now }: { now?: () => string } = {}) => {
         // a dropped manual trigger never flickers "running".
         nextJob = {
           ...previousJob,
-          lastSkip: { reason: envelope.detail?.reason || null, at },
+          lastSkip: {
+            reason: envelope.detail?.reason || null,
+            at,
+            ...(typeof envelope.detail?.kind === "string" ? { kind: envelope.detail.kind } : {}),
+          },
           ...(isQuickCheck ? { waitingOn: null } : {}),
         };
         break;

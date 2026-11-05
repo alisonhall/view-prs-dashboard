@@ -157,7 +157,9 @@ export function RequestActivityProvider({
       // The server (app.js's buildActivePrKey) sends activePrNumbers as
       // { repo, prNumber } pairs; PrTableApp keys rows the same way.
       const activePrNumbers = Array.isArray(scheduler.activePrNumbers) ? scheduler.activePrNumbers : [];
-      window.dispatchEvent(new CustomEvent('pr-active-progress-update', { detail: { activePrNumbers } }));
+      // And those a run of chosen PRs is still to fetch (shown "queued").
+      const queuedPrNumbers = Array.isArray(scheduler.queuedPrNumbers) ? scheduler.queuedPrNumbers : [];
+      window.dispatchEvent(new CustomEvent('pr-active-progress-update', { detail: { activePrNumbers, queuedPrNumbers } }));
     },
     [],
   );

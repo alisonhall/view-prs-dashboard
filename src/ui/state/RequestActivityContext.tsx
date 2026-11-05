@@ -40,7 +40,7 @@ export interface RequestActivityValue {
   // it as a dependency accept any key.
   beginRequestActivity: (key: string) => () => void;
   renderRequestActivity: () => void;
-  renderSchedulerStatus: (scheduler?: SchedulerSnapshot & { activePrNumbers?: unknown[] }) => void;
+  renderSchedulerStatus: (scheduler?: SchedulerSnapshot & { activePrNumbers?: unknown[]; queuedPrNumbers?: unknown[] }) => void;
 }
 
 export const RequestActivityContext = createContext<RequestActivityValue>({

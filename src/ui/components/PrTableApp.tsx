@@ -150,11 +150,19 @@ export function PrTableApp() {
   // buildActivePrKey/syncSchedulerActivePrNumbers) - composite-keyed in
   // combinedActivePrNumbers below, alongside busyPrNumbers.
   const [activePrNumbers, setActivePrNumbers] = useState<ActivePr[]>([]);
+  // And those a scheduler run of chosen PRs is still to fetch: "queued".
+  const [schedulerQueuedPrNumbers, setSchedulerQueuedPrNumbers] = useState<ActivePr[]>([]);
 
   useEffect(() => {
+    // Every scheduler frame carries both lists (several a second during a
+    // run, with its progress): kept as they are when nothing in them
+    // changed, so the table doesn't render again for each frame.
+    const keysOf = (list: ActivePr[]) => list.map((entry) => buildActivePrKey(String(entry?.prNumber), entry?.repo)).join(',');
+    const keepIfSame = (next: ActivePr[]) => (previous: ActivePr[]) => (keysOf(previous) === keysOf(next) ? previous : next);
     const handleActiveProgressUpdate = (event: Event) => {
-      const { detail } = event as CustomEvent<{ activePrNumbers?: ActivePr[] } | undefined>;
-      setActivePrNumbers(detail?.activePrNumbers || []);
+      const { detail } = event as CustomEvent<{ activePrNumbers?: ActivePr[]; queuedPrNumbers?: ActivePr[] } | undefined>;
+      setActivePrNumbers(keepIfSame(detail?.activePrNumbers || []));
+      setSchedulerQueuedPrNumbers(keepIfSame(detail?.queuedPrNumbers || []));
     };
 
     window.addEventListener('pr-active-progress-update', handleActiveProgressUpdate);
@@ -320,10 +328,16 @@ export function PrTableApp() {
   // Excludes anything already in combinedActivePrNumbers - "actively
   // running" always visually wins over "queued" for a given row, in the
   // (normally brief) moment a key could be in both sets.
+  // Queued: this tab's bulk chunks waiting their turn, and the PRs a
+  // scheduler run of chosen PRs is still to fetch.
   const combinedQueuedPrNumbers = useMemo(() => {
     const activeKeySet = new Set(combinedActivePrNumbers);
-    return Array.from(queuedPrNumbers).filter((key) => !activeKeySet.has(key));
-  }, [queuedPrNumbers, combinedActivePrNumbers]);
+    const keys = new Set([
+      ...queuedPrNumbers,
+      ...schedulerQueuedPrNumbers.map((entry) => buildActivePrKey(String(entry?.prNumber), entry?.repo)),
+    ]);
+    return Array.from(keys).filter((key) => !activeKeySet.has(key));
+  }, [queuedPrNumbers, schedulerQueuedPrNumbers, combinedActivePrNumbers]);
 
   // State: PR JSON details modal target ({ entry, pr } | null)
   const [jsonModalTarget, setJsonModalTarget] = useState<{ entry: Pick<PrEntry, 'prNumber' | 'repo'>; pr: PrData } | null>(null);

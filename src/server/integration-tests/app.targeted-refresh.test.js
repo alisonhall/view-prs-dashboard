@@ -194,7 +194,7 @@ describe("the dispatcher's fast-follow", () => {
 
     await tickAndSettle();
 
-    expect(calls).toEqual([{ reposOverride: [REPO], prNumbersByRepo: { [REPO]: ["12", "40"] } }]);
+    expect(calls).toEqual([{ reposOverride: [REPO], prNumbersByRepo: { [REPO]: ["12", "40"] }, progressKind: "changedPrs" }]);
     expect(entry.isRunning).toBe(false);
     expect(entry.nextDueAt).toBe(scheduledSweep);
   });

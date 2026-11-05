@@ -364,6 +364,10 @@ const createViewPrsDispatcherHelpers = ({
       intervalMs: entry.intervalMs,
       lastFinishedAt: entry.lastFinishedAt,
       lastOk: entry.lastOk,
+      // An auto refresh due only because a quick check found PRs changed:
+      // it refreshes just those ("Update changed PRs" in Activity), not
+      // the repo's full sweep.
+      forChangedPrs: entry.taskType === "autoRefresh" && isBumpedOnlyFor(entry, "quick-check-pending-open", { nowMs }),
     }));
 
     const statusRank = { running: 0, "circuit-open": 1, due: 2, scheduled: 3 };

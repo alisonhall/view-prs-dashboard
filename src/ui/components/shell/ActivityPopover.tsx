@@ -13,6 +13,8 @@ import {
   buildActivityProblems,
   buildActivityUpNext,
   countActivity,
+  describeActivityKind,
+  ACTIVITY_KIND_GUIDE,
   type ActivityUpNextItem,
 } from '../../helpers/pr-activity-view.helpers.ts';
 import { useHeaderPopover } from './useHeaderPopover';
@@ -121,7 +123,9 @@ function ActivityContent({ onOpenActionLog }: { onOpenActionLog: () => void }) {
             {now.map((item) => (
               <li key={item.key} className="activity-item">
                 <span className="activity-item-main">
-                  <span className="activity-item-label">{item.label}</span>
+                  <span className="activity-item-label" title={describeActivityKind(item.kind) || undefined}>
+                    {item.label}
+                  </span>
                   {item.detail && <span className="activity-item-detail">{item.detail}</span>}
                 </span>
                 <span className="activity-item-meta">
@@ -150,7 +154,10 @@ function ActivityContent({ onOpenActionLog }: { onOpenActionLog: () => void }) {
             {upNext.map((item) => (
               <li key={item.key} className="activity-item">
                 <span className="activity-item-main">
-                  <span className="activity-item-label" title={item.priority !== undefined ? `Priority ${item.priority}. ${PRIORITY_HINT}` : undefined}>
+                  <span
+                    className="activity-item-label"
+                    title={[describeActivityKind(item.kind), item.priority !== undefined ? `Priority ${item.priority}. ${PRIORITY_HINT}` : ''].filter(Boolean).join('\n\n') || undefined}
+                  >
                     {item.label}
                   </span>
                   {item.detail && <span className="activity-item-detail">{item.detail}</span>}
@@ -193,7 +200,7 @@ function ActivityContent({ onOpenActionLog }: { onOpenActionLog: () => void }) {
                   <span className="activity-outcome" aria-hidden="true">
                     {item.outcome === 'failed' ? '✗' : item.outcome === 'ok' ? '✓' : item.outcome === 'skipped' ? '–' : '·'}
                   </span>
-                  <span className="activity-item-label">
+                  <span className="activity-item-label" title={describeActivityKind(item.kind) || undefined}>
                     {item.label}
                     {item.outcome === 'failed' && <span className="ui-visually-hidden"> failed</span>}
                   </span>
@@ -207,6 +214,21 @@ function ActivityContent({ onOpenActionLog }: { onOpenActionLog: () => void }) {
           </ul>
         </section>
       )}
+
+      <details className="activity-guide">
+        <summary>What these are</summary>
+        <dl>
+          {ACTIVITY_KIND_GUIDE.map((guide) => (
+            <div key={guide.kind} className="activity-guide-entry">
+              <dt>{guide.label}</dt>
+              <dd>{guide.does}</dd>
+              <dd className="activity-guide-not">
+                <span className="activity-guide-not-label">Doesn't update:</span> {guide.doesNotUpdate}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </details>
     </div>
   );
 }

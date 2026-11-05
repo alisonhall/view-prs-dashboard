@@ -10,10 +10,77 @@ import { formatShortAge } from "./pr-row-signals.helpers.ts";
 // - Just finished: background jobs and your requests, newest first.
 
 export const JOB_LABELS: Record<string, string> = {
-  autoRefresh: "Auto refresh",
+  autoRefresh: "Full refresh",
+  changedPrs: "Update changed PRs",
   quickCheck: "Quick check",
   mergedQueueDrain: "Merged/closed drain",
   mergedDrain: "Merged/closed drain",
+};
+
+// What each kind of activity does, and what it doesn't update - each
+// item's tooltip, and the popover's "What these are".
+export interface ActivityKindGuide {
+  kind: string;
+  label: string;
+  does: string;
+  doesNotUpdate: string;
+}
+
+export const ACTIVITY_KIND_GUIDE: ActivityKindGuide[] = [
+  {
+    kind: "quickCheck",
+    label: "Quick check",
+    does:
+      "Every 5 minutes per repo: lists its PRs to spot new and changed ones, and queues them for an update. Its listing keeps open PRs' title, labels, draft state, checks, mergeability, files viewed, open conversations, size, assignees and requested reviewers current.",
+    doesNotUpdate:
+      "Comments, reviews and approvals, commits, what's said in conversations, and the diff - those wait for the update it queues. Nothing about merged and closed PRs beyond spotting that they changed.",
+  },
+  {
+    kind: "changedPrs",
+    label: "Update changed PRs",
+    does:
+      "Straight after a quick check finds PRs changed: fetches just those PRs in full - open, draft, merged and closed - then puts the full refresh back to its time. A repo with more than 25 queued gets a full refresh instead.",
+    doesNotUpdate: "The repo's other PRs.",
+  },
+  {
+    kind: "autoRefresh",
+    label: "Full refresh",
+    does:
+      "Every 15 minutes per repo, as a safety net: fetches the PRs that changed since their last fetch, and open ones not fetched in full for 4 hours.",
+    doesNotUpdate:
+      "PRs that look unchanged keep their stored details - what GitHub changes without marking a PR updated (checks finishing, mergeability, files viewed, conversations resolved) comes from the quick check's listing instead. A merged PR's diff is only ever fetched once.",
+  },
+  {
+    kind: "mergedQueueDrain",
+    label: "Merged/closed drain",
+    does:
+      "Every 30 minutes per repo, or straight after a quick check: fetches the merged and closed PRs a quick check queued, in full. Does nothing when none are queued.",
+    doesNotUpdate: "Open and draft PRs.",
+  },
+  {
+    kind: "runScript",
+    label: "Run script",
+    does: "Started from Settings › Run & check: fetches a repo's PRs, or the ones you chose, in full - none reused from what's stored.",
+    doesNotUpdate: "Other repos, or (for chosen PRs) the repo's other PRs.",
+  },
+  {
+    kind: "olderMerged",
+    label: "Fetch older merged PRs",
+    does: "Started from Settings › Sources: fetches up to 30 of a repo's latest 100 merged PRs that aren't stored yet.",
+    doesNotUpdate: "PRs already stored.",
+  },
+  {
+    kind: "ackClear",
+    label: "Ack/Clear",
+    does: "Saves your Ack (or undoes it), then refreshes those PRs.",
+    doesNotUpdate: "Other PRs.",
+  },
+];
+
+// Its guide entry's text, for an item's tooltip ("" for a kind without one).
+export const describeActivityKind = (kind: string | undefined): string => {
+  const guide = ACTIVITY_KIND_GUIDE.find((entry) => entry.kind === (kind === "mergedDrain" ? "mergedQueueDrain" : kind));
+  return guide ? `${guide.does} Doesn't update: ${guide.doesNotUpdate}` : "";
 };
 
 // The server's tasks someone started, by kind - the same keys as this
@@ -109,6 +176,8 @@ export const buildActivityProblems = ({
 
 export interface ActivityNowItem {
   key: string;
+  // What kind of activity it is (ACTIVITY_KIND_GUIDE), for its tooltip.
+  kind?: string;
   label: string;
   // What it's working on, or how far it's got.
   detail: string;
@@ -186,6 +255,7 @@ export const buildActivityNow = ({
       const request = task.origin === "you" ? activeRequests.find((candidate) => candidate.key === task.kind) : undefined;
       items.push({
         key: `task:${task.id}`,
+        kind: task.kind,
         label: JOB_LABELS[task.kind] || REQUEST_TASK_LABELS[task.kind] || task.kind,
         detail: [describeRepos(asStrings(task.repos)), describeProgress(task)].filter(Boolean).join(" · "),
         origin: task.origin === "you" ? "you" : "background",
@@ -197,9 +267,12 @@ export const buildActivityNow = ({
     JOB_ORDER.forEach((key) => {
       const job = jobs[key];
       if (job?.status !== "running") return;
+      // An auto refresh says which it is (a full refresh, or of changed PRs).
+      const kind = typeof job.runningDetail?.kind === "string" ? job.runningDetail.kind : key;
       items.push({
         key: `job:${key}`,
-        label: JOB_LABELS[key] || key,
+        kind,
+        label: JOB_LABELS[kind] || kind,
         detail: describeRepos(asStrings(job.runningDetail?.repos)),
         origin: "background",
         elapsed: elapsedSince(parseMs(job.startedAt)),
@@ -212,6 +285,7 @@ export const buildActivityNow = ({
     if (!countsAsActivity(request) && runMs < SLOW_DATA_LOAD_MS) return;
     items.push({
       key: `request:${request.key}`,
+      kind: request.key,
       label: request.label,
       detail: request.count > 1 ? `${request.count} at once` : "",
       origin: "you",
@@ -245,10 +319,13 @@ export interface DispatcherEntry {
   status: string;
   priority?: number;
   nextDueAt?: string | null;
+  // An auto refresh due only for the PRs a quick check found changed.
+  forChangedPrs?: boolean;
 }
 
 export interface ActivityUpNextItem {
   key: string;
+  kind?: string;
   label: string;
   detail: string;
   when: string;
@@ -276,8 +353,10 @@ export const buildActivityUpNext = ({
   if (quickCheckWaitingOn) {
     items.push({
       key: "quick-check-waiting",
+      kind: "quickCheck",
       label: JOB_LABELS.quickCheck || "Quick check",
-      detail: `waiting for the ${(JOB_LABELS[quickCheckWaitingOn] || quickCheckWaitingOn).toLowerCase()} to finish`,
+      // (Either kind of refresh of the repo.)
+      detail: quickCheckWaitingOn === "autoRefresh" ? "waiting for a refresh of the repo to finish" : `waiting for the ${(JOB_LABELS[quickCheckWaitingOn] || quickCheckWaitingOn).toLowerCase()} to finish`,
       when: "next",
     });
   }
@@ -286,9 +365,11 @@ export const buildActivityUpNext = ({
     if (!entry || entry.status === "running" || entry.status === "circuit-open") return;
     const dueMs = parseMs(entry.nextDueAt);
     const isScheduled = entry.status === "scheduled" && Number.isFinite(dueMs) && dueMs > nowMs;
+    const kind = entry.forChangedPrs ? "changedPrs" : entry.taskType;
     items.push({
       key: `dispatcher:${entry.repo}::${entry.taskType}`,
-      label: JOB_LABELS[entry.taskType] || entry.taskType,
+      kind,
+      label: JOB_LABELS[kind] || entry.taskType,
       detail: entry.repo,
       when: isScheduled ? `in ${formatDuration(dueMs - nowMs)}` : "due now",
       repo: entry.repo,
@@ -300,6 +381,7 @@ export const buildActivityUpNext = ({
   if (pendingOpenCount > 0 || pendingMergedClosedCount > 0) {
     items.push({
       key: "drain-queued",
+      kind: "mergedQueueDrain",
       label: "Queued for the drain",
       detail: `${pendingOpenCount} open, ${pendingMergedClosedCount} merged/closed - changes a quick check found`,
       when: "",
@@ -310,6 +392,7 @@ export const buildActivityUpNext = ({
 
 export interface ActivityFinishedItem {
   key: string;
+  kind?: string;
   label: string;
   detail: string;
   // A job's result, or a run it skipped (with why); your requests don't
@@ -354,26 +437,46 @@ export const buildActivityFinished = ({
   [
     ...JOB_ORDER.flatMap((key) => {
       const skip = jobs?.[key]?.lastSkip;
-      return skip
-        ? [{ key: `skip:${key}:${skip.at}`, label: JOB_LABELS[key] || key, detail: `skipped: ${skip.reason || "unknown reason"}`, outcome: "skipped" as const, atMs: parseMs(skip.at) }]
-        : [];
+      // The drain's refresh skipping: the drain's own skip says it.
+      if (!skip || (key === "autoRefresh" && skip.kind === "mergedQueueDrain")) return [];
+      const kind = skip.kind || key;
+      return [
+        {
+          key: `skip:${key}:${skip.at}`,
+          kind,
+          label: JOB_LABELS[kind] || key,
+          detail: `skipped: ${skip.reason || "unknown reason"}`,
+          outcome: "skipped" as const,
+          atMs: parseMs(skip.at),
+        },
+      ];
     }),
-    ...(Array.isArray(recentFinished) ? recentFinished : []).map((entry, index) => ({
-      key: `job:${entry.job}:${entry.at}:${index}`,
-      label: JOB_LABELS[entry.job] || entry.job,
-      detail: describeFinishedJob(entry),
-      outcome: entry.ok === false ? ("failed" as const) : ("ok" as const),
-      atMs: parseMs(entry.at),
-    })),
+    ...(Array.isArray(recentFinished) ? recentFinished : [])
+      // The drain once: its refresh's entry (labelled the drain's, by its
+      // kind), which has the result and any error - the drain's own finish
+      // has neither, and only comes when its refresh ran.
+      .filter((entry) => entry.job !== "mergedQueueDrain")
+      .map((entry, index) => {
+        const kind = typeof entry.detail?.kind === "string" ? entry.detail.kind : entry.job;
+        return {
+          key: `job:${entry.job}:${entry.at}:${index}`,
+          kind,
+          label: JOB_LABELS[kind] || entry.job,
+          detail: describeFinishedJob(entry),
+          outcome: entry.ok === false ? ("failed" as const) : ("ok" as const),
+          atMs: parseMs(entry.at),
+        };
+      }),
     ...(Array.isArray(recentRequestActivity) ? recentRequestActivity : [])
       .filter((entry) => !NOT_LISTED_AS_FINISHED.has(entry.key))
       .map((entry, index) => ({
-      key: `request:${entry.key}:${entry.finishedAt}:${index}`,
-      label: entry.label,
-      detail: "",
-      outcome: "done" as const,
-      atMs: parseMs(entry.finishedAt),
-    })),
+        key: `request:${entry.key}:${entry.finishedAt}:${index}`,
+        kind: entry.key,
+        label: entry.label,
+        detail: "",
+        outcome: "done" as const,
+        atMs: parseMs(entry.finishedAt),
+      })),
   ]
     .filter((item) => Number.isFinite(item.atMs))
     .sort((a, b) => b.atMs - a.atMs)

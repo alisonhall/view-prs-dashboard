@@ -691,26 +691,47 @@ describe("runViewPrsAutoRefresh behavior", () => {
     ).toBeGreaterThanOrEqual(beforeRun);
   });
 
-  test("seeds only the latest merged PRs before auto refresh starts", async () => {
-    let observedActivePrNumbers = null;
+  // The rows' spinners: a PR is active only while a run is fetching it (the
+  // script's progress markers). Before 2026-11-05 a full refresh marked the
+  // repo's latest merged PRs active for its whole run, and a run of chosen
+  // PRs all of them, finished or not.
+  test("a full refresh marks no PR busy up front: each is active only while its fetch runs", async () => {
+    let observed = null;
     appModule.runViewPrsScript = async () => {
       // Captured rather than asserted inline: a thrown expect() here would
       // be swallowed by runViewPrsAutoRefresh's own try/catch (it becomes a
-      // logged "auto refresh had failures" instead of a failed test) - see
-      // the beforeAll fixture's own comment for how that previously masked
-      // this exact test not actually checking anything.
-      observedActivePrNumbers = viewPrsSchedulerState.activePrNumbers;
+      // logged "auto refresh had failures" instead of a failed test).
+      observed = { active: viewPrsSchedulerState.activePrNumbers, queued: viewPrsSchedulerState.queuedPrNumbers };
       return { stdout: "", stderr: "" };
     };
 
     await runViewPrsAutoRefresh({ skipCooldownChecks: true });
 
-    expect(observedActivePrNumbers).toEqual([
-      { repo: "acme-org/acme-repo", prNumber: "1" },
-      { repo: "acme-org/acme-repo", prNumber: "3" },
-    ]);
-    expect(viewPrsSchedulerState.activePrNumbers).toEqual([]);
+    expect(observed).toEqual({ active: [], queued: [] });
     expect(viewPrsSchedulerState.isAutoRunInProgress).toBe(false);
+  });
+
+  test("a run of chosen PRs queues them; each leaves the queue as its fetch starts, and none is left queued after", async () => {
+    const observed = [];
+    appModule.runViewPrsScript = async (_args, _maxBuffer, options) => {
+      observed.push({ active: viewPrsSchedulerState.activePrNumbers, queued: viewPrsSchedulerState.queuedPrNumbers });
+      // As runViewPrsScript does with the script's START marker for #1.
+      options.progressTracker.onStart("1", "acme-org/acme-repo");
+      observed.push({ active: viewPrsSchedulerState.activePrNumbers, queued: viewPrsSchedulerState.queuedPrNumbers });
+      options.progressTracker.onEnd("1", "acme-org/acme-repo");
+      return { stdout: "", stderr: "" };
+    };
+
+    await runViewPrsAutoRefresh({ skipCooldownChecks: true, reposOverride: ["acme-org/acme-repo"], prNumbersByRepo: { "acme-org/acme-repo": ["1", "3"] } });
+
+    const pr = (prNumber) => ({ repo: "acme-org/acme-repo", prNumber });
+    expect(observed[0]).toEqual({ active: [], queued: [pr("1"), pr("3")] });
+    // (Active is the real runViewPrsScript's own tracker, combined with this
+    // one - replaced here.)
+    expect(observed[1].queued).toEqual([pr("3")]);
+    // #3 never started (the run didn't reach it): no longer queued either.
+    expect(viewPrsSchedulerState.queuedPrNumbers).toEqual([]);
+    expect(viewPrsSchedulerState.activePrNumbers).toEqual([]);
   });
 
   test("on startup, initializeScheduler runs the quick check (and its pending-repo priority refresh) before the full every-repo update", async () => {

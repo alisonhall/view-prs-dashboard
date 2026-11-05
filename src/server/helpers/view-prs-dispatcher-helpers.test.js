@@ -535,6 +535,20 @@ describe("View Prs Dispatcher Helpers", () => {
       ]);
     });
 
+    test("When an auto refresh is due only because a quick check found PRs changed, Then the snapshot says it's for changed PRs (not a full refresh)", () => {
+      const entries = viewPrsSchedulerState.dispatcher.entries;
+      entries["owner/repoA::autoRefresh"].nextDueAt = iso(BASE_MS + 10 * 60 * 1000);
+      entries["owner/repoB::autoRefresh"].nextDueAt = iso(BASE_MS + 10 * 60 * 1000);
+      helpers.bumpEntryUrgent("owner/repoA", "autoRefresh", { reason: "quick-check-pending-open" });
+      // Run now: a full refresh, even bumped.
+      helpers.bumpEntryUrgent("owner/repoB", "autoRefresh", { reason: "manual" });
+
+      const byKey = Object.fromEntries(helpers.getDispatcherQueueSnapshot({ limit: 20 }).map((e) => [`${e.repo}::${e.taskType}`, e]));
+      expect(byKey["owner/repoA::autoRefresh"].forChangedPrs).toBe(true);
+      expect(byKey["owner/repoB::autoRefresh"].forChangedPrs).toBe(false);
+      expect(byKey["owner/repoA::quickCheck"].forChangedPrs).toBe(false);
+    });
+
     test("When there are more entries than the limit, Then the snapshot is capped", () => {
       const snapshot = helpers.getDispatcherQueueSnapshot({ limit: 2 });
       expect(snapshot).toHaveLength(2);
