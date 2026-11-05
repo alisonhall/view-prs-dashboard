@@ -239,7 +239,7 @@ Options:
       --merged-limit <number>  Max closed/merged PRs to show per section (overrides default day-based mode)
       --jobs <number>          Parallel workers for API prefetch (default: 6)
       --ack <numbers>          Mark PR number(s) as acknowledged (comma-separated or repeat flag)
-      --ack-clear <numbers>    Clear acknowledgment for PR number(s)
+      --ack-clear <numbers>    Undo the acknowledgment of PR number(s), as if never made
       --in-review <numbers>    Mark PR number(s) as in-review (UI-only flag; does not change STATUS)
       --in-review-clear <numbers> Clear in-review toggle for PR number(s)
       --flagged <numbers>      Mark PR number(s) as flagged
@@ -672,19 +672,19 @@ set_ack_ts() {
 
 clear_ack_ts_unlocked() {
   local number="$1"
-  # set_reverify: the manual "--ack-clear" path (default) also sets
-  # reverifyByRepo so the row shows CHANGED("ack-cleared") even absent any
-  # real new activity. The automatic clear-on-new-activity path (see
-  # compute_pr_state_json) passes false: status is already CHANGED for a
-  # real reason there, and forcing reverifyByRepo too would keep pinning it
-  # to CHANGED forever once that real activity ages out of effective_last.
-  # The manual path also takes its time out of the Ack history (an Ack
-  # undone); the automatic one keeps it (ACK_HISTORY_JQ).
-  local set_reverify="${2:-true}"
+  # undo: the manual "--ack-clear" path (default) - the Ack button clicked
+  # again - undoes the Ack as if it was never made: it goes, and so does its
+  # time from the Ack history (ACK_HISTORY_JQ). New activity since an Ack
+  # clears it on its own, so there's never an earlier one to put back.
+  # (Before 2026-11-05 it also set reverifyByRepo, pinning the row to
+  # CHANGED("ack-cleared") until the next Ack; rows marked then still are.)
+  # The automatic clear-on-new-activity path (see compute_pr_state_json)
+  # passes false: the Ack stays in the history, as one that was made.
+  local undo="${2:-true}"
   local tmp
   tmp=$(mktemp)
-  if [[ "$set_reverify" == 'true' ]]; then
-    jq --arg repo "$REPO" --arg number "$number" "$ACK_HISTORY_JQ"'unrecord_ack | if .ackByRepo[$repo] then del(.ackByRepo[$repo][$number]) else . end | (.reverifyByRepo //= {}) | (.reverifyByRepo[$repo] //= {}) | .reverifyByRepo[$repo][$number] = true' "$USER_STATE_FILE" >"$tmp"
+  if [[ "$undo" == 'true' ]]; then
+    jq --arg repo "$REPO" --arg number "$number" "$ACK_HISTORY_JQ"'unrecord_ack | if .ackByRepo[$repo] then del(.ackByRepo[$repo][$number]) else . end' "$USER_STATE_FILE" >"$tmp"
   else
     jq --arg repo "$REPO" --arg number "$number" "$ACK_HISTORY_JQ"'record_ack | if .ackByRepo[$repo] then del(.ackByRepo[$repo][$number]) else . end' "$USER_STATE_FILE" >"$tmp"
   fi
@@ -693,8 +693,8 @@ clear_ack_ts_unlocked() {
 
 clear_ack_ts() {
   local number="$1"
-  local set_reverify="${2:-true}"
-  with_user_state_lock clear_ack_ts_unlocked "$number" "$set_reverify"
+  local undo="${2:-true}"
+  with_user_state_lock clear_ack_ts_unlocked "$number" "$undo"
 }
 
 ensure_user_state_store() {
@@ -1928,8 +1928,8 @@ compute_pr_state_json() {
   row_json_out=${computed#*$'\n'}
 
   # A PR acked earlier with activity since that ack shouldn't read as
-  # acknowledged: the ack goes (set_reverify=false - the row has the real
-  # reason, not the manual-clear-only 'ack-cleared').
+  # acknowledged: the ack goes (undo=false - it stays in the Ack history,
+  # as one that was made).
   [[ "$ack_action" == 'clear-ack' ]] && clear_ack_ts "$number" false
 
   row_json_out=$(attach_pr_detail_ref "$row_json_out")

@@ -179,7 +179,7 @@ export function PrTableApp() {
   // window-bridge-fed instance of the same factory instead. This
   // component builds its own real handlers here, a second
   // useAckLabelActions() instance alongside RunCheckSection's (for the bulk
-  // "Apply ack only"/"Apply clear only" buttons) - no shared mutable
+  // "Apply ack only"/"Undo ack" buttons) - no shared mutable
   // state in the hook, so two independent instances is harmless.
   const { runAckOnlyWorkflow, runClearOnlyWorkflow, runApplyLabelWorkflow } = useAckLabelActions();
 

@@ -296,7 +296,12 @@ function PaneContent({
         <Button icon="refresh" onClick={() => void onUpdatePr?.(pr.number, ref, pr)}>
           Update
         </Button>
-        <Button icon="check" pressed={isAcknowledged} onClick={() => onAckAction?.(pr.number, isAcknowledged, repo)}>
+        <Button
+          icon="check"
+          pressed={isAcknowledged}
+          hint={isAcknowledged ? 'Click again to undo the Ack' : undefined}
+          onClick={() => onAckAction?.(pr.number, isAcknowledged, repo)}
+        >
           {isAcknowledged ? "Ack'd" : 'Ack'}
         </Button>
         <Button icon="eye" pressed={isInReview} onClick={() => onCheckboxChange?.(pr.number, 'inReview', !isInReview, repo)}>

@@ -67,6 +67,7 @@ export function PrActionsCell({
           icon="check"
           label={`${isAcknowledged ? "Ack'd" : 'Ack'} PR #${prNumber}`}
           pressed={isAcknowledged}
+          hint={isAcknowledged ? 'Click again to undo the Ack' : undefined}
           // onAckAction's `isAcked` means "is it acked now": it acks or
           // clears from that, so passing the current state flips it.
           onClick={handle(() => onAckAction?.(pr?.number, isAcknowledged, repo))}

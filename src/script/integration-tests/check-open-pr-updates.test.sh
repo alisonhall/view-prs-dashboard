@@ -322,7 +322,17 @@ run_ack_store_tests() {
 
   clear_ack_ts 100
   assert_eq "$(get_ack_ts 100)" '' 'clear_ack_ts should remove specific PR ack'
-  assert_eq "$(get_reverify_required 100)" 'true' 'clear_ack_ts should mark PR for reverify'
+  assert_eq "$(get_reverify_required 100)" 'false' 'undoing an Ack should not mark the PR ack-cleared'
+
+  # The Ack button clicked again undoes the Ack as if it was never made:
+  # gone from the Ack history too, while one new activity cleared stays.
+  set_ack_ts 200 '2026-03-01T00:00:00Z'
+  clear_ack_ts 200 false
+  set_ack_ts 200 '2026-03-04T00:00:00Z'
+  clear_ack_ts 200
+  assert_eq "$(get_ack_ts 200)" '' 'undoing an Ack should not put back an earlier one'
+  assert_eq "$(get_reverify_required 200)" 'false' 'an Ack undone should leave no ack-cleared mark'
+  assert_eq "$(jq -c --arg repo "$REPO" '.ackHistoryByRepo[$repo]["200"]' "$USER_STATE_FILE")" '["2026-03-01T00:00:00Z"]' 'the Ack undone should leave the history, the cleared one stay'
 
   set_in_review_required 100
   assert_eq "$(get_in_review_required 100)" 'true' 'set_in_review_required should mark PR as in-review'

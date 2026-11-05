@@ -785,7 +785,7 @@ The UI includes:
   - PR number input accepts numeric IDs separated by commas, whitespace, or mixed delimiters
   - request payload maps form values as: `author` falls back to an empty string when no author is selected, and checkbox fields (`ackChanged`, `showReason`, `quiet`) are sent as booleans
 - `Apply ack only` (ack updates only)
-- `Apply clear only` (clear updates only)
+- `Undo ack` (undoes the Acks of the PRs in `PR number(s)`, as if they were never made)
 - `Apply label` (applies an existing GitHub label to the PR number(s) in the same `pr-numbers` field the Ack buttons use)
   - the label dropdown is populated from `GET /view-prs/labels` for the currently selected repo; only labels already defined on the repo (via `gh label list`) can be chosen - there is no free-text/create-new-label input
   - `Reload labels` reloads the dropdown for the current repo
@@ -1165,14 +1165,14 @@ Acknowledgments let you move the baseline forward so already-seen changes stop s
 - Store location: `view-prs/data/check-open-pr-updates.user-state.json` under `ackByRepo`
 - Locking is used to avoid concurrent write corruption.
 - Acks are namespaced per repo.
-- An ack is automatically cleared the moment a PR shows new external activity (a comment/review/commit) after the ack timestamp - the row's status flips to `CHANGED` with the real reason (e.g. `comment`), and the Ack button reverts from "Ack'd" back to "Ack". This does not set the same `reverifyByRepo` flag the manual `--ack-clear`/"Ack'd" button click does, since the row is already `CHANGED` for a real reason.
-- Every Ack is also kept, with its time, under `ackHistoryByRepo`, and shows in the PR's Activity tab (your name, then `acknowledged the PR`; the current one adds `(current Ack)`). Clearing an Ack yourself (the "Ack'd" button, `--ack-clear`) takes only that last one back out; one cleared by new activity stays in the history - it can't be cleared with the button any more, since it's no longer the current Ack - so you can see you'd checked the PR before it changed. The Activity tab's `Since I last looked` counts from your latest Ack, current or not.
+- An ack is automatically cleared the moment a PR shows new external activity (a comment/review/commit) after the ack timestamp - the row's status flips to `CHANGED` with the real reason (e.g. `comment`), and the Ack button reverts from "Ack'd" back to "Ack".
+- Every Ack is also kept, with its time, under `ackHistoryByRepo`, and shows in the PR's Activity tab (your name, then `acknowledged the PR`; the current one adds `(current Ack)`). Clicking "Ack'd" (or `--ack-clear`) undoes the Ack as if it had never been made: it goes from the history too, and the row is judged as it was before (before 2026-11-05 it also marked the row `CHANGED` with the reason `ack-cleared` until the next Ack, and rows marked then still are); one cleared by new activity stays in the history - it can't be cleared with the button any more, since it's no longer the current Ack - so you can see you'd checked the PR before it changed. The Activity tab's `Since I last looked` counts from your latest Ack, current or not.
 
 ### Ack commands
 
 - `--ack <numbers>`: mark one or more PRs as acknowledged
   - supports comma-separated (`--ack 912,921`) or repeated flags (`--ack 912 --ack 921`)
-- `--ack-clear <numbers>`: clear ack for one or more PRs
+- `--ack-clear <numbers>`: undo the current ack of one or more PRs, as if it had never been made
 - `--in-review <numbers>`: mark one or more PRs as in-review (a manual, UI-only flag - it controls the `In Review` smart group and row checkbox state, and does not change `STATUS` or the Needs Attention icon)
 - `--in-review-clear <numbers>`: clear in-review toggle for one or more PRs
 - `--flagged <numbers>`: mark one or more PRs as flagged
@@ -1242,7 +1242,7 @@ Additional notes:
     --merged-limit <number>  Max closed/merged PRs to show per section (overrides default day-based mode)
     --jobs <number>          Parallel workers for API prefetch (default: 6)
     --ack <numbers>          Mark PR number(s) as acknowledged (comma-separated or repeat flag)
-    --ack-clear <numbers>    Clear acknowledgment for PR number(s)
+    --ack-clear <numbers>    Undo the acknowledgment of PR number(s), as if never made
   --in-review <numbers>    Mark PR number(s) as in-review (UI-only flag; does not change STATUS)
   --in-review-clear <numbers> Clear in-review toggle for PR number(s)
   --flagged <numbers>      Mark PR number(s) as flagged

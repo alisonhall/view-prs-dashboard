@@ -75,7 +75,7 @@ export function RunCheckSection() {
             Apply ack only
           </Button>
           <Button id="clear-only-btn" onClick={() => handleClearOnly()}>
-            Apply clear only
+            Undo ack
           </Button>
         </div>
       </div>

@@ -188,6 +188,7 @@ describe('PrDetailPane', () => {
 
       const ack = screen.getByRole('button', { name: "Ack'd" });
       expect(ack).toHaveAttribute('aria-pressed', 'true');
+      expect(ack).toHaveAccessibleDescription('Click again to undo the Ack');
       await user.click(ack);
       expect(handlers.onAckAction).toHaveBeenCalledWith('7', true, 'owner/repo');
 

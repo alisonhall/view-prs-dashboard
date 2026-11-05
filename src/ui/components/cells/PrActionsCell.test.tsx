@@ -84,7 +84,13 @@ describe('PrActionsCell', () => {
 
   test('Ack reads "Ack" until acknowledged, then "Ack\'d", pressed', () => {
     renderCell({ isAcknowledged: true });
-    expect(screen.getByRole('button', { name: "Ack'd PR #101", pressed: true })).toBeInTheDocument();
+    // Saying a second click undoes it (as if never made).
+    expect(screen.getByRole('button', { name: "Ack'd PR #101", pressed: true })).toHaveAccessibleDescription('Click again to undo the Ack');
+  });
+
+  test('Ack has nothing to undo before it\'s acknowledged', () => {
+    renderCell({ isAcknowledged: false });
+    expect(screen.getByRole('button', { name: 'Ack PR #101', pressed: false })).not.toHaveAccessibleDescription();
   });
 
   test('Ack passes whether the PR is acked now, so it acks or clears', async () => {
