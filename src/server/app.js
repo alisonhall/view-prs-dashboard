@@ -2796,7 +2796,11 @@ const runViewPrsQuickCheck = async ({
             const rawEntries = Object.values(JSON.parse(fs.readFileSync(viewPrsDataFile, "utf8"))?.byPrNumber || {});
             const repoSummary = readLiveSummary().byRepo[repo];
             threadChangedNumbers = findPrsWithChangedThreads(rawEntries, repo, repoSummary);
-            noLongerOpenNumbers = takeNoLongerOpenToQueue(repo, findPrsNoLongerOpen(rawEntries, repo, repoSummary));
+            // Only a complete listing says which are gone: one cut off at
+            // its page limit would read as "none", and forget them all.
+            if (repoSummary?.complete === true) {
+              noLongerOpenNumbers = takeNoLongerOpenToQueue(repo, findPrsNoLongerOpen(rawEntries, repo, repoSummary));
+            }
           } catch (_error) {
             // No data file yet, or unreadable: nothing to compare.
           }

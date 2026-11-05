@@ -296,7 +296,16 @@ describe("quick checks list each repo's open PRs", () => {
       // check doesn't queue it again straight away...
       viewPrsSchedulerState.pendingByRepo = {};
       again = await runViewPrsQuickCheck({ repo: "acme/api" });
-      // ...only once 6 hours have passed.
+      // A listing cut off at its page limit doesn't say it's back, so
+      // doesn't forget when it was queued...
+      const summary = JSON.parse(fs.readFileSync(liveSummaryFile, "utf8"));
+      summary.byRepo["acme/api"].complete = false;
+      fs.writeFileSync(liveSummaryFile, JSON.stringify(summary));
+      await runViewPrsQuickCheck({ repo: "acme/api" });
+      expect(Object.keys(viewPrsSchedulerState.noLongerOpenQueuedAt)).toContain("acme/api#20");
+      summary.byRepo["acme/api"].complete = true;
+      fs.writeFileSync(liveSummaryFile, JSON.stringify(summary));
+      // ...and it's queued again only once 6 hours have passed.
       viewPrsSchedulerState.noLongerOpenQueuedAt["acme/api#20"] = new Date(Date.now() - 7 * 60 * 60 * 1000).toISOString();
       afterCoolOff = await runViewPrsQuickCheck({ repo: "acme/api" });
     } finally {
