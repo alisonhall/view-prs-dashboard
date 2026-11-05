@@ -214,13 +214,23 @@ export function PrTable({
                 // The section's sort, at the row's end: only where there's
                 // an order to choose.
                 <span className="pr-head-actions-content">
+                  {/* Said once when the order changes: the button alone
+                      would go unnoticed moving through the rows. */}
+                  <span className="ui-visually-hidden" role="status">
+                    {orderChanged && onResort ? `${label || sectionKey}: order changed - Re-sort is in the Actions header` : ''}
+                  </span>
                   {orderChanged && onResort ? (
                     <button
                       type="button"
                       className="pr-head-resort"
                       data-tip="Order changed while you were working here - re-sort"
                       data-tip-on="hover"
-                      onClick={onResort}
+                      onClick={(event) => {
+                        // It goes once the sort applies: focus stays in the
+                        // section, on the sort menu beside it.
+                        event.currentTarget.parentElement?.querySelector<HTMLElement>('button[aria-haspopup="menu"]')?.focus();
+                        onResort();
+                      }}
                     >
                       <span aria-hidden="true">Re-sort</span>
                       <span className="ui-visually-hidden">Order changed - re-sort {label || sectionKey}</span>

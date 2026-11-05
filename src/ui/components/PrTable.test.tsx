@@ -33,7 +33,7 @@ const headers = () => within(screen.getAllByRole('rowgroup')[0] as HTMLElement).
 const headerShown = () =>
   headers().map((header) => header.querySelector('span[aria-hidden="true"]')?.textContent ?? header.textContent);
 const headerNames = () =>
-  headers().map((header) => header.querySelector('.ui-visually-hidden')?.textContent ?? header.textContent);
+  headers().map((header) => header.querySelector('.ui-visually-hidden:not([role="status"])')?.textContent ?? header.textContent);
 
 describe('PrTable', () => {
   test('is named by its section and has a header per column', () => {
@@ -238,7 +238,16 @@ describe('PrTable section sort', () => {
       <PrTable prs={[entry('2'), entry('1')]} repo="owner/repo" sectionKey="open" label="Open PRs" expandedInsights={{}} onToggleInsights={jest.fn()} orderChanged onResort={onResort} />,
     );
     const actions = screen.getByRole('columnheader', { name: 'Actions' });
+    // Said once, for screen readers moving through the rows.
+    expect(within(actions).getByRole('status')).toHaveTextContent('Open PRs: order changed - Re-sort is in the Actions header');
     await userEvent.click(within(actions).getByRole('button', { name: 'Order changed - re-sort Open PRs' }));
     expect(onResort).toHaveBeenCalledTimes(1);
+    // The button goes with the sort applied: focus is on the sort menu beside it.
+    expect(within(actions).getByRole('button', { name: /^Sort Open PRs/ })).toHaveFocus();
+  });
+
+  test('no order change: nothing said', () => {
+    renderTable({ orderChanged: false, onResort: jest.fn() });
+    expect(within(screen.getByRole('columnheader', { name: 'Actions' })).getByRole('status')).toBeEmptyDOMElement();
   });
 });
