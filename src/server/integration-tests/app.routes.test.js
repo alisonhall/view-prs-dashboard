@@ -1537,9 +1537,11 @@ describe("route behavior", () => {
     ]);
     const originalRun = appModule.runViewPrsScript;
     const scriptCalls = [];
+    const tasksSeen = [];
     appModule.runViewPrsScript = async (commandArgs) => {
       const repoIndex = commandArgs.indexOf("--repo");
       scriptCalls.push(repoIndex >= 0 ? commandArgs[repoIndex + 1] : null);
+      tasksSeen.push(...appModule.getViewPrsSchedulerPublicState().tasks);
       return { stdout: "", stderr: "" };
     };
     try {
@@ -1556,6 +1558,8 @@ describe("route behavior", () => {
       await new Promise((resolve) => setImmediate(resolve));
       expect(scriptCalls).toContain("owner/repo-run-auto-free");
       expect(scriptCalls).not.toContain("owner/repo-run-auto-busy");
+      // Activity says you started it.
+      expect(tasksSeen).toContainEqual(expect.objectContaining({ kind: "autoRefresh", origin: "you" }));
     } finally {
       appModule.runViewPrsScript = originalRun;
       appModule.viewPrsSchedulerState.isAutoRunInProgress = false;
@@ -1600,10 +1604,14 @@ describe("route behavior", () => {
     const originalRun = appModule.runViewPrsScript;
     const originalAutoRepos = process.env.VIEW_PRS_AUTO_REPOS;
     process.env.VIEW_PRS_AUTO_REPOS = "owner/repo-quick-check-route";
-    appModule.runViewPrsScript = async () => ({
-      stdout: JSON.stringify({ pendingOpen: ["901", "902"], pendingMergedClosed: ["903"] }),
-      stderr: "",
-    });
+    const tasksSeen = [];
+    appModule.runViewPrsScript = async () => {
+      tasksSeen.push(...appModule.getViewPrsSchedulerPublicState().tasks);
+      return {
+        stdout: JSON.stringify({ pendingOpen: ["901", "902"], pendingMergedClosed: ["903"] }),
+        stderr: "",
+      };
+    };
     try {
       const { response, payload } = await postJson(server, "/quick-check", {});
 
@@ -1614,6 +1622,8 @@ describe("route behavior", () => {
       expect(payload.reposChecked).toContain("owner/repo-quick-check-route");
       expect(payload.reposFailed).toEqual([]);
       expect(payload).toHaveProperty("lastQuickCheckAt");
+      // Activity says you started it.
+      expect(tasksSeen).toContainEqual(expect.objectContaining({ kind: "quickCheck", origin: "you" }));
     } finally {
       appModule.runViewPrsScript = originalRun;
       if (originalAutoRepos === undefined) {

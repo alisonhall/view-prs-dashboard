@@ -2028,8 +2028,12 @@ const runViewPrsAutoRefresh = async ({
   // What it is in the Activity popover: "autoRefresh" (a full refresh),
   // "changedPrs" (just the PRs a quick check found changed - the
   // dispatcher's fast-follow), or "mergedQueueDrain" (the drain running
-  // it). Also in its job events' detail, as `kind`.
+  // it), or "addPr" (a PR just added, fetched). Also in its job events'
+  // detail, as `kind`.
   progressKind = "autoRefresh",
+  // Who started it, for the Activity popover: "background" (the scheduler)
+  // or "you" (a request).
+  progressOrigin = "background",
 } = {}) => {
   // Each repo's PR numbers to refresh, or null for the whole repo: those
   // asked for, or else - for a repo not fetched in full (only PRs added
@@ -2220,6 +2224,7 @@ const runViewPrsAutoRefresh = async ({
     const targetCounts = reposToRefresh.map((repo) => getTargetPrNumbers(repo)?.length ?? null);
     progressTask = startProgressTask({
       kind: progressKind,
+      origin: progressOrigin,
       repos: reposToRefresh,
       unit: "PR",
       total: targetCounts.every((count) => count !== null) ? targetCounts.reduce((sum, count) => sum + count, 0) : null,
@@ -2622,6 +2627,8 @@ const runViewPrsQuickCheck = async ({
   repo: targetRepo,
   prNumbers,
   repoRequests,
+  // As runViewPrsAutoRefresh's.
+  progressOrigin = "background",
 } = {}) => {
   // Resolved up front (mirroring the same repo-resolution the 3 branches
   // further down each do independently) so a quick check whose entire
@@ -2757,6 +2764,7 @@ const runViewPrsQuickCheck = async ({
   // Repos checked, of this call's.
   const quickCheckTask = startProgressTask({
     kind: "quickCheck",
+    origin: progressOrigin,
     repos: reposAboutToBeChecked,
     unit: "repo",
     total: reposAboutToBeChecked.length,

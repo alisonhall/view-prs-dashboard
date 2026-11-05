@@ -3797,7 +3797,8 @@ test("a Quick check pushes a real 'running' state into the open activity popover
     void fetch("/view-prs/quick-check", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
   });
 
-  await expect(now.getByRole("listitem").filter({ hasText: "Quick check" })).toContainText("Background", {
+  // Started by a request: yours, not the scheduler's.
+  await expect(now.getByRole("listitem").filter({ hasText: "Quick check" })).toContainText("You", {
     timeout: 10000,
   });
 });

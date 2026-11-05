@@ -307,6 +307,7 @@ describe("Full refresh, and Update changed PRs", () => {
       "Update changed PRs",
       "Full refresh",
       "Merged/closed drain",
+      "Fetch added PR",
       "Run script",
       "Fetch older merged PRs",
       "Ack/Clear",
@@ -315,7 +316,21 @@ describe("Full refresh, and Update changed PRs", () => {
       expect(guide.does).toBeTruthy();
       expect(guide.doesNotUpdate).toBeTruthy();
     });
-    expect(describeActivityKind("quickCheck")).toMatch(/^Every 5 minutes.*Doesn't update: Comments, reviews and approvals/);
+    // The intervals are each repo's defaults, changed in Settings.
+    expect(describeActivityKind("quickCheck")).toMatch(
+      /^Every 5 minutes per repo by default \(Settings › Background updates\).*Doesn't update: Comments, reviews and approvals/,
+    );
+    // An added PR's fetch, by its own name, as one you started.
+    expect(
+      buildActivityNow({
+        jobs,
+        tasks: [{ id: "t1", kind: "addPr", origin: "you", repos: ["acme/api"], unit: "PR", done: 0, total: 1, startedAt: ago(2_000) }],
+        activeRequests: [],
+        bulkBatches: [],
+        isBackfillRunning: false,
+        nowMs: NOW,
+      }).map((item) => [item.label, item.origin]),
+    ).toEqual([["Fetch added PR", "you"]]);
     // The dispatcher's name for the drain.
     expect(describeActivityKind("mergedDrain")).toBe(describeActivityKind("mergedQueueDrain"));
     expect(describeActivityKind("notesSave")).toBe("");

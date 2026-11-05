@@ -95,6 +95,8 @@ const registerViewPrsSourcesRoutes = ({
         reposOverride: [pr.repo],
         prNumbersByRepo: { [pr.repo]: [pr.number] },
         skipCooldownChecks: true,
+        progressKind: "addPr",
+        progressOrigin: "you",
       });
       if (result?.skipped && result.skipReason === "already-in-progress" && Date.now() < deadlineMs) {
         await new Promise((resolve) => setTimeout(resolve, retryDelayMs));

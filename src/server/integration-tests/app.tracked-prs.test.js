@@ -205,6 +205,19 @@ describe("the tracked PR routes", () => {
     expect(callsFor("corp/tool")[0].env).toEqual({ GH_HOST: "github.example.com" });
   });
 
+  test("Activity lists its fetch as one you started, by its own name", async () => {
+    const tasksSeen = [];
+    appModule.runViewPrsScript = async (args) => {
+      scriptCalls.push({ args, env: {} });
+      tasksSeen.push(...appModule.getViewPrsSchedulerPublicState().tasks);
+      return { stdout: "", stderr: "" };
+    };
+
+    await supertest(server).post("/view-prs/tracked-prs").send({ url: "other-org/lib#8" });
+
+    expect(tasksSeen).toContainEqual(expect.objectContaining({ kind: "addPr", origin: "you", repos: ["other-org/lib"], total: 1 }));
+  });
+
   test("a PR tracked already is left as it was", async () => {
     const res = await supertest(server).post("/view-prs/tracked-prs").send({ url: "other-org/lib#9" });
 

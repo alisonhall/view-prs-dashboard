@@ -15,6 +15,7 @@ export const JOB_LABELS: Record<string, string> = {
   quickCheck: "Quick check",
   mergedQueueDrain: "Merged/closed drain",
   mergedDrain: "Merged/closed drain",
+  addPr: "Fetch added PR",
 };
 
 // What each kind of activity does, and what it doesn't update - each
@@ -31,7 +32,7 @@ export const ACTIVITY_KIND_GUIDE: ActivityKindGuide[] = [
     kind: "quickCheck",
     label: "Quick check",
     does:
-      "Every 5 minutes per repo: lists its PRs to spot new and changed ones, and queues them for an update. Its listing keeps open PRs' title, labels, draft state, checks, mergeability, files viewed, open conversations, size, assignees and requested reviewers current.",
+      "Every 5 minutes per repo by default (Settings › Background updates): lists its PRs to spot new and changed ones, and queues them for an update. Its listing keeps open PRs' title, labels, draft state, checks, mergeability, files viewed, open conversations, size, assignees and requested reviewers current.",
     doesNotUpdate:
       "Comments, reviews and approvals, commits, what's said in conversations, and the diff - those wait for the update it queues. Nothing about merged and closed PRs beyond spotting that they changed.",
   },
@@ -46,7 +47,7 @@ export const ACTIVITY_KIND_GUIDE: ActivityKindGuide[] = [
     kind: "autoRefresh",
     label: "Full refresh",
     does:
-      "Every 15 minutes per repo, as a safety net: fetches the PRs that changed since their last fetch, and open ones not fetched in full for 4 hours.",
+      "Every 15 minutes per repo by default (Settings › Background updates), as a safety net: fetches the PRs that changed since their last fetch, and open ones not fetched in full for 4 hours.",
     doesNotUpdate:
       "PRs that look unchanged keep their stored details - what GitHub changes without marking a PR updated (checks finishing, mergeability, files viewed, conversations resolved) comes from the quick check's listing instead. A merged PR's diff is only ever fetched once.",
   },
@@ -54,8 +55,14 @@ export const ACTIVITY_KIND_GUIDE: ActivityKindGuide[] = [
     kind: "mergedQueueDrain",
     label: "Merged/closed drain",
     does:
-      "Every 30 minutes per repo, or straight after a quick check: fetches the merged and closed PRs a quick check queued, in full. Does nothing when none are queued.",
+      "Every 30 minutes per repo by default (Settings › Background updates), or straight after a quick check: fetches the merged and closed PRs a quick check queued, in full. Does nothing when none are queued.",
     doesNotUpdate: "Open and draft PRs.",
+  },
+  {
+    kind: "addPr",
+    label: "Fetch added PR",
+    does: "Straight after you add a PR by its URL (Add PR, in the header): fetches it in full, waiting first for a run of its repo already going.",
+    doesNotUpdate: "Any other PR.",
   },
   {
     kind: "runScript",

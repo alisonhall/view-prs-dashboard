@@ -344,6 +344,7 @@ const registerViewPrsMutationRoutes = ({
     void runViewPrsAutoRefresh({
       skipCooldownChecks: true,
       reposOverride: requestedRepos,
+      progressOrigin: "you",
     }).finally(() => releaseGhSlotsSafe(reservationCost));
 
     appendActionLogEntry(buildRunAutoSuccessActionLogEntry({ timingContext }));
@@ -423,7 +424,7 @@ const registerViewPrsMutationRoutes = ({
     reserveGhSlotsSafe();
     let checkResult;
     try {
-      checkResult = await runViewPrsQuickCheck(numbersRequest);
+      checkResult = await runViewPrsQuickCheck({ ...numbersRequest, progressOrigin: "you" });
     } finally {
       releaseGhSlotsSafe();
     }
@@ -460,7 +461,7 @@ const registerViewPrsMutationRoutes = ({
     reserveGhSlotsSafe();
     let checkResult;
     try {
-      checkResult = await runViewPrsQuickCheck({ repoRequests });
+      checkResult = await runViewPrsQuickCheck({ repoRequests, progressOrigin: "you" });
     } finally {
       releaseGhSlotsSafe();
     }
