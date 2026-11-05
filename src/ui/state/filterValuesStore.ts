@@ -41,6 +41,9 @@ export interface FilterValues {
   filterPrDifficulty?: string;
   filterStories?: string;
   filterAnalysisOfPr?: string;
+  // The search box: not saved (FILTER_STATE_FIELD_MAP leaves it out), as
+  // a search is for now.
+  filterSearch?: string;
   // Settings' attention, merge-commit and change-detection rules
   attentionNoActivityMode?: string;
   attentionIncludePendingComments?: boolean;

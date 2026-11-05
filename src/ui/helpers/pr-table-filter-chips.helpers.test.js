@@ -66,6 +66,19 @@ describe("pr table filter chips helpers", () => {
       ]);
     });
 
+    test("given a search, when building chips, then includes a trimmed Search chip, first, clearing back to ''", () => {
+      const { buildTableFilterChipsViewModel } = createPrTableFilterChipsHelpers();
+
+      const chips = buildTableFilterChipsViewModel({ filterPrNumbers: "12", filterSearch: "  fix parser " });
+
+      expect(chips[0]).toEqual({
+        id: "filterSearch",
+        label: "Search: fix parser",
+        clear: { kind: "field", key: "filterSearch", value: "" },
+      });
+      expect(buildTableFilterChipsViewModel({ filterSearch: "   " })).toEqual([]);
+    });
+
     test("given multiple selected labels, when building chips, then includes one chip per label each clearing just that one", () => {
       const { buildTableFilterChipsViewModel } = createPrTableFilterChipsHelpers();
 

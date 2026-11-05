@@ -1,7 +1,7 @@
 /** @jest-environment jsdom */
 
 import type { ReactNode } from 'react';
-import { act, render, screen, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { FilterStateProvider } from '../../state/FilterStateProvider';
 import { RowFilterSelectionProvider } from '../../state/RowFilterSelectionProvider';
@@ -147,6 +147,22 @@ describe('FilterBar header', () => {
     expect(screen.queryByRole('group', { name: 'Applied table filters' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Clear all' })).not.toBeInTheDocument();
     expect(toggle()).toHaveAccessibleName('Filters');
+  });
+
+  test('has a search box beside the button, with the bar closed: its chip follows it, and Escape clears it', async () => {
+    const user = userEvent.setup();
+    renderBar();
+    const search = screen.getByRole('searchbox', { name: 'Search PRs' });
+    expect(search).toBeVisible();
+    expect(search).toHaveAccessibleDescription(/Titles, authors, branch names and your notes/);
+
+    await user.type(search, 'parser');
+    expect(await screen.findByRole('button', { name: 'Remove filter: Search: parser' })).toBeInTheDocument();
+
+    await user.keyboard('{Escape}');
+    expect(search).toHaveValue('');
+    // (Debounced, as the table is.)
+    await waitFor(() => expect(screen.queryByRole('group', { name: 'Applied table filters' })).not.toBeInTheDocument());
   });
 });
 

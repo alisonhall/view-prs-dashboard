@@ -40,6 +40,7 @@ import * as prSectionConfigHelperFactory from '../helpers/pr-section-config.help
 import * as prSmartGroupsHelperFactory from '../helpers/pr-smart-groups.helpers.ts';
 import * as prSectionGroupingHelperFactory from '../helpers/pr-section-grouping.helpers.ts';
 import { ShowRowRepoContext } from '../state/ShowRowRepoContext';
+import { SearchTermsContext } from '../state/SearchTermsContext';
 import { PrLegendPopover } from './PrLegendPopover';
 import { groupRowsByRepo } from '../helpers/pr-repo-grouping.helpers.ts';
 import { sortSectionRows } from '../helpers/pr-section-sort.helpers.ts';
@@ -98,7 +99,7 @@ export function PrTableApp() {
   // used to come from usePrData() itself (imperatively pushed by the
   // vanilla "Apply filters" pipeline) - now reactively derived live from
   // Context instead. See useVisiblePrNumbers.tsx's own comment.
-  const visiblePrKeys = useVisiblePrKeys();
+  const { visiblePrKeys, searchTerms } = useVisiblePrKeys();
   const { entryNeedsAttention, entryNeedsAttentionReasons, attentionConfig } = useNeedsAttention();
   // For the viewer's own smart groups (their PRs, assigned, review requested).
   const { getEffectiveViewerLogin, normalizeActorLogin } = useActorIdentity();
@@ -1088,83 +1089,86 @@ export function PrTableApp() {
   // NowProvider: one clock for the rows' relative times (Activity ages).
   // RepoFreshnessProvider: each repo's listing state, for the rows'
   // freshness. ShowRowRepoContext: whether rows say their repo.
+  // SearchTermsContext: the search's words, for the rows' "Matches in".
   return (
     <ShowRowRepoContext.Provider value={showRowRepo}>
-      <NowProvider>
-        <RepoFreshnessProvider
-          liveSummary={payload?.dataMeta?.liveSummary}
-          backgroundUpdates={payload?.dataMeta?.backgroundUpdates}
-          defaultIntervalMs={readDefaultQuickCheckIntervalMs(payload?.scheduler)}
-        >
-          <div className="pr-workspace-toolbar">
-            <Button icon="panel" pressed={isPaneVisible} onClick={handleTogglePane}>
-              Detail pane
-            </Button>
-            <PrLegendPopover />
-          </div>
-          <div ref={workspaceRef} className="pr-workspace" data-pane={isPaneDocked ? 'docked' : undefined}>
-            <div className="pr-workspace-list">
-              {sections.length === 0 && (
-                <div className="pr-sections-all-hidden">
-                  <p>Every section is hidden.</p>
-                  <Button onClick={() => settingsDrawer.open('appearance')}>Choose sections to show</Button>
-                </div>
-              )}
-              {sections.map((section) => (
-                <PrSection
-                  key={section.key}
-                  section={section}
+      <SearchTermsContext.Provider value={searchTerms}>
+        <NowProvider>
+          <RepoFreshnessProvider
+            liveSummary={payload?.dataMeta?.liveSummary}
+            backgroundUpdates={payload?.dataMeta?.backgroundUpdates}
+            defaultIntervalMs={readDefaultQuickCheckIntervalMs(payload?.scheduler)}
+          >
+            <div className="pr-workspace-toolbar">
+              <Button icon="panel" pressed={isPaneVisible} onClick={handleTogglePane}>
+                Detail pane
+              </Button>
+              <PrLegendPopover />
+            </div>
+            <div ref={workspaceRef} className="pr-workspace" data-pane={isPaneDocked ? 'docked' : undefined}>
+              <div className="pr-workspace-list">
+                {sections.length === 0 && (
+                  <div className="pr-sections-all-hidden">
+                    <p>Every section is hidden.</p>
+                    <Button onClick={() => settingsDrawer.open('appearance')}>Choose sections to show</Button>
+                  </div>
+                )}
+                {sections.map((section) => (
+                  <PrSection
+                    key={section.key}
+                    section={section}
+                    repo={effectiveRepo}
+                    actorsMap={actorsMap}
+                    isOpen={isSectionOpen(section.key, Boolean(section.defaultOpen))}
+                    expandedInsights={expandedInsights}
+                    selectedPrKey={selectedPrKey}
+                    onToggleSection={handleToggleSection}
+                    onToggleInsights={handleToggleInsights}
+                    onSelectRow={handleSelectRow}
+                    onSelectPr={handleSelectPr}
+                    onShowDetails={handleShowDetails}
+                    onClearSelection={handleClearSelection}
+                    onCheckboxChange={handleCheckboxChange}
+                    onAckAction={handleAckActionBusy}
+                    onApplyLabel={handleApplyLabelBusy}
+                    onUpdatePr={handleUpdatePrBusy}
+                    onViewJson={handleViewJson}
+                    getPrFlags={getPrFlags}
+                    getAttentionReasons={getAttentionReasons}
+                    activePrNumbers={combinedActivePrNumbers}
+                    queuedPrNumbers={combinedQueuedPrNumbers}
+                  />
+                ))}
+              </div>
+              {isPaneVisible && (
+                <PrDetailPane
+                  entry={selectedEntry}
                   repo={effectiveRepo}
+                  mode={paneMode}
                   actorsMap={actorsMap}
-                  isOpen={isSectionOpen(section.key, Boolean(section.defaultOpen))}
-                  expandedInsights={expandedInsights}
-                  selectedPrKey={selectedPrKey}
-                  onToggleSection={handleToggleSection}
-                  onToggleInsights={handleToggleInsights}
-                  onSelectRow={handleSelectRow}
-                  onSelectPr={handleSelectPr}
-                  onShowDetails={handleShowDetails}
+                  isFlagged={Boolean(paneFlags?.isFlagged)}
+                  isInReview={Boolean(paneFlags?.isInReview)}
+                  isAcknowledged={Boolean(paneFlags?.isAcknowledged)}
+                  ackedAt={paneAckedAt}
+                  tab={paneTab}
+                  onTabChange={setPaneTab}
+                  onPrevious={previousPr ? () => handleStepPr(previousPr) : undefined}
+                  onNext={nextPr ? () => handleStepPr(nextPr) : undefined}
+                  onClose={handleClosePane}
                   onClearSelection={handleClearSelection}
                   onCheckboxChange={handleCheckboxChange}
                   onAckAction={handleAckActionBusy}
                   onApplyLabel={handleApplyLabelBusy}
                   onUpdatePr={handleUpdatePrBusy}
                   onViewJson={handleViewJson}
-                  getPrFlags={getPrFlags}
-                  getAttentionReasons={getAttentionReasons}
-                  activePrNumbers={combinedActivePrNumbers}
-                  queuedPrNumbers={combinedQueuedPrNumbers}
+                  onDataRefresh={setPayload}
                 />
-              ))}
+              )}
             </div>
-            {isPaneVisible && (
-              <PrDetailPane
-                entry={selectedEntry}
-                repo={effectiveRepo}
-                mode={paneMode}
-                actorsMap={actorsMap}
-                isFlagged={Boolean(paneFlags?.isFlagged)}
-                isInReview={Boolean(paneFlags?.isInReview)}
-                isAcknowledged={Boolean(paneFlags?.isAcknowledged)}
-                ackedAt={paneAckedAt}
-                tab={paneTab}
-                onTabChange={setPaneTab}
-                onPrevious={previousPr ? () => handleStepPr(previousPr) : undefined}
-                onNext={nextPr ? () => handleStepPr(nextPr) : undefined}
-                onClose={handleClosePane}
-                onClearSelection={handleClearSelection}
-                onCheckboxChange={handleCheckboxChange}
-                onAckAction={handleAckActionBusy}
-                onApplyLabel={handleApplyLabelBusy}
-                onUpdatePr={handleUpdatePrBusy}
-                onViewJson={handleViewJson}
-                onDataRefresh={setPayload}
-              />
-            )}
-          </div>
-          <PrJsonModal target={jsonModalTarget} payload={payload} onClose={() => setJsonModalTarget(null)} />
-        </RepoFreshnessProvider>
-      </NowProvider>
+            <PrJsonModal target={jsonModalTarget} payload={payload} onClose={() => setJsonModalTarget(null)} />
+          </RepoFreshnessProvider>
+        </NowProvider>
+      </SearchTermsContext.Provider>
     </ShowRowRepoContext.Provider>
   );
 }

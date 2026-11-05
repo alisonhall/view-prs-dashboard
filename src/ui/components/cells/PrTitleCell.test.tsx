@@ -3,6 +3,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { PrTitleCell, type PrTitleCellProps } from './PrTitleCell';
+import { SearchTermsContext } from '../../state/SearchTermsContext';
 
 const renderCell = (props: Partial<PrTitleCellProps> = {}) => {
   const onToggleInsights = props.onToggleInsights ?? jest.fn();
@@ -26,6 +27,37 @@ const renderCell = (props: Partial<PrTitleCellProps> = {}) => {
 };
 
 describe('PrTitleCell', () => {
+  describe('with a search', () => {
+    const entry = {
+      repo: 'owner/repo',
+      prNumber: '101',
+      data: { number: '101', title: 'Fix bug', sourceBranch: 'feature/tokenizer' },
+      notes: { comments: [{ author: 'Grace', note: 'Needs a regression test' }] },
+    };
+    const renderSearched = (terms: string[]) =>
+      render(
+        <SearchTermsContext.Provider value={terms}>
+          <table>
+            <tbody>
+              <tr>
+                <PrTitleCell pr={entry.data} entry={entry} repo="owner/repo" sectionKey="open" isExpanded={false} onToggleInsights={jest.fn()} />
+              </tr>
+            </tbody>
+          </table>
+        </SearchTermsContext.Provider>,
+      );
+
+    test("says where a word was found that the row doesn't show", () => {
+      renderSearched(['tokenizer', 'regression']);
+      expect(screen.getByText(/Matches in/)).toHaveTextContent('Matches in branch, comments');
+    });
+
+    test('says nothing when the row shows the match (its title), or without a search', () => {
+      renderSearched(['bug']);
+      expect(screen.queryByText(/Matches in/)).not.toBeInTheDocument();
+    });
+  });
+
   test('shows the title without its [CHK]/[MRG] markers, followed by the #number link', () => {
     renderCell({ pr: { number: '101', title: 'Fix bug', titleDisplay: 'Fix bug [CHK:PASS][MRG:YES]', url: 'https://github.com/o/r/pull/101' } });
 

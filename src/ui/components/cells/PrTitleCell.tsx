@@ -1,4 +1,4 @@
-import type { PrData } from '../../types/pr-data.ts';
+import type { PrData, PrEntry } from '../../types/pr-data.ts';
 import { CopyIconButton } from '../CopyIconButton';
 import { Icon, type IconName } from '../ui/Icon';
 import { Signal } from '../ui/Signal';
@@ -7,6 +7,8 @@ import { createPrFormattingHelpers } from '../../helpers/pr-formatting.helpers.t
 import { countPendingThreadComments } from '../../helpers/pr-thread-comments.helpers.ts';
 import { getLabelName } from '../../helpers/pr-filter-label-extraction.helpers.ts';
 import { useShowRowRepo } from '../../state/ShowRowRepoContext';
+import { useSearchTerms } from '../../state/SearchTermsContext';
+import { matchRowSearch, SEARCH_FIELD_LABELS } from '../../helpers/pr-row-search.helpers.ts';
 
 const { formatTitleWithIcons } = createPrStatusDisplayHelpers();
 const { escapeHtml } = createPrFormattingHelpers();
@@ -32,14 +34,17 @@ const labelHue = (label: string) => [...label].reduce((sum, char) => sum + char.
  * - the label chips
  *
  * A second line holds a non-main target branch, unsubmitted pending
- * comments, and "Details updating" / "No longer open" while the row's
- * details are behind GitHub. The chevron opens the row's summary
+ * comments, "Details updating" / "No longer open" while the row's
+ * details are behind GitHub, and where a search matched when the row
+ * doesn't show it ("Matches in comments"). The chevron opens the row's summary
  * (PrRowSummary). The cell carries
  * data-pr-number / data-repo and the .pr-link class, which "Jump to PR"
  * looks for.
  */
 export interface PrTitleCellProps {
   pr: PrData;
+  // For its notes (the search's "Matches in").
+  entry?: PrEntry;
   repo: string;
   sectionKey: string;
   isSmartGroup?: boolean;
@@ -52,6 +57,7 @@ export interface PrTitleCellProps {
 
 export function PrTitleCell({
   pr,
+  entry,
   repo,
   sectionKey,
   isSmartGroup = false,
@@ -78,7 +84,11 @@ export function PrTitleCell({
   // caught up with (or the quick check queued it).
   const noLongerOpen = pr?.live?.stillOpen === false;
   const detailsBehind = !noLongerOpen && (Boolean(pr?.updatePending) || pr?.live?.detailsBehind === true);
-  const hasMeta = showTargetBranch || pendingCommentCount > 0 || noLongerOpen || detailsBehind;
+  // A search word found only in what the row doesn't show (its branch
+  // names, your notes): where, so it's clear why the row is here.
+  const searchTerms = useSearchTerms();
+  const searchHiddenFields = searchTerms.length > 0 ? matchRowSearch(entry || { data: pr }, searchTerms).hiddenFields : [];
+  const hasMeta = showTargetBranch || pendingCommentCount > 0 || noLongerOpen || detailsBehind || searchHiddenFields.length > 0;
 
   return (
     <td className="pr-cell pr-cell-title" data-pr-number={prNumber} data-repo={repo || ''}>
@@ -170,6 +180,12 @@ export function PrTitleCell({
                 >
                   <Icon name="refresh" size={12} />
                   Details updating
+                </span>
+              )}
+              {searchHiddenFields.length > 0 && (
+                <span className="pr-meta-chip" data-search-match="">
+                  <Icon name="search" size={12} />
+                  Matches in {searchHiddenFields.map((field) => SEARCH_FIELD_LABELS[field]).join(', ')}
                 </span>
               )}
             </div>

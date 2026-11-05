@@ -136,6 +136,18 @@ export function FilterStateProvider({
   const [values, setValues] = useState<FilterValues>(initialValues);
   const valuesRef = useRef(values);
   valuesRef.current = values;
+  // What the automatic save below watches: `values`, except the search box,
+  // which isn't saved - so typing a search doesn't start a save (each one
+  // reads user-defaults from the server first).
+  const valuesToSaveRef = useRef(values);
+  if (
+    Object.keys({ ...valuesToSaveRef.current, ...values }).some(
+      (key) => key !== 'filterSearch' && !Object.is(valuesToSaveRef.current[key], values[key]),
+    )
+  ) {
+    valuesToSaveRef.current = values;
+  }
+  const valuesToSave = valuesToSaveRef.current;
 
   // The per-key store mirroring `values` (see the header comment). Every
   // write below goes to both, in the same call, so they never diverge.
@@ -483,15 +495,15 @@ export function FilterStateProvider({
     await writeUiSessionOverrides(overrides, { unchangedFrom: existingOverrides });
   }, [buildOverrides]);
 
-  // Saves the view/filter options 150ms after `values` or any list
-  // selection changes, whatever caused the change (a field edit, or a
-  // Context-only change such as a filter bar chip's "x" button). This is
-  // the only automatic save path for these fields.
+  // Saves the view/filter options 150ms after `values` (but the search,
+  // valuesToSave) or any list selection changes, whatever caused the change
+  // (a field edit, or a Context-only change such as a filter bar chip's "x"
+  // button). This is the only automatic save path for these fields.
   useDebouncedEffect(
     () => {
       persistViewFilterOptions();
     },
-    [values, rowFilterSelection, authorThreadResolutionSelection, changeFilterActorSelection],
+    [valuesToSave, rowFilterSelection, authorThreadResolutionSelection, changeFilterActorSelection],
     150,
   );
 

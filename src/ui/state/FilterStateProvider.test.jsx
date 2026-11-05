@@ -184,6 +184,7 @@ describe('FilterStateProvider', () => {
           <span data-testid="merge-logins">{JSON.stringify(values.mergeCommitLogins)}</span>
           <button onClick={() => setValue('mergeCommitLogins', 'dependabot[bot]\n renovate[bot] ')}>add bots</button>
           <button onClick={() => setValue('scopeMode', 'last-run')}>change scope</button>
+          <button onClick={() => setValue('filterSearch', 'parser')}>search</button>
         </div>
       );
     }
@@ -278,6 +279,24 @@ describe('FilterStateProvider', () => {
       await flushPersist();
 
       expect(putBody).toBeNull();
+    });
+
+    test('given a search typed, when the persist debounce passes, then the saved settings are neither read nor written - and a later change still saves', async () => {
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      mockUserDefaults({});
+      renderProbe();
+      await act(async () => {});
+      await flushPersist();
+      global.fetch.mockClear();
+
+      await user.click(screen.getByText('search'));
+      await flushPersist();
+      expect(global.fetch).not.toHaveBeenCalled();
+
+      await user.click(screen.getByText('change scope'));
+      await flushPersist();
+      expect(JSON.stringify(putBody)).toContain('"last-run"');
+      expect(JSON.stringify(putBody)).not.toContain('parser');
     });
 
     test("given the saved settings can't be read, when the persist debounce fires, then nothing is written (it would lose them)", async () => {

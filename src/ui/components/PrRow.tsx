@@ -126,6 +126,7 @@ export const PrRow = memo(function PrRow({
         />
         <PrTitleCell
           pr={pr}
+          entry={entry}
           repo={repo}
           sectionKey={sectionKey}
           isSmartGroup={isSmartGroup}

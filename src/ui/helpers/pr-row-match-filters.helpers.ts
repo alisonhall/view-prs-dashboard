@@ -3,6 +3,7 @@ import type { ManualNotesFieldSummary } from "./pr-manual-notes-summary.helpers.
 import type { RowFilterCriteria } from "./pr-row-filtering.helpers.ts";
 import type { GetPreferredActorKey } from "./pr-actor-identity.helpers.ts";
 import { prFilterPicksPrs, rowMatchesPrFilter } from "./pr-filter-input.helpers.ts";
+import { matchRowSearch } from "./pr-row-search.helpers.ts";
 
 // Whether one PR entry passes the table's row filters (PR numbers, labels,
 // people, notes fields). Pure with respect to its (entry, filters) args;
@@ -20,6 +21,8 @@ export interface PrRowMatchFiltersDeps {
   normalizeFilterToken?: (value: string) => string;
   getManualNotesFieldSummary?: (entry: PrEntry, row: PrData) => Partial<ManualNotesFieldSummary>;
   isInReviewEnabled?: (row: PrData) => boolean;
+  // The author's name as the row shows it, for the search box.
+  getAuthorDisplayName?: (row: PrData) => string;
 }
 
 const createPrRowMatchFiltersHelpers = ({
@@ -30,6 +33,7 @@ const createPrRowMatchFiltersHelpers = ({
   normalizeFilterToken,
   getManualNotesFieldSummary,
   isInReviewEnabled,
+  getAuthorDisplayName,
 }: PrRowMatchFiltersDeps = {}) => {
   const getPreferredActorKeySafe =
     typeof getPreferredActorKey === "function" ? getPreferredActorKey : () => "";
@@ -111,6 +115,13 @@ const createPrRowMatchFiltersHelpers = ({
     if (
       filters.approverLogins.length > 0 &&
       !filters.approverLogins.some((login) => approverLogins.includes(login))
+    ) {
+      return false;
+    }
+
+    if (
+      filters.searchTerms?.length > 0 &&
+      !matchRowSearch(entry, filters.searchTerms, getAuthorDisplayName ? [getAuthorDisplayName(row)] : []).matches
     ) {
       return false;
     }

@@ -2,7 +2,7 @@ import { useContext, useMemo } from 'react';
 import { FilterStateContext } from './FilterStateContext';
 import { useRowFilterSelection } from './RowFilterSelectionContext';
 import { useDebouncedValue } from './useDebouncedValue';
-import { FILTER_PR_NUMBERS_DEBOUNCE_MS } from './useVisiblePrNumbers';
+import { FILTER_PR_NUMBERS_DEBOUNCE_MS, FILTER_SEARCH_DEBOUNCE_MS } from './useVisiblePrNumbers';
 import { createPrTableFilterChipsHelpers } from '../helpers/pr-table-filter-chips.helpers.ts';
 import type { FilterValues } from './filterValuesStore';
 import type { RowFilterListId } from './RowFilterSelectionContext';
@@ -54,9 +54,12 @@ export function useTableFilterChips(): { chips: TableFilterChip[] } {
   const setValue = filterState?.setValue;
   const { checkedByListId, toggle } = useRowFilterSelection();
   const debouncedFilterPrNumbers = useDebouncedValue(values.filterPrNumbers, FILTER_PR_NUMBERS_DEBOUNCE_MS);
+  // Debounced like the table, as filterPrNumbers is.
+  const debouncedSearch = useDebouncedValue(values.filterSearch, FILTER_SEARCH_DEBOUNCE_MS);
 
   return useMemo(() => {
     const descriptors = buildTableFilterChipsViewModel({
+      filterSearch: debouncedSearch,
       scopeMode: values.scopeMode,
       filterPrNumbers: debouncedFilterPrNumbers,
       includeLabels: Array.from(checkedByListId['label-list'] || []),
@@ -85,5 +88,5 @@ export function useTableFilterChips(): { chips: TableFilterChip[] } {
     }));
 
     return { chips };
-  }, [values, debouncedFilterPrNumbers, checkedByListId, setValue, toggle]);
+  }, [values, debouncedFilterPrNumbers, debouncedSearch, checkedByListId, setValue, toggle]);
 }

@@ -38,6 +38,9 @@ const isInReviewEnabled = (row: PrData): boolean => {
 // useTableFilterChips.tsx debounces its display of it the same way;
 // otherwise its chip would disagree with the (debounced) table while typing.
 export const FILTER_PR_NUMBERS_DEBOUNCE_MS = 150;
+// The search box waits the same, for the same reasons (and so the rows
+// aren't all matched again on every keystroke).
+export const FILTER_SEARCH_DEBOUNCE_MS = 150;
 
 // Used when there's no <FilterStateProvider> ancestor at all (e.g.
 // integration-tests/index.html.test.js's isolated PrTableApp mount, which
@@ -72,6 +75,8 @@ const DEFAULT_FILTER_STATE_VALUES: FilterValues = {
  * stored rows"/"needs attention rows") falls out of the same scope pass,
  * naming the scope that applied.
  *
+ * `filterSearch` (the search box) is debounced the same way.
+ *
  * `filterPrNumbers` is debounced (FILTER_PR_NUMBERS_DEBOUNCE_MS) so typing
  * a PR number doesn't re-filter on every keystroke and flicker through
  * wrong intermediate matches (typing "12" would briefly show PR #1). The
@@ -89,6 +94,7 @@ export function useFilteredPrRows(): VisiblePrNumbersResult {
   const { checkedByListId } = useRowFilterSelection();
   const { normalizeActorLogin, resolveActorDisplayName, getPreferredActorKey, getEffectiveViewerLogin } = useActorIdentity();
   const debouncedFilterPrNumbers = useDebouncedValue(values.filterPrNumbers, FILTER_PR_NUMBERS_DEBOUNCE_MS);
+  const debouncedSearch = useDebouncedValue(values.filterSearch, FILTER_SEARCH_DEBOUNCE_MS);
 
   const cacheRef = useRef<EntryDerivedCache | null>(null);
   if (!cacheRef.current) {
@@ -98,6 +104,7 @@ export function useFilteredPrRows(): VisiblePrNumbersResult {
   const cache = cacheRef.current;
 
   const threadChecksByRepo = payload?.threadChecksByRepo;
+  const actorsMap = payload?.actorsMap;
   const helpers = useMemo(() => {
     const { resolveScopedRows, normalizeSelectedScope } = createPrScopeSelectionHelpers({
       entryNeedsAttention,
@@ -133,6 +140,7 @@ export function useFilteredPrRows(): VisiblePrNumbersResult {
       normalizeFilterToken,
       getManualNotesFieldSummary,
       isInReviewEnabled,
+      getAuthorDisplayName: (row) => resolveActorDisplayName(row?.authorLogin, actorsMap || {}, row?.author),
     });
     const { buildRowFilterCriteria, applyRowUiFilters } = createPrRowFilteringHelpers({
       rowMatchesUiFilters,
@@ -154,6 +162,7 @@ export function useFilteredPrRows(): VisiblePrNumbersResult {
     getPreferredActorKey,
     getEffectiveViewerLogin,
     threadChecksByRepo,
+    actorsMap,
   ]);
 
   return useMemo(
@@ -176,12 +185,18 @@ export function useFilteredPrRows(): VisiblePrNumbersResult {
         prDifficulty: values.filterPrDifficulty,
         stories: values.filterStories,
         analysisOfPr: values.filterAnalysisOfPr,
+        search: debouncedSearch,
       }),
-    [helpers, payload, values, attentionConfig, checkedByListId, debouncedFilterPrNumbers],
+    [helpers, payload, values, attentionConfig, checkedByListId, debouncedFilterPrNumbers, debouncedSearch],
   );
 }
 
-// PrTableApp's entry point: just the visible rows' repo-and-number keys.
-export function useVisiblePrKeys(): string[] {
-  return useFilteredPrRows().visiblePrKeys;
+// PrTableApp's entry point: the visible rows' repo-and-number keys, and
+// the search's words - the same array while they're the same, so rows
+// reading them (SearchTermsContext) don't all render again for nothing.
+export function useVisiblePrKeys(): { visiblePrKeys: string[]; searchTerms: string[] } {
+  const { visiblePrKeys, searchTerms } = useFilteredPrRows();
+  const searchKey = searchTerms.join(' ');
+  const stableSearchTerms = useMemo(() => (searchKey ? searchKey.split(' ') : []), [searchKey]);
+  return { visiblePrKeys, searchTerms: stableSearchTerms };
 }

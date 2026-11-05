@@ -1244,6 +1244,39 @@ test("the filter bar starts closed with the row count, opens as it was left afte
   await waitForFilterPersist(page);
 });
 
+test("the search box, with the filter bar closed, shows the PRs with every word, and says where when the row doesn't show it", async ({ page }) => {
+  await page.goto("/");
+  await waitForPrTable(page);
+  const search = filterBar(page).getByRole("searchbox", { name: "Search PRs" });
+
+  // A title.
+  await search.fill("Flaky TEST");
+  await expect(filterBar(page)).toContainText("Showing 1 of 3 PRs");
+  await expect(filterChips(page)).toContainText("Search: Flaky TEST");
+  // (A PR's row is in each section it belongs to.)
+  const flakyRow = prTables(page).locator('tr.pr-row[data-pr-number="2"]').filter({ visible: true }).first();
+  await expect(flakyRow).toBeVisible();
+  await expect(flakyRow).not.toContainText("Matches in");
+
+  // A branch name, which the row doesn't show.
+  await search.fill("feature/welcome");
+  await expect(filterBar(page)).toContainText("Showing 1 of 3 PRs");
+  await expect(prTables(page).locator('tr.pr-row[data-pr-number="1"]').filter({ visible: true }).first()).toContainText("Matches in branch");
+
+  await search.fill("feature/welcome flaky");
+  await expect(filterBar(page)).toContainText("Showing 0 of 3 PRs");
+
+  // Escape clears it; a reload starts without one.
+  await search.press("Escape");
+  await expect(filterBar(page)).toContainText("Showing 3 of 3 PRs");
+  await search.fill("banner");
+  await expect(filterBar(page)).toContainText("Showing 1 of 3 PRs");
+  await page.reload();
+  await waitForPrTable(page);
+  await expect(search).toHaveValue("");
+  await expect(filterBar(page)).toContainText("Showing 3 of 3 PRs");
+});
+
 test("the filter bar's lists populate from loaded PR data", async ({ page }) => {
   await page.goto("/");
   await waitForPrTable(page);

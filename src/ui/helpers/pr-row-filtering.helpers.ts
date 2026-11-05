@@ -22,6 +22,8 @@ export interface RowFilterCriteria {
   // "name-and-url".
   stories: string;
   analysisOfPr: string;
+  // The search box's words (pr-row-search.helpers.ts's parseSearchTerms).
+  searchTerms: string[];
 }
 
 export type RowFilterCriteriaInput = {
@@ -66,6 +68,7 @@ const createPrRowFilteringHelpers = ({
     prDifficulty,
     stories,
     analysisOfPr,
+    searchTerms,
   }: RowFilterCriteriaInput = {}): RowFilterCriteria => ({
     prNumbers: asStringArray(prNumbers),
     prKeys: asStringArray(prKeys),
@@ -81,6 +84,7 @@ const createPrRowFilteringHelpers = ({
     prDifficulty: String(prDifficulty || ""),
     stories: String(stories || ""),
     analysisOfPr: String(analysisOfPr || ""),
+    searchTerms: asStringArray(searchTerms),
   });
 
   const applyRowUiFilters = <E extends PrEntry>(rows: E[] | null | undefined, criteria: RowFilterCriteria): E[] => {

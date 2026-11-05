@@ -22,6 +22,7 @@ describe("pr row filtering helpers", () => {
       prDifficulty: "3",
       stories: "name-only",
       analysisOfPr: "with",
+      searchTerms: ["parser"],
     });
 
     expect(criteria).toEqual({
@@ -39,6 +40,7 @@ describe("pr row filtering helpers", () => {
       prDifficulty: "3",
       stories: "name-only",
       analysisOfPr: "with",
+      searchTerms: ["parser"],
     });
   });
 
@@ -62,6 +64,7 @@ describe("pr row filtering helpers", () => {
       prDifficulty: "",
       stories: "",
       analysisOfPr: "",
+      searchTerms: [],
     });
   });
 

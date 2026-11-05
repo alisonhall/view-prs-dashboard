@@ -27,6 +27,7 @@ export interface TableFilterChipsInput {
   filterPrDifficulty?: string;
   filterStories?: string;
   filterAnalysisOfPr?: string;
+  filterSearch?: string;
 }
 
 const WITH_WITHOUT_LABELS: Record<string, string> = { with: "with", without: "without" };
@@ -66,8 +67,13 @@ const createPrTableFilterChipsHelpers = () => {
     filterPrDifficulty,
     filterStories,
     filterAnalysisOfPr,
+    filterSearch,
   }: TableFilterChipsInput = {}): FilterChip[] => {
     const chips: FilterChip[] = [];
+
+    if (String(filterSearch || "").trim()) {
+      chips.push(fieldChip("filterSearch", `Search: ${String(filterSearch).trim()}`, "filterSearch", ""));
+    }
 
     if (scopeMode && scopeMode !== "all") {
       chips.push(fieldChip("scopeMode", `Scope: ${scopeMode}`, "scopeMode", "all"));

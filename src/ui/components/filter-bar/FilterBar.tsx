@@ -5,6 +5,7 @@ import { useTableFilterChips } from '../../state/useTableFilterChips';
 import { AlwaysShowInReviewCheckbox } from './AlwaysShowInReviewCheckbox';
 import { FilterMultiSelect } from './FilterMultiSelect';
 import { FilterOptionSelect } from './FilterOptionSelect';
+import { FilterSearchInput } from './FilterSearchInput';
 import { PrNumberFilterInput } from './PrNumberFilterInput';
 import { SCOPE_DESCRIPTIONS, SCOPE_HINT_ID, ScopeFilterSelect } from './ScopeFilterSelect';
 import { useFilterState } from '../../state/FilterStateContext';
@@ -47,7 +48,8 @@ export interface FilterBarProps {
  * lists, the notes filters, and "Always show PRs in review".
  *
  * Its header always shows: the Filters button (with how many are applied),
- * "Showing N of M PRs", and a removable chip per applied filter with
+ * the search box, "Showing N of M PRs", and a removable chip per applied
+ * filter (the search's too) with
  * "Clear all". The button opens the panel of controls below it; the bar
  * remembers whether it was left open. Controls stay mounted while it's
  * closed (hidden). The lists' selections are kept in step with their
@@ -81,6 +83,7 @@ export function FilterBar({ shownCount, totalCount, loaded, hiddenCount = 0 }: F
           {chips.length > 0 && <span className="filter-bar-badge">{chips.length}</span>}
           <Icon name={open ? 'chevronUp' : 'chevronDown'} size={14} />
         </Button>
+        <FilterSearchInput />
         <p className="filter-bar-count" aria-live="polite">
           {loaded
             ? `Showing ${shownCount} of ${totalCount} ${totalCount === 1 ? 'PR' : 'PRs'}${hiddenCount > 0 ? ` · ${hiddenCount} in hidden sections` : ''}`

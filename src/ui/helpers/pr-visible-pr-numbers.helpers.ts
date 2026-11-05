@@ -3,6 +3,7 @@ import type { RowFilterCriteria, RowFilterCriteriaInput } from "./pr-row-filteri
 import { parsePrFilterInput, prFilterPicksPrs } from "./pr-filter-input.helpers.ts";
 import type { AttentionConfig } from "./pr-needs-attention.helpers.ts";
 import { buildPrEntryKey } from "./pr-entry-keys.helpers.ts";
+import { parseSearchTerms } from "./pr-row-search.helpers.ts";
 
 // Which PRs the table shows for the current filters, computed reactively
 // (useVisiblePrNumbers wires it to Context). Composes the injected scope
@@ -47,6 +48,8 @@ export interface VisiblePrNumbersInput {
   prDifficulty?: string;
   stories?: string;
   analysisOfPr?: string;
+  // The search box, as typed.
+  search?: string;
 }
 
 export interface VisiblePrNumbersResult {
@@ -56,6 +59,8 @@ export interface VisiblePrNumbersResult {
   scopeLabel: string;
   // Every stored row, before scope and filters (the filter bar's "of M").
   totalCount: number;
+  // The search box's words, as applied.
+  searchTerms: string[];
 }
 
 const createPrVisiblePrNumbersHelpers = ({
@@ -94,6 +99,7 @@ const createPrVisiblePrNumbersHelpers = ({
     prDifficulty,
     stories,
     analysisOfPr,
+    search,
   }: VisiblePrNumbersInput = {}): VisiblePrNumbersResult => {
     const allEntries = Object.values(payload?.byPrNumber || {});
     // "Last run rows": the rows the last full run saw (lastFullRun - not
@@ -109,6 +115,7 @@ const createPrVisiblePrNumbersHelpers = ({
     );
 
     const prFilter = parsePrFilterInput(filterPrNumbersRaw);
+    const searchTerms = parseSearchTerms(search);
 
     const selectedScope = normalizeSelectedScopeSafe(scopeMode);
     // PRs picked by number (or repo and number) show whatever the scope.
@@ -140,6 +147,7 @@ const createPrVisiblePrNumbersHelpers = ({
       prDifficulty,
       stories,
       analysisOfPr,
+      searchTerms,
     });
 
     const filteredRows = applyRowUiFiltersSafe(scopedRows, criteria);
@@ -151,7 +159,7 @@ const createPrVisiblePrNumbersHelpers = ({
       })
       .filter(Boolean);
 
-    return { visiblePrKeys, scopeLabel, totalCount: allEntries.length };
+    return { visiblePrKeys, scopeLabel, totalCount: allEntries.length, searchTerms };
   };
 
   return {
