@@ -3789,7 +3789,7 @@ test("an export profile picks its fields in one click, and is kept in user-defau
     await exportPanel.getByRole("textbox", { name: "Name for the new profile" }).press("Escape");
     await expect(exportPanel.getByRole("button", { name: "Save as profile", exact: true })).toBeFocused();
     await expect(settingsDrawer(page)).toBeVisible();
-    const saved =page.waitForResponse((response) => response.url().includes("/view-prs/user-defaults") && response.request().method() === "PUT");
+    const saved = page.waitForResponse((response) => response.url().includes("/view-prs/user-defaults") && response.request().method() === "PUT");
     await exportPanel.getByRole("button", { name: "Save as profile", exact: true }).click();
     await exportPanel.getByRole("textbox", { name: "Name for the new profile" }).fill("Numbers");
     await exportPanel.getByRole("button", { name: "Save", exact: true }).click();
@@ -3808,6 +3808,18 @@ test("an export profile picks its fields in one click, and is kept in user-defau
     await expect(profile).toHaveAttribute("aria-pressed", "true");
     await expect(checked).toHaveCount(1);
     await expect(checked).toHaveAccessibleName("DATA prNumber");
+
+    // Its fields show on hover, above the drawer (the tooltip is on <body>,
+    // which the drawer covers).
+    await profile.hover();
+    const tooltip = page.getByRole("tooltip");
+    await expect(tooltip).toHaveText("Data: prNumber");
+    const box = await tooltip.boundingBox();
+    const onTop = await page.evaluate(
+      ({ x, y }) => Boolean(document.elementFromPoint(x, y)?.closest('[role="tooltip"]')),
+      { x: box.x + box.width / 2, y: box.y + box.height / 2 },
+    );
+    expect(onTop).toBe(true);
   } finally {
     await clearSavedSettings(page.request, keys);
   }

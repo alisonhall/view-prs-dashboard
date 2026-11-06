@@ -28,10 +28,12 @@
 }
 
 /* The page's one tooltip, appended to <body>; tooltip-controller.ts sets
-   top/left from the element it's for. */
+   top/left from the element it's for. Above everything its element can be
+   in: the header popovers (1100), the Settings drawer (1200), the snackbar
+   (1300) and the PR JSON modal (2000). */
 .ui-tooltip {
   position: fixed;
-  z-index: 1000;
+  z-index: 2100;
   width: max-content;
   max-width: min(320px, calc(100vw - 16px));
   padding: 6px 9px;
