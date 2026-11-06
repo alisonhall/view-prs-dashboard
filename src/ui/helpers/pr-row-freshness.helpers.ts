@@ -194,6 +194,88 @@ export const describeRowFreshness = ({
   return { summaryConfirmedAt, detailsFetchedAt, detailsBehind, noLongerOpen, isStale, lines };
 };
 
+// A repo's last refresh that failed, until one works (the scheduler
+// state's `refreshFailures`): when, since when its refreshes have been
+// failing, why, and for a refresh of chosen PRs which (null: the repo's).
+export interface RepoRefreshFailure {
+  at?: string;
+  since?: string;
+  error?: string;
+  prNumbers?: string[] | null;
+}
+
+export interface RowRefreshProblem {
+  // "Couldn't refresh", or "Couldn't fetch" (it may be gone).
+  label: string;
+  // How old its data is: "2h ago".
+  dataAge: string;
+  // For its tooltip, one line each.
+  lines: string[];
+}
+
+// How long an open row's full fetch lasts before a refresh of its repo
+// fetches it again unchanged: the script's VIEW_PRS_OPEN_REVALIDATE_SECONDS,
+// by default (the page isn't told when it's set otherwise).
+const OPEN_REVALIDATE_MS = 4 * 60 * 60 * 1000;
+
+// Whether the row's last refresh failed, so it shows what was stored: a PR
+// fetched on its own that couldn't be fetched (deleted, or no longer
+// visible to gh), or a row not fetched since its repo's refresh failed -
+// one of the PRs a refresh of chosen PRs failed on, or for a refresh of
+// the repo an open or draft row it would have fetched: one queued for an
+// update (changed on GitHub), or whose full fetch was older than
+// OPEN_REVALIDATE_MS when it failed. Other rows it would have left as they
+// were, so its failing doesn't make them out of date. Null when it's fine.
+export const describeRowRefreshProblem = ({
+  entry,
+  refreshFailures,
+  unreachablePrs,
+  nowMs,
+}: {
+  entry: PrEntry | null | undefined;
+  refreshFailures: Record<string, RepoRefreshFailure | undefined> | null | undefined;
+  unreachablePrs: Record<string, string | undefined> | null | undefined;
+  nowMs: number;
+}): RowRefreshProblem | null => {
+  const repo = String(entry?.repo || "");
+  const number = String(entry?.prNumber || entry?.data?.number || "");
+  const fetchedAt = String(entry?.fetchedAt || entry?.updatedAt || "");
+  const dataAge = formatAgo(fetchedAt, nowMs);
+  const showing = `Showing the data from ${describeAt(fetchedAt, nowMs)}.`;
+  const unreachableSince = unreachablePrs?.[`${repo}#${number}`];
+  if (unreachableSince) {
+    return {
+      label: "Couldn't fetch",
+      dataAge,
+      lines: [`Couldn't fetch it since ${describeAt(unreachableSince, nowMs)}: deleted, or no longer visible to gh.`, showing],
+    };
+  }
+  const failure = refreshFailures?.[repo];
+  if (!failure) return null;
+  const section = String(entry?.section || "");
+  const data = entry?.data || {};
+  const isChosen = Array.isArray(failure.prNumbers);
+  const wouldHaveFetched =
+    (section === "open" || section === "draft") &&
+    (data.updatePending === true ||
+      data.live?.detailsBehind === true ||
+      data.live?.stillOpen === false ||
+      !(toMs(failure.at) - toMs(fetchedAt) < OPEN_REVALIDATE_MS));
+  const applies = isChosen ? (failure.prNumbers || []).map(String).includes(number) : wouldHaveFetched;
+  // Fetched since (by a run that worked, or Retry).
+  if (!applies || toMs(fetchedAt) >= toMs(failure.at)) return null;
+  const failingSince = toMs(failure.since) < toMs(failure.at) ? `Its refreshes have failed since ${describeAt(failure.since, nowMs)}.` : "";
+  return {
+    label: "Couldn't refresh",
+    dataAge,
+    lines: [
+      `Couldn't refresh: ${isChosen ? "its" : "its repo's"} last refresh failed ${describeAt(failure.at, nowMs)}${failure.error ? ` (${failure.error})` : ""}.`,
+      failingSince,
+      showing,
+    ].filter(Boolean),
+  };
+};
+
 export interface ReposChecked {
   // "Checked 3m ago" (the least recently checked repo), or "" when no repo
   // has been listed.

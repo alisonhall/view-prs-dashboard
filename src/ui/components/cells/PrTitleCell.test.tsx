@@ -4,6 +4,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { PrTitleCell, type PrTitleCellProps } from './PrTitleCell';
 import { SearchTermsContext } from '../../state/SearchTermsContext';
+import { RepoFreshnessProvider } from '../../state/RepoFreshnessContext';
 
 const renderCell = (props: Partial<PrTitleCellProps> = {}) => {
   const onToggleInsights = props.onToggleInsights ?? jest.fn();
@@ -260,6 +261,55 @@ describe('PrTitleCell', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Copy PR title and link' }));
       await waitFor(() => expect(clipboardWriteTextMock).toHaveBeenCalledWith('Plain fallback #3'));
       expect(clipboardWriteMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("when its last refresh failed", () => {
+    const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60000).toISOString();
+    const failures = { "owner/repo": { at: minutesAgo(10), since: minutesAgo(10), error: "gh auth expired", prNumbers: null } };
+    const renderFailed = ({ fetchedAt = minutesAgo(120), isActive = false, onRetry = jest.fn() } = {}) => {
+      // Queued for an update: one the failed refresh would have fetched.
+      const entry = { repo: "owner/repo", prNumber: "101", section: "open" as const, fetchedAt, data: { number: "101", title: "Fix bug", updatePending: true } };
+      render(
+        <RepoFreshnessProvider refreshFailures={failures}>
+          <table>
+            <tbody>
+              <tr>
+                <PrTitleCell
+                  pr={entry.data}
+                  entry={entry}
+                  repo="owner/repo"
+                  sectionKey="open"
+                  isExpanded={false}
+                  isActive={isActive}
+                  onToggleInsights={jest.fn()}
+                  onRetry={onRetry}
+                />
+              </tr>
+            </tbody>
+          </table>
+        </RepoFreshnessProvider>,
+      );
+      return { onRetry };
+    };
+
+    test("says so and how old its data is - why in its tooltip - with Retry", async () => {
+      const { onRetry } = renderFailed();
+      const chip = screen.getByText(/Couldn't refresh · data from 2h ago/);
+      expect(chip.getAttribute("title")).toMatch(/^Couldn't refresh: its repo's last refresh failed 10m ago .*gh auth expired/);
+      await userEvent.setup().click(screen.getByRole("button", { name: "Retry refreshing PR #101" }));
+      expect(onRetry).toHaveBeenCalledTimes(1);
+    });
+
+    test("Retry is disabled while the row is being fetched", () => {
+      renderFailed({ isActive: true });
+      expect(screen.getByRole("button", { name: "Retry refreshing PR #101" })).toBeDisabled();
+    });
+
+    test("nothing once the row is fetched since", () => {
+      renderFailed({ fetchedAt: minutesAgo(2) });
+      expect(screen.queryByText(/Couldn't refresh/)).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /^Retry/ })).not.toBeInTheDocument();
     });
   });
 });

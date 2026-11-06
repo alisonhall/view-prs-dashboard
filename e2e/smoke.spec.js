@@ -3499,6 +3499,84 @@ test("Settings › Action log loads its entries on its very first opening, not j
   expect(response.ok()).toBe(true);
 });
 
+test("Settings › Action log lists background runs and your actions one line each, filtered, with the rest folded", async ({ page }) => {
+  const minutesAgo = (minutes) => new Date(Date.now() - minutes * 60_000).toISOString();
+  await page.route("**/view-prs/action-log", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        entries: [
+          { action: "job/quickCheck", kind: "quickCheck", origin: "background", ok: true, triggeredAt: minutesAgo(2), timestamp: minutesAgo(2), durationMs: 3200, detail: { repos: ["acme/api", "acme/web"], reposCheckedCount: 2, newPendingOpenCount: 1 } },
+          { action: "job/autoRefresh", kind: "autoRefresh", origin: "background", skipped: true, ok: null, triggeredAt: minutesAgo(9), timestamp: minutesAgo(9), detail: { reason: "circuit-open", message: "auto refresh circuit open for acme/web", repos: ["acme/web"] } },
+          { action: "post/ack", ok: false, error: "gh auth expired", triggeredAt: minutesAgo(20), timestamp: minutesAgo(20), durationMs: 900, detail: { repo: "acme/api", prNumber: 12 } },
+        ],
+      }),
+    }),
+  );
+  await page.goto("/");
+  await openSettings(page, "Action log");
+
+  const entries = page.getByRole("list", { name: "Action log entries" }).getByRole("listitem");
+  await expect(entries).toHaveCount(3);
+  await expect(entries.nth(0)).toContainText("Quick check");
+  await expect(entries.nth(0)).toContainText("Background");
+  await expect(entries.nth(0)).toContainText("2 repos checked · 1 open changed");
+  await expect(entries.nth(1)).toContainText("Skippedacme/webauto refresh circuit open for acme/web");
+  await expect(entries.nth(2)).toContainText("You");
+  await expect(entries.nth(2)).toContainText("gh auth expired");
+
+  await page.getByLabel("Outcome", { exact: true }).selectOption("problems");
+  await expect(entries).toHaveCount(2);
+  await page.getByLabel("Who", { exact: true }).selectOption("you");
+  await expect(entries).toHaveCount(1);
+  await expect(page.getByText("Showing 1 of 3")).toBeVisible();
+
+  // Its details, folded under its line.
+  await expect(entries.nth(0).getByText("prNumber")).toBeHidden();
+  await entries.nth(0).locator("summary").click();
+  await expect(entries.nth(0).getByText("prNumber")).toBeVisible();
+
+  await page.getByRole("button", { name: "Clear filters" }).click();
+  await expect(entries).toHaveCount(3);
+});
+
+test("a row whose last refresh failed says so, with how old its data is, and Retry updates it", async ({ page }) => {
+  // The scheduler state's refreshFailures, as its live frames bring them
+  // (RequestActivityProvider's pr-active-progress-update) - a real failing
+  // refresh needs gh failing, which this server can't be made to. The live
+  // connection is blocked, so a real frame can't replace them meanwhile.
+  await page.route("**/view-prs/events", (route) => route.abort());
+  const runRequests = [];
+  await page.route("**/view-prs/run", (route) => {
+    runRequests.push(route.request().postDataJSON());
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, output: "" }) });
+  });
+  await page.goto("/");
+  await waitForPrTable(page);
+  await page.evaluate(() => {
+    const at = new Date().toISOString();
+    window.dispatchEvent(
+      new CustomEvent("pr-active-progress-update", {
+        detail: {
+          activePrNumbers: [],
+          queuedPrNumbers: [],
+          refreshFailures: { "octocat/hello-world": { at, since: at, error: "simulated failure", prNumbers: ["1"] } },
+          unreachablePrs: {},
+        },
+      }),
+    );
+  });
+
+  const retry = page.getByRole("button", { name: "Retry refreshing PR #1" }).first();
+  await expect(retry).toBeVisible();
+  await expect(page.locator(".pr-refresh-problem").first()).toContainText("Couldn't refresh · data from");
+  await retry.click();
+  await expect.poll(() => runRequests.length).toBeGreaterThan(0);
+  expect(runRequests[0]).toMatchObject({ repo: "octocat/hello-world", prNumber: "1" });
+});
+
 test("the Run tab's output panel shows a real run's output from OutputTextProvider, replacing the placeholder", async ({ page }) => {
   // Window-bridge elimination Phase 3c (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
   // the output text lives in <OutputTextProvider />, which RunCheckSection reads

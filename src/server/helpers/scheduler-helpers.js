@@ -31,7 +31,14 @@ function createSchedulerHelpers({
   const { toTrimmedString } = dataHelpers;
 
   // Constants
+  // What you did and the background runs are kept apart, the newest of
+  // each - so a few days of quick checks can't push out your actions.
   const ACTION_LOG_MAX_ENTRIES = 500;
+  const ACTION_LOG_MAX_BACKGROUND_ENTRIES = 1000;
+  // A full refresh's entries from before they said who started them were
+  // the scheduler's.
+  const isBackgroundActionLogEntry = (entry) =>
+    entry?.origin === "background" || (!entry?.origin && entry?.action === "auto-refresh");
 
   // Active PR tracking state (module-level)
   const viewPrsActivePrCounts = new Map();
@@ -163,9 +170,13 @@ function createSchedulerHelpers({
       });
 
       // Keep only the most recent entries (newest stays at the front)
-      if (entries.length > ACTION_LOG_MAX_ENTRIES) {
-        entries = entries.slice(0, ACTION_LOG_MAX_ENTRIES);
-      }
+      let yoursKept = 0;
+      let backgroundKept = 0;
+      entries = entries.filter((kept) =>
+        isBackgroundActionLogEntry(kept)
+          ? ++backgroundKept <= ACTION_LOG_MAX_BACKGROUND_ENTRIES
+          : ++yoursKept <= ACTION_LOG_MAX_ENTRIES,
+      );
 
       writeFileReplacingSync(fs, viewPrsActionLogFile, JSON.stringify(entries, null, 2));
     } catch (_error) {
@@ -176,10 +187,10 @@ function createSchedulerHelpers({
   /**
    * Reads the action log.
    * @param {Object} [options={}] - Options
-   * @param {number} [options.limit=100] - Maximum entries to return
-   * @returns {Array} Log entries
+   * @param {number} [options.limit] - Maximum entries to return (all by default)
+   * @returns {Array} Log entries, newest first
    */
-  const readActionLog = ({ limit = 100 } = {}) => {
+  const readActionLog = ({ limit } = {}) => {
     try {
       if (!fs.existsSync(viewPrsActionLogFile)) {
         return [];
@@ -192,8 +203,9 @@ function createSchedulerHelpers({
         return [];
       }
 
-      const safeLimit = Math.max(1, Math.min(1000, Number(limit) || 100));
-      return entries.slice(-safeLimit);
+      const maxEntries = ACTION_LOG_MAX_ENTRIES + ACTION_LOG_MAX_BACKGROUND_ENTRIES;
+      const safeLimit = Math.max(1, Math.min(maxEntries, Number(limit) || maxEntries));
+      return entries.slice(0, safeLimit);
     } catch (_error) {
       return [];
     }

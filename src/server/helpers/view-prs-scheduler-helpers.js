@@ -104,6 +104,10 @@ const createViewPrsSchedulerHelpers = ({
         viewPrsSchedulerState.unreachablePrSince = parsed.unreachablePrSince;
       }
 
+      if (isPlainObject(parsed.refreshFailureByRepo)) {
+        viewPrsSchedulerState.refreshFailureByRepo = parsed.refreshFailureByRepo;
+      }
+
       if (isPlainObject(parsed.noLongerOpenQueuedAt)) {
         viewPrsSchedulerState.noLongerOpenQueuedAt = parsed.noLongerOpenQueuedAt;
       }
@@ -190,6 +194,7 @@ const createViewPrsSchedulerHelpers = ({
       pendingByRepo: viewPrsSchedulerState.pendingByRepo || {},
       manualFullRunAtByRepo: viewPrsSchedulerState.manualFullRunAtByRepo || {},
       unreachablePrSince: viewPrsSchedulerState.unreachablePrSince || {},
+      refreshFailureByRepo: viewPrsSchedulerState.refreshFailureByRepo || {},
       noLongerOpenQueuedAt: viewPrsSchedulerState.noLongerOpenQueuedAt || {},
       dispatcherVersion: 2,
       entries: getPersistableDispatcherEntries(),
@@ -322,6 +327,12 @@ const createViewPrsSchedulerHelpers = ({
         : [],
       // What's running and how far it's got - the Activity popover's Now.
       tasks: getProgressTasks(),
+      // For the rows that couldn't be refreshed: each repo's last refresh
+      // that failed, until one works ({ at, since, error, prNumbers }), and
+      // the PRs fetched on their own that couldn't be fetched
+      // ("repo#number" => since when).
+      refreshFailures: viewPrsSchedulerState.refreshFailureByRepo || {},
+      unreachablePrs: viewPrsSchedulerState.unreachablePrSince || {},
     };
   };
 

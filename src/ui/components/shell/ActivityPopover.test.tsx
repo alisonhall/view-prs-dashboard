@@ -6,6 +6,7 @@ import userEvent from '@testing-library/user-event';
 import { JobEventsContext, type JobEventsValue } from '../../state/JobEventsContext';
 import { BackfillStatusContext, DEFAULT_BACKFILL_BUTTON_STATE, type BackfillStatusValue } from '../../state/BackfillStatusContext';
 import { RequestActivityDisplayContext } from '../../state/RequestActivityContext';
+import { SettingsDrawerContext } from '../../state/SettingsDrawerContext';
 import { createPrJobEventsHelpers } from '../../helpers/pr-job-events.helpers.ts';
 import { ActivityPopover } from './ActivityPopover';
 
@@ -205,6 +206,31 @@ describe('ActivityPopover', () => {
     const finished = within(screen.getByRole('region', { name: 'Just finished' })).getAllByRole('listitem');
     expect(finished[0]).toHaveTextContent(/Quick check.*2 repos.*1m ago/);
     expect(finished[1]).toHaveTextContent(/Full refresh failed.*gh auth expired.*9m ago/);
+  });
+
+  test("each Just finished item's Log opens the Action log at its entry; Action log at the top", async () => {
+    const user = userEvent.setup();
+    const finishedAt = new Date(Date.now() - 60_000).toISOString();
+    const drawer = { isOpen: false, section: 'run' as const, open: jest.fn(), close: jest.fn(), setSection: jest.fn(), actionLogFocus: null, openActionLogAt: jest.fn() };
+    render(
+      <SettingsDrawerContext.Provider value={drawer}>
+        <JobEventsContext.Provider value={jobEvents({ recentFinished: [{ job: 'autoRefresh', at: finishedAt, ok: true, detail: { kind: 'changedPrs' } }] })}>
+          <BackfillStatusContext.Provider value={backfill}>
+            <RequestActivityDisplayContext.Provider value={{ activeRequests: [], recentRequestActivity: [] }}>
+              <ActivityPopover />
+            </RequestActivityDisplayContext.Provider>
+          </BackfillStatusContext.Provider>
+        </JobEventsContext.Provider>
+      </SettingsDrawerContext.Provider>,
+    );
+    await user.click(button());
+    await user.click(screen.getByRole('button', { name: 'Show Update changed PRs from 1m ago in the action log' }));
+    expect(drawer.openActionLogAt).toHaveBeenCalledWith({ kind: 'changedPrs', atMs: Date.parse(finishedAt) });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    await user.click(button());
+    await user.click(screen.getByRole('button', { name: 'Action log' }));
+    expect(drawer.open).toHaveBeenCalledWith('action-log');
   });
 
   test("\"What these are\" explains each kind, and what it doesn't update; each item's name says it on hover", async () => {

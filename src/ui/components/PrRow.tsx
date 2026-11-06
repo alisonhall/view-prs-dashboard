@@ -135,6 +135,7 @@ export const PrRow = memo(function PrRow({
           isActive={isActive}
           isQueued={isQueued}
           onToggleInsights={onToggleInsights}
+          onRetry={onUpdatePr ? () => onUpdatePr(pr?.number, { prNumber: String(pr?.number || ''), repo }, pr) : undefined}
         />
         <PrWhoCell pr={pr} actorsMap={actorsMap} />
         <PrReviewCell entry={entry} pr={pr} actorsMap={actorsMap} />

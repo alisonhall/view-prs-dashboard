@@ -9,6 +9,9 @@ import { getLabelName } from '../../helpers/pr-filter-label-extraction.helpers.t
 import { useShowRowRepo } from '../../state/ShowRowRepoContext';
 import { useSearchTerms } from '../../state/SearchTermsContext';
 import { matchRowSearch, SEARCH_FIELD_LABELS } from '../../helpers/pr-row-search.helpers.ts';
+import { describeRowRefreshProblem } from '../../helpers/pr-row-freshness.helpers.ts';
+import { useNow } from '../../state/NowContext';
+import { useRepoFreshness } from '../../state/RepoFreshnessContext';
 
 const { formatTitleWithIcons } = createPrStatusDisplayHelpers();
 const { escapeHtml } = createPrFormattingHelpers();
@@ -53,6 +56,46 @@ export interface PrTitleCellProps {
   isActive?: boolean;
   isQueued?: boolean;
   onToggleInsights: (prNumber: string | number | undefined, sectionKey: string, repo: string) => void;
+  // The row's Update PR, for Retry when its last refresh failed.
+  onRetry?: () => unknown;
+}
+
+/**
+ * "Couldn't refresh · data from 2h ago" when the row's last refresh failed
+ * (pr-row-freshness's describeRowRefreshProblem: why in its tooltip), with
+ * Retry - disabled while the row is being fetched. Its own component, so
+ * the clock (useNow) and what couldn't be refreshed re-render it, not the
+ * title cell.
+ */
+function PrRefreshProblem({
+  entry,
+  prNumber,
+  isBusy,
+  onRetry,
+}: {
+  entry: PrEntry;
+  prNumber: string;
+  isBusy: boolean;
+  onRetry?: () => unknown;
+}) {
+  const nowMs = useNow();
+  const { refreshFailures, unreachablePrs } = useRepoFreshness();
+  const problem = describeRowRefreshProblem({ entry, refreshFailures, unreachablePrs, nowMs });
+  if (!problem) return null;
+  return (
+    <div className="pr-title-meta pr-refresh-problem">
+      <span className="pr-meta-chip" data-tone="attention" title={problem.lines.join('\n')}>
+        <Icon name="alert" size={12} />
+        {problem.label}
+        {problem.dataAge && ` · data from ${problem.dataAge}`}
+      </span>
+      {onRetry && (
+        <button type="button" className="pr-refresh-retry" disabled={isBusy} aria-label={`Retry refreshing PR #${prNumber}`} onClick={() => void onRetry()}>
+          Retry
+        </button>
+      )}
+    </div>
+  );
 }
 
 export function PrTitleCell({
@@ -66,6 +109,7 @@ export function PrTitleCell({
   isActive = false,
   isQueued = false,
   onToggleInsights,
+  onRetry,
 }: PrTitleCellProps) {
   const prNumber = String(pr?.number || '');
   // With rows from several repos in view, the number alone doesn't say
@@ -190,6 +234,7 @@ export function PrTitleCell({
               )}
             </div>
           )}
+          {entry && <PrRefreshProblem entry={entry} prNumber={prNumber} isBusy={isActive || isQueued} onRetry={onRetry} />}
         </div>
       </div>
     </td>

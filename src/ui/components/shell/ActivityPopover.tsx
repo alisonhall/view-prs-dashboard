@@ -57,7 +57,7 @@ function useIsMounted() {
   return isMounted;
 }
 
-function ActivityContent({ onOpenActionLog }: { onOpenActionLog: () => void }) {
+function ActivityContent({ onOpenActionLog }: { onOpenActionLog: (focus?: { kind: string; atMs: number }) => void }) {
   const nowMs = useNow();
   const { jobs, tasks, dispatcherQueue, pendingOpenCount, pendingMergedClosedCount, recentFinished } = useJobEvents();
   const { bulkBatches } = usePrActivityQueue();
@@ -189,7 +189,7 @@ function ActivityContent({ onOpenActionLog }: { onOpenActionLog: () => void }) {
             <h3 id="activity-finished-title" className="activity-section-title">
               Just finished
             </h3>
-            <button type="button" className="activity-link" onClick={onOpenActionLog}>
+            <button type="button" className="activity-link" onClick={() => onOpenActionLog()}>
               Action log
             </button>
           </div>
@@ -208,6 +208,16 @@ function ActivityContent({ onOpenActionLog }: { onOpenActionLog: () => void }) {
                 </span>
                 <span className="activity-item-meta">
                   <span className="activity-when">{item.ago}</span>
+                  {item.kind && (
+                    <button
+                      type="button"
+                      className="activity-action"
+                      aria-label={`Show ${item.label} from ${item.ago} in the action log`}
+                      onClick={() => onOpenActionLog({ kind: item.kind || '', atMs: item.atMs })}
+                    >
+                      Log
+                    </button>
+                  )}
                 </span>
               </li>
             ))}
@@ -304,9 +314,10 @@ export function ActivityPopover() {
           </div>
           <NowProvider tickMs={ACTIVITY_TICK_MS}>
             <ActivityContent
-              onOpenActionLog={() => {
+              onOpenActionLog={(focus) => {
                 close(false);
-                settings.open('action-log');
+                if (focus) settings.openActionLogAt(focus);
+                else settings.open('action-log');
               }}
             />
           </NowProvider>

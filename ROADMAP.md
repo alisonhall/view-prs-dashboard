@@ -50,7 +50,7 @@
 - [ ] Look into extracting the contents in the data folder into a separate location so that it can be backed up and tracked. Then look into if it would be possible to deploy the core part of the app online while keeping the data files local.
 - [ ] In the Activity tab's "All" view, show the commits pushed after your review (the row's `commitsAfterReview`) above the "last looked" line, or tag them "pushed after your review" - they count as new, but their dates put them below it
 - [ ] Say whether the time in the Activity column's "Your last activity" is your activity or your Ack (e.g. "Acked Nov 2" vs "Commented Nov 2") - the row's baseline is whichever is later
-- [ ] Show on a row when the last run couldn't refresh it and kept its stored data ("Couldn't refresh - showing data from 2h ago"), with a retry action
+- [x] ~~Show on a row when the last run couldn't refresh it and kept its stored data ("Couldn't refresh - showing data from 2h ago"), with a retry action~~ - done (2026-11-05): `Couldn't refresh · data from 2h ago` under the title, why on hover, and `Retry` (Update PR); for an open/draft row the failed refresh of its repo would have fetched (queued for an update, or not fetched in full for 4 hours), a chosen PR a refresh failed on, or (`Couldn't fetch`) a PR added on its own that couldn't be fetched. The server keeps each repo's last failed refresh until one works and sends it in the live scheduler state.
 - [ ] Show "Changes requested by …" in the Review column of your own PRs - such a review now marks the row CHANGED (`review`)
 - [ ] In the detail pane, say when a PR has more commits than GitHub's API returns (250), e.g. "showing the newest 250 of 359 commits"
 - [ ] Link each review in the Activity tab and the detail pane to it on GitHub - reviews now reliably have their links (`7ec7eb8`)
@@ -103,7 +103,7 @@ Improvements noted once PRs could come from several repos and sources (subscript
   - Background updates lists every source's repo - each subscription, and the repos of PRs added one by one - with a "From your sources" note, not only the repos the dispatcher has scheduled.
   - Sources gets a "Timing…" link beside each repo that opens Background updates at that repo.
 - [x] ~~Rethink `Request more`~~ - done (2026-11-04): it fetched older merged PRs for whichever repo the last run was of. It's now `Fetch older merged PRs` in Settings › Sources, beside each repo followed for its recent PRs; the server refuses it for a repo followed for listed PRs, or one with only PRs added by URL, whose new rows wouldn't show.
-- [ ] Make the Action log scannable, and log background requests (quick checks, refreshes, drains) as well as actions you started.
+- [x] ~~Make the Action log scannable, and log background requests (quick checks, refreshes, drains) as well as actions you started.~~ - done (2026-11-05): one line each (when, what, You/Background, outcome, repos, summary, duration) with the rest folded, filtered by kind, outcome, who and repo; quick checks and skips that kept a run from happening are logged (not no-op skips), kept apart from your actions (500 yours, 1,000 background); Just finished's `Log` opens it at an entry. Also fixed: it showed the oldest 100 entries once there were more than 100, not the newest.
 
 #### Actors
 

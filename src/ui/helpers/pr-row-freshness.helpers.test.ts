@@ -3,6 +3,7 @@ import {
   describeRepoListing,
   describeReposChecked,
   describeRowFreshness,
+  describeRowRefreshProblem,
   formatAgo,
 } from "./pr-row-freshness.helpers.ts";
 
@@ -305,5 +306,48 @@ describe("describeReposChecked", () => {
     });
     expect(checked.label).toBe("");
     expect(checked.title).toMatch(/^Last run 2m ago/);
+  });
+});
+
+describe("describeRowRefreshProblem", () => {
+  // Queued for an update: one a refresh of its repo would fetch.
+  const row = (overrides = {}) => ({ repo: "acme/api", prNumber: "7", section: "open", fetchedAt: ago(120), data: { updatePending: true }, ...overrides });
+  const describe_ = (entry: object, refreshFailures = {}, unreachablePrs = {}) =>
+    describeRowRefreshProblem({ entry: entry as never, refreshFailures, unreachablePrs, nowMs: NOW });
+
+  test("an open row not fetched since its repo's refresh failed: why, since when, and how old its data is", () => {
+    const problem = describe_(row(), { "acme/api": { at: ago(10), since: ago(60), error: "gh auth expired", prNumbers: null } });
+    expect(problem?.label).toBe("Couldn't refresh");
+    expect(problem?.dataAge).toBe("2h ago");
+    expect(problem?.lines[0]).toMatch(/^Couldn't refresh: its repo's last refresh failed 10m ago .*\(gh auth expired\)\.$/);
+    expect(problem?.lines[1]).toMatch(/^Its refreshes have failed since 1h ago/);
+    expect(problem?.lines[2]).toMatch(/^Showing the data from 2h ago/);
+  });
+
+  test("for a refresh of the repo, just the open rows it would have fetched: changed ones, or ones not fully fetched for 4 hours", () => {
+    const failures = { "acme/api": { at: ago(10), since: ago(10), prNumbers: null } };
+    // Unchanged, fetched in full 2 hours ago: left as it was either way.
+    expect(describe_(row({ data: {} }), failures)).toBeNull();
+    expect(describe_(row({ data: { live: { detailsBehind: true } } }), failures)?.label).toBe("Couldn't refresh");
+    expect(describe_(row({ data: {}, fetchedAt: ago(5 * 60) }), failures)?.label).toBe("Couldn't refresh");
+  });
+
+  test("not once it's fetched since, nor a merged row for a refresh of the repo, nor another repo's", () => {
+    const failures = { "acme/api": { at: ago(10), since: ago(10), prNumbers: null } };
+    expect(describe_(row({ fetchedAt: ago(5) }), failures)).toBeNull();
+    expect(describe_(row({ section: "merged" }), failures)).toBeNull();
+    expect(describe_(row({ repo: "acme/web" }), failures)).toBeNull();
+  });
+
+  test("a refresh of chosen PRs: just those, merged ones too", () => {
+    const failures = { "acme/api": { at: ago(10), since: ago(10), prNumbers: ["7"] } };
+    expect(describe_(row({ section: "merged" }), failures)?.lines[0]).toMatch(/^Couldn't refresh: its last refresh failed/);
+    expect(describe_(row({ prNumber: "8" }), failures)).toBeNull();
+  });
+
+  test("a PR that couldn't be fetched (maybe gone)", () => {
+    const problem = describe_(row(), {}, { "acme/api#7": ago(30) });
+    expect(problem).toMatchObject({ label: "Couldn't fetch", dataAge: "2h ago" });
+    expect(problem?.lines[0]).toMatch(/^Couldn't fetch it since 30m ago .*deleted, or no longer visible to gh\.$/);
   });
 });

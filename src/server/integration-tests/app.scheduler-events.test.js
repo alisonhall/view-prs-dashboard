@@ -1,3 +1,4 @@
+const fs = require("fs");
 const appModule = require("../app.js");
 const {
   runViewPrsAutoRefresh,
@@ -26,6 +27,7 @@ const resetSchedulerState = () => {
   viewPrsSchedulerState.autoRefreshInProgressRepos = new Set();
   viewPrsSchedulerState.quickCheckInProgressRepos = new Set();
   viewPrsSchedulerState.pendingByRepo = {};
+  viewPrsSchedulerState.refreshFailureByRepo = {};
   resetViewPrsAutoRefreshFailureState();
 };
 
@@ -267,5 +269,140 @@ describe("scheduler job event emission", () => {
       "autoRefresh:finish",
       "mergedQueueDrain:finish",
     ]);
+  });
+});
+
+describe("background runs in the action log", () => {
+  const savedDependencyStatus = appModule.getDependencyStatus;
+  const savedRunViewPrsScript = appModule.runViewPrsScript;
+  const savedEmitJobEvent = appModule.emitJobEvent;
+  const logFile = process.env.VIEW_PRS_ACTION_LOG_FILE;
+
+  beforeAll(() => {
+    appModule.getDependencyStatus = () => ({ ok: true, missing: [] });
+    appModule.runViewPrsScript = async () => ({ stdout: "{}", stderr: "" });
+    appModule.emitJobEvent = (eventInput) => eventInput;
+  });
+  afterAll(() => {
+    appModule.getDependencyStatus = savedDependencyStatus;
+    appModule.runViewPrsScript = savedRunViewPrsScript;
+    appModule.emitJobEvent = savedEmitJobEvent;
+  });
+  beforeEach(() => {
+    resetSchedulerState();
+    fs.rmSync(logFile, { force: true });
+  });
+
+  const logged = () => appModule.readActionLog();
+
+  test("a quick check the scheduler ran, with who started it and its repos", async () => {
+    await runViewPrsQuickCheck({ repoRequests: [{ repo: "owner/repo-one" }] });
+
+    expect(logged()).toEqual([
+      expect.objectContaining({
+        action: "job/quickCheck",
+        kind: "quickCheck",
+        origin: "background",
+        ok: true,
+        detail: expect.objectContaining({ repos: ["owner/repo-one"], reposCheckedCount: 1 }),
+      }),
+    ]);
+  });
+
+  test("not a quick check you started - its route logs that", async () => {
+    await runViewPrsQuickCheck({ repoRequests: [{ repo: "owner/repo-one" }], progressOrigin: "you" });
+
+    expect(logged()).toEqual([]);
+  });
+
+  test("a skip that kept a run from happening, but not one with nothing to do", async () => {
+    viewPrsSchedulerState.autoRefreshInProgressRepos = new Set(["owner/repo-one"]);
+    await runViewPrsAutoRefresh({ reposOverride: ["owner/repo-one"] });
+    viewPrsSchedulerState.autoRefreshInProgressRepos = new Set();
+    await runViewPrsMergedQueueDrain();
+
+    expect(logged()).toEqual([
+      expect.objectContaining({
+        action: "job/autoRefresh",
+        kind: "autoRefresh",
+        origin: "background",
+        skipped: true,
+        ok: null,
+        detail: expect.objectContaining({ reason: "already-in-progress", repos: ["owner/repo-one"] }),
+      }),
+    ]);
+  });
+
+  test("a full refresh says what kind it was and who started it", async () => {
+    await runViewPrsAutoRefresh({ reposOverride: ["owner/repo-one"], skipCooldownChecks: true, progressOrigin: "you" });
+
+    expect(logged()).toEqual([
+      expect.objectContaining({ action: "auto-refresh", kind: "autoRefresh", origin: "you", ok: true }),
+    ]);
+  });
+});
+
+describe("each repo's last refresh that failed, for the rows", () => {
+  const savedDependencyStatus = appModule.getDependencyStatus;
+  const savedRunViewPrsScript = appModule.runViewPrsScript;
+  const savedEmitJobEvent = appModule.emitJobEvent;
+  let failing;
+
+  beforeAll(() => {
+    appModule.getDependencyStatus = () => ({ ok: true, missing: [] });
+    appModule.runViewPrsScript = async () => {
+      if (failing) throw Object.assign(new Error("Command exited with code 1"), { stderr: "gh auth expired\n" });
+      return { stdout: "{}", stderr: "" };
+    };
+    appModule.emitJobEvent = (eventInput) => eventInput;
+  });
+  afterAll(() => {
+    appModule.getDependencyStatus = savedDependencyStatus;
+    appModule.runViewPrsScript = savedRunViewPrsScript;
+    appModule.emitJobEvent = savedEmitJobEvent;
+  });
+  beforeEach(() => {
+    resetSchedulerState();
+    failing = false;
+  });
+
+  const failures = () => appModule.getViewPrsSchedulerPublicState().refreshFailures;
+  const refresh = (options = {}) => runViewPrsAutoRefresh({ reposOverride: ["owner/repo-one"], skipCooldownChecks: true, ...options });
+
+  test("one that failed, with why and since when - in the page's scheduler state - until one works", async () => {
+    failing = true;
+    await refresh();
+    const first = failures()["owner/repo-one"];
+    expect(first).toEqual({ since: expect.any(String), at: expect.any(String), error: "Command exited with code 1", prNumbers: null });
+
+    resetViewPrsAutoRefreshFailureState();
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await refresh();
+    expect(failures()["owner/repo-one"]).toMatchObject({ since: first.since, prNumbers: null });
+    expect(failures()["owner/repo-one"].at > first.at).toBe(true);
+
+    failing = false;
+    resetViewPrsAutoRefreshFailureState();
+    await refresh();
+    expect(failures()).toEqual({});
+  });
+
+  test("of chosen PRs: those PRs, cleared as they're refreshed; the repo's own stays until a refresh of it works", async () => {
+    failing = true;
+    await refresh({ prNumbersByRepo: { "owner/repo-one": ["7", "8"] } });
+    expect(failures()["owner/repo-one"].prNumbers).toEqual(["7", "8"]);
+
+    failing = false;
+    resetViewPrsAutoRefreshFailureState();
+    await refresh({ prNumbersByRepo: { "owner/repo-one": ["7"] } });
+    expect(failures()["owner/repo-one"].prNumbers).toEqual(["8"]);
+
+    failing = true;
+    resetViewPrsAutoRefreshFailureState();
+    await refresh();
+    failing = false;
+    resetViewPrsAutoRefreshFailureState();
+    await refresh({ prNumbersByRepo: { "owner/repo-one": ["8"] } });
+    expect(failures()["owner/repo-one"].prNumbers).toBeNull();
   });
 });

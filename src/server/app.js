@@ -226,6 +226,9 @@ const viewPrsSchedulerState = {
   // PRs fetched on their own that their last run couldn't fetch:
   // "repo#number" => since when (recordUnreachablePrs).
   unreachablePrSince: {},
+  // Each repo's last refresh that failed, until one works
+  // (recordRefreshOutcome): { at, since, error, prNumbers }.
+  refreshFailureByRepo: {},
   // Open rows the quick check queued as no longer open: "repo#number" =>
   // when (takeNoLongerOpenToQueue).
   noLongerOpenQueuedAt: {},
@@ -1146,8 +1149,38 @@ const {
 // Same override-checking pattern as callRunViewPrsScript etc. - lets tests
 // spy on/replace emitJobEvent via module.exports before createViewPrsApp()
 // without needing a live SSE connection.
-const callEmitJobEvent = (...args) =>
-  (module.exports.emitJobEvent || emitJobEvent)(...args);
+const callEmitJobEvent = (event) => {
+  logBackgroundJobEvent(event);
+  return (module.exports.emitJobEvent || emitJobEvent)(event);
+};
+
+// The background runs in Settings › Action log, by their job events: each
+// quick check, and each skip that kept a run from happening (not one that
+// found nothing to do). A full refresh - the drain's included - writes its
+// own entry, with its timings, and what you start is logged by its route;
+// the drain's refresh skipping is the drain's skip.
+const NO_OP_SKIP_REASONS = new Set(["nothing-pending", "nothing-to-fetch"]);
+const logBackgroundJobEvent = ({ job, phase, ok = null, detail } = {}) => {
+  if (!detail || detail.origin === "you") return;
+  const kind = typeof detail.kind === "string" ? detail.kind : job;
+  const isSkip =
+    phase === JOB_PHASES.SKIPPED &&
+    !NO_OP_SKIP_REASONS.has(detail.reason) &&
+    !(job === JOB_NAMES.AUTO_REFRESH && kind === "mergedQueueDrain");
+  const isQuickCheck = phase === JOB_PHASES.FINISH && job === JOB_NAMES.QUICK_CHECK;
+  if (!isSkip && !isQuickCheck) return;
+  const { kind: _kind, origin: _origin, error, durationMs, ...rest } = detail;
+  appendActionLogEntry({
+    action: `job/${job}`,
+    kind,
+    origin: "background",
+    triggeredAt: new Date(Date.now() - (Number(durationMs) || 0)).toISOString(),
+    ...(isSkip ? { skipped: true, ok: null } : { ok }),
+    ...(Number.isFinite(durationMs) ? { durationMs } : {}),
+    detail: rest,
+    ...(error ? { error: String(error) } : {}),
+  });
+};
 const callEmitSchedulerStateChanged = (...args) =>
   (module.exports.emitSchedulerStateChanged || emitSchedulerStateChanged)(...args);
 const callEmitDataChanged = (...args) =>
@@ -1852,6 +1885,43 @@ const recordUnreachablePrs = (repo, attemptedNumbers, missingNumbers) => {
   if (JSON.stringify(next) !== before) persistViewPrsSchedulerState();
 };
 
+// Each repo's last refresh that failed, until one works - viewPrsSchedulerState's
+// refreshFailureByRepo, saved with the scheduler state: when it failed
+// (`at`), since when its refreshes have been failing (`since`), why, and
+// for a refresh of chosen PRs which (`prNumbers`; null for the repo's).
+// The page marks the rows not fetched since (pr-row-freshness). A refresh
+// of the repo that works clears it; one of chosen PRs clears those.
+const recordRefreshOutcome = (repo, { ok, prNumbers, error = "" }) => {
+  const failures = viewPrsSchedulerState.refreshFailureByRepo || {};
+  const existing = failures[repo];
+  const numbers = Array.isArray(prNumbers) ? prNumbers.map(String) : null;
+  let next;
+  if (ok) {
+    if (!existing) return;
+    const left = numbers && existing.prNumbers ? existing.prNumbers.filter((number) => !numbers.includes(number)) : [];
+    // A refresh of chosen PRs leaves the repo's failure: its other PRs weren't refreshed.
+    if (numbers && !existing.prNumbers) return;
+    next = { ...failures };
+    if (left.length > 0) next[repo] = { ...existing, prNumbers: left };
+    else delete next[repo];
+  } else {
+    const now = new Date().toISOString();
+    const failure =
+      numbers && existing && !existing.prNumbers
+        ? { ...existing, error }
+        : {
+          since: existing?.since || now,
+          at: now,
+          error,
+          prNumbers: numbers ? [...new Set([...(existing?.prNumbers || []), ...numbers])] : null,
+        };
+    next = { ...failures, [repo]: failure };
+  }
+  viewPrsSchedulerState.refreshFailureByRepo = next;
+  persistViewPrsSchedulerState();
+  callEmitSchedulerStateChanged();
+};
+
 // A manual run of chosen PRs in a repo not fetched in full adds them, as
 // by URL: otherwise the rows it saves would be hidden (filterToVisibleRows).
 // Those in view already (their repo subscribed, or added) are left as they
@@ -2073,7 +2143,7 @@ const runViewPrsAutoRefresh = async ({
     callEmitJobEvent({
       job: JOB_NAMES.AUTO_REFRESH,
       phase: JOB_PHASES.SKIPPED,
-      detail: { kind: progressKind, reason: "nothing-to-fetch", repos: candidateAutoRefreshRepos },
+      detail: { kind: progressKind, origin: progressOrigin, reason: "nothing-to-fetch", repos: candidateAutoRefreshRepos },
     });
     return { skipped: true, skipReason: "nothing-to-fetch" };
   }
@@ -2092,7 +2162,7 @@ const runViewPrsAutoRefresh = async ({
     callEmitJobEvent({
       job: JOB_NAMES.AUTO_REFRESH,
       phase: JOB_PHASES.SKIPPED,
-      detail: { kind: progressKind, reason: "already-in-progress" },
+      detail: { kind: progressKind, origin: progressOrigin, reason: "already-in-progress", repos: requestedAutoRefreshRepos },
     });
     return { skipped: true, skipReason: "already-in-progress" };
   }
@@ -2126,6 +2196,7 @@ const runViewPrsAutoRefresh = async ({
           phase: JOB_PHASES.SKIPPED,
           detail: {
             kind: progressKind,
+            origin: progressOrigin,
             reason: "circuit-open",
             message: viewPrsSchedulerState.lastAutoSkipReason,
             repos: reposWithOpenCircuit,
@@ -2151,6 +2222,7 @@ const runViewPrsAutoRefresh = async ({
       phase: JOB_PHASES.SKIPPED,
       detail: {
         kind: progressKind,
+        origin: progressOrigin,
         reason: "missing-dependencies",
         missing: dependencyStatus.missing,
       },
@@ -2180,7 +2252,7 @@ const runViewPrsAutoRefresh = async ({
       callEmitJobEvent({
         job: JOB_NAMES.AUTO_REFRESH,
         phase: JOB_PHASES.SKIPPED,
-        detail: { kind: progressKind, reason: "manual-cooldown", message: skipReason },
+        detail: { kind: progressKind, origin: progressOrigin, reason: "manual-cooldown", message: skipReason, repos: reposToRefresh },
       });
       return { skipped: true, skipReason: "manual-cooldown" };
     }
@@ -2342,6 +2414,7 @@ const runViewPrsAutoRefresh = async ({
         } else {
           clearPendingForRepo(repo);
         }
+        recordRefreshOutcome(repo, { ok: true, prNumbers: targetPrNumbers });
         return {
           ok: true,
           repo,
@@ -2374,6 +2447,7 @@ const runViewPrsAutoRefresh = async ({
             // With the script's reason (its last stderr line), not just its exit code.
             : describeFailure(failure);
         const repoFinishedMs = Date.now();
+        recordRefreshOutcome(repo, { ok: false, prNumbers: targetPrNumbers, error: failureMessage });
         return {
           ok: false,
           repo,
@@ -2491,6 +2565,8 @@ const runViewPrsAutoRefresh = async ({
 
     appendActionLogEntry({
       action: "auto-refresh",
+      kind: progressKind,
+      origin: progressOrigin,
       triggeredAt: autoStartedAt,
       durationMs: Date.now() - autoTriggerMs,
       ok: failures.length === 0 && successCount > 0,
@@ -2542,11 +2618,17 @@ const runViewPrsAutoRefresh = async ({
     // known (e.g. a setup error) - attribute the failure to every repo
     // this call was attempting, since there's no finer-grained info here.
     recordViewPrsAutoRefreshFailure(reposToRefresh);
+    reposToRefresh.forEach((repo) =>
+      recordRefreshOutcome(repo, { ok: false, prNumbers: getTargetPrNumbers(repo), error: viewPrsSchedulerState.lastAutoError }),
+    );
     appendActionLogEntry({
       action: "auto-refresh",
+      kind: progressKind,
+      origin: progressOrigin,
       triggeredAt: autoStartedAt,
       durationMs: Date.now() - autoTriggerMs,
       ok: false,
+      detail: { repos: reposToRefresh.join(", ") },
       error: viewPrsSchedulerState.lastAutoError,
     });
     console.error(
@@ -2685,7 +2767,7 @@ const runViewPrsQuickCheck = async ({
       callEmitJobEvent({
         job: JOB_NAMES.QUICK_CHECK,
         phase: JOB_PHASES.SKIPPED,
-        detail: { reason: "already-in-progress", willRunAfter: false },
+        detail: { reason: "already-in-progress", willRunAfter: false, origin: progressOrigin, repos: quickCheckTargetRepos },
       });
     }
     return { skipped: true, skipReason: "already-in-progress" };
@@ -2702,6 +2784,7 @@ const runViewPrsQuickCheck = async ({
         reason: "missing-dependencies",
         missing: dependencyStatus.missing,
         willRunAfter: false,
+        origin: progressOrigin,
       },
     });
     return { skipped: true, skipReason: "missing-dependencies", missing: dependencyStatus.missing };
@@ -2728,7 +2811,7 @@ const runViewPrsQuickCheck = async ({
     callEmitJobEvent({
       job: JOB_NAMES.QUICK_CHECK,
       phase: JOB_PHASES.SKIPPED,
-      detail: { reason: "circuit-open", willRunAfter: false, repos: reposWithOpenCircuit },
+      detail: { reason: "circuit-open", willRunAfter: false, repos: reposWithOpenCircuit, origin: progressOrigin },
     });
     return { skipped: true, skipReason: "circuit-open" };
   }
@@ -3068,6 +3151,8 @@ const runViewPrsQuickCheck = async ({
         pendingOpenRepos: finishPendingOpenRepos,
         durationMs: Date.now() - quickCheckStartedMs,
         error: viewPrsSchedulerState.lastQuickCheckError || null,
+        repos: reposAboutToBeChecked,
+        origin: progressOrigin,
       },
     });
   }

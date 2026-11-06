@@ -626,6 +626,22 @@
   font-size: var(--font-size-xs);
 }
 
+/* After "Couldn't refresh · data from 2h ago" (PrTitleCell) */
+.pr-refresh-retry {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-accent-text);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.pr-refresh-retry:disabled {
+  color: var(--color-text-muted);
+  cursor: default;
+}
+
 /* Actions */
 .pr-actions {
   display: flex;

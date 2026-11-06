@@ -24,6 +24,7 @@ import { useAckLabelActions } from '../state/useAckLabelActions';
 import { usePrTableUiState, type SelectedPr } from '../state/PrTableUiStateContext';
 import { NowProvider } from '../state/NowContext';
 import { readDefaultQuickCheckIntervalMs, RepoFreshnessProvider } from '../state/RepoFreshnessContext';
+import type { RepoRefreshFailure } from '../helpers/pr-row-freshness.helpers.ts';
 import { useNotesDirty } from '../state/NotesDirtyContext';
 import { useMediaQuery } from '../state/useMediaQuery';
 import { usePrSectionPreferences } from '../state/PrSectionPreferencesProvider';
@@ -152,6 +153,10 @@ export function PrTableApp() {
   const [activePrNumbers, setActivePrNumbers] = useState<ActivePr[]>([]);
   // And those a scheduler run of chosen PRs is still to fetch: "queued".
   const [schedulerQueuedPrNumbers, setSchedulerQueuedPrNumbers] = useState<ActivePr[]>([]);
+  // What couldn't be refreshed, for the rows (RepoFreshnessProvider): each
+  // repo's last refresh that failed, and the PRs that couldn't be fetched.
+  const [refreshFailures, setRefreshFailures] = useState<Record<string, RepoRefreshFailure>>({});
+  const [unreachablePrs, setUnreachablePrs] = useState<Record<string, string>>({});
 
   useEffect(() => {
     // Every scheduler frame carries both lists (several a second during a
@@ -159,10 +164,19 @@ export function PrTableApp() {
     // changed, so the table doesn't render again for each frame.
     const keysOf = (list: ActivePr[]) => list.map((entry) => buildActivePrKey(String(entry?.prNumber), entry?.repo)).join(',');
     const keepIfSame = (next: ActivePr[]) => (previous: ActivePr[]) => (keysOf(previous) === keysOf(next) ? previous : next);
+    const keepIfEqual =
+      <T,>(next: T) =>
+      (previous: T) =>
+        JSON.stringify(previous) === JSON.stringify(next) ? previous : next;
+    const isRecord = (value: unknown): value is Record<string, never> => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
     const handleActiveProgressUpdate = (event: Event) => {
-      const { detail } = event as CustomEvent<{ activePrNumbers?: ActivePr[]; queuedPrNumbers?: ActivePr[] } | undefined>;
+      const { detail } = event as CustomEvent<
+        { activePrNumbers?: ActivePr[]; queuedPrNumbers?: ActivePr[]; refreshFailures?: unknown; unreachablePrs?: unknown } | undefined
+      >;
       setActivePrNumbers(keepIfSame(detail?.activePrNumbers || []));
       setSchedulerQueuedPrNumbers(keepIfSame(detail?.queuedPrNumbers || []));
+      if (isRecord(detail?.refreshFailures)) setRefreshFailures(keepIfEqual<Record<string, RepoRefreshFailure>>(detail.refreshFailures));
+      if (isRecord(detail?.unreachablePrs)) setUnreachablePrs(keepIfEqual<Record<string, string>>(detail.unreachablePrs));
     };
 
     window.addEventListener('pr-active-progress-update', handleActiveProgressUpdate);
@@ -1144,6 +1158,8 @@ export function PrTableApp() {
             liveSummary={payload?.dataMeta?.liveSummary}
             backgroundUpdates={payload?.dataMeta?.backgroundUpdates}
             defaultIntervalMs={readDefaultQuickCheckIntervalMs(payload?.scheduler)}
+            refreshFailures={refreshFailures}
+            unreachablePrs={unreachablePrs}
           >
             <div className="pr-workspace-toolbar">
               <Button icon="panel" pressed={isPaneVisible} onClick={handleTogglePane}>

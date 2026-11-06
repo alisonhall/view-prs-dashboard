@@ -143,32 +143,108 @@
   font-style: italic;
 }
 
-.action-log-table {
-  width: 100%;
-  border-collapse: collapse;
+.action-log-filters {
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.action-log-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 13px;
 }
 
-.action-log-table th,
-.action-log-table td {
-  padding: 6px 10px;
-  text-align: left;
+.action-log-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+
+.action-log-entry {
   border-bottom: 1px solid var(--color-border-strong);
-  white-space: normal;
-  overflow-wrap: anywhere;
-  word-break: normal;
 }
 
-.action-log-table th {
-  background: var(--color-surface-inset);
+.action-log-entry[data-focused] {
+  background: var(--color-accent-subtle);
+}
+
+.action-log-entry summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  padding: 6px 4px;
+  cursor: pointer;
+}
+
+.action-log-when {
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.action-log-label {
   font-weight: 600;
-  color: var(--color-text);
 }
 
-.action-log-table td.action-log-detail {
-  white-space: normal;
-  max-width: 280px;
-  word-break: normal;
+.action-log-origin {
+  padding: 0 6px;
+  border-radius: 10px;
+  font-size: 12px;
+  background: var(--color-surface-inset);
+  color: var(--color-text-muted);
+}
+
+.action-log-origin[data-origin="you"] {
+  background: var(--color-accent-subtle);
+  color: var(--color-accent-text);
+}
+
+.action-log-repos,
+.action-log-duration {
+  color: var(--color-text-muted);
+}
+
+.action-log-summary {
+  flex: 1 1 200px;
+  overflow-wrap: anywhere;
+}
+
+.action-log-entry[data-outcome="failed"] .action-log-summary {
+  color: var(--color-danger);
+}
+
+.action-log-details {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px 12px;
+  margin: 0 0 8px;
+  padding: 0 4px 0 22px;
+  font-size: 12px;
+}
+
+.action-log-details > div {
+  display: contents;
+}
+
+.action-log-details dt {
+  color: var(--color-text-muted);
+}
+
+.action-log-details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.action-log-status-skipped {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--color-surface-inset);
+  color: var(--color-text-muted);
 }
 
 .action-log-status-ok {
@@ -181,7 +257,7 @@
   color: var(--color-success);
 }
 
-.action-log-status-fail {
+.action-log-status-failed {
   display: inline-block;
   padding: 1px 7px;
   border-radius: 10px;
