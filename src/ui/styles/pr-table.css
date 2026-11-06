@@ -745,6 +745,19 @@ a.pr-summary-file {
   color: var(--color-text-muted);
 }
 
+.pr-summary-more-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--color-accent-text);
+  cursor: pointer;
+}
+
+.pr-summary-more-link:hover {
+  text-decoration: underline;
+}
+
 .pr-summary-empty {
   margin-top: 0;
 }

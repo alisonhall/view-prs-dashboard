@@ -930,6 +930,48 @@ describe("index page rendering with Testing Library", () => {
     expect(notesPanel.querySelector(".pr-notes-section")).toBeTruthy();
   });
 
+  test("a summary's \"See all N in Activity\" opens the PR's Activity tab on what's new since you last looked", async () => {
+    const comment = (id, occurredAt) => ({ sourceId: id, occurredAt, actor: "reviewer1", type: "comment", channel: "top-level", body: id });
+    initTestPage({
+      dataPayload: createMultiPrPayload({
+        prs: [
+          {
+            scenario: "open-no-change",
+            prNumber: 13,
+            overrides: {
+              data: {
+                title: "New since you looked",
+                url: "https://example.com/13",
+                baseline: "2026-03-10T12:00:00Z",
+                activityEvents: [
+                  comment("n4", "2026-03-14T10:00:00Z"),
+                  comment("n3", "2026-03-13T10:00:00Z"),
+                  comment("n2", "2026-03-12T10:00:00Z"),
+                  comment("n1", "2026-03-11T10:00:00Z"),
+                  comment("old", "2026-03-09T10:00:00Z"),
+                ],
+              },
+            },
+          },
+        ],
+      }),
+    });
+    const user = userEvent.setup();
+    await waitFor(() => {
+      expect(document.querySelector('[data-pr-section="open"]')).toBeTruthy();
+    });
+    const row = within(document.querySelector('[data-pr-section="open"]')).getByText("#13").closest("tr");
+    await user.click(within(row).getByRole("button", { name: "Show summary for PR #13" }));
+    const summaryRow = row.nextElementSibling;
+    expect(within(summaryRow).getByRole("heading", { name: /^New since your last activity on Mar 10/ })).toBeInTheDocument();
+
+    await user.click(within(summaryRow).getByRole("button", { name: "See all 4 in Activity for PR #13" }));
+    const pane = document.querySelector(".pr-pane");
+    expect(within(pane).getByRole("tab", { name: /^Activity/ })).toHaveAttribute("aria-selected", "true");
+    expect(within(pane).getByRole("button", { name: /Since I last looked/ })).toHaveAttribute("aria-pressed", "true");
+    expect(within(pane).getByRole("button", { name: /Since I last looked/ })).toHaveTextContent("4");
+  });
+
   test("given review comment markdown with github user attachments when insights render then blocked image tags are replaced with unavailable placeholders", async () => {
     initTestPage({
       dataPayload: createMultiPrPayload({

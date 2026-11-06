@@ -6,8 +6,15 @@ import {
   buildActivityFeed,
   dayKeyOf,
   describeDay,
+  describeLastLooked,
+  describeSinceLastLooked,
+  findChangesRequestedBy,
   formatTimeOfDay,
+  formatWhenShort,
+  getLastAckedAt,
   getLastLookedAt,
+  newCommitOidsFor,
+  summarizeSinceLastLooked,
   withAckEvents,
   type ActivityFeedOptions,
 } from './pr-activity-feed.helpers.ts';
@@ -240,5 +247,122 @@ describe('your Acks among the events', () => {
   test('merged into the feed in time order', () => {
     const merged = withAckEvents([commit('c2', '2026-01-04T00:00:00Z'), commit('c1', '2026-01-01T00:00:00Z')], buildAckEvents(['2026-01-02T00:00:00Z'], '', 'me'));
     expect(merged.map((item) => item.sourceId)).toEqual(['c2', 'ack-2026-01-02T00:00:00Z', 'c1']);
+  });
+});
+
+describe('getLastAckedAt', () => {
+  test('the latest of the history and the current Ack; empty when never', () => {
+    expect(getLastAckedAt(['2026-01-01T00:00:00Z', '2026-01-03T00:00:00Z'], '2026-01-02T00:00:00Z')).toBe('2026-01-03T00:00:00Z');
+    expect(getLastAckedAt(undefined, '2026-01-02T00:00:00Z')).toBe('2026-01-02T00:00:00Z');
+    expect(getLastAckedAt([], 'true')).toBe('');
+  });
+});
+
+describe('newCommitOidsFor', () => {
+  test("the commits after your review, while your last activity is when you last looked - not after a later Ack", () => {
+    const pr = { baseline: '2026-01-02T00:00:00Z', commitsAfterReview: ['c1'] };
+    expect(newCommitOidsFor(pr, '2026-01-02T00:00:00Z')).toEqual(['c1']);
+    expect(newCommitOidsFor(pr, '2026-01-03T00:00:00Z')).toEqual([]);
+    expect(newCommitOidsFor(pr, '')).toEqual([]);
+  });
+});
+
+describe('summarizeSinceLastLooked', () => {
+  const events = [
+    event('m', '2026-01-05T00:00:00Z', { type: 'merged', channel: 'system', actor: 'unknown' }),
+    event('ap', '2026-01-04T00:00:00Z', { type: 'approval', channel: 'review', actor: 'ann', state: 'APPROVED' }),
+    event('cr', '2026-01-04T00:00:00Z', { type: 'review', channel: 'review', actor: 'sam', state: 'CHANGES_REQUESTED' }),
+    event('cr2', '2026-01-03T12:00:00Z', { type: 'review', channel: 'review', actor: 'sam', state: 'CHANGES_REQUESTED' }),
+    // One commit, two authors: two events, one commit.
+    commit('c2', '2026-01-03T00:00:00Z', 'alice'),
+    commit('c2', '2026-01-03T00:00:00Z', 'bob'),
+    event('t', '2026-01-03T00:00:00Z', { channel: 'thread' }),
+    event('ack-x', '2026-01-02T12:00:00Z', { type: 'ack', channel: 'system' }),
+    // Dated before you looked, but after your review.
+    commit('c1', '2026-01-01T00:00:00Z'),
+    event('old', '2026-01-01T00:00:00Z'),
+  ];
+
+  test('the new events, newest first, and how many of each kind - each commit once, no Acks', () => {
+    const since = summarizeSinceLastLooked(events, { lastLookedAt: '2026-01-02T00:00:00Z', newCommitOids: ['c1'] });
+    expect(since.events.map((item) => item.sourceId)).toEqual(['m', 'ap', 'cr', 'cr2', 'c2', 'c2', 't', 'c1']);
+    expect(since).toMatchObject({ commits: 2, reviews: 3, comments: 1, approvedBy: ['ann'], changesRequestedBy: ['sam'], merged: true, closed: false });
+  });
+
+  test('nothing without a last-looked time', () => {
+    expect(summarizeSinceLastLooked(events, { lastLookedAt: '' }).events).toEqual([]);
+  });
+
+  test("the empty review GitHub wraps an inline comment in isn't a review; a commented review with text is", () => {
+    const since = summarizeSinceLastLooked(
+      [
+        event('wrap', '2026-01-03T00:00:00Z', { type: 'review', channel: 'review', actor: 'sam', state: 'COMMENTED', body: '' }),
+        event('reply', '2026-01-03T00:00:00Z', { channel: 'thread', actor: 'sam' }),
+        event('said', '2026-01-04T00:00:00Z', { type: 'review', channel: 'review', actor: 'ann', state: 'COMMENTED', body: 'Thoughts' }),
+      ],
+      { lastLookedAt: '2026-01-02T00:00:00Z' },
+    );
+    expect(since).toMatchObject({ reviews: 1, comments: 1 });
+    // Still among the events, as in the Activity tab.
+    expect(since.events).toHaveLength(3);
+  });
+
+  test("a reviewer is named by their newest verdict only", () => {
+    const since = summarizeSinceLastLooked(
+      [
+        event('ap', '2026-01-04T00:00:00Z', { type: 'approval', channel: 'review', actor: 'sam', state: 'APPROVED' }),
+        event('cr', '2026-01-03T00:00:00Z', { type: 'review', channel: 'review', actor: 'sam', state: 'CHANGES_REQUESTED' }),
+      ],
+      { lastLookedAt: '2026-01-02T00:00:00Z' },
+    );
+    expect(since).toMatchObject({ reviews: 2, approvedBy: ['sam'], changesRequestedBy: [] });
+    expect(describeSinceLastLooked(since)).toEqual(['2 reviews (approved by sam)']);
+  });
+
+  test('in words, with names', () => {
+    const since = summarizeSinceLastLooked(events, { lastLookedAt: '2026-01-02T00:00:00Z', newCommitOids: ['c1'] });
+    expect(describeSinceLastLooked(since, (login) => login.toUpperCase())).toEqual([
+      '2 commits',
+      '3 reviews (approved by ANN; changes requested by SAM)',
+      '1 comment',
+      'Merged',
+    ]);
+    expect(describeSinceLastLooked(summarizeSinceLastLooked(events, { lastLookedAt: '2026-01-06T00:00:00Z' }))).toEqual([]);
+  });
+});
+
+describe('findChangesRequestedBy', () => {
+  test("reviewers whose latest verdict requested changes; a comment-only review doesn't change it, approving or dismissal does", () => {
+    expect(
+      findChangesRequestedBy([
+        { authorLogin: 'sam', state: 'CHANGES_REQUESTED', submittedAt: '2026-01-01T00:00:00Z' },
+        { authorLogin: 'sam', state: 'COMMENTED', submittedAt: '2026-01-02T00:00:00Z' },
+        { authorLogin: 'ann', state: 'CHANGES_REQUESTED', submittedAt: '2026-01-01T00:00:00Z' },
+        { authorLogin: 'ann', state: 'APPROVED', submittedAt: '2026-01-03T00:00:00Z' },
+        { authorLogin: 'dee', state: 'CHANGES_REQUESTED', submittedAt: '2026-01-01T00:00:00Z' },
+        { authorLogin: 'dee', state: 'DISMISSED', submittedAt: '2026-01-02T00:00:00Z' },
+        { authorLogin: 'kim', state: 'CHANGES_REQUESTED', submittedAt: '2026-01-04T00:00:00Z' },
+      ]),
+    ).toEqual(['kim', 'sam']);
+    expect(findChangesRequestedBy(undefined)).toEqual([]);
+  });
+});
+
+describe('formatWhenShort and describeLastLooked', () => {
+  const now = Date.parse('2026-10-24T12:00:00Z');
+
+  test('a time today, a day this year, a day another year', () => {
+    expect(formatWhenShort('2026-10-24T09:05:00Z', now, 'UTC')).toBe('at 9:05 AM');
+    expect(formatWhenShort('2026-10-02T09:05:00Z', now, 'UTC')).toBe('on Oct 2');
+    expect(formatWhenShort('2025-10-02T09:05:00Z', now, 'UTC')).toBe('on Oct 2, 2025');
+    expect(formatWhenShort('', now, 'UTC')).toBe('');
+  });
+
+  test('says whether it was your Ack or your last activity', () => {
+    expect(describeLastLooked({ lastLookedAt: '2026-10-02T09:00:00Z', lastAckedAt: '2026-10-02T09:00:00Z' }, now, 'UTC')).toBe('since you acked on Oct 2');
+    expect(describeLastLooked({ lastLookedAt: '2026-10-02T09:00:00Z', lastAckedAt: '2026-10-01T09:00:00Z' }, now, 'UTC')).toBe(
+      'since your last activity on Oct 2',
+    );
+    expect(describeLastLooked({ lastLookedAt: '', lastAckedAt: '' }, now, 'UTC')).toBe('');
   });
 });

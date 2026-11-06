@@ -36,8 +36,9 @@ export interface PrRowHandlers {
   // `row` is the clicked row, which the page keeps in place if the pane
   // opens or closes.
   onSelectRow?: (prNumber: PrNumber, repo: string, row?: Element) => void;
-  // The summary's "Show details": show it in the pane.
-  onShowDetails?: (prNumber: PrNumber, repo: string) => void;
+  // The summary's "Show details": show it in the pane. Its "See all N in
+  // Activity" opens the Activity tab, on "Since I last looked".
+  onShowDetails?: (prNumber: PrNumber, repo: string, tab?: 'activity') => void;
   onCheckboxChange?: PrActionsCellProps['onCheckboxChange'];
   onAckAction?: PrActionsCellProps['onAckAction'];
   onApplyLabel?: PrActionsCellProps['onApplyLabel'];
@@ -120,6 +121,8 @@ export const PrRow = memo(function PrRow({
         <PrSelectionCell pr={pr} />
         <PrSignalsCell
           pr={pr}
+          repo={repo}
+          actorsMap={actorsMap}
           attentionReasons={reasons}
           isFlagged={isFlagged}
           isInReview={isInReview}
@@ -163,12 +166,14 @@ export const PrRow = memo(function PrRow({
           {isExpanded && (
             <PrRowSummary
               pr={pr}
+              repo={repo}
               attentionReasons={reasons}
               isFlagged={isFlagged}
               isInReview={isInReview}
               actorsMap={actorsMap}
               idPrefix={summaryId}
               onShowDetails={() => onShowDetails?.(pr.number, repo)}
+              onShowActivity={() => onShowDetails?.(pr.number, repo, 'activity')}
             />
           )}
         </td>

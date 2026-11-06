@@ -1086,8 +1086,17 @@ export function PrTableApp() {
     if (selectPr(pr)) showPane(true, row);
   });
   const handleSelectPr = useStableCallback((prNumber: string, repo: string) => selectPr({ repo, prNumber }));
-  const handleShowDetails = useStableCallback((prNumber: PrNumber, repo: string) => {
-    if (selectPr({ repo, prNumber: String(prNumber ?? '') })) showPane(true);
+  // A summary's "See all N in Activity" asks for the Activity tab, on
+  // "Since I last looked" (the pane resets its scope when the request's
+  // count changes).
+  const [activitySinceRequest, setActivitySinceRequest] = useState(0);
+  const handleShowDetails = useStableCallback((prNumber: PrNumber, repo: string, tab?: 'activity') => {
+    if (!selectPr({ repo, prNumber: String(prNumber ?? '') })) return;
+    showPane(true);
+    if (tab === 'activity') {
+      setPaneTab('activity');
+      setActivitySinceRequest((count) => count + 1);
+    }
   });
   const handleClearSelection = useStableCallback(() => {
     selectPr(null);
@@ -1233,6 +1242,7 @@ export function PrTableApp() {
                   ackedAt={paneAckedAt}
                   tab={paneTab}
                   onTabChange={setPaneTab}
+                  activitySinceRequest={activitySinceRequest}
                   onPrevious={previousPr ? () => handleStepPr(previousPr) : undefined}
                   onNext={nextPr ? () => handleStepPr(nextPr) : undefined}
                   onClose={handleClosePane}

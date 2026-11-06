@@ -62,6 +62,9 @@ export interface PrDetailPaneProps {
   ackedAt?: string;
   tab: PaneTab;
   onTabChange: (tab: PaneTab) => void;
+  // Each change asks for the Activity tab's "Since I last looked" (a row
+  // summary's "See all N in Activity"), the event types kept as picked.
+  activitySinceRequest?: number;
   onPrevious?: () => void;
   onNext?: () => void;
   // Close: hides the pane (and clears the selection).
@@ -92,12 +95,17 @@ function EmptyState() {
 }
 
 export function PrDetailPane(props: PrDetailPaneProps) {
-  const { entry, mode, onClose, onClearSelection = onClose } = props;
+  const { entry, mode, onClose, onClearSelection = onClose, activitySinceRequest = 0 } = props;
   useTooltipController();
   const containerRef = useRef<HTMLElement>(null);
   // The Activity tab's filters, held here (not in the per-PR content) so
   // they stay as picked for the next PR.
   const [activityFilters, setActivityFilters] = useState<ActivityFilters>(DEFAULT_ACTIVITY_FILTERS);
+  const [seenSinceRequest, setSeenSinceRequest] = useState(activitySinceRequest);
+  if (activitySinceRequest !== seenSinceRequest) {
+    setSeenSinceRequest(activitySinceRequest);
+    setActivityFilters({ ...activityFilters, scope: 'since' });
+  }
   const isDrawer = mode === 'drawer';
   useFocusTrap(containerRef, isDrawer && Boolean(entry), onClose);
 
@@ -204,6 +212,7 @@ function PaneContent({
   const viewerLogin = String(getEffectiveViewerLogin(pr) || '');
   const ackEvents = useMemo(() => buildAckEvents(ackHistory, ackedAt || '', viewerLogin), [ackHistory, ackedAt, viewerLogin]);
   const lastAckedAt = String(ackEvents[0]?.occurredAt || '');
+  const lastLookedAt = getLastLookedAt(pr.baseline, lastAckedAt);
   const { dirtyPrKeys } = useNotesDirty();
   const hookHtml = useInsightsHookHtml(repo, prNumber, String(pr.sourceUpdatedAt || entry.updatedAt || ''));
   const rowActorsMap = buildRowActorsMap(pr, actorsMap);
@@ -334,12 +343,14 @@ function PaneContent({
         onSelect={(id) => onTabChange(id as PaneTab)}
       />
       <TabPanel idPrefix={TAB_ID_PREFIX} tabId={selectedTab} className="pr-pane-panel">
-        {selectedTab === 'overview' && <PrOverview entry={entry} pr={pr} actorsMap={rowActorsMap} />}
+        {selectedTab === 'overview' && (
+          <PrOverview entry={entry} pr={pr} actorsMap={rowActorsMap} lastLookedAt={lastLookedAt} lastAckedAt={lastAckedAt} />
+        )}
         {selectedTab === 'activity' && (
           <PrActivityTab
             pr={pr}
             actorsMap={rowActorsMap}
-            lastLookedAt={getLastLookedAt(pr.baseline, lastAckedAt)}
+            lastLookedAt={lastLookedAt}
             ackEvents={ackEvents}
             filters={activityFilters}
             onFiltersChange={onActivityFiltersChange}

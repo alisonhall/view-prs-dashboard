@@ -26,7 +26,7 @@ const LEGEND: LegendGroup[] = [
   {
     title: 'Signals',
     entries: [
-      { icon: 'dot', tone: 'accent', name: 'Blue dot', meaning: 'Changed since your last Ack - its tooltip says what changed (commits, reviews, comments).' },
+      { icon: 'dot', tone: 'accent', name: 'Blue dot', meaning: 'Changed since your last Ack - its tooltip says since when and counts what\'s new (commits, reviews, comments).' },
       { icon: 'ring', tone: 'muted', name: 'Grey ring', meaning: 'No recent activity.' },
       { sample: '(blank)', meaning: 'An empty first slot: nothing new since your last Ack.' },
       { icon: 'info', tone: 'muted', name: 'Info icon', meaning: 'Another status - hover to see which.' },

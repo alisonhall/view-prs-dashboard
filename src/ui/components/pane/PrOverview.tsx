@@ -8,6 +8,8 @@ import { createPrFormattingHelpers } from '../../helpers/pr-formatting.helpers.t
 import { backgroundUpdatesFor, describeRepoListing, describeRowFreshness } from '../../helpers/pr-row-freshness.helpers.ts';
 import { useNow } from '../../state/NowContext';
 import { useRepoFreshness } from '../../state/RepoFreshnessContext';
+import { findChangesRequestedBy } from '../../helpers/pr-activity-feed.helpers.ts';
+import { ActorIdentity } from '../ActorIdentity';
 
 const { formatIsoDatetime, toCount } = createPrFormattingHelpers();
 
@@ -17,12 +19,18 @@ const { formatIsoDatetime, toCount } = createPrFormattingHelpers();
  * Approval risk details and Data freshness as collapsible groups. It
  * replaces PrInsightsRow's single grid and its STATUS/CHK/MRG badges (the
  * same values are the Review group's first rows); the activity timeline
- * moved to the Activity tab.
+ * moved to the Activity tab. Review also says when you last looked (and
+ * whether that was your Ack or your last activity) and who's requesting
+ * changes now.
  */
 export interface PrOverviewProps {
   entry: PrEntry;
   pr: PrData;
   actorsMap: ActorsMap;
+  // When you last looked (your last activity or Ack, whichever is later),
+  // and your last Ack: "You last looked" says which it was.
+  lastLookedAt?: string;
+  lastAckedAt?: string;
 }
 
 interface Row {
@@ -59,7 +67,7 @@ function Rows({ rows }: { rows: Row[] }) {
   );
 }
 
-export function PrOverview({ entry, pr, actorsMap }: PrOverviewProps) {
+export function PrOverview({ entry, pr, actorsMap, lastLookedAt = '', lastAckedAt = '' }: PrOverviewProps) {
   const now = useNow();
   const { liveSummary, backgroundUpdates, defaultIntervalMs } = useRepoFreshness();
   // The row's Activity tooltip has the same (README's Freshness).
@@ -94,8 +102,35 @@ export function PrOverview({ entry, pr, actorsMap }: PrOverviewProps) {
   const metrics = normalizeRowMetrics(pr);
   const openConversations = getOpenConversationCountWithMe(pr);
 
+  const changesRequestedBy = findChangesRequestedBy(pr.reviews);
   const review: Row[] = [
     { label: 'Status', value: String(pr.status || '-').toUpperCase() },
+    ...(lastLookedAt
+      ? [
+          {
+            label: 'You last looked',
+            labelTitle: 'Your last activity on the PR or your last Ack, whichever is later: where "Since I last looked" starts.',
+            value: `${formatIsoDatetime(lastLookedAt)} (${lastAckedAt === lastLookedAt ? 'your Ack' : 'your last activity'})`,
+          },
+        ]
+      : []),
+    ...(changesRequestedBy.length
+      ? [
+          {
+            label: 'Changes requested by',
+            value: (
+              <>
+                {changesRequestedBy.map((login, index) => (
+                  <Fragment key={login}>
+                    {index > 0 && ', '}
+                    <ActorIdentity row={pr} login={login} actorsMap={actorsMap} />
+                  </Fragment>
+                ))}
+              </>
+            ),
+          },
+        ]
+      : []),
     { label: 'CHK state', value: checkState },
     { label: 'Mergeability', value: mergeState },
     {

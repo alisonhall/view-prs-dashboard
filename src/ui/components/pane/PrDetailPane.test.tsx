@@ -321,6 +321,26 @@ describe('PrDetailPane', () => {
       expect(screen.getByRole('tablist', { name: 'PR #8 details' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /Comments/ })).toHaveAttribute('aria-pressed', 'false');
     });
+
+    test('a request for "Since I last looked" (a summary\'s "See all") sets the scope back, keeping the event types', async () => {
+      const user = userEvent.setup();
+      const entry = withEvents('7', '2026-01-03T00:00:00Z');
+      const { rerender } = render(
+        <Providers>
+          <PrDetailPane {...paneProps({ tab: 'activity', entry, activitySinceRequest: 1 })} />
+        </Providers>,
+      );
+      await user.click(screen.getByRole('button', { name: /^All/ }));
+      await user.click(screen.getByRole('button', { name: /Commits/ }));
+
+      rerender(
+        <Providers>
+          <PrDetailPane {...paneProps({ tab: 'activity', entry, activitySinceRequest: 2 })} />
+        </Providers>,
+      );
+      expect(screen.getByRole('button', { name: /Since I last looked/ })).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByRole('button', { name: /Commits/ })).toHaveAttribute('aria-pressed', 'false');
+    });
   });
 
   describe('tabs', () => {

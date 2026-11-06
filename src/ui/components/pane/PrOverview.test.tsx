@@ -5,10 +5,18 @@ import { PrInsightsDisplayContext, defaultPrInsightsDisplay, type PrInsightsDisp
 import type { PrData, PrEntry } from '../../types/pr-data.ts';
 import { PrOverview } from './PrOverview';
 
-const renderOverview = (pr: PrData, { entry = {}, display = {} }: { entry?: PrEntry; display?: Partial<PrInsightsDisplayValue> } = {}) =>
+const renderOverview = (
+  pr: PrData,
+  {
+    entry = {},
+    display = {},
+    lastLookedAt,
+    lastAckedAt,
+  }: { entry?: PrEntry; display?: Partial<PrInsightsDisplayValue>; lastLookedAt?: string; lastAckedAt?: string } = {},
+) =>
   render(
     <PrInsightsDisplayContext.Provider value={{ ...defaultPrInsightsDisplay, ...display }}>
-      <PrOverview entry={entry} pr={pr} actorsMap={{}} />
+      <PrOverview entry={entry} pr={pr} actorsMap={{ sam: 'Sam Lee' }} lastLookedAt={lastLookedAt} lastAckedAt={lastAckedAt} />
     </PrInsightsDisplayContext.Provider>,
   );
 
@@ -41,6 +49,35 @@ describe('PrOverview', () => {
       'Target branch': 'main',
       'Lines changed': '2 files changed, +3 additions, -1 deletions (4 lines changed)',
     });
+  });
+
+  test('says when you last looked, and whether that was your Ack or your last activity', () => {
+    const { unmount } = renderOverview({ number: '1' }, { lastLookedAt: '2026-01-02T03:04:05Z', lastAckedAt: '2026-01-02T03:04:05Z' });
+    expect(groupRows('Review')['You last looked']).toMatch(/\(your Ack\)$/);
+    unmount();
+
+    const second = renderOverview({ number: '1' }, { lastLookedAt: '2026-01-02T03:04:05Z', lastAckedAt: '2026-01-01T00:00:00Z' });
+    expect(groupRows('Review')['You last looked']).toMatch(/\(your last activity\)$/);
+    second.unmount();
+
+    renderOverview({ number: '1' });
+    expect(groupRows('Review')).not.toHaveProperty('You last looked');
+  });
+
+  test("names who's requesting changes now, only when anyone is", () => {
+    const { unmount } = renderOverview({
+      number: '1',
+      reviews: [
+        { authorLogin: 'sam', state: 'CHANGES_REQUESTED', submittedAt: '2026-01-02T00:00:00Z' },
+        { authorLogin: 'ann', state: 'CHANGES_REQUESTED', submittedAt: '2026-01-01T00:00:00Z' },
+        { authorLogin: 'ann', state: 'APPROVED', submittedAt: '2026-01-03T00:00:00Z' },
+      ],
+    });
+    expect(groupRows('Review')['Changes requested by']).toBe('Sam Lee');
+    unmount();
+
+    renderOverview({ number: '1', reviews: [{ authorLogin: 'ann', state: 'APPROVED', submittedAt: '2026-01-03T00:00:00Z' }] });
+    expect(groupRows('Review')).not.toHaveProperty('Changes requested by');
   });
 
   test('reads CHK and MRG from the title markers when the fields are missing', () => {
