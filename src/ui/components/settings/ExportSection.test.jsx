@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
 
-const { render, screen, waitFor } = require('@testing-library/react');
+const { act, render, screen, waitFor } = require('@testing-library/react');
 const userEvent = require('@testing-library/user-event').default;
 require('@testing-library/jest-dom');
 
@@ -214,6 +214,34 @@ describe('ExportSection', () => {
     ]);
 
     expect(screen.getByText(/"prNumber": "11"/)).toBeInTheDocument();
+  });
+
+  test("saving the selection keeps the other settings, and writes nothing when they can't be read (it would lose them)", async () => {
+    const user = userEvent.setup();
+    let readOk = true;
+    global.fetch = jest.fn((url, init = {}) => {
+      const method = String(init.method || 'GET').toUpperCase();
+      if (String(url) === '/view-prs/user-defaults' && method === 'GET') {
+        return Promise.resolve(readOk ? { ok: true, json: async () => ({ overrides: { theme: 'dark' } }) } : { ok: false, json: async () => ({}) });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({ ok: true }) });
+    });
+    const puts = () => global.fetch.mock.calls.filter(([, init]) => String(init?.method).toUpperCase() === 'PUT');
+    renderExportSection({ initialPayload: samplePayload, selectedRepo: 'owner/repo' });
+    await waitFor(() => expect(screen.getAllByRole('checkbox')).toHaveLength(6));
+
+    await user.click(screen.getByRole('button', { name: 'Preview JSON' }));
+    await waitFor(() => expect(puts()).toHaveLength(1));
+    expect(JSON.parse(puts()[0][1].body)).toMatchObject({ theme: 'dark' });
+
+    readOk = false;
+    const reads = () => global.fetch.mock.calls.filter(([, init]) => String(init?.method || 'GET').toUpperCase() === 'GET').length;
+    const readsBefore = reads();
+    await user.click(screen.getByRole('checkbox', { name: /^DATA title$/ }));
+    await user.click(screen.getByRole('button', { name: 'Preview JSON' }));
+    await waitFor(() => expect(reads()).toBeGreaterThan(readsBefore));
+    await act(async () => {});
+    expect(puts()).toHaveLength(1);
   });
 
   test('given no fields are selected, when Preview JSON is clicked, then a validation error is shown instead of building JSON', async () => {

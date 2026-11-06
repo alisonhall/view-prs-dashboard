@@ -2,6 +2,8 @@ import { useId, useState } from 'react';
 import { Button } from '../ui/Button';
 import { Icon } from '../ui/Icon';
 import { useTableFilterChips } from '../../state/useTableFilterChips';
+import { useSavedFilterViews } from '../../state/useSavedFilterViews';
+import { SavedFilterViewsBar, SavedFilterViewsManager } from './SavedFilterViews';
 import { FilterCheckbox } from './FilterCheckbox';
 import { FilterMultiSelect } from './FilterMultiSelect';
 import { FilterOptionSelect } from './FilterOptionSelect';
@@ -50,16 +52,21 @@ export interface FilterBarProps {
  * Its header always shows: the Filters button (with how many are applied),
  * the search box, "Showing N of M PRs", and a removable chip per applied
  * filter (the search's too) with
- * "Clear all". The button opens the panel of controls below it; the bar
- * remembers whether it was left open. Controls stay mounted while it's
+ * "Clear all". Under it, the saved views (SavedFilterViews.tsx): one
+ * click each, and "Save as view" for the applied filters; the panel's
+ * Manage saved views group renames, updates and deletes them. The button opens
+ * the panel of controls below it; the bar remembers whether it was left
+ * open. Controls stay mounted while it's
  * closed (hidden). The lists' selections are kept in step with their
  * options by <ListSelectionSeeding />, mounted beside it.
  */
 export function FilterBar({ shownCount, totalCount, loaded, hiddenCount = 0 }: FilterBarProps) {
   const { chips } = useTableFilterChips();
+  // One instance for the views row and the panel's Manage saved views group.
+  const savedViews = useSavedFilterViews();
   const [open, setOpen] = useState(readOpen);
   const panelId = useId();
-  const headingIds = { rows: useId(), people: useId(), notes: useId(), conversations: useId() };
+  const headingIds = { rows: useId(), people: useId(), notes: useId(), conversations: useId(), views: useId() };
 
   const toggleOpen = () => {
     setOpen(!open);
@@ -105,6 +112,7 @@ export function FilterBar({ shownCount, totalCount, loaded, hiddenCount = 0 }: F
           </>
         )}
       </div>
+      <SavedFilterViewsBar value={savedViews} />
 
       <div id={panelId} className="filter-bar-panel" hidden={!open}>
         <div className="filter-bar-group" role="group" aria-labelledby={headingIds.rows}>
@@ -204,6 +212,8 @@ export function FilterBar({ shownCount, totalCount, loaded, hiddenCount = 0 }: F
             </p>
           </div>
         </div>
+
+        <SavedFilterViewsManager value={savedViews} headingId={headingIds.views} />
       </div>
     </section>
   );

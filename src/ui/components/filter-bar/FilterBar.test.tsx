@@ -242,10 +242,10 @@ describe('FilterBar list selections (ListSelectionSeeding, mounted beside it)', 
     expect(checked('label-list')).toEqual([]);
   });
 
-  test('a saved selection waits for its options, then applies (closed or open)', () => {
+  test("a saved selection applies at once, before its options load, then takes the option's value", () => {
     act(() => setPendingMultiSelectSelection('pendingLabelSelections', ['Docs']));
     const { rerenderWith } = renderBar(NO_OPTIONS);
-    expect(checked('label-list')).toEqual([]);
+    expect(checked('label-list')).toEqual(['Docs']);
     rerenderWith(LABELS);
     // Labels match case-insensitively.
     expect(checked('label-list')).toEqual(['docs']);
@@ -261,14 +261,20 @@ describe('FilterBar list selections (ListSelectionSeeding, mounted beside it)', 
     expect(selection?.checkedByListId).toBe(before);
   });
 
-  test('a picked value no longer among the options is dropped', async () => {
+  test('a picked value no loaded PR has any more stays picked, listed so it can be unticked', async () => {
     const user = userEvent.setup();
     const { rerenderWith } = renderBar();
     await user.click(toggle());
     await user.click(within(screen.getByRole('group', { name: 'Authors' })).getByRole('checkbox', { name: 'The Octocat' }));
     expect(checked('author-list')).toEqual(['octocat']);
     rerenderWith(withOptions({ labelOptions: LABELS.labelOptions }));
+    expect(checked('author-list')).toEqual(['octocat']);
+
+    const missing = within(screen.getByRole('group', { name: 'Authors' })).getByRole('checkbox', { name: 'octocat · no PRs loaded' });
+    expect(missing).toBeChecked();
+    await user.click(missing);
     expect(checked('author-list')).toEqual([]);
+    expect(within(screen.getByRole('group', { name: 'Authors' })).queryByRole('checkbox')).not.toBeInTheDocument();
   });
 });
 

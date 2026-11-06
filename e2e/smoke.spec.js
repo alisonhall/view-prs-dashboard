@@ -1310,6 +1310,48 @@ test("the filter bar starts closed with the row count, opens as it was left afte
   await waitForFilterPersist(page);
 });
 
+test("a saved filter view is one click away, and kept in user-defaults.json for any browser", async ({ page }) => {
+  // Starts from no saved views (the starters), and leaves none.
+  await clearSavedSettings(page.request, ["savedFilterViews"]);
+  try {
+    await page.goto("/");
+    await waitForPrTable(page);
+    const views = filterBar(page).getByRole("group", { name: "Saved views", exact: true });
+    await expect(views.getByRole("button", { name: "Needs attention", exact: true })).toBeVisible();
+
+    await openFilterBar(page);
+    await filterBar(page).getByLabel("PRs", { exact: true }).fill("1");
+    await expect(filterBar(page)).toContainText("Showing 1 of 3 PRs");
+    const saved = page.waitForResponse((response) => response.url().includes("/view-prs/user-defaults") && response.request().method() === "PUT");
+    await filterBar(page).getByRole("button", { name: "Save as view", exact: true }).click();
+    await filterBar(page).getByRole("textbox", { name: "Name for the new view" }).fill("Just one");
+    await filterBar(page).getByRole("button", { name: "Save", exact: true }).click();
+    await saved;
+    const view = views.getByRole("button", { name: "Just one", exact: true });
+    await expect(view).toHaveAttribute("aria-pressed", "true");
+
+    await filterBar(page).getByRole("button", { name: "Clear all", exact: true }).click();
+    await expect(filterBar(page)).toContainText("Showing 3 of 3 PRs");
+    await waitForFilterPersist(page);
+
+    // A fresh browser: nothing of it in the browser's storage.
+    await page.evaluate(() => window.localStorage.clear());
+    await page.reload();
+    await waitForPrTable(page);
+    await expect(view).toHaveAttribute("aria-pressed", "false");
+    await view.click();
+    await expect(filterBar(page)).toContainText("Showing 1 of 3 PRs");
+    await expect(filterChips(page)).toContainText("PRs: 1");
+
+    // The pressed view, clicked again, clears its filters.
+    await view.click();
+    await expect(filterBar(page)).toContainText("Showing 3 of 3 PRs");
+    await waitForFilterPersist(page);
+  } finally {
+    await clearSavedSettings(page.request, ["savedFilterViews", "filter-pr-numbers"]);
+  }
+});
+
 test("the search box, with the filter bar closed, shows the PRs with every word, and says where when the row doesn't show it", async ({ page }) => {
   await page.goto("/");
   await waitForPrTable(page);

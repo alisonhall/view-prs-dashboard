@@ -1,4 +1,4 @@
-const { createPrUiOptionPersistenceHelpers } = require("./pr-ui-option-persistence.helpers.ts");
+const { createPrUiOptionPersistenceHelpers, serializeOverridesUpdate } = require("./pr-ui-option-persistence.helpers.ts");
 
 describe("pr-ui-option-persistence helpers", () => {
   test("getUiOptionDefaults returns the full default shape", () => {
@@ -159,5 +159,34 @@ describe("pr-ui-option-persistence helpers", () => {
     await updateUiSessionOverride("prSections", undefined);
 
     expect(fetchFn.mock.calls.some(([, init]) => init?.method === "PUT")).toBe(false);
+  });
+});
+
+describe("serializeOverridesUpdate", () => {
+  test("runs updates one at a time, so two at once each build on the other's write", async () => {
+    // A server whose reads and writes take a turn of the event loop.
+    let stored = { repo: "acme/api" };
+    const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+    const fetchFn = jest.fn(async (_url, init) => {
+      await tick();
+      if (init?.method === "PUT") stored = JSON.parse(init.body);
+      return { ok: true, json: async () => ({ overrides: stored }) };
+    });
+    const { updateUiSessionOverride } = createPrUiOptionPersistenceHelpers({ fetch: fetchFn });
+
+    await Promise.all([updateUiSessionOverride("a", 1), updateUiSessionOverride("b", 2)]);
+    expect(stored).toEqual({ repo: "acme/api", a: 1, b: 2 });
+  });
+
+  test("a failed update doesn't stop the next", async () => {
+    const order = [];
+    const failing = serializeOverridesUpdate(async () => {
+      order.push("first");
+      throw new Error("boom");
+    });
+    const next = serializeOverridesUpdate(async () => order.push("second"));
+    await expect(failing).rejects.toThrow("boom");
+    await next;
+    expect(order).toEqual(["first", "second"]);
   });
 });

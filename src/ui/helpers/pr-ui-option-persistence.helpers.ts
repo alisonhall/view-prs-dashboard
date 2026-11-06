@@ -9,6 +9,16 @@ export interface PrUiOptionPersistenceDeps {
   fetch?: (input: string, init?: RequestInit) => Promise<Response>;
 }
 
+// Every read-then-write of the overrides, one at a time: two at once (a
+// filter change's save and a saved view's, say) would each write back what
+// they read, and the later one would undo the earlier one's change.
+let pendingOverridesUpdate: Promise<unknown> = Promise.resolve();
+export const serializeOverridesUpdate = <T>(update: () => Promise<T>): Promise<T> => {
+  const run = pendingOverridesUpdate.then(update, update);
+  pendingOverridesUpdate = run.catch(() => undefined);
+  return run;
+};
+
 const createPrUiOptionPersistenceHelpers = ({ fetch: fetchFn }: PrUiOptionPersistenceDeps = {}) => {
   const getUiOptionDefaults = (): Record<string, UiOptionValue> => ({
     repo: "",
@@ -159,17 +169,18 @@ const createPrUiOptionPersistenceHelpers = ({ fetch: fetchFn }: PrUiOptionPersis
   // `key` (or removes it when `value` is undefined), and writes them back.
   // Settings › Appearance saves its choices this way. Nothing is written
   // when they can't be read, rather than write back only this one.
-  const updateUiSessionOverride = async (key: string, value: unknown): Promise<void> => {
-    const existing = await readUiSessionOverridesOrNull();
-    if (!existing) return;
-    const overrides = { ...existing };
-    if (value === undefined) {
-      delete overrides[key];
-    } else {
-      overrides[key] = value;
-    }
-    await writeUiSessionOverrides(overrides, { unchangedFrom: existing });
-  };
+  const updateUiSessionOverride = (key: string, value: unknown): Promise<void> =>
+    serializeOverridesUpdate(async () => {
+      const existing = await readUiSessionOverridesOrNull();
+      if (!existing) return;
+      const overrides = { ...existing };
+      if (value === undefined) {
+        delete overrides[key];
+      } else {
+        overrides[key] = value;
+      }
+      await writeUiSessionOverrides(overrides, { unchangedFrom: existing });
+    });
 
   return {
     getUiOptionDefaults,

@@ -12,6 +12,7 @@ import { useAuthorThreadResolutionSelection } from './AuthorThreadResolutionSele
 import { useChangeFilterActorSelection } from './ChangeFilterActorSelectionContext';
 import {
   createPrUiOptionPersistenceHelpers,
+  serializeOverridesUpdate,
   type UiOptionOverrides,
 } from '../helpers/pr-ui-option-persistence.helpers.ts';
 import { setPendingMultiSelectSelection } from '../helpers/pr-pending-multi-select-selections.helpers.ts';
@@ -456,17 +457,22 @@ export function FilterStateProvider({
   // Both read the saved overrides and write them back with these options
   // changed - not when they can't be read, which would lose the rest, and
   // not when nothing changed (see writeUiSessionOverrides).
-  const persistRunScriptOptions = useCallback(async () => {
-    const existingOverrides = await readUiSessionOverridesOrNull();
-    if (!existingOverrides) return;
-    const overrides = buildOverrides(
-      ['repo', 'limit', 'merged-limit', 'jobs', 'pr-numbers', 'open-mode', 'ack-changed', 'show-reason', 'quiet'],
-      existingOverrides,
-    );
-    await writeUiSessionOverrides(overrides, { unchangedFrom: existingOverrides });
-  }, [buildOverrides]);
+  // One at a time with any other update of them (serializeOverridesUpdate).
+  const persistRunScriptOptions = useCallback(
+    () =>
+      serializeOverridesUpdate(async () => {
+        const existingOverrides = await readUiSessionOverridesOrNull();
+        if (!existingOverrides) return;
+        const overrides = buildOverrides(
+          ['repo', 'limit', 'merged-limit', 'jobs', 'pr-numbers', 'open-mode', 'ack-changed', 'show-reason', 'quiet'],
+          existingOverrides,
+        );
+        await writeUiSessionOverrides(overrides, { unchangedFrom: existingOverrides });
+      }),
+    [buildOverrides],
+  );
 
-  const persistViewFilterOptions = useCallback(async () => {
+  const persistViewFilterOptions = useCallback(() => serializeOverridesUpdate(async () => {
     const existingOverrides = await readUiSessionOverridesOrNull();
     if (!existingOverrides) return;
     const overrides = buildOverrides(
@@ -511,7 +517,7 @@ export function FilterStateProvider({
     // them above).
     delete overrides['scope-mode'];
     await writeUiSessionOverrides(overrides, { unchangedFrom: existingOverrides });
-  }, [buildOverrides]);
+  }), [buildOverrides]);
 
   // Saves the view/filter options 150ms after `values` (but the search,
   // valuesToSave) or any list selection changes, whatever caused the change

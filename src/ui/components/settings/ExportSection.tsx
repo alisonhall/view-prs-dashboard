@@ -27,8 +27,12 @@ import { usePrTableOpenSections } from '../../state/PrTableUiStateContext';
 import { safeJsonStringify } from '../../helpers/pr-ui-render-utils.helpers.ts';
 import { createPrExportHelpers, type ExportPayload, type ExportPayloadSource } from '../../helpers/pr-export.helpers.ts';
 import { getPerPrUserStateFromPayload } from '../../helpers/pr-per-pr-user-state.helpers.ts';
+import { createPrUiOptionPersistenceHelpers, serializeOverridesUpdate } from '../../helpers/pr-ui-option-persistence.helpers.ts';
 
 const { getFieldCatalog, buildExportPayload } = createPrExportHelpers({ getPerPrUserStateFromPayload });
+const { readUiSessionOverridesOrNull, writeUiSessionOverrides } = createPrUiOptionPersistenceHelpers({
+  fetch: (input, init) => fetch(input, init),
+});
 
 const EXPORT_DATA_FIELDS_OVERRIDE_KEY = 'export-data-fields';
 const EXPORT_USER_STATE_FIELDS_OVERRIDE_KEY = 'export-user-state-fields';
@@ -50,17 +54,19 @@ const readUserDefaults = async (): Promise<Overrides> => {
   }
 };
 
-const writeUserDefaults = async (overrides: Overrides): Promise<void> => {
-  try {
-    await fetch('/view-prs/user-defaults', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(overrides || {}),
-    });
-  } catch (_error) {
-    // Best effort only, same as every other UI-option-override write in this app.
-  }
-};
+// Saves the chosen fields, keeping every other setting: one at a time with
+// the other saves of user-defaults.json, and not when it can't be read
+// (writing back only these would lose the rest). An empty list is kept:
+// it means none of that source's fields.
+const saveFieldSelection = (dataPaths: string[], userStatePaths: string[]): Promise<void> =>
+  serializeOverridesUpdate(async () => {
+    const existing = await readUiSessionOverridesOrNull();
+    if (!existing) return;
+    await writeUiSessionOverrides(
+      { ...existing, [EXPORT_DATA_FIELDS_OVERRIDE_KEY]: dataPaths, [EXPORT_USER_STATE_FIELDS_OVERRIDE_KEY]: userStatePaths },
+      { unchangedFrom: existing, preserveEmptyArrayKeys: [EXPORT_DATA_FIELDS_OVERRIDE_KEY, EXPORT_USER_STATE_FIELDS_OVERRIDE_KEY] },
+    );
+  });
 
 const formatExportDownloadFileName = (payload: ExportPayloadSource, selectedRepo: string) => {
   const repo = String(payload?.lastRun?.repo || selectedRepo || 'all-repos')
@@ -177,12 +183,7 @@ export function ExportSection() {
 
   const persistSelection = async () => {
     const selected = getSelectedPaths();
-    const existingOverrides = await readUserDefaults();
-    await writeUserDefaults({
-      ...existingOverrides,
-      [EXPORT_DATA_FIELDS_OVERRIDE_KEY]: selected.dataPaths,
-      [EXPORT_USER_STATE_FIELDS_OVERRIDE_KEY]: selected.userStatePaths,
-    });
+    await saveFieldSelection(selected.dataPaths, selected.userStatePaths);
     return selected;
   };
 
