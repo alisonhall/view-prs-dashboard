@@ -12,8 +12,8 @@ const capitalized = (noun: string) => noun.charAt(0).toUpperCase() + noun.slice(
  * A name box with Save and Cancel, for a new item's name or a rename. Esc
  * cancels, and goes no further: in the Settings drawer it would close the
  * drawer, whose own listener (useFocusTrap) is native, so a React handler
- * here would run only after it - this one is native too. Save is off while the name is empty or another item has it
- * (which it says).
+ * here would run only after it - this one is native too. Save is off while
+ * the name is empty or another item has it (which it says).
  */
 export function NameForm({
   label,
@@ -138,6 +138,12 @@ export function SavedItemsBar<T extends SavedItem>({
     target.focus();
     setFocusTarget('');
   }, [focusTarget, items]);
+  // The name form closes for good once there's nothing to save (an item
+  // applied meanwhile), rather than open again - and take focus - the next
+  // time there is.
+  useEffect(() => {
+    if (!canSave) setNaming(false);
+  }, [canSave]);
   if (!items) return null;
   if (items.length === 0 && !canSave && !saveFailed) return null;
   const modified = items.find((item) => item.id === modifiedId);

@@ -386,6 +386,30 @@ describe('ExportSection profiles', () => {
     await waitFor(() => expect(savedProfiles()?.[0]).toMatchObject({ dataPaths: ['prNumber', 'title'], userStatePaths: [] }));
   });
 
+  test('the pressed profile clicked again puts back the fields chosen before it, or every field when there were none to go back to', async () => {
+    saved.exportFieldProfiles = { profiles: [{ id: 'p1', name: 'Numbers', dataPaths: ['prNumber'], userStatePaths: [] }] };
+    const user = userEvent.setup();
+    await renderReady();
+    await waitFor(() => expect(profileChip('Numbers')).toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: 'Select none' }));
+    await user.click(checkbox(/^DATA title$/));
+
+    await user.click(profileChip('Numbers'));
+    expect(checkbox(/^DATA title$/)).not.toBeChecked();
+    await user.click(profileChip('Numbers'));
+    expect(profileChip('Numbers')).toHaveAttribute('aria-pressed', 'false');
+    expect(checkbox(/^DATA title$/)).toBeChecked();
+    expect(checkbox(/prNumber/)).not.toBeChecked();
+
+    // Pressed only because its fields were picked by hand: back to all.
+    await user.click(checkbox(/^DATA title$/));
+    await user.click(checkbox(/prNumber/));
+    expect(profileChip('Numbers')).toHaveAttribute('aria-pressed', 'true');
+    await user.click(profileChip('Numbers'));
+    screen.getAllByRole('checkbox').forEach((each) => expect(each).toBeChecked());
+    expect(profileChip('Numbers')).toHaveAttribute('aria-pressed', 'false');
+  });
+
   test("a profile's field the loaded data doesn't have is listed as such, ticked, and can be unticked", async () => {
     saved.exportFieldProfiles = { profiles: [{ id: 'p1', name: 'Old', dataPaths: ['title', 'gone'], userStatePaths: [] }] };
     const user = userEvent.setup();

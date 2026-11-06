@@ -3,7 +3,7 @@
 import { useEffect, useRef } from 'react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { NameForm } from './SavedItems';
+import { NameForm, SavedItemsBar } from './SavedItems';
 
 // A native Esc listener on an element around the form, as the Settings
 // drawer has (useFocusTrap).
@@ -47,5 +47,41 @@ describe('NameForm', () => {
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
     await user.keyboard('{Enter}');
     expect(onSave).not.toHaveBeenCalled();
+  });
+});
+
+describe('SavedItemsBar', () => {
+  const items = [{ id: 'v1', name: 'Mine' }];
+  const renderBar = (canSave: boolean) => (
+    <SavedItemsBar
+      items={items}
+      activeId={canSave ? '' : 'v1'}
+      modifiedId=""
+      saveFailed={false}
+      label="Saved views"
+      noun="view"
+      describe={() => ''}
+      onApply={jest.fn()}
+      canSave={canSave}
+      onSave={() => 'v2'}
+      onUpdate={jest.fn()}
+    />
+  );
+
+  test("the name form closes for good once there's nothing to save, rather than open again (taking focus) when there is", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(renderBar(true));
+    await user.click(screen.getByRole('button', { name: 'Save as view' }));
+    expect(screen.getByRole('textbox', { name: 'Name for the new view' })).toHaveFocus();
+
+    // A view applied meanwhile: nothing to save.
+    rerender(renderBar(false));
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+
+    // A filter changed after: something to save again, and only the button
+    // says so.
+    rerender(renderBar(true));
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save as view' })).toBeInTheDocument();
   });
 });

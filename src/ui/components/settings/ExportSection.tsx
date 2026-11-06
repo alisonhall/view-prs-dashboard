@@ -91,6 +91,22 @@ const saveFieldSelection = (dataPaths: string[], userStatePaths: string[]): Prom
     );
   });
 
+// The chosen field ids (fieldId) as each source's paths.
+const toFields = (ids: ReadonlySet<string> | null): ExportFields => {
+  const dataPaths: string[] = [];
+  const userStatePaths: string[] = [];
+  (ids || new Set<string>()).forEach((id) => {
+    const [source, ...rest] = id.split(':');
+    const path = rest.join(':');
+    if (source === 'user-state') {
+      userStatePaths.push(path);
+    } else if (source === 'data') {
+      dataPaths.push(path);
+    }
+  });
+  return { dataPaths, userStatePaths };
+};
+
 const formatExportDownloadFileName = (payload: ExportPayloadSource, selectedRepo: string) => {
   const repo = String(payload?.lastRun?.repo || selectedRepo || 'all-repos')
     .trim()
@@ -121,6 +137,8 @@ export function ExportSection() {
   });
   // The profile last applied or saved, for "(modified)".
   const [appliedProfileId, setAppliedProfileId] = useState('');
+  // The fields chosen before the profile last applied (see unapplyProfile).
+  const fieldsBeforeProfileRef = useRef<{ profileId: string; ids: Set<string> } | null>(null);
 
   const catalog = useMemo(() => getFieldCatalog(payload), [payload]);
   const dataTree = useMemo(() => buildFieldTree(catalog.dataPaths), [catalog]);
@@ -207,20 +225,7 @@ export function ExportSection() {
     );
   };
 
-  const getSelectedPaths = (): ExportFields => {
-    const dataPaths: string[] = [];
-    const userStatePaths: string[] = [];
-    (selectedFieldIds || new Set<string>()).forEach((id) => {
-      const [source, ...rest] = id.split(':');
-      const path = rest.join(':');
-      if (source === 'user-state') {
-        userStatePaths.push(path);
-      } else if (source === 'data') {
-        dataPaths.push(path);
-      }
-    });
-    return { dataPaths, userStatePaths };
-  };
+  const getSelectedPaths = (): ExportFields => toFields(selectedFieldIds);
 
   const persistSelection = async () => {
     const selected = getSelectedPaths();
@@ -304,7 +309,28 @@ export function ExportSection() {
     countFields(selected) > 0,
   );
 
-  const applyProfile = (profile: ExportFieldProfile) => {
+  // A pressed profile clicked again puts back the fields chosen before it
+  // was applied, or every field when there's no such choice to go back to.
+  const unapplyProfile = (profile: ExportFieldProfile) => {
+    const saved = fieldsBeforeProfileRef.current;
+    const before = saved?.profileId === profile.id ? saved.ids : null;
+    fieldsBeforeProfileRef.current = null;
+    setAppliedProfileId('');
+    const beforeFields = toFields(before);
+    if (before && countFields(beforeFields) > 0 && !isSameFields(beforeFields, profile)) {
+      initializedRef.current = true;
+      setSelectedFieldIds(new Set(before));
+    } else {
+      setSelectionByPredicate(() => true);
+    }
+  };
+
+  const applyProfile = (profile: ExportFieldProfile, pressed: boolean) => {
+    if (pressed) {
+      unapplyProfile(profile);
+      return;
+    }
+    fieldsBeforeProfileRef.current = { profileId: profile.id, ids: new Set(selectedFieldIds || []) };
     initializedRef.current = true;
     setSelectedFieldIds(
       new Set([

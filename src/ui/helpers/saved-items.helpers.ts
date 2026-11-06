@@ -56,5 +56,5 @@ export const getActiveAndModifiedIds = <T extends SavedItem>(
   return { activeId, modifiedId };
 };
 
-export const makeItemId =(prefix: string, nowMs: number = Date.now()): string =>
+export const makeItemId = (prefix: string, nowMs: number = Date.now()): string =>
   `${prefix}-${nowMs.toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
