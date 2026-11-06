@@ -1,4 +1,5 @@
 import { createPrTableFilterChipsHelpers } from "./pr-table-filter-chips.helpers.ts";
+import { readSavedItems, type SavedItem } from "./saved-items.helpers.ts";
 
 // Saved filter views: named sets of the filter bar's filters, one click
 // each above the table. Kept in user-defaults.json (the UI option
@@ -37,9 +38,7 @@ export interface ViewFilters {
   lists: Record<ViewListId, string[]>;
 }
 
-export interface SavedFilterView {
-  id: string;
-  name: string;
+export interface SavedFilterView extends SavedItem {
   filters: ViewFilters;
 }
 
@@ -101,41 +100,17 @@ export const STARTER_FILTER_VIEWS: readonly SavedFilterView[] = [
 ];
 
 // The saved views from the overrides (STARTER_FILTER_VIEWS when none were
-// ever saved). Entries without a name are dropped; an id is made for one
-// without (a hand edit).
-export const readSavedFilterViews = (overrides: Record<string, unknown> | null | undefined): SavedFilterView[] => {
-  const saved = overrides?.[SAVED_FILTER_VIEWS_KEY];
-  if (!saved || typeof saved !== "object" || !Array.isArray((saved as { views?: unknown }).views)) {
-    return STARTER_FILTER_VIEWS.slice();
-  }
-  const seen = new Set<string>();
-  return ((saved as { views: unknown[] }).views || []).flatMap((entry, index) => {
-    if (!entry || typeof entry !== "object") return [];
-    const view = entry as { id?: unknown; name?: unknown; filters?: { fields?: Record<string, unknown>; lists?: Record<string, unknown> } };
-    const name = String(view.name ?? "").trim();
-    if (!name) return [];
-    let id = String(view.id ?? "").trim() || `view-${index}`;
-    while (seen.has(id)) id = `${id}-${index}`;
-    seen.add(id);
+// ever saved).
+export const readSavedFilterViews = (overrides: Record<string, unknown> | null | undefined): SavedFilterView[] =>
+  readSavedItems(overrides?.[SAVED_FILTER_VIEWS_KEY], "views", (entry, base) => {
+    const filters = (entry.filters || {}) as { fields?: Record<string, unknown>; lists?: Record<string, unknown> };
     const lists = Object.fromEntries(
-      Object.entries(view.filters?.lists || {}).map(([listId, values]) => [listId, Array.isArray(values) ? values : []]),
+      Object.entries(filters.lists || {}).map(([listId, values]) => [listId, Array.isArray(values) ? values : []]),
     );
-    return [{ id, name, filters: toViewFilters(view.filters?.fields, lists) }];
-  });
-};
+    return { ...base, filters: toViewFilters(filters.fields, lists) };
+  }) ?? STARTER_FILTER_VIEWS.slice();
 
-// The overrides' value for these views. An object, not an array: the
-// overrides writer drops empty arrays, which would bring the starter views
-// back once every view was deleted.
+// The overrides' value for these views (see saved-items.helpers.ts).
 export const toSavedFilterViewsValue = (views: readonly SavedFilterView[]) => ({
   views: views.map((view) => ({ id: view.id, name: view.name, filters: view.filters })),
 });
-
-// Whether no other view has this name (ignoring case); false for an empty
-// one.
-export const isViewNameFree = (views: readonly SavedFilterView[], name: string, exceptId = ""): boolean => {
-  const wanted = name.trim().toLowerCase();
-  return Boolean(wanted) && !views.some((view) => view.id !== exceptId && view.name.trim().toLowerCase() === wanted);
-};
-
-export const makeViewId = (nowMs: number = Date.now()): string => `view-${nowMs.toString(36)}-${Math.random().toString(36).slice(2, 7)}`;

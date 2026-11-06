@@ -96,6 +96,20 @@
   margin-right: 4px;
 }
 
+.export-field-option-missing {
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+/* Export profiles (ui/SavedItems.tsx): chips above the field controls. */
+.export-profiles {
+  margin-top: 8px;
+}
+
+.export-profiles-manager .ui-saved-list {
+  margin-top: 8px;
+}
+
 .export-actions {
   margin-top: 10px;
 }

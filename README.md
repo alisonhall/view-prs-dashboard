@@ -842,6 +842,8 @@ Export behavior (Settings › `Export`):
   - `Copy JSON` writes payload to clipboard,
   - `Download JSON` saves payload as a local `.json` file.
 - Export field selections are persisted in `data/user-defaults.json` when using `Preview JSON`, `Copy JSON`, or `Download JSON`, and re-applied when the Export section is rebuilt.
+- Export profiles: a chip per profile, above the field controls, chooses its fields in one click (its fields show on hover); the profile whose fields are chosen is pressed. `Save as profile` names the chosen fields while no profile has them (another profile's name can't be reused, whatever its case). Once you change a field after applying a profile, it shows `(modified)` with `Update "name"` to save the change into it. `Manage export profiles`, below the export buttons, lists each profile with its fields, and `Rename`, `Update to chosen fields` and `Delete`; a deleted profile can be put back where it was with `Undo`, until you delete another. Profiles are saved in `user-defaults.json` (`exportFieldProfiles`) and kept as the filter bar's saved views are: the same in every browser, read again when the window regains focus, a change applied to the profiles as saved then, and one that can't be saved undone on the page, which says so.
+- A chosen field the loaded data doesn't have (from a profile, or the saved choice) is listed after the rest as `name · not in the loaded data`, so it can be unticked.
 
 The detail pane's Notes tab holds your own notes on the PR:
 

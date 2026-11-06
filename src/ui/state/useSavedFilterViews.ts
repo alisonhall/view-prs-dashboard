@@ -1,31 +1,22 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useFilterState } from './FilterStateContext';
 import { useRowFilterSelection } from './RowFilterSelectionContext';
-import {
-  createPrUiOptionPersistenceHelpers,
-  serializeOverridesUpdate,
-} from '../helpers/pr-ui-option-persistence.helpers.ts';
+import { useSavedItemsStore } from './useSavedItemsStore';
 import {
   SAVED_FILTER_VIEWS_KEY,
   VIEW_FIELD_KEYS,
   VIEW_LIST_IDS,
   hasAnyFilter,
   isSameFilters,
-  makeViewId,
   readSavedFilterViews,
   toSavedFilterViewsValue,
   toViewFilters,
   type SavedFilterView,
   type ViewFilters,
 } from '../helpers/saved-filter-views.helpers.ts';
-
-const { readUiSessionOverridesOrNull, writeUiSessionOverrides } = createPrUiOptionPersistenceHelpers({
-  fetch: (input, init) => fetch(input, init),
-});
+import { getActiveAndModifiedIds, makeItemId } from '../helpers/saved-items.helpers.ts';
 
 const NO_FILTERS = toViewFilters({}, {});
-
-type ViewsChange = (views: SavedFilterView[]) => SavedFilterView[];
 
 export interface SavedFilterViewsValue {
   // Null until read from the user defaults, and while they can't be (a
@@ -56,15 +47,9 @@ export interface SavedFilterViewsValue {
 
 /**
  * Saved filter views (saved-filter-views.helpers.ts) for the filter bar,
- * from the user defaults: read when the page loads and again whenever its
- * window regains focus (another browser or tab may have changed them).
- * Each change - add, rename, update, delete - shows at once, and is saved
- * by applying it to the views as saved then (read again, one at a time
- * with the other saves of the user defaults), so it doesn't write back
- * this page's older copy over a change made elsewhere. One that can't be
- * saved goes back to the views as last saved, and says so (saveFailed). The
- * re-reads wait for those saves too, so one doesn't show the views from
- * before a save still being made.
+ * kept in the user defaults by useSavedItemsStore (read again on focus,
+ * each change applied to the views as saved then, one that can't be saved
+ * undone and said).
  *
  * Applying one sets every filter the bar has - the search, the fields and
  * the lists - to the view's (no filter where it has none), through the
@@ -73,37 +58,21 @@ export interface SavedFilterViewsValue {
 export function useSavedFilterViews(): SavedFilterViewsValue {
   const { values, setValue } = useFilterState();
   const { checkedByListId, setChecked } = useRowFilterSelection();
-  const [views, setViews] = useState<SavedFilterView[] | null>(null);
+  const store = useSavedItemsStore<SavedFilterView>({
+    key: SAVED_FILTER_VIEWS_KEY,
+    read: readSavedFilterViews,
+    toValue: toSavedFilterViewsValue,
+  });
+  const { items: views, add, edit, remove: removeView } = store;
   const [appliedId, setAppliedId] = useState('');
-  const [saveFailed, setSaveFailed] = useState(false);
-  // The views as last read or saved: what a change that can't be saved
-  // goes back to.
-  const savedViewsRef = useRef<SavedFilterView[] | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    // A read that fails keeps what's shown: nothing on the first, else the
-    // views as last read.
-    const load = () =>
-      serializeOverridesUpdate(async () => {
-        const overrides = await readUiSessionOverridesOrNull();
-        if (cancelled || !overrides) return;
-        savedViewsRef.current = readSavedFilterViews(overrides);
-        setViews(savedViewsRef.current);
-      });
-    void load();
-    const onFocus = () => void load();
-    window.addEventListener('focus', onFocus);
-    return () => {
-      cancelled = true;
-      window.removeEventListener('focus', onFocus);
-    };
-  }, []);
 
   const current = useMemo(() => toViewFilters(values, checkedByListId), [values, checkedByListId]);
-  const activeId = views?.find((view) => isSameFilters(view.filters, current))?.id || '';
-  const modifiedId =
-    appliedId && !activeId && hasAnyFilter(current) && views?.some((view) => view.id === appliedId) ? appliedId : '';
+  const { activeId, modifiedId } = getActiveAndModifiedIds(
+    views,
+    appliedId,
+    (view) => isSameFilters(view.filters, current),
+    hasAnyFilter(current),
+  );
 
   const setFilters = useCallback(
     (filters: ViewFilters) => {
@@ -112,24 +81,6 @@ export function useSavedFilterViews(): SavedFilterViewsValue {
     },
     [setValue, setChecked],
   );
-
-  const change = useCallback((transform: ViewsChange) => {
-    setViews((previous) => (previous ? transform(previous) : previous));
-    void serializeOverridesUpdate(async () => {
-      const existing = await readUiSessionOverridesOrNull();
-      const next = existing ? transform(readSavedFilterViews(existing)) : null;
-      const saved =
-        existing && next
-          ? await writeUiSessionOverrides(
-              { ...existing, [SAVED_FILTER_VIEWS_KEY]: toSavedFilterViewsValue(next) },
-              { unchangedFrom: existing },
-            )
-          : false;
-      if (saved && next) savedViewsRef.current = next;
-      setSaveFailed(!saved);
-      setViews(savedViewsRef.current);
-    });
-  }, []);
 
   const apply = useCallback(
     (view: SavedFilterView) => {
@@ -146,41 +97,42 @@ export function useSavedFilterViews(): SavedFilterViewsValue {
 
   const saveCurrent = useCallback(
     (name: string) => {
-      const view: SavedFilterView = { id: makeViewId(), name: name.trim(), filters: current };
-      change((list) => [...list, view]);
+      const view: SavedFilterView = { id: makeItemId('view'), name: name.trim(), filters: current };
+      add(view);
       setAppliedId(view.id);
       return view.id;
     },
-    [change, current],
-  );
-
-  // A view deleted elsewhere in the meantime stays deleted.
-  const rename = useCallback(
-    (id: string, name: string) => change((list) => list.map((view) => (view.id === id ? { ...view, name: name.trim() } : view))),
-    [change],
+    [add, current],
   );
 
   const update = useCallback(
     (id: string) => {
-      change((list) => list.map((view) => (view.id === id ? { ...view, filters: current } : view)));
+      edit(id, { filters: current });
       setAppliedId(id);
     },
-    [change, current],
+    [edit, current],
   );
 
   const remove = useCallback(
     (id: string) => {
-      change((list) => list.filter((view) => view.id !== id));
+      removeView(id);
       if (appliedId === id) setAppliedId('');
     },
-    [appliedId, change],
+    [appliedId, removeView],
   );
 
-  const restore = useCallback(
-    (view: SavedFilterView, index: number) =>
-      change((list) => (list.some((each) => each.id === view.id) ? list : [...list.slice(0, index), view, ...list.slice(index)])),
-    [change],
-  );
-
-  return { views, current, activeId, modifiedId, saveFailed, apply, clear, saveCurrent, rename, update, remove, restore };
+  return {
+    views,
+    current,
+    activeId,
+    modifiedId,
+    saveFailed: store.saveFailed,
+    apply,
+    clear,
+    saveCurrent,
+    rename: store.rename,
+    update,
+    remove,
+    restore: store.restore,
+  };
 }

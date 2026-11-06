@@ -3,7 +3,6 @@ import {
   describeViewFilters,
   hasAnyFilter,
   isSameFilters,
-  isViewNameFree,
   readSavedFilterViews,
   toSavedFilterViewsValue,
   toViewFilters,
@@ -72,14 +71,5 @@ describe('readSavedFilterViews', () => {
 
   test('read back as written', () => {
     expect(readSavedFilterViews({ savedFilterViews: toSavedFilterViewsValue(STARTER_FILTER_VIEWS) })).toEqual(STARTER_FILTER_VIEWS);
-  });
-});
-
-describe('isViewNameFree', () => {
-  test("not another view's name (ignoring case), nor empty; a view's own name is free for it", () => {
-    expect(isViewNameFree(STARTER_FILTER_VIEWS, 'waiting ON me')).toBe(false);
-    expect(isViewNameFree(STARTER_FILTER_VIEWS, '  ')).toBe(false);
-    expect(isViewNameFree(STARTER_FILTER_VIEWS, 'Mine')).toBe(true);
-    expect(isViewNameFree(STARTER_FILTER_VIEWS, 'Waiting on me', 'starter-waiting-on-me')).toBe(true);
   });
 });

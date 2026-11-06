@@ -3750,6 +3750,48 @@ test("Settings › Export's field catalog and Preview JSON produce a real export
   expect(exportPayload.prs[0]).toHaveProperty("prNumber");
 });
 
+test("an export profile picks its fields in one click, and is kept in user-defaults.json for any browser", async ({ page }) => {
+  // Starts from no profiles and no saved field choice, and leaves none.
+  const keys = ["exportFieldProfiles", "export-data-fields", "export-user-state-fields"];
+  await clearSavedSettings(page.request, keys);
+  try {
+    await page.goto("/");
+    await waitForPrTable(page);
+    await openSettings(page, "Export");
+    const exportPanel = page.getByRole("tabpanel", { name: "Export", exact: true });
+    const checked = exportPanel.getByRole("group", { name: "Export fields", exact: true }).getByRole("checkbox", { checked: true });
+
+    await exportPanel.getByRole("button", { name: "Select none", exact: true }).click();
+    await exportPanel.getByRole("checkbox", { name: "DATA prNumber", exact: true }).check();
+    // Esc in the name box cancels it, and leaves Settings open.
+    await exportPanel.getByRole("button", { name: "Save as profile", exact: true }).click();
+    await exportPanel.getByRole("textbox", { name: "Name for the new profile" }).press("Escape");
+    await expect(exportPanel.getByRole("button", { name: "Save as profile", exact: true })).toBeFocused();
+    await expect(settingsDrawer(page)).toBeVisible();
+    const saved =page.waitForResponse((response) => response.url().includes("/view-prs/user-defaults") && response.request().method() === "PUT");
+    await exportPanel.getByRole("button", { name: "Save as profile", exact: true }).click();
+    await exportPanel.getByRole("textbox", { name: "Name for the new profile" }).fill("Numbers");
+    await exportPanel.getByRole("button", { name: "Save", exact: true }).click();
+    await saved;
+    const profile = exportPanel.getByRole("group", { name: "Export profiles", exact: true }).getByRole("button", { name: "Numbers", exact: true });
+    await expect(profile).toHaveAttribute("aria-pressed", "true");
+
+    // A fresh browser: nothing of it in the browser's storage.
+    await page.evaluate(() => window.localStorage.clear());
+    await page.reload();
+    await waitForPrTable(page);
+    await openSettings(page, "Export");
+    await exportPanel.getByRole("button", { name: "Select all", exact: true }).click();
+    await expect(profile).toHaveAttribute("aria-pressed", "false");
+    await profile.click();
+    await expect(profile).toHaveAttribute("aria-pressed", "true");
+    await expect(checked).toHaveCount(1);
+    await expect(checked).toHaveAccessibleName("DATA prNumber");
+  } finally {
+    await clearSavedSettings(page.request, keys);
+  }
+});
+
 test("Export follows the table's open sections: closing the sections that are open by default drops their PRs", async ({ page }) => {
   // UI redesign phase 1: Export reads the open sections from React state
   // (PrTableUiStateProvider) instead of `<details open>` in the DOM.

@@ -182,73 +182,7 @@
   color: var(--color-text-muted);
 }
 
-/* Saved views (SavedFilterViews.tsx): a row of chips under the header. */
+/* Saved views (SavedFilterViews.tsx; ui.css styles the chips' row). */
 .filter-bar-views {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2) var(--space-3);
   margin-top: var(--space-2);
-}
-
-.filter-view-modified {
-  font-weight: 400;
-  font-style: italic;
-}
-
-.filter-view-form {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-}
-
-.filter-view-name {
-  min-height: 28px;
-  padding: 3px 8px;
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface);
-  font: var(--font-size-md) var(--font-sans);
-  color: var(--color-text);
-}
-
-.filter-view-name[aria-invalid="true"] {
-  border-color: var(--color-danger);
-}
-
-.filter-view-error {
-  font-size: var(--font-size-xs);
-  color: var(--color-danger);
-}
-
-.filter-bar-clear:disabled {
-  color: var(--color-text-muted);
-  text-decoration: none;
-  cursor: default;
-}
-
-.filter-views-list {
-  display: grid;
-  gap: var(--space-2);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.filter-views-item {
-  display: grid;
-  gap: 2px;
-}
-
-.filter-views-name {
-  font-size: var(--font-size-md);
-  font-weight: 600;
-  color: var(--color-text);
-}
-
-.filter-views-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-3);
 }

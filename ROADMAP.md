@@ -112,7 +112,7 @@ Improvements noted once PRs could come from several repos and sources (subscript
 #### Export
 
 - [ ] Make choosing fields easier: nested lists for fields inside groups/objects, with a way to select every field in a group at once.
-- [ ] Export profiles: save the chosen fields as a named profile, then load, edit or use it later. Profiles are saved in `user-defaults.json`.
+- [x] ~~Export profiles: save the chosen fields as a named profile, then load, edit or use it later. Profiles are saved in `user-defaults.json`.~~ - done (2026-11-06): a chip per profile above the field controls chooses its fields in one click, `Save as profile` names the chosen fields, `(modified)` and `Update "name"` once a field changes after applying one, and `Manage export profiles` renames, updates and deletes them (with `Undo`). Saved in `user-defaults.json` (`exportFieldProfiles`), kept as the filter bar's saved views are, through the same code (`useSavedItemsStore`, `ui/SavedItems.tsx`). A chosen field the loaded data doesn't have is now listed (`· not in the loaded data`) so it can be unticked; before, it was chosen but not shown.
 
 #### Other views
 

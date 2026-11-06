@@ -18,6 +18,12 @@
  * (or the saved-selection restore below) adds them - no previous-selection
  * reconciliation dance needed.
  *
+ * Export profiles (export-field-profiles.helpers.ts) name a set of chosen
+ * fields, one click each, kept in the user defaults by useSavedItemsStore
+ * as the filter bar's saved views are. A chosen field the loaded data
+ * doesn't have (from a profile, or the saved choice) is listed after the
+ * rest, so it can be unticked.
+ *
  * @module components/settings/ExportSection
  */
 
@@ -28,6 +34,19 @@ import { safeJsonStringify } from '../../helpers/pr-ui-render-utils.helpers.ts';
 import { createPrExportHelpers, type ExportPayload, type ExportPayloadSource } from '../../helpers/pr-export.helpers.ts';
 import { getPerPrUserStateFromPayload } from '../../helpers/pr-per-pr-user-state.helpers.ts';
 import { createPrUiOptionPersistenceHelpers, serializeOverridesUpdate } from '../../helpers/pr-ui-option-persistence.helpers.ts';
+import {
+  EXPORT_FIELD_PROFILES_KEY,
+  countFields,
+  describeExportFields,
+  isSameFields,
+  readExportFieldProfiles,
+  toExportFieldProfilesValue,
+  type ExportFieldProfile,
+  type ExportFields,
+} from '../../helpers/export-field-profiles.helpers.ts';
+import { getActiveAndModifiedIds, makeItemId } from '../../helpers/saved-items.helpers.ts';
+import { useSavedItemsStore } from '../../state/useSavedItemsStore';
+import { SavedItemsBar, SavedItemsManager } from '../ui/SavedItems';
 
 const { getFieldCatalog, buildExportPayload } = createPrExportHelpers({ getPerPrUserStateFromPayload });
 const { readUiSessionOverridesOrNull, writeUiSessionOverrides } = createPrUiOptionPersistenceHelpers({
@@ -91,6 +110,13 @@ export function ExportSection() {
   const [status, setStatus] = useState('Waiting for data...');
   const [preview, setPreview] = useState('Run Preview JSON to inspect the export payload.');
   const initializedRef = useRef(false);
+  const profiles = useSavedItemsStore<ExportFieldProfile>({
+    key: EXPORT_FIELD_PROFILES_KEY,
+    read: readExportFieldProfiles,
+    toValue: toExportFieldProfilesValue,
+  });
+  // The profile last applied or saved, for "(modified)".
+  const [appliedProfileId, setAppliedProfileId] = useState('');
 
   const catalog = useMemo(() => getFieldCatalog(payload), [payload]);
 
@@ -166,7 +192,7 @@ export function ExportSection() {
     );
   };
 
-  const getSelectedPaths = () => {
+  const getSelectedPaths = (): ExportFields => {
     const dataPaths: string[] = [];
     const userStatePaths: string[] = [];
     (selectedFieldIds || new Set<string>()).forEach((id) => {
@@ -256,6 +282,45 @@ export function ExportSection() {
   };
 
   const selected = getSelectedPaths();
+  const { activeId: activeProfileId, modifiedId: modifiedProfileId } = getActiveAndModifiedIds(
+    profiles.items,
+    appliedProfileId,
+    (profile) => isSameFields(profile, selected),
+    countFields(selected) > 0,
+  );
+
+  const applyProfile = (profile: ExportFieldProfile) => {
+    initializedRef.current = true;
+    setSelectedFieldIds(
+      new Set([
+        ...profile.dataPaths.map((path) => fieldId('data', path)),
+        ...profile.userStatePaths.map((path) => fieldId('user-state', path)),
+      ]),
+    );
+    setAppliedProfileId(profile.id);
+  };
+
+  const saveProfile = (name: string) => {
+    const profile: ExportFieldProfile = { id: makeItemId('profile'), name: name.trim(), ...selected };
+    profiles.add(profile);
+    setAppliedProfileId(profile.id);
+    return profile.id;
+  };
+
+  const updateProfile = (id: string) => {
+    profiles.edit(id, selected);
+    setAppliedProfileId(id);
+  };
+
+  const removeProfile = (id: string) => {
+    profiles.remove(id);
+    if (appliedProfileId === id) setAppliedProfileId('');
+  };
+
+  // Chosen fields the loaded data doesn't have.
+  const missingDataPaths = selected.dataPaths.filter((path) => !catalog.dataPaths.includes(path));
+  const missingUserStatePaths = selected.userStatePaths.filter((path) => !catalog.userStatePaths.includes(path));
+
   const totalVisibleCount = Object.keys(payload?.byPrNumber || {}).length;
   const summaryText = [
     `Selected fields: ${selected.dataPaths.length} data + ${selected.userStatePaths.length} user state`,
@@ -263,7 +328,7 @@ export function ExportSection() {
     `Expanded PR sections: ${openSectionCount}`,
   ].join('\n');
 
-  const renderFieldOption = (source: FieldSource, path: string) => (
+  const renderFieldOption = (source: FieldSource, path: string, missing = false) => (
     <label className="export-field-option" key={fieldId(source, path)}>
       <input
         type="checkbox"
@@ -276,6 +341,7 @@ export function ExportSection() {
       <span>
         <span className="export-field-option-source">{source === 'user-state' ? 'USER' : 'DATA'}</span>
         {path}
+        {missing && <span className="export-field-option-missing"> · not in the loaded data</span>}
       </span>
     </label>
   );
@@ -286,6 +352,21 @@ export function ExportSection() {
         Choose PR fields from data and user state, then export only rows currently visible in the table and only sections currently expanded.
       </p>
       <pre className="management-filter-summary">{summaryText}</pre>
+
+      <SavedItemsBar
+        className="export-profiles"
+        items={profiles.items}
+        activeId={activeProfileId}
+        modifiedId={modifiedProfileId}
+        saveFailed={profiles.saveFailed}
+        label="Export profiles"
+        noun="profile"
+        describe={describeExportFields}
+        onApply={applyProfile}
+        canSave={countFields(selected) > 0 && !activeProfileId}
+        onSave={saveProfile}
+        onUpdate={updateProfile}
+      />
 
       <div className="export-field-controls form-actions">
         <button type="button" onClick={() => setSelectionByPredicate(() => true)}>
@@ -309,6 +390,8 @@ export function ExportSection() {
           <>
             {catalog.dataPaths.map((path) => renderFieldOption('data', path))}
             {catalog.userStatePaths.map((path) => renderFieldOption('user-state', path))}
+            {missingDataPaths.map((path) => renderFieldOption('data', path, true))}
+            {missingUserStatePaths.map((path) => renderFieldOption('user-state', path, true))}
           </>
         )}
       </div>
@@ -325,6 +408,24 @@ export function ExportSection() {
         </button>
       </div>
       <pre className="scheduler-details" role="region" aria-label="Export status">{status}</pre>
+      {profiles.items && (
+        <details className="advanced-options section-card low-emphasis-card export-profiles-manager">
+          <summary>Manage export profiles</summary>
+          <SavedItemsManager
+            items={profiles.items}
+            noun="profile"
+            describe={describeExportFields}
+            updateLabel="Update to chosen fields"
+            updateAriaLabel={(profile) => `Update ${profile.name} to the chosen fields`}
+            canUpdate={(profile) => countFields(selected) > 0 && !isSameFields(profile, selected)}
+            emptyHint="None yet. Choose some fields, then use Save as profile above."
+            onRename={profiles.rename}
+            onUpdate={updateProfile}
+            onDelete={removeProfile}
+            onRestore={profiles.restore}
+          />
+        </details>
+      )}
       <details className="advanced-options section-card low-emphasis-card" open>
         <summary>Export preview</summary>
         <pre id="export-preview" role="region" aria-label="Export preview">{preview}</pre>

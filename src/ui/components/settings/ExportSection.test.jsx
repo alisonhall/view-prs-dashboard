@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
 
-const { act, render, screen, waitFor } = require('@testing-library/react');
+const { act, render, screen, waitFor, within } = require('@testing-library/react');
 const userEvent = require('@testing-library/user-event').default;
 require('@testing-library/jest-dom');
 
@@ -306,5 +306,135 @@ describe('ExportSection', () => {
     });
 
     HTMLAnchorElement.prototype.click = originalClick;
+  });
+});
+
+describe('ExportSection profiles', () => {
+  // The user defaults the server keeps: GET returns them, PUT replaces them.
+  let saved;
+  let writesFail;
+  beforeEach(() => {
+    saved = { theme: 'dark' };
+    writesFail = false;
+    global.fetch = jest.fn(async (url, init = {}) => {
+      const method = String(init.method || 'GET').toUpperCase();
+      if (String(url) !== '/view-prs/user-defaults') return { ok: true, json: async () => ({}) };
+      if (method === 'PUT') {
+        if (writesFail) return { ok: false, json: async () => ({}) };
+        saved = JSON.parse(String(init.body));
+        return { ok: true, json: async () => ({ ok: true }) };
+      }
+      return { ok: true, json: async () => ({ overrides: saved }) };
+    });
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  const savedProfiles = () => saved.exportFieldProfiles?.profiles;
+  const profileChip = (name) => within(screen.getByRole('group', { name: 'Export profiles' })).getByRole('button', { name });
+  const checkbox = (name) => screen.getByRole('checkbox', { name });
+  const renderReady = async () => {
+    renderExportSection({ initialPayload: samplePayload, selectedRepo: 'owner/repo' });
+    await waitFor(() => {
+      expect(screen.getAllByRole('checkbox')).toHaveLength(6);
+      screen.getAllByRole('checkbox').forEach((each) => expect(each).toBeChecked());
+    });
+  };
+  const saveAsProfile = async (user, name) => {
+    await user.click(screen.getByRole('button', { name: 'Save as profile' }));
+    await user.type(screen.getByRole('textbox', { name: 'Name for the new profile' }), `${name}{Enter}`);
+  };
+
+  test('"Save as profile" names the chosen fields and saves them with the user defaults, keeping the other settings', async () => {
+    const user = userEvent.setup();
+    await renderReady();
+    await user.click(screen.getByRole('button', { name: 'Select none' }));
+    expect(screen.queryByRole('button', { name: 'Save as profile' })).not.toBeInTheDocument();
+    await user.click(checkbox(/^DATA title$/));
+    await user.click(checkbox(/^USER notesByPrNumber$/));
+
+    await saveAsProfile(user, 'Titles and notes');
+    expect(profileChip('Titles and notes')).toHaveAttribute('aria-pressed', 'true');
+    expect(profileChip('Titles and notes')).toHaveFocus();
+    expect(screen.queryByRole('button', { name: 'Save as profile' })).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(savedProfiles()).toEqual([
+        expect.objectContaining({ name: 'Titles and notes', dataPaths: ['title'], userStatePaths: ['notesByPrNumber'] }),
+      ]),
+    );
+    expect(saved.theme).toBe('dark');
+  });
+
+  test('a profile applies its fields in one click; once they change it shows "(modified)", and Update saves the change into it', async () => {
+    saved.exportFieldProfiles = { profiles: [{ id: 'p1', name: 'Numbers', dataPaths: ['prNumber'], userStatePaths: [] }] };
+    const user = userEvent.setup();
+    await renderReady();
+    await waitFor(() => expect(profileChip('Numbers')).toHaveAttribute('aria-pressed', 'false'));
+
+    await user.click(profileChip('Numbers'));
+    expect(profileChip('Numbers')).toHaveAttribute('aria-pressed', 'true');
+    expect(checkbox(/prNumber/)).toBeChecked();
+    expect(checkbox(/^DATA title$/)).not.toBeChecked();
+    expect(checkbox(/^USER ackByRepo$/)).not.toBeChecked();
+
+    await user.click(checkbox(/^DATA title$/));
+    expect(profileChip('Numbers (modified)')).toHaveAttribute('aria-pressed', 'false');
+    await user.click(screen.getByRole('button', { name: 'Update “Numbers”' }));
+    expect(profileChip('Numbers')).toHaveAttribute('aria-pressed', 'true');
+    await waitFor(() => expect(savedProfiles()?.[0]).toMatchObject({ dataPaths: ['prNumber', 'title'], userStatePaths: [] }));
+  });
+
+  test("a profile's field the loaded data doesn't have is listed as such, ticked, and can be unticked", async () => {
+    saved.exportFieldProfiles = { profiles: [{ id: 'p1', name: 'Old', dataPaths: ['title', 'gone'], userStatePaths: [] }] };
+    const user = userEvent.setup();
+    await renderReady();
+    await waitFor(() => expect(profileChip('Old')).toBeInTheDocument());
+    await user.click(profileChip('Old'));
+
+    const missing = checkbox(/^DATA gone · not in the loaded data$/);
+    expect(missing).toBeChecked();
+    await user.click(missing);
+    expect(screen.queryByRole('checkbox', { name: /gone/ })).not.toBeInTheDocument();
+    expect(profileChip('Old (modified)')).toBeInTheDocument();
+  });
+
+  test('Manage export profiles renames and deletes them; Undo puts one back where it was, with focus', async () => {
+    saved.exportFieldProfiles = {
+      profiles: [
+        { id: 'p1', name: 'One', dataPaths: ['prNumber'], userStatePaths: [] },
+        { id: 'p2', name: 'Two', dataPaths: ['title'], userStatePaths: [] },
+      ],
+    };
+    const user = userEvent.setup();
+    await renderReady();
+    await waitFor(() => expect(profileChip('One')).toBeInTheDocument());
+    await user.click(screen.getByText('Manage export profiles'));
+
+    await user.click(screen.getByRole('button', { name: 'Rename One' }));
+    const name = screen.getByRole('textbox', { name: 'New name for One' });
+    await user.clear(name);
+    await user.type(name, 'Numbers{Enter}');
+    expect(screen.getByRole('button', { name: 'Rename Numbers' })).toHaveFocus();
+    await waitFor(() => expect(savedProfiles()?.map((profile) => profile.name)).toEqual(['Numbers', 'Two']));
+
+    await user.click(screen.getByRole('button', { name: 'Delete Numbers' }));
+    expect(screen.getByRole('button', { name: 'Undo deleting Numbers' })).toHaveFocus();
+    await waitFor(() => expect(savedProfiles()?.map((profile) => profile.name)).toEqual(['Two']));
+
+    await user.click(screen.getByRole('button', { name: 'Undo deleting Numbers' }));
+    expect(screen.getByRole('button', { name: 'Rename Numbers' })).toHaveFocus();
+    await waitFor(() => expect(savedProfiles()?.map((profile) => profile.name)).toEqual(['Numbers', 'Two']));
+  });
+
+  test("a profile that can't be saved is taken back off, and that's said", async () => {
+    const user = userEvent.setup();
+    await renderReady();
+    writesFail = true;
+    await saveAsProfile(user, 'Everything');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Couldn’t save your profiles');
+    expect(screen.queryByRole('group', { name: 'Export profiles' })).not.toBeInTheDocument();
+    expect(savedProfiles()).toBeUndefined();
   });
 });
