@@ -179,7 +179,7 @@ export function ActionLogSection() {
           </Button>
           <span className="action-log-filter">
             <label htmlFor="action-log-filter-kind">Kind</label>
-            <select id="action-log-filter-kind" value={filters.kind} onChange={(event) => setFilter('kind', event.target.value)}>
+            <select className="settings-control" id="action-log-filter-kind" value={filters.kind} onChange={(event) => setFilter('kind', event.target.value)}>
               <option value="">All</option>
               {options.kinds.map(({ kind, label }) => (
                 <option key={kind} value={kind}>
@@ -190,7 +190,7 @@ export function ActionLogSection() {
           </span>
           <span className="action-log-filter">
             <label htmlFor="action-log-filter-outcome">Outcome</label>
-            <select id="action-log-filter-outcome" value={filters.outcome} onChange={(event) => setFilter('outcome', event.target.value as ActionLogFilters['outcome'])}>
+            <select className="settings-control" id="action-log-filter-outcome" value={filters.outcome} onChange={(event) => setFilter('outcome', event.target.value as ActionLogFilters['outcome'])}>
               <option value="">All</option>
               <option value="problems">Failed or skipped</option>
               <option value="failed">Failed</option>
@@ -200,7 +200,7 @@ export function ActionLogSection() {
           </span>
           <span className="action-log-filter">
             <label htmlFor="action-log-filter-origin">Who</label>
-            <select id="action-log-filter-origin" value={filters.origin} onChange={(event) => setFilter('origin', event.target.value as ActionLogFilters['origin'])}>
+            <select className="settings-control" id="action-log-filter-origin" value={filters.origin} onChange={(event) => setFilter('origin', event.target.value as ActionLogFilters['origin'])}>
               <option value="">Everyone</option>
               <option value="you">You</option>
               <option value="background">Background</option>
@@ -208,7 +208,7 @@ export function ActionLogSection() {
           </span>
           <span className="action-log-filter">
             <label htmlFor="action-log-filter-repo">Repo</label>
-            <select id="action-log-filter-repo" value={filters.repo} onChange={(event) => setFilter('repo', event.target.value)}>
+            <select className="settings-control" id="action-log-filter-repo" value={filters.repo} onChange={(event) => setFilter('repo', event.target.value)}>
               <option value="">All</option>
               {options.repos.map((repo) => (
                 <option key={repo} value={repo}>

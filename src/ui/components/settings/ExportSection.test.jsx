@@ -118,6 +118,15 @@ describe('ExportSection', () => {
     expect(screen.getByText(/Expanded PR sections: 3/)).toBeInTheDocument();
   });
 
+  test('until an export, the status says whether there is data, and how many visible PRs would export', () => {
+    const { unmount } = renderExportSection({ initialPayload: {}, selectedRepo: 'owner/repo', uiState: { prKeysInOpenSections: [] } });
+    expect(screen.getByRole('region', { name: 'Export status' })).toHaveTextContent('Waiting for data...');
+    unmount();
+
+    renderExportSection({ initialPayload: twoPrPayload, selectedRepo: 'owner/repo' });
+    expect(screen.getByRole('region', { name: 'Export status' })).toHaveTextContent('Ready: 1 visible PR to export.');
+  });
+
   // Accessibility naming: the field list, status and preview are findable by
   // role and name (e2e uses these instead of ids/classes).
   test('given the tab, when rendered, then the field list, status and preview are named', async () => {

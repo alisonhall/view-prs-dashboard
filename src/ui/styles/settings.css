@@ -123,8 +123,11 @@
   color: var(--color-text-muted);
 }
 
+/* A text box or select; .settings-control for one outside a .settings-field
+   (Actor names' rows, Action log's filters). */
 .settings-field input,
-.settings-field select {
+.settings-field select,
+.settings-control {
   min-height: 30px;
   padding: 4px 8px;
   border: 1px solid var(--color-border-strong);

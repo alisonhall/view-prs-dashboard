@@ -14,6 +14,7 @@
  */
 
 import { useRef, useState, type Dispatch, type SetStateAction } from 'react';
+import { Button } from '../ui/Button';
 
 export interface MappingRow {
   id: string;
@@ -172,16 +173,14 @@ export function MappingRowsEditor({
     <div className="settings-group">
       {heading && <h3 className="settings-heading">{heading}</h3>}
       {description && <p className="subtle-copy">{description}</p>}
-      <div className="actor-name-cache-controls form-actions">
-        <button type="button" onClick={() => onRefresh?.()}>
+      <div className="actor-name-cache-controls settings-actions">
+        <Button icon="refresh" onClick={() => onRefresh?.()}>
           Refresh
-        </button>
-        <button type="button" onClick={addRow}>
-          {addRowLabel}
-        </button>
-        <button type="button" disabled={saving} onClick={handleSave}>
+        </Button>
+        <Button onClick={addRow}>{addRowLabel}</Button>
+        <Button variant="primary" disabled={saving} onClick={handleSave}>
           {saveLabel}
-        </button>
+        </Button>
       </div>
       <p className={`actor-name-cache-status actor-name-cache-status-${status.tone}`}>{status.text}</p>
       <div className="actor-name-cache-rows">
@@ -189,6 +188,7 @@ export function MappingRowsEditor({
           <div key={row.id} className={rowClassName}>
             <input
               type="text"
+              className="settings-control"
               placeholder={keyPlaceholder}
               aria-label={keyAriaLabel}
               value={row.key}
@@ -196,14 +196,15 @@ export function MappingRowsEditor({
             />
             <input
               type="text"
+              className="settings-control"
               placeholder={valuePlaceholder}
               aria-label={valueAriaLabel}
               value={row.value}
               onChange={(event) => updateRow(row.id, { value: event.target.value })}
             />
-            <button type="button" className="actor-name-cache-remove" aria-label={removeAriaLabel} onClick={() => removeRow(row.id)}>
+            <Button className="actor-name-cache-remove" aria-label={removeAriaLabel} onClick={() => removeRow(row.id)}>
               Remove
-            </button>
+            </Button>
           </div>
         ))}
       </div>

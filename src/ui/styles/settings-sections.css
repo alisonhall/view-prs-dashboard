@@ -169,9 +169,13 @@
   font-style: italic;
 }
 
-/* Export profiles (ui/SavedItems.tsx): chips above the field controls. */
-.export-profiles {
-  margin-top: 8px;
+/* What's chosen and what would export; the section's gap spaces it, not
+   a <pre>'s own margins. */
+.export-summary {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  white-space: pre-wrap;
 }
 
 .export-profiles-manager .ui-saved-list {

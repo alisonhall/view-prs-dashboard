@@ -53,6 +53,7 @@ import { useSavedItemsStore } from '../../state/useSavedItemsStore';
 import { SavedItemsBar, SavedItemsManager } from '../ui/SavedItems';
 import { buildFieldTree } from '../../helpers/export-field-tree.helpers.ts';
 import { ExportFieldTree, fieldId, type FieldSource } from './ExportFieldTree';
+import { Button } from '../ui/Button';
 
 const { getFieldCatalog, buildExportPayload } = createPrExportHelpers({ getPerPrUserStateFromPayload });
 const { readUiSessionOverridesOrNull, writeUiSessionOverrides } = createPrUiOptionPersistenceHelpers({
@@ -127,7 +128,9 @@ export function ExportSection() {
   const { payload, selectedRepo } = usePrData();
   const { prKeysInOpenSections, openSectionCount } = usePrTableOpenSections();
   const [selectedFieldIds, setSelectedFieldIds] = useState<Set<string> | null>(null); // null until initialized
-  const [status, setStatus] = useState('Waiting for data...');
+  // The last Preview, Copy or Download's outcome; until one, whether
+  // there's data to export (statusText below).
+  const [status, setStatus] = useState('');
   const [preview, setPreview] = useState('Run Preview JSON to inspect the export payload.');
   const initializedRef = useRef(false);
   const profiles = useSavedItemsStore<ExportFieldProfile>({
@@ -363,6 +366,11 @@ export function ExportSection() {
   const missingUserStatePaths = selected.userStatePaths.filter((path) => !catalog.userStatePaths.includes(path));
 
   const totalVisibleCount = Object.keys(payload?.byPrNumber || {}).length;
+  const statusText =
+    status ||
+    (totalVisibleCount === 0
+      ? 'Waiting for data...'
+      : `Ready: ${prKeysInOpenSections.length} visible PR${prKeysInOpenSections.length === 1 ? '' : 's'} to export.`);
   const summaryText = [
     `Selected fields: ${selected.dataPaths.length} data + ${selected.userStatePaths.length} user state`,
     `Visible PR rows eligible for export: ${prKeysInOpenSections.length}/${totalVisibleCount}`,
@@ -392,7 +400,7 @@ export function ExportSection() {
       <p className="subtle-copy">
         Choose PR fields from data and user state, then export only rows currently visible in the table and only sections currently expanded.
       </p>
-      <pre className="management-filter-summary">{summaryText}</pre>
+      <pre className="export-summary">{summaryText}</pre>
 
       <SavedItemsBar
         className="export-profiles"
@@ -410,18 +418,10 @@ export function ExportSection() {
       />
 
       <div className="export-field-controls form-actions">
-        <button type="button" onClick={() => setSelectionByPredicate(() => true)}>
-          Select all
-        </button>
-        <button type="button" onClick={() => setSelectionByPredicate(() => false)}>
-          Select none
-        </button>
-        <button type="button" onClick={() => setSelectionByPredicate((source) => source === 'data')}>
-          Data only
-        </button>
-        <button type="button" onClick={() => setSelectionByPredicate((source) => source === 'user-state')}>
-          User state only
-        </button>
+        <Button onClick={() => setSelectionByPredicate(() => true)}>Select all</Button>
+        <Button onClick={() => setSelectionByPredicate(() => false)}>Select none</Button>
+        <Button onClick={() => setSelectionByPredicate((source) => source === 'data')}>Data only</Button>
+        <Button onClick={() => setSelectionByPredicate((source) => source === 'user-state')}>User state only</Button>
       </div>
 
       <div className="export-field-list" id="export-field-list" role="group" aria-label="Export fields">
@@ -475,17 +475,11 @@ export function ExportSection() {
       </div>
 
       <div className="form-actions export-actions">
-        <button type="button" onClick={() => void handlePreview()}>
-          Preview JSON
-        </button>
-        <button type="button" onClick={() => void handleCopy()}>
-          Copy JSON
-        </button>
-        <button type="button" onClick={() => void handleDownload()}>
-          Download JSON
-        </button>
+        <Button onClick={() => void handlePreview()}>Preview JSON</Button>
+        <Button onClick={() => void handleCopy()}>Copy JSON</Button>
+        <Button onClick={() => void handleDownload()}>Download JSON</Button>
       </div>
-      <pre className="scheduler-details" role="region" aria-label="Export status">{status}</pre>
+      <pre className="scheduler-details" role="region" aria-label="Export status">{statusText}</pre>
       {profiles.items && (
         <details className="advanced-options section-card low-emphasis-card export-profiles-manager">
           <summary>Manage export profiles</summary>
