@@ -7,7 +7,7 @@
 - [ ] Add explanations for how things like some of the 'Review statistics' table column data is calculated
 - [x] ~~Move the 'View Filters' section out of the tabs section~~ - done (2026-10-25, UI_REDESIGN_PLAN.md phase 8): the row filters are a filter bar above the PR table, whose chips and "Showing N of M PRs" stay visible when it's closed; it opens as it was left. The attention, merge-commit and change-detection rules stay in the Run & Filter tab until the Settings drawer (phase 9). Decided (2026-10-22): a collapsible filter bar directly above the PR table; the applied-filter chips stay visible when it's collapsed. Run Script options stay in the Script tab.
 - [x] Change the 'Filter by label name(s)' and 'Exclude by label name(s)' fields to be multiselect dropdowns with all the possible GitHub labels as options
-- [ ] Add more details and explanations for the various fields and data
+- [x] ~~Add more details and explanations for the various fields and data~~ - folded into the items it overlaps (2026-11-06): the Legend explains the table's icons and cues, and Overview's labels have hover text; what's left is describing every Settings option (Settings, below) and the Review statistics columns (above)
 - [x] Move the 'In Review' checkbox into the 'Actions' column cell
 - [x] Show total number of comments/reviews within the PR row's top-level view
 - [x] Show number of viewed files within the PR row's top-level view
@@ -16,8 +16,8 @@
 - [ ] Add a filter by author multiselect dropdown to the 'Review statistics' section
 - [x] Only enable the 'Save notes' button if there are changes that haven't yet been saved
 - [x] Update the 'Status' and 'Scheduler Status' sections to make it more clear when a script is running
-- [ ] Extend the 'Your last activity' column data so that it shows the relative difference too
-- [ ] Add additional expandable sections under each PR to contain things like the user's PR description, an AI description of the PR changes, a large textarea where I can paste in AI review of the PR quality, etc.
+- [x] ~~Extend the 'Your last activity' column data so that it shows the relative difference too~~ - no longer applies (2026-11-06): that column is gone; the Activity column's `You` line is a relative age ("4d"), the exact time on hover
+- [ ] Show the PR's description, and an AI description of its changes, in the detail pane (not fetched yet). Reworded (2026-11-06) from "additional expandable sections under each PR": with the new UI a PR's details are in the pane's tabs, and the textarea for pasting an AI review of the PR is Notes' `Analysis of PR`.
 - [x] ~~Have the content of the 'More insights' section be with tabs~~ - done (2026-10-25, UI_REDESIGN_PLAN.md phase 4): the detail pane's tabs, as decided below. Original item: Have the content of the 'More insights' section be with tabs; one for overview, one for 'Activity sequence', 'Review conversations', 'Notes', etc. - decided (2026-10-22): tabs Overview (the label/value rows plus Approval risk) | Activity | Conversations | Notes, plus a hook-output tab only when an insights hook is configured. Labels carry counts (e.g. "Conversations (3 open)") and Notes shows an unsaved-changes marker. The last tab picked applies to every PR opened afterwards, but only in memory: a page refresh goes back to the first tab, and it is never saved to the user-state file.
 - [x] ~~Don't truncate comments/details under the 'Activity sequence' cards~~ - done (2026-10-25, phase 5): the Activity tab shows comment and review text in full, rendered as markdown; long ones fold behind "Show more"
 - [x] Add a toggle within the 'Review conversations' section for viewing all vs only unresolved conversations. The default value should be viewing only the unresolved conversations. - now the Conversations tab's Unresolved / Waiting on me / All chips, Unresolved still the default (2026-10-25, UI_REDESIGN_PLAN.md phase 6)
@@ -39,7 +39,7 @@
 - [x] ~~Define options for what a merge commit looks like within the user-defaults.json (and configured within the 'Advanced visibility and attention rules' on the UI)~~ - done (2026-10-24), as decided (2026-10-22): a `mergeCommitRules` setting with headline patterns (default `^Merge\b`) and logins (e.g. bots) whose commits always count as merges, edited one pattern per line. The two duplicated `isMergeCommitHeadline` copies (pr-author-cell, pr-needs-attention helpers) share one function. Also decided (2026-10-24): it is the single definition - it replaced the script's "Use built-in merge commit filter" checkbox, so check-open-pr-updates.sh, the attention rule and the Author column all use it; a commit counts when every author is in the logins list.
 - ~~Allow overriding the PR author and allowing multiple users to be considered the author. Maybe base this off of who adds commits (other than merges)?~~ - decided not to do (2026-10-22): the Author cell already lists everyone with non-merge commits, which covers the need; filters, insights and stats keep using GitHub's PR author.
 - [ ] For possible long dropdown lists (ie. all authors), add a UI enhancement so that it has the search/filter functionality in the dropdown. Also consider "recently active" sorting (actors from recent PRs at the top)
-- [ ] Deduplicate author name dropdown fields
+- [x] ~~Deduplicate author name dropdown fields~~ - done (checked 2026-11-06): the filter bar's Author list has each person once, keyed by their preferred login with aliases merged; names that still split are the Actors rework's (below)
 - [x] ~~Add a small copy button beside the source branch name~~ - already done: the "Source branch" row in More insights has a copy button
 - [x] ~~Update Notes' UI so that existing notes are shown as static fields with an edit button to transform them into editable fields~~ - done (2026-10-25, UI_REDESIGN_PLAN.md phase 7): each field has its own Edit (Add when empty), Save and Cancel; saving one field leaves another's unsaved edit as it is
 - [x] ~~Update Notes' Story and Link fields to have the read view of the story name have a small open link icon button beside it to open the link URL (part of the Stories change above)~~ - done (2026-10-25, phase 7): only for http(s) URLs
@@ -53,9 +53,9 @@
 - [x] ~~Show on a row when the last run couldn't refresh it and kept its stored data ("Couldn't refresh - showing data from 2h ago"), with a retry action~~ - done (2026-11-05): `Couldn't refresh · data from 2h ago` under the title, why on hover, and `Retry` (Update PR); for an open/draft row the failed refresh of its repo would have fetched (queued for an update, or not fetched in full for 4 hours), a chosen PR a refresh failed on, or (`Couldn't fetch`) a PR added on its own that couldn't be fetched. The server keeps each repo's last failed refresh until one works and sends it in the live scheduler state.
 - [x] ~~Show "Changes requested by …" in the Review column of your own PRs - such a review now marks the row CHANGED (`review`)~~ - done (2026-11-06) in the detail pane's Overview instead (the Review cell is already full): `Changes requested by` lists the reviewers whose latest verdict requested changes (a comment-only review leaves it; approving or a dismissal ends it). A new one also shows in the change dot's tooltip ("1 review (changes requested by Sam)").
 - [ ] In the detail pane, say when a PR has more commits than GitHub's API returns (250), e.g. "showing the newest 250 of 359 commits"
-- [ ] Link each review in the Activity tab and the detail pane to it on GitHub - reviews now reliably have their links (`7ec7eb8`)
+- [x] ~~Link each review in the Activity tab and the detail pane to it on GitHub - reviews now reliably have their links (`7ec7eb8`)~~ - done (checked 2026-11-06): the Activity tab already links every event with a link of its own (`View`); reviews only lacked theirs, which `7ec7eb8` fixed in the script
 - [x] ~~On a CHANGED row, summarize what changed ("2 new commits, 1 review") in place of the bare reason tag, each part linking to those items in the Activity tab~~ - done (2026-11-06), keeping the collapsed row a dot: its tooltip says since when and counts what's new (`Changed since you acked on Nov 2` / `2 commits · 1 review (changes requested by Sam) · 3 comments`), with any reason the counts don't say. The row summary's `Why it's here` makes the change's reasons one counted line, and its activity column becomes `New since…` with the newest three of those and `See all N in Activity` (the pane's Activity tab on `Since I last looked`), whose type chips already count each kind.
-- [ ] Keyboard navigation in the PR table: j/k to move between rows, Enter to open the detail pane, `a` to Ack
+- [ ] Keyboard shortcuts in the PR table: `a` to Ack the selected PR, and j/k as well as ↑/↓. Reworded (2026-11-06): ↑/↓ already move the selection, which the detail pane shows, and Esc clears it.
 - [x] ~~Undo an Ack: a short "Acked #123 - Undo" toast, since an accidental Ack hides changes~~ - done (2026-11-05), without a toast: clicking "Ack'd" again now undoes the Ack as if it was never made (gone from the Ack history too, and no `ack-cleared` mark). New activity since an Ack already resets the button, so it only undoes an Ack nothing has happened since.
 - [ ] Saved filter views, one click each - e.g. "My PRs needing action", "Waiting on my review"
 - [x] ~~Call out conversations I started that someone else resolved, so I can confirm they were handled~~ - done (2026-11-03): others may resolve my threads on high-priority PRs once they've checked them, which no data shows, so every such thread is "to check" until I confirm it in the Conversations tab (its `To check` chip; the thread shows who resolved it - warning when it was the PR author - whether the code under it changed since, and whether they replied). The Review column shows "N to check" and the filter bar's `Resolved for you to check` lists those PRs. Confirmations are kept in the user state (`threadChecksByRepo`) and lapse when the thread gets a new reply or is resolved again by someone else.
@@ -72,7 +72,7 @@ Improvements noted once PRs could come from several repos and sources (subscript
 - [x] ~~Stop rows jumping around under the "Last updated" sort~~ - done (2026-11-05): while you are working in a section (the pointer over it or a tooltip it opened, keyboard focus in it, or its row open in the detail pane), a refresh keeps its rows where they are. New rows go where the sort puts them, and rows that leave are removed. If the sort would now give a different order, `Re-sort` replaces the `Actions` header label. The sort applies again 1.5 seconds after you leave the section.
 - [x] ~~An open-in-new-tab icon button beside the PR number in each row, opening the PR on GitHub in a new tab~~ - done (2026-11-04): the `#number` link already opened GitHub in a new tab, with nothing to say so. It now ends in the external-link icon (as the detail pane's does), and screen readers hear "opens GitHub in a new tab" - one control, not a second one doing the same.
 - [x] ~~Fix the repo name in a row overlapping the Author column: it never wraps (`.pr-title-repo`), so a long `owner/repo` runs past the Pull request column's edge~~ - done (2026-11-04): a long one is cut short with "…" at the column's edge; its tooltip has it in full.
-- [ ] Find a better way to show a row's repo: on its own line it makes every row taller when PRs come from several repos. Options: an abbreviation or the repo name alone (not the owner), a small chip on the number line, the repo only on hover, or relying on "Group rows by repo" headings.
+- [ ] Find a better way to show a row's repo: before the number, a long `owner/repo` (cut short at the column's edge) can push the number onto a second line, making rows taller when PRs come from several repos. Options: an abbreviation or the repo name alone (not the owner), a small chip on the number line, the repo only on hover, or relying on "Group rows by repo" headings.
 
 #### Filters and search
 
@@ -120,7 +120,7 @@ Improvements noted once PRs could come from several repos and sources (subscript
 
 ### Styling
 
-- [ ] Add different styling for when my name appears
+- [x] ~~Add different styling for when my name appears~~ - done (checked 2026-11-06): names go through ActorIdentity, which styles yours (`.actor-identity-viewer`), as the next item says
 - [x] ~~Add styling for when the PR author's name appears in the 'Activity timeline' or 'Activity sequence' or 'Review conversations'~~ - done: names there go through ActorIdentity, which styles the PR author and the viewer (`.actor-identity-pr-author` / `-viewer`); the Activity tab's feed and daily summary use it too (2026-10-25, phase 5)
 - [x] Add markdown styling to content of comments and threads
 - [x] Add right padding for the 'In Review' column and 'CHK' column content to prevent it touching the border
@@ -130,7 +130,7 @@ Improvements noted once PRs could come from several repos and sources (subscript
 - [x] Have the PR comments' 'Note...' textarea vertically expand to include all of the text content
 - [x] Align the PR comments' 'Note...' textarea properly with the other fields
 - [ ] Style the code examples differently from text
-- [ ] Remove all the unneeded extra padding around markdown paragraphs/bulleted lists/etc
+- [ ] Remove the unneeded extra spacing between markdown paragraphs, bulleted lists, etc. (the Activity tab already drops the space before the first and after the last; check between them, and in the Conversations tab)
 - [x] ~~Set max-height on 'Activity timeline' and add scroll when it overflows~~ - superseded (2026-10-25, UI_REDESIGN_PLAN.md phases 4-5): the timeline is a collapsed "Daily summary" in the detail pane, which scrolls as a whole
 - [x] ~~Set max-height on 'Activity sequence' and 'Review conversations' sections and add scroll when it overflows~~ - superseded (2026-10-25, phases 4-5): each is its own tab in the detail pane, which scrolls
 - [x] ~~Add sticky table row~~ - done (2026-10-27, UI_REDESIGN_PLAN.md "New features"): an open section's header stays at the top of the window while its rows scroll, with its table's column headers under it (below the Auto update paused banner when it shows)
@@ -149,11 +149,7 @@ For progress and steps, see [`AI_MODERNIZATION_PLAN.md`](AI_MODERNIZATION_PLAN.m
 
 ### UI Modernization
 
-Improve UI and style it more similarly to GitKraken's LaunchPad.
-
-For planned steps, see [`UI_MODERNIZATION_PROPOSAL.md`](UI_MODERNIZATION_PROPOSAL.md)
-
-The redesign chosen on 2026-10-24 (sections with icon rows, a docked detail pane, a settings drawer) is planned in [`UI_REDESIGN_PLAN.md`](UI_REDESIGN_PLAN.md)
+Done: the redesign chosen on 2026-10-24 (sections with icon rows, a docked detail pane, a settings drawer), in the spirit of GitKraken's LaunchPad, is complete - see [`UI_REDESIGN_PLAN.md`](UI_REDESIGN_PLAN.md). It superseded the earlier [`UI_MODERNIZATION_PROPOSAL.md`](UI_MODERNIZATION_PROPOSAL.md). What's left of it is the Review stats and Authors views (Other views, above).
 
 ### Future Performance Opportunities
 
