@@ -3748,6 +3748,27 @@ test("Settings › Export's field catalog and Preview JSON produce a real export
   expect(Array.isArray(exportPayload.prs)).toBe(true);
   expect(exportPayload.prs).toHaveLength(exportPayload.prCount);
   expect(exportPayload.prs[0]).toHaveProperty("prNumber");
+
+  // The data's own object is a group, folded: one checkbox leaves out all
+  // of its fields, which show once it's opened. (Preview saves the choice;
+  // it's cleared after, for the tests that follow.)
+  try {
+    const dataGroup = fieldList.getByRole("checkbox", { name: /^All of data, / });
+    await expect(dataGroup).toBeChecked();
+    await expect(fieldList.getByRole("checkbox", { name: "DATA data.title", exact: true })).toHaveCount(0);
+    await dataGroup.uncheck();
+    await fieldList.getByRole("button", { name: "Fields in data", exact: true }).click();
+    await expect(fieldList.getByRole("checkbox", { name: "DATA data.title", exact: true })).not.toBeChecked();
+    await page.getByRole("button", { name: "Preview JSON" }).click();
+    const preview = page.getByRole("region", { name: "Export preview", exact: true });
+    // The first preview's text is there until this one replaces it.
+    await expect
+      .poll(async () => JSON.parse(await preview.textContent()).selectedFields.data.filter((path) => path.startsWith("data.")))
+      .toEqual([]);
+    expect(JSON.parse(await preview.textContent()).selectedFields.data).toContain("prNumber");
+  } finally {
+    await clearSavedSettings(page.request, ["export-data-fields", "export-user-state-fields"]);
+  }
 });
 
 test("an export profile picks its fields in one click, and is kept in user-defaults.json for any browser", async ({ page }) => {

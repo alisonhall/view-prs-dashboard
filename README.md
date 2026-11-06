@@ -833,6 +833,7 @@ The UI includes:
 Export behavior (Settings › `Export`):
 
 - Field picker supports mixed data-file and user-state fields in any combination.
+- The fields are listed under `Data file` and `User state`, each with how many are chosen, as nested lists: each object in the data (`data`, `notesByPrNumber`) is a group, folded until you open it, with a checkbox for all of its fields - ticked when every one is chosen, part-ticked when some are - and how many are chosen (`12 of 34`). A group holding only one other group shows as one row (`a.b`). A field that's a plain value in some PRs and an object in others (`notesByPrNumber` for a PR without notes) is in its group as `(as one value)`: choosing it exports the whole object.
 - Export scope uses what is currently visible in `PR data`:
   - applies active local filter values,
   - includes only PR rows inside expanded sections (`Open PRs`, `Draft PRs`, `Closed PRs`, `Latest Merged PRs`),

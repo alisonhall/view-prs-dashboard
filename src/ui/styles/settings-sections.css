@@ -63,11 +63,79 @@
   border-radius: 10px;
   background: var(--color-surface-inset);
   padding: 10px;
-  max-height: 300px;
+  max-height: 360px;
   overflow: auto;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+/* A source's fields (ExportFieldTree.tsx): fields side by side, each group
+   across the whole width, its fields indented under it once opened. */
+.export-field-source-heading {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.export-field-tree-items {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 8px 12px;
+}
+
+.export-field-group {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 8px;
+}
+
+.export-field-group > .export-field-tree-items {
+  padding-left: 22px;
+}
+
+.export-field-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* The group's name and count, which open it. */
+.export-field-group-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 4px 1px 2px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.export-field-group-toggle > svg {
+  color: var(--color-text-muted);
+}
+
+.export-field-group-toggle:hover {
+  background: var(--color-surface-hover);
+}
+
+.export-field-group-toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.export-field-group-label {
+  font-weight: 600;
+}
+
+.export-field-group-count {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--color-text-muted);
 }
 
 .export-field-option {

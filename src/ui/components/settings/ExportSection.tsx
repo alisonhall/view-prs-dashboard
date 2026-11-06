@@ -24,6 +24,10 @@
  * doesn't have (from a profile, or the saved choice) is listed after the
  * rest, so it can be unticked.
  *
+ * The fields are listed by source (data file, user state) as nested lists
+ * (ExportFieldTree): a group per object in the data, folded until opened,
+ * with a checkbox for all of its fields.
+ *
  * @module components/settings/ExportSection
  */
 
@@ -47,6 +51,8 @@ import {
 import { getActiveAndModifiedIds, makeItemId } from '../../helpers/saved-items.helpers.ts';
 import { useSavedItemsStore } from '../../state/useSavedItemsStore';
 import { SavedItemsBar, SavedItemsManager } from '../ui/SavedItems';
+import { buildFieldTree } from '../../helpers/export-field-tree.helpers.ts';
+import { ExportFieldTree, fieldId, type FieldSource } from './ExportFieldTree';
 
 const { getFieldCatalog, buildExportPayload } = createPrExportHelpers({ getPerPrUserStateFromPayload });
 const { readUiSessionOverridesOrNull, writeUiSessionOverrides } = createPrUiOptionPersistenceHelpers({
@@ -56,10 +62,8 @@ const { readUiSessionOverridesOrNull, writeUiSessionOverrides } = createPrUiOpti
 const EXPORT_DATA_FIELDS_OVERRIDE_KEY = 'export-data-fields';
 const EXPORT_USER_STATE_FIELDS_OVERRIDE_KEY = 'export-user-state-fields';
 
-type FieldSource = 'data' | 'user-state';
 type Overrides = Record<string, unknown>;
 
-const fieldId = (source: FieldSource, path: string) => `${source}:${path}`;
 
 const readUserDefaults = async (): Promise<Overrides> => {
   try {
@@ -119,6 +123,8 @@ export function ExportSection() {
   const [appliedProfileId, setAppliedProfileId] = useState('');
 
   const catalog = useMemo(() => getFieldCatalog(payload), [payload]);
+  const dataTree = useMemo(() => buildFieldTree(catalog.dataPaths), [catalog]);
+  const userStateTree = useMemo(() => buildFieldTree(catalog.userStatePaths), [catalog]);
 
   // Initialize the selection exactly once, from saved user-defaults if
   // present, otherwise "everything selected" (the same default the vanilla
@@ -174,6 +180,15 @@ export function ExportSection() {
       } else {
         next.add(id);
       }
+      return next;
+    });
+  };
+
+  const setFieldsChecked = (source: FieldSource, paths: readonly string[], checked: boolean) => {
+    initializedRef.current = true;
+    setSelectedFieldIds((previous) => {
+      const next = new Set(previous || []);
+      paths.forEach((path) => (checked ? next.add(fieldId(source, path)) : next.delete(fieldId(source, path))));
       return next;
     });
   };
@@ -328,7 +343,7 @@ export function ExportSection() {
     `Expanded PR sections: ${openSectionCount}`,
   ].join('\n');
 
-  const renderFieldOption = (source: FieldSource, path: string, missing = false) => (
+  const renderMissingField = (source: FieldSource, path: string) => (
     <label className="export-field-option" key={fieldId(source, path)}>
       <input
         type="checkbox"
@@ -341,7 +356,7 @@ export function ExportSection() {
       <span>
         <span className="export-field-option-source">{source === 'user-state' ? 'USER' : 'DATA'}</span>
         {path}
-        {missing && <span className="export-field-option-missing"> · not in the loaded data</span>}
+        <span className="export-field-option-missing"> · not in the loaded data</span>
       </span>
     </label>
   );
@@ -388,10 +403,47 @@ export function ExportSection() {
           <p className="stats-empty">No exportable fields found in current payload.</p>
         ) : (
           <>
-            {catalog.dataPaths.map((path) => renderFieldOption('data', path))}
-            {catalog.userStatePaths.map((path) => renderFieldOption('user-state', path))}
-            {missingDataPaths.map((path) => renderFieldOption('data', path, true))}
-            {missingUserStatePaths.map((path) => renderFieldOption('user-state', path, true))}
+            {([
+              ['data', 'Data file', catalog.dataPaths, dataTree],
+              ['user-state', 'User state', catalog.userStatePaths, userStateTree],
+            ] as const).map(
+              ([source, heading, paths, tree]) =>
+                paths.length > 0 && (
+                  <div
+                    key={source}
+                    className="export-field-source"
+                    role="group"
+                    aria-labelledby={`export-field-source-${source}`}
+                  >
+                    <h3 className="export-field-source-heading" id={`export-field-source-${source}`}>
+                      {heading}{' '}
+                      <span className="export-field-group-count">
+                        {paths.filter((path) => isSelected(source, path)).length} of {paths.length} chosen
+                      </span>
+                    </h3>
+                    <div className="export-field-tree-items">
+                      <ExportFieldTree
+                        source={source}
+                        nodes={tree}
+                        isSelected={(path) => isSelected(source, path)}
+                        onToggle={(path) => toggleField(source, path)}
+                        onSetMany={(many, checked) => setFieldsChecked(source, many, checked)}
+                      />
+                    </div>
+                  </div>
+                ),
+            )}
+            {missingDataPaths.length + missingUserStatePaths.length > 0 && (
+              <div className="export-field-source" role="group" aria-labelledby="export-field-source-missing">
+                <h3 className="export-field-source-heading" id="export-field-source-missing">
+                  Not in the loaded data
+                </h3>
+                <div className="export-field-tree-items">
+                  {missingDataPaths.map((path) => renderMissingField('data', path))}
+                  {missingUserStatePaths.map((path) => renderMissingField('user-state', path))}
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>

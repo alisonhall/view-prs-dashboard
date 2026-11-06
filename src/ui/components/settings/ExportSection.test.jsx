@@ -438,3 +438,87 @@ describe('ExportSection profiles', () => {
     expect(savedProfiles()).toBeUndefined();
   });
 });
+
+describe('ExportSection field groups', () => {
+  beforeEach(() => {
+    global.fetch = jest.fn(async (url, init = {}) => {
+      const method = String(init.method || 'GET').toUpperCase();
+      if (String(url) === '/view-prs/user-defaults' && method === 'GET') return { ok: true, json: async () => ({ overrides: {} }) };
+      return { ok: true, json: async () => ({ ok: true }) };
+    });
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  // Data with objects in it: data (reviews, and checks with state and url).
+  const nestedPayload = {
+    byPrNumber: {
+      11: { prNumber: 11, data: { reviews: [], checks: { state: 'SUCCESS', url: 'https://ci/11' } } },
+    },
+    lastRun: { repo: 'owner/repo', updatedAt: '2026-06-16T10:00:00Z' },
+  };
+  const groupCheckbox = (path) => screen.getByRole('checkbox', { name: new RegExp(`^All of ${path.replace('.', '\\.')},`) });
+
+  test('each object is a group, folded until opened, with a checkbox for all of its fields and how many are chosen', async () => {
+    const user = userEvent.setup();
+    renderExportSection({ initialPayload: nestedPayload, selectedRepo: 'owner/repo' });
+    await waitFor(() => expect(groupCheckbox('data')).toBeChecked());
+    expect(groupCheckbox('data')).toHaveAccessibleName('All of data, 3 of 3 chosen');
+    expect(screen.getByRole('checkbox', { name: 'DATA prNumber' })).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: 'DATA data.reviews' })).not.toBeInTheDocument();
+    // Each source is a group under an h3 (the drawer's title is the h2), not
+    // a landmark of its own.
+    expect(screen.getByRole('group', { name: 'Data file 4 of 4 chosen' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 3, name: 'Data file 4 of 4 chosen' })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: /fields/ })).not.toBeInTheDocument();
+
+    // Clicking the group's name opens it, and leaves what's chosen alone.
+    const toggle = screen.getByRole('button', { name: 'Fields in data' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await user.click(screen.getByText('data', { selector: '.export-field-group-label' }));
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(groupCheckbox('data')).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'DATA data.reviews' })).toBeChecked();
+    expect(groupCheckbox('data.checks')).toBeChecked();
+    expect(screen.queryByRole('checkbox', { name: 'DATA data.checks.state' })).not.toBeInTheDocument();
+
+    // Unticking a group unchooses every field in it, however deep.
+    await user.click(groupCheckbox('data'));
+    expect(groupCheckbox('data')).not.toBeChecked();
+    expect(groupCheckbox('data')).toHaveAccessibleName('All of data, 0 of 3 chosen');
+    expect(screen.getByRole('checkbox', { name: 'DATA data.reviews' })).not.toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'DATA prNumber' })).toBeChecked();
+    expect(screen.getByText(/Selected fields: 1 data/)).toBeInTheDocument();
+
+    // One of a group's fields chosen part-ticks it, and the groups it's in.
+    await user.click(screen.getByRole('button', { name: 'Fields in data.checks' }));
+    await user.click(screen.getByRole('checkbox', { name: 'DATA data.checks.url' }));
+    expect(groupCheckbox('data.checks')).toBePartiallyChecked();
+    expect(groupCheckbox('data')).toBePartiallyChecked();
+
+    // A part-ticked group, clicked, chooses all of it.
+    await user.click(groupCheckbox('data'));
+    expect(groupCheckbox('data')).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'DATA data.checks.state' })).toBeChecked();
+  });
+
+  test('a profile applied ticks fields in folded groups too, which the counts show', async () => {
+    const saved = {
+      exportFieldProfiles: { profiles: [{ id: 'p', name: 'Checks', dataPaths: ['data.checks.state'], userStatePaths: [] }] },
+    };
+    global.fetch = jest.fn(async (url, init = {}) => {
+      const method = String(init.method || 'GET').toUpperCase();
+      if (String(url) === '/view-prs/user-defaults' && method === 'GET') return { ok: true, json: async () => ({ overrides: saved }) };
+      return { ok: true, json: async () => ({ ok: true }) };
+    });
+    const user = userEvent.setup();
+    renderExportSection({ initialPayload: nestedPayload, selectedRepo: 'owner/repo' });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Checks' })).toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: 'Checks' }));
+    expect(groupCheckbox('data')).toHaveAccessibleName('All of data, 1 of 3 chosen');
+    expect(groupCheckbox('data')).toBePartiallyChecked();
+    expect(screen.getByRole('checkbox', { name: 'DATA prNumber' })).not.toBeChecked();
+  });
+});
