@@ -1369,6 +1369,17 @@ describe('PrTableApp', () => {
       expect(capturedSectionProps.at(-1).queuedPrNumbers).toEqual([]);
     });
 
+    test("given the scheduler state the data load brought, then the rows start from it - before any live frame", () => {
+      const payload = {
+        byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) },
+        scheduler: { activePrNumbers: [{ repo: 'owner/repo', prNumber: '1' }], queuedPrNumbers: [{ repo: 'owner/repo', prNumber: '2' }] },
+      };
+      renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', onCheckboxChange: () => {} });
+
+      expect(capturedSectionProps.at(-1).activePrNumbers).toEqual(['owner/repo::1']);
+      expect(capturedSectionProps.at(-1).queuedPrNumbers).toEqual(['owner/repo::2']);
+    });
+
     test('given a PR whose Ack action is in flight, when checking activePrNumbers passed to PrSection, then that PR number is included while pending and removed once it resolves', async () => {
       let resolvePostJson;
       postJson.mockImplementation(() => new Promise((resolve) => { resolvePostJson = resolve; }));

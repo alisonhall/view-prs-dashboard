@@ -1882,7 +1882,11 @@ const recordUnreachablePrs = (repo, attemptedNumbers, missingNumbers) => {
     });
   }
   viewPrsSchedulerState.unreachablePrSince = next;
-  if (JSON.stringify(next) !== before) persistViewPrsSchedulerState();
+  if (JSON.stringify(next) !== before) {
+    persistViewPrsSchedulerState();
+    // The rows say so (unreachablePrs, in the live scheduler state).
+    callEmitSchedulerStateChanged();
+  }
 };
 
 // Each repo's last refresh that failed, until one works - viewPrsSchedulerState's
@@ -3896,6 +3900,8 @@ const createViewPrsApp = ({ production = isProductionEnv } = {}) => {
     runAutoGhReservationCost: dispatcherGhCostByTaskType.autoRefresh,
     getRepoGhEnv,
     trackRunPrs,
+    // A manual run of chosen PRs fetched them: none is unreachable now.
+    recordFetchedPrs: (repo, numbers) => recordUnreachablePrs(repo, numbers, []),
     // Every row shows: before the sources are seeded, or a repo fetched in full.
     showsAllRowsOfRepo: (repo) => {
       const visibility = getRowVisibility();

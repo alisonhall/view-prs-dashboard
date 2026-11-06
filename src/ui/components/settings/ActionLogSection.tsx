@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../ui/Button';
 import { createPrFormattingHelpers } from '../../helpers/pr-formatting.helpers.ts';
 import {
-  describeActionLogEntry,
+  describeActionLog,
   filterActionLogRows,
   findActionLogRow,
   listActionLogFilterOptions,
@@ -89,7 +89,7 @@ export function ActionLogSection() {
     }
   }, [isVisible, focusRequestedAt, load]);
 
-  const rows = useMemo(() => state.entries.map(describeActionLogEntry), [state.entries]);
+  const rows = useMemo(() => describeActionLog(state.entries), [state.entries]);
   const options = useMemo(() => listActionLogFilterOptions(rows), [rows]);
   const shown = filterActionLogRows(rows, filters);
 

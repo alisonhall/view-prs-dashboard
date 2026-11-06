@@ -387,6 +387,15 @@ describe("what the page shows", () => {
     await runViewPrsAutoRefresh({ skipCooldownChecks: true, reposOverride: ["other-org/lib"] });
     expect(Object.keys((await supertest(server).get("/view-prs/sources")).body.sources.unreachable)).not.toContain("other-org/lib#10");
   });
+
+  test("a run of the PR by hand that works (its row's Retry) clears it too", async () => {
+    viewPrsSchedulerState.unreachablePrSince = { "other-org/lib#9": new Date().toISOString() };
+
+    const res = await supertest(server).post("/view-prs/run").send({ repo: "other-org/lib", prNumber: "9", openMode: "none", quiet: true });
+
+    expect(res.body.ok).toBe(true);
+    expect(viewPrsSchedulerState.unreachablePrSince).toEqual({});
+  });
 });
 
 describe("a GitHub Enterprise repo's other gh calls, and the PRs that couldn't be fetched", () => {

@@ -1,4 +1,5 @@
 const {
+  describeActionLog,
   describeActionLogEntry,
   filterActionLogRows,
   findActionLogRow,
@@ -133,5 +134,20 @@ describe("findActionLogRow", () => {
   test("none further than a minute off, or of another kind", () => {
     expect(findActionLogRow(rows, { kind: "autoRefresh", atMs: at("2026-11-05T10:20:00.000Z") })).toBeNull();
     expect(findActionLogRow(rows, { kind: "olderMerged", atMs: at("2026-11-05T10:05:00.000Z") })).toBeNull();
+  });
+});
+
+describe("describeActionLog", () => {
+  test("each entry keeps its id when newer ones arrive - two alike told apart from the oldest", () => {
+    const older = [
+      { action: "post/ack", timestamp: "2026-11-05T10:00:00.000Z" },
+      { action: "post/ack", timestamp: "2026-11-05T10:00:00.000Z" },
+      { action: "job/quickCheck", timestamp: "2026-11-05T09:55:00.000Z" },
+    ];
+    const before = describeActionLog(older).map((row) => row.id);
+    const after = describeActionLog([{ action: "job/quickCheck", timestamp: "2026-11-05T10:05:00.000Z" }, ...older]).map((row) => row.id);
+
+    expect(new Set(before).size).toBe(3);
+    expect(after.slice(1)).toEqual(before);
   });
 });

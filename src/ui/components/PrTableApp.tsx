@@ -150,13 +150,30 @@ export function PrTableApp() {
   // raw { repo, prNumber } pairs from the event detail (see app.js's
   // buildActivePrKey/syncSchedulerActivePrNumbers) - composite-keyed in
   // combinedActivePrNumbers below, alongside busyPrNumbers.
-  const [activePrNumbers, setActivePrNumbers] = useState<ActivePr[]>([]);
+  //
+  // Each starts from the scheduler state the data load brought: the live
+  // connection's first frame usually comes before the table mounts (after
+  // that load), and the next may be minutes away while nothing runs.
+  const initialScheduler = (payload?.scheduler || {}) as {
+    activePrNumbers?: unknown;
+    queuedPrNumbers?: unknown;
+    refreshFailures?: unknown;
+    unreachablePrs?: unknown;
+  };
+  const initialRecord = <T,>(value: unknown): T => (value && typeof value === 'object' && !Array.isArray(value) ? (value as T) : ({} as T));
+  const [activePrNumbers, setActivePrNumbers] = useState<ActivePr[]>(() =>
+    Array.isArray(initialScheduler.activePrNumbers) ? (initialScheduler.activePrNumbers as ActivePr[]) : [],
+  );
   // And those a scheduler run of chosen PRs is still to fetch: "queued".
-  const [schedulerQueuedPrNumbers, setSchedulerQueuedPrNumbers] = useState<ActivePr[]>([]);
+  const [schedulerQueuedPrNumbers, setSchedulerQueuedPrNumbers] = useState<ActivePr[]>(() =>
+    Array.isArray(initialScheduler.queuedPrNumbers) ? (initialScheduler.queuedPrNumbers as ActivePr[]) : [],
+  );
   // What couldn't be refreshed, for the rows (RepoFreshnessProvider): each
   // repo's last refresh that failed, and the PRs that couldn't be fetched.
-  const [refreshFailures, setRefreshFailures] = useState<Record<string, RepoRefreshFailure>>({});
-  const [unreachablePrs, setUnreachablePrs] = useState<Record<string, string>>({});
+  const [refreshFailures, setRefreshFailures] = useState(() =>
+    initialRecord<Record<string, RepoRefreshFailure>>(initialScheduler.refreshFailures),
+  );
+  const [unreachablePrs, setUnreachablePrs] = useState(() => initialRecord<Record<string, string>>(initialScheduler.unreachablePrs));
 
   useEffect(() => {
     // Every scheduler frame carries both lists (several a second during a

@@ -98,6 +98,8 @@ const describeResult = (kind: string, detail: Record<string, unknown>): string =
   return '';
 };
 
+// `index` is its place in the log, newest first; the id doesn't use it, so
+// it stays the same when newer entries arrive (see actionLogRowIds).
 export const describeActionLogEntry = (entry: ActionLogEntry, index: number): ActionLogRow => {
   const action = String(entry?.action || '');
   const detail = entry?.detail && typeof entry.detail === 'object' ? entry.detail : {};
@@ -126,7 +128,7 @@ export const describeActionLogEntry = (entry: ActionLogEntry, index: number): Ac
     ...(entry?.error && outcome !== 'failed' ? [['error', entry.error] as [string, string]] : []),
   ];
   return {
-    id: `${index}:${entry?.timestamp || entry?.triggeredAt || ''}`,
+    id: `${entry?.timestamp || entry?.triggeredAt || `#${index}`}|${action}`,
     kind,
     label,
     origin,
@@ -138,6 +140,21 @@ export const describeActionLogEntry = (entry: ActionLogEntry, index: number): Ac
     summary,
     details,
   };
+};
+
+// The rows, each with an id of its own: its time and action, and for two
+// alike, which of them counting from the oldest - so an entry keeps its id
+// (its folding, its highlight) when a reload brings newer ones.
+export const describeActionLog = (entries: ActionLogEntry[]): ActionLogRow[] => {
+  const rows = entries.map(describeActionLogEntry);
+  const seen = new Map<string, number>();
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    const row = rows[index] as ActionLogRow;
+    const count = seen.get(row.id) || 0;
+    seen.set(row.id, count + 1);
+    if (count > 0) row.id = `${row.id}|${count}`;
+  }
+  return rows;
 };
 
 export interface ActionLogFilters {

@@ -78,11 +78,15 @@ const registerViewPrsMutationRoutes = ({
   // (repo, numbers) => adds the PRs a manual run chose, in a repo not
   // subscribed, to the sources. Safely no-ops if absent.
   trackRunPrs,
+  // (repo, numbers) => a manual run fetched these PRs, so none is
+  // unreachable (its row's Retry). Safely no-ops if absent.
+  recordFetchedPrs,
   // (repo) => whether every row of the repo shows (fetched in full); true
   // if absent.
   showsAllRowsOfRepo,
 }) => {
   const trackRunPrsSafe = typeof trackRunPrs === "function" ? trackRunPrs : () => {};
+  const recordFetchedPrsSafe = typeof recordFetchedPrs === "function" ? recordFetchedPrs : () => {};
   const showsAllRowsOfRepoSafe = typeof showsAllRowsOfRepo === "function" ? showsAllRowsOfRepo : () => true;
   const getRepoGhEnvSafe = (repo) => (typeof getRepoGhEnv === "function" && repo ? getRepoGhEnv(repo) : {});
   const emitDataChangedSafe =
@@ -235,6 +239,7 @@ const registerViewPrsMutationRoutes = ({
         // rows stay in view.
         if (detail.prNumber) {
           trackRunPrsSafe(detail.repo || defaultViewPrsRepo, detail.prNumbers);
+          recordFetchedPrsSafe(detail.repo || defaultViewPrsRepo, detail.prNumbers);
         }
         appendActionLogEntry(
           buildRunSuccessActionLogEntry({
