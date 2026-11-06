@@ -81,7 +81,19 @@ describe("pr-ui-option-persistence helpers", () => {
     });
     const { writeUiSessionOverrides } = createPrUiOptionPersistenceHelpers({ fetch: fetchFn });
 
-    await expect(writeUiSessionOverrides({ repo: "a/b" })).resolves.toBeUndefined();
+    await expect(writeUiSessionOverrides({ repo: "a/b" })).resolves.toBe(false);
+  });
+
+  test("writeUiSessionOverrides resolves to whether they're saved: true when written or unchanged, false when refused", async () => {
+    let ok = true;
+    const fetchFn = jest.fn(async () => ({ ok }));
+    const { writeUiSessionOverrides } = createPrUiOptionPersistenceHelpers({ fetch: fetchFn });
+
+    await expect(writeUiSessionOverrides({ repo: "a/b" })).resolves.toBe(true);
+    ok = false;
+    await expect(writeUiSessionOverrides({ repo: "a/b" })).resolves.toBe(false);
+    await expect(writeUiSessionOverrides({ repo: "a/b" }, { unchangedFrom: { repo: "a/b" } })).resolves.toBe(true);
+    expect(fetchFn).toHaveBeenCalledTimes(2);
   });
 
   test("updateUiSessionOverride sets one key and keeps the others, or removes it for undefined", async () => {

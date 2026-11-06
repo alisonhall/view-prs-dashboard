@@ -3,6 +3,7 @@ import { Button } from '../ui/Button';
 import { Chip, ChipGroup } from '../ui/Chip';
 import { Tooltip } from '../ui/Tooltip';
 import type { SavedFilterViewsValue } from '../../state/useSavedFilterViews';
+import type { SavedFilterView } from '../../helpers/saved-filter-views.helpers.ts';
 import { describeViewFilters, hasAnyFilter, isSameFilters, isViewNameFree } from '../../helpers/saved-filter-views.helpers.ts';
 
 /**
@@ -68,11 +69,12 @@ function ViewNameForm({
  * pressed one clears the filters), its filters on hover - and "(modified)"
  * on the view last applied once a filter has changed since, with Update to
  * save the change into it. "Save as view" names the applied filters while
- * no view has them. Nothing shows until the views are read, nor while
- * there are none and no filter to save.
+ * no view has them. Says so when a change couldn't be saved. Nothing shows
+ * until the views are read, nor while there are none, no filter to save
+ * and nothing to say.
  */
 export function SavedFilterViewsBar({ value }: { value: SavedFilterViewsValue }) {
-  const { views, current, activeId, modifiedId, apply, clear, saveCurrent, update } = value;
+  const { views, current, activeId, modifiedId, saveFailed, apply, clear, saveCurrent, update } = value;
   const [naming, setNaming] = useState(false);
   // Where focus goes once the name form closes: the new view's chip, or
   // back to Save as view (the form's buttons go away with it).
@@ -88,7 +90,7 @@ export function SavedFilterViewsBar({ value }: { value: SavedFilterViewsValue })
   }, [focusTarget, views]);
   if (!views) return null;
   const canSave = hasAnyFilter(current) && !activeId;
-  if (views.length === 0 && !canSave) return null;
+  if (views.length === 0 && !canSave && !saveFailed) return null;
   const modified = views.find((view) => view.id === modifiedId);
 
   return (
@@ -139,27 +141,39 @@ export function SavedFilterViewsBar({ value }: { value: SavedFilterViewsValue })
             Save as view
           </button>
         ))}
+      {saveFailed && (
+        <span role="alert" className="filter-view-error">
+          Couldn’t save your views. They’re shown as last saved.
+        </span>
+      )}
     </div>
   );
 }
 
 /**
  * The open filter bar's "Manage saved views" group: each view with what it
- * filters on, and Rename, Update (to the applied filters) and Delete.
+ * filters on, and Rename, Update (to the applied filters) and Delete. A
+ * deleted view can be put back (Undo) until the next is deleted; focus
+ * goes to that Undo, and from it back to the view's Rename.
  */
 export function SavedFilterViewsManager({ value, headingId }: { value: SavedFilterViewsValue; headingId: string }) {
-  const { views, current, rename, update, remove } = value;
+  const { views, current, rename, update, remove, restore } = value;
   const [renamingId, setRenamingId] = useState('');
   // Back to a view's Rename once its name form closes.
   const [focusId, setFocusId] = useState('');
   const renameRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const undoRef = useRef<HTMLButtonElement>(null);
+  const [deleted, setDeleted] = useState<{ view: SavedFilterView; index: number } | null>(null);
   useEffect(() => {
     if (!focusId) return;
-    renameRefs.current[focusId]?.focus();
+    const target = focusId === 'undo' ? undoRef.current : renameRefs.current[focusId];
+    if (!target) return;
+    target.focus();
     setFocusId('');
-  }, [focusId]);
+  }, [focusId, views]);
   if (!views) return null;
   const canUpdate = hasAnyFilter(current);
+  const undo = deleted && !views.some((view) => view.id === deleted.view.id) ? deleted : null;
 
   return (
     <div className="filter-bar-group filter-views-group" role="group" aria-labelledby={headingId}>
@@ -214,7 +228,16 @@ export function SavedFilterViewsManager({ value, headingId }: { value: SavedFilt
                   >
                     Update to applied filters
                   </button>
-                  <button type="button" className="filter-bar-clear" aria-label={`Delete ${view.name}`} onClick={() => remove(view.id)}>
+                  <button
+                    type="button"
+                    className="filter-bar-clear"
+                    aria-label={`Delete ${view.name}`}
+                    onClick={() => {
+                      remove(view.id);
+                      setDeleted({ view, index: views.indexOf(view) });
+                      setFocusId('undo');
+                    }}
+                  >
                     Delete
                   </button>
                 </span>
@@ -222,6 +245,24 @@ export function SavedFilterViewsManager({ value, headingId }: { value: SavedFilt
             );
           })}
         </ul>
+      )}
+      {undo && (
+        <p className="filter-bar-hint filter-views-deleted">
+          Deleted “{undo.view.name}”.{' '}
+          <button
+            ref={undoRef}
+            type="button"
+            className="filter-bar-clear"
+            aria-label={`Undo deleting ${undo.view.name}`}
+            onClick={() => {
+              restore(undo.view, undo.index);
+              setDeleted(null);
+              setFocusId(undo.view.id);
+            }}
+          >
+            Undo
+          </button>
+        </p>
       )}
     </div>
   );

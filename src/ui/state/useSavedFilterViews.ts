@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFilterState } from './FilterStateContext';
 import { useRowFilterSelection } from './RowFilterSelectionContext';
 import {
@@ -35,9 +35,12 @@ export interface SavedFilterViewsValue {
   current: ViewFilters;
   // The view whose filters are the current ones; "" when none is.
   activeId: string;
-  // The view last applied or saved, while other filters are applied
-  // ("modified"); "" otherwise.
+  // The view last applied or saved, while other filters are applied and no
+  // view has them ("modified"); "" otherwise.
   modifiedId: string;
+  // A change couldn't be saved (the views shown are back to as last
+  // saved); cleared by the next change that is.
+  saveFailed: boolean;
   apply: (view: SavedFilterView) => void;
   // Back to no filters.
   clear: () => void;
@@ -47,6 +50,8 @@ export interface SavedFilterViewsValue {
   // The view's filters become the current ones.
   update: (id: string) => void;
   remove: (id: string) => void;
+  // Puts a deleted view back where it was (Undo); not when it's there.
+  restore: (view: SavedFilterView, index: number) => void;
 }
 
 /**
@@ -56,7 +61,10 @@ export interface SavedFilterViewsValue {
  * Each change - add, rename, update, delete - shows at once, and is saved
  * by applying it to the views as saved then (read again, one at a time
  * with the other saves of the user defaults), so it doesn't write back
- * this page's older copy over a change made elsewhere.
+ * this page's older copy over a change made elsewhere. One that can't be
+ * saved goes back to the views as last saved, and says so (saveFailed). The
+ * re-reads wait for those saves too, so one doesn't show the views from
+ * before a save still being made.
  *
  * Applying one sets every filter the bar has - the search, the fields and
  * the lists - to the view's (no filter where it has none), through the
@@ -67,15 +75,22 @@ export function useSavedFilterViews(): SavedFilterViewsValue {
   const { checkedByListId, setChecked } = useRowFilterSelection();
   const [views, setViews] = useState<SavedFilterView[] | null>(null);
   const [appliedId, setAppliedId] = useState('');
+  const [saveFailed, setSaveFailed] = useState(false);
+  // The views as last read or saved: what a change that can't be saved
+  // goes back to.
+  const savedViewsRef = useRef<SavedFilterView[] | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     // A read that fails keeps what's shown: nothing on the first, else the
     // views as last read.
-    const load = async () => {
-      const overrides = await readUiSessionOverridesOrNull();
-      if (!cancelled && overrides) setViews(readSavedFilterViews(overrides));
-    };
+    const load = () =>
+      serializeOverridesUpdate(async () => {
+        const overrides = await readUiSessionOverridesOrNull();
+        if (cancelled || !overrides) return;
+        savedViewsRef.current = readSavedFilterViews(overrides);
+        setViews(savedViewsRef.current);
+      });
     void load();
     const onFocus = () => void load();
     window.addEventListener('focus', onFocus);
@@ -88,7 +103,7 @@ export function useSavedFilterViews(): SavedFilterViewsValue {
   const current = useMemo(() => toViewFilters(values, checkedByListId), [values, checkedByListId]);
   const activeId = views?.find((view) => isSameFilters(view.filters, current))?.id || '';
   const modifiedId =
-    appliedId && appliedId !== activeId && hasAnyFilter(current) && views?.some((view) => view.id === appliedId) ? appliedId : '';
+    appliedId && !activeId && hasAnyFilter(current) && views?.some((view) => view.id === appliedId) ? appliedId : '';
 
   const setFilters = useCallback(
     (filters: ViewFilters) => {
@@ -102,13 +117,17 @@ export function useSavedFilterViews(): SavedFilterViewsValue {
     setViews((previous) => (previous ? transform(previous) : previous));
     void serializeOverridesUpdate(async () => {
       const existing = await readUiSessionOverridesOrNull();
-      if (!existing) return;
-      const next = transform(readSavedFilterViews(existing));
-      await writeUiSessionOverrides(
-        { ...existing, [SAVED_FILTER_VIEWS_KEY]: toSavedFilterViewsValue(next) },
-        { unchangedFrom: existing },
-      );
-      setViews(next);
+      const next = existing ? transform(readSavedFilterViews(existing)) : null;
+      const saved =
+        existing && next
+          ? await writeUiSessionOverrides(
+              { ...existing, [SAVED_FILTER_VIEWS_KEY]: toSavedFilterViewsValue(next) },
+              { unchangedFrom: existing },
+            )
+          : false;
+      if (saved && next) savedViewsRef.current = next;
+      setSaveFailed(!saved);
+      setViews(savedViewsRef.current);
     });
   }, []);
 
@@ -157,5 +176,11 @@ export function useSavedFilterViews(): SavedFilterViewsValue {
     [appliedId, change],
   );
 
-  return { views, current, activeId, modifiedId, apply, clear, saveCurrent, rename, update, remove };
+  const restore = useCallback(
+    (view: SavedFilterView, index: number) =>
+      change((list) => (list.some((each) => each.id === view.id) ? list : [...list.slice(0, index), view, ...list.slice(index)])),
+    [change],
+  );
+
+  return { views, current, activeId, modifiedId, saveFailed, apply, clear, saveCurrent, rename, update, remove, restore };
 }

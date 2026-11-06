@@ -142,26 +142,30 @@ const createPrUiOptionPersistenceHelpers = ({ fetch: fetchFn }: PrUiOptionPersis
   // differs, nothing is written: every save writes back all of them, so a
   // save that changes nothing (each page load's restore triggers one) would
   // only risk putting back a value another tab, or a test, just changed.
+  // Resolves to whether they're saved: false when the server couldn't be
+  // reached or refused them (the callers that don't mind, don't look).
   const writeUiSessionOverrides = async (
     overrides: UiOptionOverrides | null | undefined,
     {
       preserveEmptyArrayKeys = [],
       unchangedFrom,
     }: { preserveEmptyArrayKeys?: string[]; unchangedFrom?: UiOptionOverrides } = {},
-  ): Promise<void> => {
+  ): Promise<boolean> => {
     const data = toWrittenOverrides(overrides, preserveEmptyArrayKeys);
     if (unchangedFrom && stableJson(data) === stableJson(toWrittenOverrides(unchangedFrom, preserveEmptyArrayKeys))) {
-      return;
+      return true;
     }
 
     try {
-      await (fetchFn as NonNullable<typeof fetchFn>)("/view-prs/user-defaults", {
+      const response = await (fetchFn as NonNullable<typeof fetchFn>)("/view-prs/user-defaults", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
+      return Boolean(response?.ok);
     } catch (_error) {
       // Best effort only.
+      return false;
     }
   };
 

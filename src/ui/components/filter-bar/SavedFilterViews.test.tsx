@@ -27,9 +27,14 @@ const OPTIONS: FilterOptionsValue = {
 let saved: Record<string, unknown> = {};
 const puts: Record<string, unknown>[] = [];
 let readsFail = false;
+let writesFail = false;
+// While set, PUTs wait for it.
+let holdPuts: Promise<void> | null = null;
 const fetchMock = jest.fn(async (_input: unknown, init?: { method?: string; body?: string }) => {
   if (readsFail && init?.method !== 'PUT') return { ok: false, json: async () => ({}) };
+  if (writesFail && init?.method === 'PUT') return { ok: false, json: async () => ({}) };
   if (init?.method === 'PUT') {
+    if (holdPuts) await holdPuts;
     saved = JSON.parse(String(init.body));
     puts.push(saved);
     return { ok: true, json: async () => ({}) };
@@ -68,6 +73,8 @@ beforeEach(() => {
   saved = {};
   puts.length = 0;
   readsFail = false;
+  writesFail = false;
+  holdPuts = null;
   fetchMock.mockClear();
   selection = null;
   window.localStorage.clear();
@@ -262,5 +269,92 @@ describe('saved filter views', () => {
     await user.click(within(manager).getByRole('button', { name: 'Rename Talks' }));
     await user.keyboard('{Escape}');
     expect(within(manager).getByRole('button', { name: 'Rename Talks' })).toHaveFocus();
+  });
+
+  test("only one view shows at a time: none is \"(modified)\" while another has the filters applied", async () => {
+    const user = userEvent.setup();
+    renderBar();
+    await waitFor(() => expect(viewChip('Needs attention')).toBeInTheDocument());
+    await user.click(viewChip('Needs attention'));
+    await user.click(screen.getByRole('checkbox', { name: 'Only PRs that need attention', hidden: true }));
+    await user.click(screen.getByRole('checkbox', { name: 'Waiting on me', hidden: true }));
+
+    expect(viewChip('Waiting on me')).toHaveAttribute('aria-pressed', 'true');
+    expect(viewChip('Needs attention')).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByText(/modified/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Update/ })).not.toBeInTheDocument();
+  });
+
+  test("a change that can't be saved goes back to the views as saved, and says so until one is", async () => {
+    const user = userEvent.setup();
+    renderBar();
+    await waitFor(() => expect(viewChip('Needs attention')).toBeInTheDocument());
+    await user.click(screen.getByRole('checkbox', { name: 'Open conversations with me', hidden: true }));
+
+    writesFail = true;
+    await user.click(screen.getByRole('button', { name: 'Save as view' }));
+    await user.type(screen.getByRole('textbox', { name: 'Name for the new view' }), 'Talks{Enter}');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Couldn’t save your views');
+    expect(within(viewsGroup()).queryByRole('button', { name: 'Talks' })).not.toBeInTheDocument();
+
+    // Nor when the views can't be read to apply it to.
+    writesFail = false;
+    readsFail = true;
+    await user.click(screen.getByRole('button', { name: 'Save as view' }));
+    await user.type(screen.getByRole('textbox', { name: 'Name for the new view' }), 'Talks{Enter}');
+    await waitFor(() => expect(within(viewsGroup()).queryByRole('button', { name: 'Talks' })).not.toBeInTheDocument());
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+
+    readsFail = false;
+    await user.click(screen.getByRole('button', { name: 'Save as view' }));
+    await user.type(screen.getByRole('textbox', { name: 'Name for the new view' }), 'Talks{Enter}');
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+    expect(viewChip('Talks')).toBeInTheDocument();
+    expect(savedViews()?.map((view) => view.name)).toContain('Talks');
+  });
+
+  test('a deleted view can be put back where it was: focus goes to Undo, then back to its Rename', async () => {
+    const user = userEvent.setup();
+    renderBar();
+    await waitFor(() => expect(viewChip('Needs attention')).toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: /^Filters/ }));
+    const manager = screen.getByRole('group', { name: 'Manage saved views' });
+
+    await user.click(within(manager).getByRole('button', { name: 'Delete Waiting on me' }));
+    expect(within(manager).getByText(/Deleted “Waiting on me”/)).toBeInTheDocument();
+    expect(within(manager).getByRole('button', { name: 'Undo deleting Waiting on me' })).toHaveFocus();
+    await waitFor(() => expect(savedViews()?.map((view) => view.name)).toEqual(['Needs attention', 'Resolved for you to check']));
+
+    await user.click(within(manager).getByRole('button', { name: 'Undo deleting Waiting on me' }));
+    expect(within(manager).getByRole('button', { name: 'Rename Waiting on me' })).toHaveFocus();
+    expect(within(manager).queryByText(/Deleted/)).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(savedViews()?.map((view) => view.name)).toEqual(['Needs attention', 'Waiting on me', 'Resolved for you to check']),
+    );
+  });
+
+  test("a re-read on focus waits for a save being made, so it doesn't show the views from before it", async () => {
+    const user = userEvent.setup();
+    renderBar();
+    await waitFor(() => expect(viewChip('Needs attention')).toBeInTheDocument());
+    let release: () => void = () => {};
+    holdPuts = new Promise((resolve) => {
+      release = resolve;
+    });
+    await user.click(screen.getByRole('button', { name: /^Filters/ }));
+    const manager = screen.getByRole('group', { name: 'Manage saved views' });
+    await user.click(within(manager).getByRole('button', { name: 'Delete Waiting on me' }));
+    await waitFor(() => expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'PUT')).toBe(true));
+
+    const before = fetchMock.mock.calls.length;
+    window.dispatchEvent(new Event('focus'));
+    await act(async () => {});
+    expect(fetchMock.mock.calls.length).toBe(before);
+    expect(within(viewsGroup()).queryByRole('button', { name: 'Waiting on me' })).not.toBeInTheDocument();
+
+    await act(async () => release());
+    await waitFor(() => expect(fetchMock.mock.calls.length).toBeGreaterThan(before));
+    await act(async () => {});
+    expect(within(viewsGroup()).queryByRole('button', { name: 'Waiting on me' })).not.toBeInTheDocument();
   });
 });
