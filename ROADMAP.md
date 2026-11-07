@@ -13,7 +13,7 @@
 - [x] Show number of viewed files within the PR row's top-level view
 - [x] Store and show data around the number of files changed, as well as the number of lines added and deleted within each PR
 - ~~For each comment within the 'Review conversations' section, add thumbs up and thumbs down emoji toggle buttons and store that info within the data json. These buttons are to help indicate whether a comment is useful or not. This data should be used to help populate data within the 'Review statistics' section~~
-- [ ] Add a filter by author multiselect dropdown to the 'Review statistics' section
+- [x] ~~Add a filter by author multiselect dropdown to the 'Review statistics' section~~ - done (2026-11-07), as reviewers (decided 2026-11-07: whose reviewing to look at, not whose PRs): `Reviewers` in the toolbar picks people from everyone with activity in the dates; then only their comments, reviews and approvals count, in the cards, charts, trend note and table, and the PRs card counts only the PRs they took part in. Not saved, as the other Review stats controls aren't.
 - [x] Only enable the 'Save notes' button if there are changes that haven't yet been saved
 - [x] Update the 'Status' and 'Scheduler Status' sections to make it more clear when a script is running
 - [x] ~~Extend the 'Your last activity' column data so that it shows the relative difference too~~ - no longer applies (2026-11-06): that column is gone; the Activity column's `You` line is a relative age ("4d"), the exact time on hover

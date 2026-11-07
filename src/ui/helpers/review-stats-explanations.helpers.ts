@@ -5,10 +5,10 @@
 // (pr-review-stats-aggregation.helpers.ts) from each PR's comments,
 // reviews and approvals, the approvals' risk coming from the script
 // (compute-pr-row.js). Everything counts only what falls between the
-// Start and End dates.
+// Start and End dates, and with Reviewers picked, only their activity.
 
 export const REVIEW_STATS_CARD_EXPLANATIONS = {
-  prs: 'Stored PRs the numbers come from: with dates set, those with a comment, review, approval or open review thread in them; with no dates, every stored PR.',
+  prs: 'Stored PRs the numbers come from: with dates set, those with a comment, review, approval or open review thread in them; with no dates, every stored PR. With Reviewers picked, only the PRs they commented on, reviewed or approved, or have an open review thread they commented in.',
   commentsOnOthersPrs: "Comments on PRs by anyone but the PR's author, top-level and in review threads.",
   approvals:
     'Approvals of PRs. Risky: the PR got a comment, review, change request or commit after the approval. High-risk: a change request after it, or 3 or more of those.',

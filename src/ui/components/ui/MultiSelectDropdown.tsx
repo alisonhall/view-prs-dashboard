@@ -14,8 +14,12 @@ import { useEffect, useRef, useState, type SyntheticEvent } from 'react';
  * Options can be in groups (`group`, given in order), each run under its
  * name when more than one is showing.
  *
- * Used by the filter bar's row filters and the Settings drawer's rule
- * lists. `listId` is the list's id; checkbox ids are
+ * `summary`, when given, is what the closed dropdown says in place of
+ * its label and count (Review stats' Reviewers: "Everyone"); the label
+ * stays its name for screen readers.
+ *
+ * Used by the filter bar's row filters, the Settings drawer's rule lists
+ * and Review stats' Reviewers and Columns. `listId` is the list's id; checkbox ids are
  * `${idPrefix}-<value>-<index>`, the index in `options` whatever's showing.
  */
 export interface MultiSelectOption {
@@ -34,6 +38,7 @@ export interface MultiSelectDropdownProps {
   className?: string;
   // What picking options does, at the top of the open list, describing it.
   description?: string;
+  summary?: string;
 }
 
 // Longer lists have a search box.
@@ -53,7 +58,17 @@ const matches = (option: MultiSelectOption, query: string) => {
   return !text || option.label.toLowerCase().includes(text) || option.value.toLowerCase().includes(text);
 };
 
-export function MultiSelectDropdown({ listId, label, idPrefix, options, checked, onToggle, className, description }: MultiSelectDropdownProps) {
+export function MultiSelectDropdown({
+  listId,
+  label,
+  idPrefix,
+  options,
+  checked,
+  onToggle,
+  className,
+  description,
+  summary,
+}: MultiSelectDropdownProps) {
   const [query, setQuery] = useState('');
   const detailsRef = useRef<HTMLDetailsElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -114,8 +129,17 @@ export function MultiSelectDropdown({ listId, label, idPrefix, options, checked,
   return (
     <details ref={detailsRef} className={['multi-select-dropdown', className].filter(Boolean).join(' ')} onToggle={handleToggle}>
       <summary className="multi-select-summary">
-        <span>{label}</span>
-        {checked.size > 0 && <span className="multi-select-picked">{checked.size} selected</span>}
+        {summary ? (
+          <>
+            <span className="ui-visually-hidden">{label}: </span>
+            <span>{summary}</span>
+          </>
+        ) : (
+          <>
+            <span>{label}</span>
+            {checked.size > 0 && <span className="multi-select-picked">{checked.size} selected</span>}
+          </>
+        )}
       </summary>
       <div
         id={listId}

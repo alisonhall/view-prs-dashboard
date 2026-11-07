@@ -1843,6 +1843,57 @@ test("after View in table from Authors, Back to Authors returns to the author, s
   await expect(banner).toHaveCount(0);
 });
 
+test("Review stats' Reviewers narrows the table to the people picked, its list opening without moving the other controls", async ({ page }) => {
+  // Comments from two reviewers on PR #1 (the stored data has none).
+  await page.route("**/view-prs/data", async (route) => {
+    const response = await route.fetch();
+    const json = await response.json();
+    Object.values(json.byPrNumber || {}).forEach((entry) => {
+      if (String(entry.data.number) !== "1") return;
+      entry.data.commentEvents = ["carol", "dave", "dave"].map((actor, index) => ({
+        actor,
+        channel: "top-level",
+        occurredAt: `2026-01-0${index + 2}T12:00:00Z`,
+        date: `2026-01-0${index + 2}`,
+      }));
+    });
+    await route.fulfill({ response, json });
+  });
+  await page.goto("/");
+  await waitForPrTable(page);
+  await page.getByRole("tab", { name: "Review stats" }).click();
+  // The default start date leaves out the fixture's PRs.
+  const startDateInput = page.getByLabel("Start date", { exact: true });
+  await startDateInput.fill("");
+  await startDateInput.blur();
+  const table = page.getByRole("table", { name: "Reviewers", exact: true });
+  const reviewerNames = () => table.getByRole("rowheader").allInnerTexts();
+  await expect.poll(reviewerNames).toEqual([expect.stringContaining("dave"), expect.stringContaining("carol")]);
+
+  const list = page.getByRole("group", { name: "Reviewers", exact: true, includeHidden: true });
+  const summary = filterDropdownSummary(list);
+  await expect(summary).toHaveText("Reviewers: Everyone");
+  const startDateTop = (await startDateInput.boundingBox()).y;
+  await summary.click();
+  await expect(list).toBeVisible();
+  expect((await startDateInput.boundingBox()).y).toBe(startDateTop);
+
+  // By name.
+  await expect(list.getByRole("checkbox")).toHaveCount(2);
+  const carol = list.getByRole("checkbox").first();
+  await expect(carol).toHaveAccessibleName("carol");
+  await carol.check();
+  await expect(summary).toHaveText("Reviewers: carol");
+  await expect.poll(reviewerNames).toEqual([expect.stringContaining("carol")]);
+  const commentsCard = page.getByRole("group", { name: "Comments on others' PRs", exact: true });
+  await expect(commentsCard).toContainText("1");
+  await expect(page.getByRole("group", { name: "PRs", exact: true })).toContainText("With the picked reviewers' activity");
+
+  await carol.uncheck();
+  await expect(summary).toHaveText("Reviewers: Everyone");
+  await expect.poll(async () => (await reviewerNames()).length).toBe(2);
+});
+
 test("after View in table from Review stats, Back returns there; showing another view instead forgets it", async ({ page }) => {
   await page.goto("/");
   await waitForPrTable(page);

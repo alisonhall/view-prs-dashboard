@@ -394,6 +394,23 @@ describe('ReviewStatsContent', () => {
       expect(within(emptyRow()).queryByRole('button')).not.toBeInTheDocument();
     });
 
+    test('when the reviewers picked have no activity: says so, and Show everyone unpicks them', async () => {
+      const user = userEvent.setup();
+      const setStatsViewState = jest.fn();
+      renderContent(null, {
+        reviewStatsOverrides: {
+          ...emptyStats(),
+          statsViewState: { reviewers: ['carol', 'dave'] },
+          getNormalizedStatsDateRange: () => ({ startDate: '2026-08-06', endDate: '' }),
+          setStatsViewState,
+        },
+      });
+
+      expect(emptyRow()).toHaveTextContent('No activity from the 2 reviewers picked since Aug 6, 2026.');
+      await user.click(within(emptyRow()).getByRole('button', { name: 'Show everyone' }));
+      expect(setStatsViewState).toHaveBeenCalledWith({ reviewers: [] });
+    });
+
     test('when Show or Minimum comments hide active reviewers: says how many, and Show all reviewers resets both', async () => {
       const user = userEvent.setup();
       const setStatsViewState = jest.fn();

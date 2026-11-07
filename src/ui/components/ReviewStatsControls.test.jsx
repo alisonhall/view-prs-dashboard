@@ -5,6 +5,8 @@ const userEvent = require('@testing-library/user-event').default;
 require('@testing-library/jest-dom');
 const { ReviewStatsControls } = require('./ReviewStatsControls');
 const { ReviewStatsContext, defaultReviewStats } = require('../state/ReviewStatsContext');
+const { PrDataProvider } = require('../state/PrDataProvider');
+const { TabStateContext } = require('../state/TabStateContext');
 
 const DEFAULT_STATE = {
   sortBy: 'riskyApprovals',
@@ -15,12 +17,25 @@ const DEFAULT_STATE = {
   endDate: '',
 };
 
-const renderControls = (statsViewState = DEFAULT_STATE, setStatsViewState = () => {}) =>
-  render(
-    <ReviewStatsContext.Provider value={{ ...defaultReviewStats, statsViewState, setStatsViewState }}>
-      <ReviewStatsControls />
-    </ReviewStatsContext.Provider>,
-  );
+// The view showing (Reviewers' options are worked out only then), over
+// stored PRs; listReviewers is the provider's, given here.
+const controlsTree = (statsViewState, setStatsViewState, listReviewers = () => []) => (
+  <PrDataProvider initialPayload={{ byPrNumber: { 1: { prNumber: '1', data: { number: '1' } } }, actorsMap: {} }}>
+    <TabStateContext.Provider value={{ activeDataTab: 'review-stats', setActiveDataTab: () => {} }}>
+      <ReviewStatsContext.Provider value={{ ...defaultReviewStats, statsViewState, setStatsViewState, listReviewers }}>
+        <ReviewStatsControls />
+      </ReviewStatsContext.Provider>
+    </TabStateContext.Provider>
+  </PrDataProvider>
+);
+
+const renderControls = (statsViewState = DEFAULT_STATE, setStatsViewState = () => {}, listReviewers) =>
+  render(controlsTree(statsViewState, setStatsViewState, listReviewers));
+
+const CAROL_AND_DAVE = () => [
+  { login: 'carol', name: 'Carol' },
+  { login: 'dave', name: 'Dave' },
+];
 
 describe('ReviewStatsControls', () => {
   // Each select's accessible name is exactly the visible label: naming a control from
@@ -87,10 +102,10 @@ describe('ReviewStatsControls', () => {
     const setStatsViewState = jest.fn();
     const user = userEvent.setup();
     render(
-      <ReviewStatsContext.Provider value={{ ...defaultReviewStats, statsViewState: DEFAULT_STATE, setStatsViewState }}>
-        <ReviewStatsControls />
+      <>
+        {controlsTree(DEFAULT_STATE, setStatsViewState)}
         <button type="button">elsewhere</button>
-      </ReviewStatsContext.Provider>,
+      </>,
     );
 
     const input = screen.getByLabelText('Minimum comments');
@@ -106,10 +121,10 @@ describe('ReviewStatsControls', () => {
     const setStatsViewState = jest.fn();
     const user = userEvent.setup();
     render(
-      <ReviewStatsContext.Provider value={{ ...defaultReviewStats, statsViewState: DEFAULT_STATE, setStatsViewState }}>
-        <ReviewStatsControls />
+      <>
+        {controlsTree(DEFAULT_STATE, setStatsViewState)}
         <button type="button">elsewhere</button>
-      </ReviewStatsContext.Provider>,
+      </>,
     );
 
     const input = screen.getByLabelText('Minimum comments');
@@ -123,10 +138,10 @@ describe('ReviewStatsControls', () => {
     const setStatsViewState = jest.fn();
     const user = userEvent.setup();
     render(
-      <ReviewStatsContext.Provider value={{ ...defaultReviewStats, statsViewState: DEFAULT_STATE, setStatsViewState }}>
-        <ReviewStatsControls />
+      <>
+        {controlsTree(DEFAULT_STATE, setStatsViewState)}
         <button type="button">elsewhere</button>
-      </ReviewStatsContext.Provider>,
+      </>,
     );
 
     const input = screen.getByLabelText('Reviewers to list');
@@ -168,15 +183,42 @@ describe('ReviewStatsControls', () => {
     await user.clear(screen.getByLabelText('Minimum comments'));
     await user.type(screen.getByLabelText('Minimum comments'), '7');
 
-    rerender(
-      <ReviewStatsContext.Provider
-        value={{ ...defaultReviewStats, statsViewState: { ...DEFAULT_STATE, startDate: '' }, setStatsViewState: () => {} }}
-      >
-        <ReviewStatsControls />
-      </ReviewStatsContext.Provider>,
-    );
+    rerender(controlsTree({ ...DEFAULT_STATE, startDate: '' }, () => {}));
 
     expect(screen.getByLabelText('Start date')).toHaveValue('');
     expect(screen.getByLabelText('Minimum comments')).toHaveValue(7);
+  });
+
+  test('Reviewers lists everyone with activity, saying "Everyone" until someone is picked', async () => {
+    const setStatsViewState = jest.fn();
+    const user = userEvent.setup();
+    renderControls(DEFAULT_STATE, setStatsViewState, CAROL_AND_DAVE);
+
+    const list = screen.getByRole('group', { name: 'Reviewers', hidden: true });
+    const summary = list.closest('details').querySelector('summary');
+    expect(summary).toHaveTextContent('Everyone');
+    await user.click(summary);
+    expect(list).toHaveTextContent("Counts only these people's comments, reviews and approvals");
+
+    await user.click(screen.getByRole('checkbox', { name: 'Dave' }));
+
+    expect(setStatsViewState).toHaveBeenCalledWith({ reviewers: ['dave'] });
+    expect(summary).toHaveTextContent('Dave');
+    await user.click(screen.getByRole('checkbox', { name: 'Carol' }));
+    expect(setStatsViewState).toHaveBeenLastCalledWith({ reviewers: ['dave', 'carol'] });
+    expect(summary).toHaveTextContent('2 reviewers');
+  });
+
+  test('a picked reviewer with no activity in the dates stays listed, to unpick', async () => {
+    const setStatsViewState = jest.fn();
+    const user = userEvent.setup();
+    renderControls({ ...DEFAULT_STATE, reviewers: ['erin'] }, setStatsViewState, CAROL_AND_DAVE);
+
+    const erin = screen.getByRole('checkbox', { name: 'erin · no activity in the dates', hidden: true });
+    expect(erin).toBeChecked();
+    await user.click(screen.getByRole('group', { name: 'Reviewers', hidden: true }).closest('details').querySelector('summary'));
+    await user.click(erin);
+
+    expect(setStatsViewState).toHaveBeenCalledWith({ reviewers: [] });
   });
 });

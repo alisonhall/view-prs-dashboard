@@ -8,6 +8,27 @@
 
 /* Each control its own width (ui.css styles the box and the fields): the
    selects wide enough for their longest option, the numbers narrow. */
+/* Top-aligned (the fields are all the same height), so Reviewers' list
+   opening in place doesn't move the others down. */
+.stats-controls {
+  align-items: flex-start;
+}
+
+.stats-reviewers {
+  display: grid;
+  gap: 2px;
+  width: 220px;
+  max-width: 100%;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+/* As tall as the fields' boxes. */
+.stats-reviewers .multi-select-summary {
+  min-height: 30px;
+  box-sizing: border-box;
+}
+
 .stats-controls .ui-field:has(select) {
   width: 220px;
 }

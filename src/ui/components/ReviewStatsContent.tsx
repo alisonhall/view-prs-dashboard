@@ -202,6 +202,12 @@ function ReviewerSourcesContent({ sections }: { sections: SourceSection[] }) {
 const shownColumnKeys = (choices: ReviewStatsColumnChoices) =>
   REVIEW_STATS_COLUMN_CATALOG.filter(({ key }) => isReviewStatsColumnShown(choices, key)).map(({ key }) => key);
 
+// What the PRs card counts, as its explanation says.
+const describePrsCard = (hasDates: boolean, hasReviewers: boolean) => {
+  if (hasReviewers) return hasDates ? "With the picked reviewers' activity in the dates" : "With the picked reviewers' activity";
+  return hasDates ? 'With review activity in the dates' : 'Every stored PR';
+};
+
 // "Aug 6, 2026" from an <input type="date"> value.
 const formatStatsDate = (value: string) => {
   const date = new Date(`${value}T00:00:00Z`);
@@ -218,7 +224,8 @@ const describeStatsDateRange = ({ startDate, endDate }: { startDate?: string; en
 };
 
 // The table's only row when it lists no one: why, and the way out - the
-// date range (it starts three months back), or Show and Minimum comments.
+// reviewers picked, the date range (it starts three months back), or Show
+// and Minimum comments.
 // The button goes once pressed, so onCleared moves focus to the table
 // rather than leaving it nowhere.
 function StatsTableEmpty({
@@ -238,7 +245,11 @@ function StatsTableEmpty({
   };
   let message: string;
   let action: ReactNode = null;
-  if (activeReviewerCount > 0) {
+  const pickedCount = Array.isArray(statsViewState?.reviewers) ? statsViewState.reviewers.length : 0;
+  if (activeReviewerCount === 0 && pickedCount > 0) {
+    message = `No activity from ${pickedCount === 1 ? 'the reviewer' : `the ${pickedCount} reviewers`} picked${range ? ` ${range}` : ''}.`;
+    action = <Button onClick={() => clear({ reviewers: [] })}>Show everyone</Button>;
+  } else if (activeReviewerCount > 0) {
     const who = activeReviewerCount === 1 ? '1 reviewer has' : `${activeReviewerCount} reviewers have`;
     // Says only what's set: "No reviewers with risky approvals and at
     // least 3 comments."
@@ -338,8 +349,9 @@ function ReviewerRow({ reviewer, columnKeys }: { reviewer: ReviewerRowData; colu
 
 export function ReviewStatsContent() {
   const { payload } = usePrData();
-  const { buildReviewerStats, applyStatsControls, getNormalizedStatsDateRange, renderActivityTrendNote } =
+  const { statsViewState, buildReviewerStats, applyStatsControls, getNormalizedStatsDateRange, renderActivityTrendNote } =
     useReviewStats();
+  const hasPickedReviewers = Array.isArray(statsViewState?.reviewers) && statsViewState.reviewers.length > 0;
   const rows = useMemo(() => Object.values(payload?.byPrNumber || {}), [payload]);
   const actorsMap = payload?.actorsMap || {};
   const isVisible = useIsTabPanelVisible('tab-panel-review-stats');
@@ -393,7 +405,7 @@ export function ReviewStatsContent() {
           label="PRs"
           explanation={REVIEW_STATS_CARD_EXPLANATIONS.prs}
           value={String(stats.summary.rows)}
-          detail={dateRange.startDate || dateRange.endDate ? 'With review activity in the dates' : 'Every stored PR'}
+          detail={describePrsCard(Boolean(dateRange.startDate || dateRange.endDate), hasPickedReviewers)}
           sources={stats.summary.sources.rows}
           formatter={(item) => {
             const author = String(item?.prAuthor || '').trim();
