@@ -506,7 +506,8 @@
 }
 
 .ui-field select,
-.ui-field input {
+.ui-field input,
+.ui-field textarea {
   width: 100%;
   box-sizing: border-box;
   min-height: 30px;

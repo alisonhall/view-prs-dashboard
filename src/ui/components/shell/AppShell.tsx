@@ -16,6 +16,7 @@ import { ErrorBoundary } from '../ui/ErrorBoundary';
 import { ViewHeading } from '../ui/ViewHeading';
 import { AppHeader } from './AppHeader';
 import { AutoUpdatePausedBanner } from './AutoUpdatePausedBanner';
+import { ReturnToViewBanner } from './ReturnToViewBanner';
 import { ErrorNotice } from './ErrorNotice';
 
 // The Review stats and Authors views aren't visible on load, so their code
@@ -143,6 +144,7 @@ export function AppShell() {
       {/* Its own element at the top level, so it can stay stuck to the top
           of the window while you scroll (styles/shell.css). */}
       <div id="app-banner-root" className="app-banner-root" ref={bannerRootRef}>
+        <ReturnToViewBanner />
         <AuthorInsightsProvider>
           <AutoUpdatePausedBanner />
         </AuthorInsightsProvider>

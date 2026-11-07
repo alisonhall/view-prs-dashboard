@@ -134,11 +134,24 @@ matters (layout, focus), and before/after screenshots in light and dark.
   author of the most recently updated PR. The header has the author's avatar, name and login, and
   their open and merged PRs and saved comments (the count once they've
   loaded; a save after a failed load now clears its error).
+- **Phase 6 done (2026-11-07):** each PR is `AuthorInsightsPrRow`: its
+  state, linked title and date, then the table's signals (status,
+  approvals, checks, conversations, viewed files) as one keyboard stop
+  and `View in table` as a link button (Review stats' too). The comment
+  box and edit form use `.ui-field` (labelled `New comment`/`Comment`
+  and `Sentiment`, which had no label) and `Button`; section headings
+  and empty states use the tokens' sizes. Added: after `View in table`
+  from Review stats or Authors, `ReturnToViewBanner` (stuck to the top
+  over the table) offers `Back to <view>`, restoring the page's scroll
+  and the focus on the button clicked (TabStateProvider keeps where it
+  was clicked; showing another view forgets it).
 
 ## Decided
 
 - **Phase 3 (2026-11-06):** a `Columns` menu, saved in
   `user-defaults.json`.
+- **Phase 6, Back (2026-11-07):** after `View in table`, a Back button to
+  the view it came from, not browser history.
 - **Phase 6 (2026-11-06):** a lighter list, not the PR table's row: two
   lines per PR (number, title, status and date; then the table's signal
   icons with their tooltips, labels and `View in table`). No Who column,

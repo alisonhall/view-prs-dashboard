@@ -18,8 +18,7 @@
  * @module components/AuthorInsightsNotesSection
  */
 
-import { AuthorInsightsPrLink } from './AuthorInsightsPrLink';
-import { AuthorInsightsPrDataMeta } from './AuthorInsightsPrDataMeta';
+import { AuthorInsightsPrRow } from './AuthorInsightsPrRow';
 import { usePrData } from '../state/PrDataContext';
 import { useActorIdentity } from '../state/ActorIdentityContext';
 import { useAuthorInsights } from '../state/AuthorInsightsContext';
@@ -59,13 +58,13 @@ export function AuthorInsightsNotesSection() {
             const noteAuthorLabel = resolveActorDisplayName(comment?.author, actorsMap, comment?.author);
             return (
               <div className="author-insights-item" key={comment?.id || `${entry?.prNumber || index}-${index}`}>
-                <AuthorInsightsPrLink entry={entry} />
-                <AuthorInsightsPrDataMeta entry={entry} />
+                <AuthorInsightsPrRow entry={entry} />
                 <div className="author-insights-meta">
-                  <span className="author-insights-meta-detail">{`Author: ${noteAuthorLabel}`}</span>
-                  <span className="author-insights-meta-detail">{`Added: ${getAuthorInsightsNoteDisplayTimestamp(comment, entry)}`}</span>
                   <span className={`author-insights-badge ${getAuthorInsightsSentimentBadgeClassName(comment?.tone)}`.trim()}>
-                    {`Sentiment: ${getAuthorInsightsSentimentLabel(comment?.tone)}`}
+                    {getAuthorInsightsSentimentLabel(comment?.tone)}
+                  </span>
+                  <span className="author-insights-meta-detail">
+                    {`By ${noteAuthorLabel} · ${getAuthorInsightsNoteDisplayTimestamp(comment, entry)}`}
                   </span>
                 </div>
                 <div className="author-insights-body">{String(comment?.note || '').trim() || '(No custom comment text)'}</div>

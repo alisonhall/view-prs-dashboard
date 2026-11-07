@@ -293,3 +293,19 @@
   font-size: var(--font-size-sm);
   overflow-wrap: anywhere;
 }
+
+/* Back to the view "View in table" was clicked from (ReturnToViewBanner):
+   plain, not the attention colours of Auto update paused. */
+.app-banner-return {
+  border-color: var(--color-border-strong);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.app-banner-return .app-banner-text {
+  color: var(--color-text-muted);
+}
+
+.app-banner-return-back {
+  margin-left: auto;
+}

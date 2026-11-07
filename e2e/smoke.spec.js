@@ -1637,7 +1637,7 @@ test("clicking an 'Auto update paused' chip for a PR switches back to the PR dat
   // (state/useNavigateToPrInTable.tsx/useNavigateToAuthorInsights.tsx). No
   // existing e2e spec drove these chips directly before this test - the 2
   // "View in table" specs elsewhere in this file exercise a different,
-  // sibling implementation (AuthorInsightsPrLink.tsx's "View in table" button).
+  // sibling implementation (AuthorInsightsPrRow.tsx's "View in table" button).
   // Test-only bridge removal: opens with ?dataPollMs= and makes a real held-back
   // poll (changeServerData) instead of window.setPendingAutoRenderPayload.
   await page.goto("/?dataPollMs=300");
@@ -1811,6 +1811,63 @@ test("'View in table' for a flagged PR shows and focuses it in an open section, 
   const visiblePrLinks = prTables(page).getByRole("link", { name: "#2 opens GitHub in a new tab", exact: true }).filter({ visible: true });
   await expect(visiblePrLinks.first()).toBeFocused();
   await expect(detailPane(page).getByRole("tablist", { name: "PR #2 details", exact: true })).toBeVisible();
+});
+
+test("after View in table from Authors, Back to Authors returns to the author, scrolled and focused as left", async ({ page }) => {
+  await page.goto("/");
+  await waitForPrTable(page);
+  await page.getByRole("tab", { name: "Authors" }).click();
+  await pickAuthor(page, "Hubot");
+
+  // Hubot's PR as a two-line row: its link, then the table's signals.
+  const createdRoot = page.getByRole("region", { name: "Author's created PRs", exact: true });
+  await expect(createdRoot.getByRole("link", { name: /^#2 / })).toBeVisible();
+  await expect(createdRoot.getByRole("group", { name: "Signals", exact: true })).toBeVisible();
+
+  const viewInTable = createdRoot.getByRole("button", { name: "View in table", exact: true });
+  await viewInTable.scrollIntoViewIfNeeded();
+  const scrollBefore = await page.evaluate(() => window.scrollY);
+  await viewInTable.click();
+
+  await expect(page.getByRole("tabpanel", { name: "Pull requests", exact: true })).toBeVisible();
+  const banner = page.getByRole("region", { name: "Back to Authors", exact: true });
+  await expect(banner).toContainText("PR #2, from Authors");
+  // It stays in sight over the table, scrolled to the PR.
+  await expect(banner).toBeInViewport();
+
+  await banner.getByRole("button", { name: "Back to Authors", exact: true }).click();
+  await expect(page.getByRole("tabpanel", { name: "Authors", exact: true })).toBeVisible();
+  await expect(authorPicker(page)).toHaveValue("Hubot");
+  await expect(viewInTable).toBeFocused();
+  expect(Math.abs((await page.evaluate(() => window.scrollY)) - scrollBefore)).toBeLessThanOrEqual(1);
+  await expect(banner).toHaveCount(0);
+});
+
+test("after View in table from Review stats, Back returns there; showing another view instead forgets it", async ({ page }) => {
+  await page.goto("/");
+  await waitForPrTable(page);
+  await page.getByRole("tab", { name: "Review stats" }).click();
+  // The default start date leaves out the fixture's PRs.
+  const startDateInput = page.getByLabel("Start date", { exact: true });
+  await startDateInput.fill("");
+  await startDateInput.blur();
+  const prsCard = page.getByRole("group", { name: "PRs", exact: true });
+  await prsCard.getByText(/^Show sources \(/).click();
+  const viewInTable = prsCard.getByRole("button", { name: "View in table", exact: true }).first();
+  await viewInTable.click();
+
+  const banner = page.getByRole("region", { name: "Back to Review stats", exact: true });
+  await expect(banner).toBeVisible();
+  await banner.getByRole("button", { name: "Back to Review stats", exact: true }).click();
+  await expect(page.getByRole("tabpanel", { name: "Review stats", exact: true })).toBeVisible();
+  await expect(viewInTable).toBeFocused();
+
+  // Again, but leave the table by its tab: no Back afterwards.
+  await viewInTable.click();
+  await expect(banner).toBeVisible();
+  await page.getByRole("tab", { name: "Authors" }).click();
+  await page.getByRole("tab", { name: "Pull requests" }).click();
+  await expect(banner).toHaveCount(0);
 });
 
 test("React-owned PR-number filter input survives a persisted-value restore on page load", async ({ page }) => {

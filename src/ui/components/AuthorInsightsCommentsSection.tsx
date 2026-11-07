@@ -46,6 +46,7 @@ import { useActorIdentity } from '../state/ActorIdentityContext';
 import { useAuthorInsights } from '../state/AuthorInsightsContext';
 import { useAuthorInsightsDrafts } from '../state/AuthorInsightsDraftsContext';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.ts';
+import { Button } from './ui/Button';
 import type {
   AuthorManualComment,
   ManualCommentComposerDraft,
@@ -63,13 +64,16 @@ interface SentimentSelectProps {
 function SentimentSelect({ value, onChange, disabled }: SentimentSelectProps) {
   const { AUTHOR_COMMENT_SENTIMENT_OPTIONS } = useAuthorInsights();
   return (
-    <select className="author-insights-comment-sentiment" value={value} onChange={(e) => onChange(e.target.value)} disabled={disabled}>
-      {AUTHOR_COMMENT_SENTIMENT_OPTIONS.map(({ value: optionValue, label }) => (
-        <option key={optionValue} value={optionValue}>
-          {label}
-        </option>
-      ))}
-    </select>
+    <label className="ui-field">
+      Sentiment
+      <select className="author-insights-comment-sentiment" value={value} onChange={(e) => onChange(e.target.value)} disabled={disabled}>
+        {AUTHOR_COMMENT_SENTIMENT_OPTIONS.map(({ value: optionValue, label }) => (
+          <option key={optionValue} value={optionValue}>
+            {label}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 
@@ -127,23 +131,26 @@ function EditForm({ login, comment, onDone }: EditFormProps) {
 
   return (
     <div className="author-insights-comment-form" data-author-login={login} data-comment-id={commentId}>
-      <textarea
-        className="author-insights-comment-textarea"
-        rows={3}
-        value={draft.note}
-        data-author-login={login}
-        data-comment-id={commentId}
-        onChange={(e) => updateDraft({ note: e.target.value })}
-      />
+      <label className="ui-field">
+        Comment
+        <textarea
+          className="author-insights-comment-textarea"
+          rows={3}
+          value={draft.note}
+          data-author-login={login}
+          data-comment-id={commentId}
+          onChange={(e) => updateDraft({ note: e.target.value })}
+        />
+      </label>
       <div className="author-insights-comment-controls">
         <SentimentSelect value={draft.sentiment} onChange={(sentiment) => updateDraft({ sentiment })} />
-        <button type="button" className="author-insights-comment-save" disabled={saving} onClick={handleSave}>
+        <Button variant="primary" disabled={saving} onClick={handleSave}>
           Save changes
-        </button>
-        <button type="button" className="author-insights-comment-cancel" onClick={handleCancel}>
-          Cancel
-        </button>
-        <span className="author-insights-comment-status">{status}</span>
+        </Button>
+        <Button onClick={handleCancel}>Cancel</Button>
+        <span className="author-insights-comment-status" role="status">
+          {status}
+        </span>
       </div>
     </div>
   );
@@ -166,17 +173,17 @@ function ManualCommentItem({ login, comment, editingCommentId, setEditingComment
     <div className="author-insights-item" role="listitem">
       <div className="author-insights-meta">
         <span className={`author-insights-badge ${getAuthorInsightsSentimentBadgeClassName(comment?.sentiment)}`.trim()}>
-          {`Sentiment: ${getAuthorInsightsSentimentLabel(comment?.sentiment)}`}
+          {getAuthorInsightsSentimentLabel(comment?.sentiment)}
         </span>
-        <span className="author-insights-meta-detail">{`Added: ${formatIsoDatetime(comment?.createdAt || '-')}`}</span>
+        <span className="author-insights-meta-detail">{`Added ${formatIsoDatetime(comment?.createdAt || '-')}`}</span>
       </div>
       {!isEditing && (
         <>
           <div className="author-insights-body">{String(comment?.note || '').trim() || '(No manual comment text)'}</div>
           <div className="author-insights-comment-actions">
-            <button type="button" className="author-insights-comment-edit" onClick={() => setEditingCommentId(commentId)}>
+            <Button icon="pencil" onClick={() => setEditingCommentId(commentId)}>
               Edit
-            </button>
+            </Button>
           </div>
         </>
       )}
@@ -289,21 +296,26 @@ export function AuthorInsightsCommentsSection() {
     <section className="author-insights-section">
       <h3>Manual author comments</h3>
       <div className="author-insights-comment-form">
-        <textarea
-          className="author-insights-comment-textarea"
-          rows={3}
-          placeholder="Add a manual comment about this author..."
-          value={composerDraft.note}
-          data-author-login={login}
-          data-draft-kind="composer"
-          onChange={(e) => updateComposerDraft({ note: e.target.value })}
-        />
+        <label className="ui-field">
+          New comment
+          <textarea
+            className="author-insights-comment-textarea"
+            rows={3}
+            placeholder="Add a manual comment about this author..."
+            value={composerDraft.note}
+            data-author-login={login}
+            data-draft-kind="composer"
+            onChange={(e) => updateComposerDraft({ note: e.target.value })}
+          />
+        </label>
         <div className="author-insights-comment-controls">
           <SentimentSelect value={composerDraft.sentiment} onChange={(sentiment) => updateComposerDraft({ sentiment })} />
-          <button type="button" className="author-insights-comment-save" disabled={composerSaving} onClick={handleSaveComment}>
+          <Button variant="primary" disabled={composerSaving} onClick={handleSaveComment}>
             Save comment
-          </button>
-          <span className="author-insights-comment-status">{composerStatus}</span>
+          </Button>
+          <span className="author-insights-comment-status" role="status">
+            {composerStatus}
+          </span>
         </div>
       </div>
       {/* A list only while it holds comments - the loading/error/empty

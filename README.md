@@ -714,6 +714,7 @@ Insights behavior notes:
   - Near the end of the list the docked pane gets shorter (its contents scroll inside it) instead of being pushed up with the list's end, so its header - close, previous/next - stays in the window.
   - Below 900px wide it opens as an overlay drawer instead (Esc or the backdrop closes it).
   - `View in table` and the `Auto update paused` chips select the PR; a chip also opens its Notes tab.
+  - Used from Review stats or Authors, a bar stuck to the top of the window over the table says which PR and view (`PR #12, from Authors`) with `Back to Authors`: it shows that view again as you left it - the same author, dates and open rows, scrolled where you were, with the focus on the `View in table` you clicked. Showing another view by its tab, or the bar's `Dismiss`, forgets it.
 - An open section's header (its name and count) and, under it, its table's column headers stay at the top of the window while you scroll through its rows, below the `Auto update paused` banner when that's showing. In a window too narrow for the table, the section scrolls sideways instead and only its name stays.
 - Open summaries, the selection and the pane's tab stay as they are across automatic data refresh rerenders.
 - Open inner insight groups (for example the Activity tab's `Daily summary`) also stay open across rerenders.
@@ -1259,7 +1260,7 @@ Additional notes:
       - `Resolved thread comments`: Their comments in review threads that are now resolved.
       - `PRs touched`: Others' PRs they commented on, reviewed or approved.
       - `Sources`: The PRs behind their numbers.
-- The `Authors` view shows per-PR review notes grouped by author. The author filter dropdown and metadata cards use resolved real names from `actorsMap`. PR cards in the Authors view include a `View in table` button with the same navigation behavior.
+- The `Authors` view shows per-PR review notes grouped by author. The author filter dropdown and metadata cards use resolved real names from `actorsMap`. Each PR in the Authors view is two lines: its state (open, draft, closed or merged), number and title linking to GitHub, and when it was merged, closed or updated; then the table's signals with their tooltips (status, approvals, checks, open conversations, viewed files) and `View in table`. The comment box and a comment's edit form use the app's fields (`New comment`, `Sentiment`) and buttons.
   - `Author` is a text box that narrows its list to what's typed (a name or a login). The list puts the authors with a PR updated in the last 30 days (by anyone) first, newest first, under `Recent PRs`, then `Everyone else` by name; Up and Down move through it, Enter picks, and Escape closes it without a change. Opening the view shows the author of the most recently updated PR.
   - Under it, the chosen author's avatar, name and login, then how many of their stored PRs are open and merged and how many comments you've saved about them.
 - The page-level and per-PR insights now show usefulness and approval-risk signals (for example, comments followed by author commits and high-risk approvals).

@@ -127,12 +127,21 @@ const buildReviewStatsOverrides = (stats) => ({
 // about tab-visibility gating keeps seeing real content, not the empty
 // "no filtered rows" fallback. The gating describe block further down
 // supplies its own, more specific TabStateContext.Provider instead.
+// Where "View in table" was clicked from, as useNavigateToPrInTable
+// remembers it.
+let rememberedReturnTarget;
 const renderContent = (stats, { hasRows = true, reviewStatsOverrides } = {}) =>
   render(
     <TabStateContext.Provider
       value={{
         activeDataTab: 'review-stats',
         setActiveDataTab: () => {},
+        returnTarget: null,
+        rememberReturnTarget: (target) => {
+          rememberedReturnTarget = target;
+        },
+        forgetReturnTarget: () => {},
+        returnToPreviousView: () => {},
       }}
     >
       <PrDataProvider initialPayload={{ byPrNumber: hasRows ? { 1: {} } : {} }}>
@@ -222,9 +231,13 @@ describe('ReviewStatsContent', () => {
 
     const filteredRowsCard = screen.getByRole('group', { name: 'PRs' });
     await user.click(filteredRowsCard.querySelector('summary'));
-    await user.click(filteredRowsCard.querySelector('.author-insights-table-link'));
+    const viewInTable = within(filteredRowsCard).getAllByRole('button', { name: 'View in table' })[0];
+    expect(viewInTable).toHaveClass('ui-link-button');
+    await user.click(viewInTable);
 
     expect(events).toEqual([{ prNumber: '101', repo: '', focusUnsaved: false }]);
+    // For the table's Back to Review stats.
+    expect(rememberedReturnTarget).toEqual(expect.objectContaining({ tab: 'review-stats', prNumber: '101', focusTarget: viewInTable }));
     window.removeEventListener('pr-navigate-to-insights', handler);
   });
 

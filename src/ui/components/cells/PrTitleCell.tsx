@@ -16,8 +16,9 @@ import { useRepoFreshness } from '../../state/RepoFreshnessContext';
 const { formatTitleWithIcons } = createPrStatusDisplayHelpers();
 const { escapeHtml } = createPrFormattingHelpers();
 
-// In smart groups, which mix lifecycle states, each row shows its state.
-const LIFECYCLE_SIGNALS: Record<string, { icon: IconName; tone: 'success' | 'muted' | 'danger' | 'accent'; label: string }> = {
+// In smart groups, which mix lifecycle states, each row shows its state
+// (and each PR in the Authors view, AuthorInsightsPrRow).
+export const LIFECYCLE_SIGNALS: Record<string, { icon: IconName; tone: 'success' | 'muted' | 'danger' | 'accent'; label: string }> = {
   open: { icon: 'pr', tone: 'success', label: 'Open' },
   draft: { icon: 'prDraft', tone: 'muted', label: 'Draft' },
   closed: { icon: 'prClosed', tone: 'danger', label: 'Closed' },

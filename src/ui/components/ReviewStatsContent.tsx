@@ -30,7 +30,7 @@
  * table's own expandable sources) now go through useNavigateToPrInTable()
  * (state/) instead of window.navigateToPrInTableFromStats (deleted
  * outright, along with its sibling window.navigateToPrInTableFromAuthorInsights) -
- * same hook AuthorInsightsPrLink.tsx now uses, same "dispatch
+ * same hook AuthorInsightsPrRow.tsx now uses, same "dispatch
  * pr-navigate-to-insights, let PrTableApp own the DOM lookup/scroll/focus"
  * behavior the old bridge's navigateToPrInTable already had. No `repo` is
  * passed here (unchanged from before) - this component's source items
@@ -103,13 +103,11 @@ function SourceItemRow({ item, detailText }: { item: StatsSource; detailText: st
         {prNumber && (
           <button
             type="button"
-            className="author-insights-table-link"
-            title="Show this PR in the Pull requests view"
-            style={{ fontSize: '12px', padding: '3px 6px' }}
+            className="ui-link-button"
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              navigateToPrInTable(prNumber);
+              navigateToPrInTable(prNumber, { from: e.currentTarget });
             }}
           >
             View in table
