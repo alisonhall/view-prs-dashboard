@@ -26,20 +26,20 @@ describe('ReviewStatsControls', () => {
   // Each select's accessible name is exactly the visible label: naming a control from
   // its wrapping <label> leaves the control's own option text out. e2e finds
   // it by role and name; a label-text lookup would fold the options in.
-  test('given the controls, when rendering, then the two selects are named exactly "Sort by" and "Filter"', () => {
+  test('given the controls, when rendering, then the two selects are named exactly "Sort by" and "Show"', () => {
     renderControls();
 
     expect(screen.getByRole('combobox', { name: 'Sort by' })).toHaveValue('riskyApprovals');
-    expect(screen.getByRole('combobox', { name: 'Filter' })).toHaveValue('all');
+    expect(screen.getByRole('combobox', { name: 'Show' })).toHaveValue('all');
   });
 
   test('given statsViewState, when rendering, then all six controls reflect it', () => {
     renderControls();
 
     expect(screen.getByLabelText('Sort by')).toHaveValue('riskyApprovals');
-    expect(screen.getByLabelText('Filter')).toHaveValue('all');
-    expect(screen.getByLabelText('Min comments')).toHaveValue(0);
-    expect(screen.getByLabelText('Top reviewers')).toHaveValue(12);
+    expect(screen.getByLabelText('Show')).toHaveValue('all');
+    expect(screen.getByLabelText('Minimum comments')).toHaveValue(0);
+    expect(screen.getByLabelText('Reviewers to list')).toHaveValue(12);
     expect(screen.getByLabelText('Start date')).toHaveValue('2026-01-01');
     expect(screen.getByLabelText('End date')).toHaveValue('');
   });
@@ -61,7 +61,7 @@ describe('ReviewStatsControls', () => {
     const user = userEvent.setup();
     renderControls(DEFAULT_STATE, setStatsViewState);
 
-    await user.selectOptions(screen.getByLabelText('Filter'), 'risky-only');
+    await user.selectOptions(screen.getByLabelText('Show'), 'risky-only');
 
     expect(setStatsViewState).toHaveBeenCalledWith({ filterMode: 'risky-only' });
   });
@@ -70,12 +70,12 @@ describe('ReviewStatsControls', () => {
   // setStatsViewState, which triggers a full stats recompute) on blur,
   // matching the original vanilla control's native "change" handler - not
   // on every keystroke, which React's onChange alone would do.
-  test('given a user types into Min comments, when typing (not yet blurred), then setStatsViewState has not fired', async () => {
+  test('given a user types into Minimum comments, when typing (not yet blurred), then setStatsViewState has not fired', async () => {
     const setStatsViewState = jest.fn();
     const user = userEvent.setup();
     renderControls(DEFAULT_STATE, setStatsViewState);
 
-    const input = screen.getByLabelText('Min comments');
+    const input = screen.getByLabelText('Minimum comments');
     await user.clear(input);
     await user.type(input, '5');
 
@@ -83,7 +83,7 @@ describe('ReviewStatsControls', () => {
     expect(setStatsViewState).not.toHaveBeenCalled();
   });
 
-  test('given a user types into Min comments and then blurs, then setStatsViewState fires once with the clamped numeric value', async () => {
+  test('given a user types into Minimum comments and then blurs, then setStatsViewState fires once with the clamped numeric value', async () => {
     const setStatsViewState = jest.fn();
     const user = userEvent.setup();
     render(
@@ -93,7 +93,7 @@ describe('ReviewStatsControls', () => {
       </ReviewStatsContext.Provider>,
     );
 
-    const input = screen.getByLabelText('Min comments');
+    const input = screen.getByLabelText('Minimum comments');
     await user.clear(input);
     await user.type(input, '5');
     await user.click(screen.getByRole('button', { name: 'elsewhere' }));
@@ -102,7 +102,7 @@ describe('ReviewStatsControls', () => {
     expect(setStatsViewState).toHaveBeenCalledWith({ minComments: 5 });
   });
 
-  test('given Min comments is blurred empty, then it clamps to 0, not NaN', async () => {
+  test('given Minimum comments is blurred empty, then it clamps to 0, not NaN', async () => {
     const setStatsViewState = jest.fn();
     const user = userEvent.setup();
     render(
@@ -112,14 +112,14 @@ describe('ReviewStatsControls', () => {
       </ReviewStatsContext.Provider>,
     );
 
-    const input = screen.getByLabelText('Min comments');
+    const input = screen.getByLabelText('Minimum comments');
     await user.clear(input);
     await user.click(screen.getByRole('button', { name: 'elsewhere' }));
 
     expect(setStatsViewState).toHaveBeenCalledWith({ minComments: 0 });
   });
 
-  test('given Top reviewers is blurred empty, then it clamps to 12 (the original default), not NaN', async () => {
+  test('given Reviewers to list is blurred empty, then it clamps to 12 (the original default), not NaN', async () => {
     const setStatsViewState = jest.fn();
     const user = userEvent.setup();
     render(
@@ -129,7 +129,7 @@ describe('ReviewStatsControls', () => {
       </ReviewStatsContext.Provider>,
     );
 
-    const input = screen.getByLabelText('Top reviewers');
+    const input = screen.getByLabelText('Reviewers to list');
     await user.clear(input);
     await user.click(screen.getByRole('button', { name: 'elsewhere' }));
 
@@ -152,11 +152,21 @@ describe('ReviewStatsControls', () => {
     expect(setStatsViewState).toHaveBeenCalledWith({ startDate: '2026-02-15' });
   });
 
+  test('Show names each choice as the reviewers it lists', () => {
+    renderControls();
+    expect(Array.from(screen.getByRole('combobox', { name: 'Show' }).options).map((option) => option.textContent)).toEqual([
+      'All reviewers',
+      'Reviewers with risky approvals',
+      'Reviewers with high-risk approvals',
+      'Reviewers with useful-comment signals',
+    ]);
+  });
+
   test("a change made elsewhere (the table's Clear dates) shows in the controls; a number being typed keeps its text", async () => {
     const user = userEvent.setup();
     const { rerender } = renderControls();
-    await user.clear(screen.getByLabelText('Min comments'));
-    await user.type(screen.getByLabelText('Min comments'), '7');
+    await user.clear(screen.getByLabelText('Minimum comments'));
+    await user.type(screen.getByLabelText('Minimum comments'), '7');
 
     rerender(
       <ReviewStatsContext.Provider
@@ -167,6 +177,6 @@ describe('ReviewStatsControls', () => {
     );
 
     expect(screen.getByLabelText('Start date')).toHaveValue('');
-    expect(screen.getByLabelText('Min comments')).toHaveValue(7);
+    expect(screen.getByLabelText('Minimum comments')).toHaveValue(7);
   });
 });

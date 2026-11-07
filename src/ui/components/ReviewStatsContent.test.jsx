@@ -1,7 +1,7 @@
 /** @jest-environment jsdom */
 
 const React = require('react');
-const { render, screen, within } = require('@testing-library/react');
+const { render, screen, waitFor, within } = require('@testing-library/react');
 const userEvent = require('@testing-library/user-event').default;
 require('@testing-library/jest-dom');
 const { ReviewStatsContent } = require('./ReviewStatsContent');
@@ -14,6 +14,32 @@ const { ReviewStatsContext, defaultReviewStats } = require('../state/ReviewStats
 const { TabStateContext } = require('../state/TabStateContext');
 const { ReviewStatsProvider } = require('./ReviewStatsProvider');
 const { ReviewStatsControls } = require('./ReviewStatsControls');
+const { REVIEW_STATS_COLUMNS_STORAGE_KEY } = require('../helpers/review-stats-columns.helpers');
+const { ActorIdentityContext, defaultActorIdentity } = require('../state/ActorIdentityContext');
+
+// A stand-in for /view-prs/user-defaults: GET returns `savedDefaults`, PUT
+// replaces it.
+let savedDefaults;
+const fetchMock = jest.fn(async (_input, init) => {
+  if (init?.method === 'PUT') {
+    savedDefaults = JSON.parse(String(init.body));
+    return { ok: true, json: async () => ({}) };
+  }
+  return { ok: true, json: async () => ({ overrides: { ...savedDefaults } }) };
+});
+
+beforeEach(() => {
+  savedDefaults = {};
+  fetchMock.mockClear();
+  global.fetch = fetchMock;
+  window.localStorage.clear();
+});
+
+// The Sources column starts hidden; these tests are about it.
+const showSourcesColumn = () => {
+  window.localStorage.setItem(REVIEW_STATS_COLUMNS_STORAGE_KEY, JSON.stringify({ sources: true }));
+  savedDefaults = { reviewStatsColumns: { sources: true } };
+};
 
 const buildStats = (overrides = {}) => ({
   summary: {
@@ -154,6 +180,7 @@ describe('ReviewStatsContent', () => {
 
   test('given a reviewer with sources, when clicking "Show sources", then the sources row becomes visible', async () => {
     const user = userEvent.setup();
+    showSourcesColumn();
     renderContent(buildStats());
 
     const toggleButtons = screen.getAllByRole('button', { name: 'Show sources' });
@@ -170,6 +197,7 @@ describe('ReviewStatsContent', () => {
   });
 
   test('given a reviewer with no sources, when rendering, then its sources cell shows "-" with no button', () => {
+    showSourcesColumn();
     renderContent(buildStats());
 
     const rows = document.querySelectorAll('.stats-table tbody tr:not(.stats-sources-row)');
@@ -314,7 +342,8 @@ describe('ReviewStatsContent', () => {
 
       expect(document.querySelectorAll('.stats-table tbody tr')).toHaveLength(1);
       expect(emptyRow()).toHaveTextContent('No reviewer activity since Aug 6, 2026.');
-      expect(emptyRow().querySelector('td')).toHaveAttribute('colspan', '12');
+      // Reviewer and the 8 columns shown to start.
+      expect(emptyRow().querySelector('td')).toHaveAttribute('colspan', '9');
       // The headings stay; the "Showing 0 of 0" note goes.
       expect(screen.getByRole('columnheader', { name: 'Reviewer' })).toBeInTheDocument();
       expect(screen.queryByText(/Showing 0 of 0/)).not.toBeInTheDocument();
@@ -348,7 +377,7 @@ describe('ReviewStatsContent', () => {
       expect(within(emptyRow()).queryByRole('button')).not.toBeInTheDocument();
     });
 
-    test('when Filter or Min comments hide active reviewers: says how many, and Show all reviewers resets both', async () => {
+    test('when Show or Minimum comments hide active reviewers: says how many, and Show all reviewers resets both', async () => {
       const user = userEvent.setup();
       const setStatsViewState = jest.fn();
       const active = buildStats().reviewerRows;
@@ -361,7 +390,7 @@ describe('ReviewStatsContent', () => {
         },
       });
 
-      expect(emptyRow()).toHaveTextContent('No reviewers match Filter and Min comments. 2 reviewers have activity since Aug 6, 2026.');
+      expect(emptyRow()).toHaveTextContent('No reviewers with risky approvals and at least 3 comments. 2 reviewers have activity since Aug 6, 2026.');
       expect(within(emptyRow()).queryByRole('button', { name: 'Clear dates' })).not.toBeInTheDocument();
       await user.click(screen.getByRole('button', { name: 'Show all reviewers' }));
       expect(setStatsViewState).toHaveBeenCalledWith({ filterMode: 'all', minComments: 0 });
@@ -372,7 +401,14 @@ describe('ReviewStatsContent', () => {
       renderContent(null, {
         reviewStatsOverrides: { ...emptyStats(buildStats().reviewerRows.slice(0, 1)), statsViewState: { filterMode: 'all', minComments: 5 } },
       });
-      expect(emptyRow()).toHaveTextContent('No reviewers match Min comments. 1 reviewer has activity.');
+      expect(emptyRow()).toHaveTextContent('No reviewers with at least 5 comments. 1 reviewer has activity.');
+    });
+
+    test('with one comment the minimum, it says "comment"', () => {
+      renderContent(null, {
+        reviewStatsOverrides: { ...emptyStats(buildStats().reviewerRows), statsViewState: { filterMode: 'all', minComments: 1 } },
+      });
+      expect(emptyRow()).toHaveTextContent('No reviewers with at least 1 comment. 2 reviewers have activity.');
     });
 
     test('with the real Provider: Clear dates empties the Start date control and brings the reviewer back', async () => {
@@ -410,6 +446,117 @@ describe('ReviewStatsContent', () => {
       expect(screen.getByLabelText('Start date')).toHaveValue('');
       expect(emptyRow()).toBeNull();
       expect(screen.getByText(/Showing 1 of 1 reviewers/)).toBeInTheDocument();
+    });
+  });
+
+  describe('the table: its columns, the Columns menu and the reviewer cell', () => {
+    const headings = () => screen.getAllByRole('columnheader').map((cell) => cell.textContent);
+    const columnsBox = (name) => screen.getByRole('checkbox', { name });
+
+    test('starts without Thread comments, Resolved thread comments and Sources; Reviewer always shows', () => {
+      renderContent(buildStats());
+
+      expect(headings()).toEqual([
+        'Reviewer',
+        'Comments',
+        'Reviews',
+        'Approvals',
+        'Risky approvals',
+        'High-risk approvals',
+        'Useful comment signals',
+        'Comments → author commit',
+        'PRs touched',
+      ]);
+      const menu = screen.getByRole('group', { name: 'Columns' });
+      expect(within(menu).queryByRole('checkbox', { name: 'Reviewer' })).not.toBeInTheDocument();
+      expect(columnsBox('Thread comments')).not.toBeChecked();
+      expect(columnsBox('Comments')).toBeChecked();
+      // Each row's cells line up with the headings.
+      const alexRow = screen.getByRole('rowheader', { name: /Alex/ }).closest('tr');
+      expect(alexRow.children).toHaveLength(9);
+    });
+
+    test('a column ticked in the menu shows, in its place, and the choice is saved in user-defaults.json and the browser copy', async () => {
+      const user = userEvent.setup();
+      savedDefaults = { repo: 'owner/repo' };
+      renderContent(buildStats());
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+
+      await user.click(columnsBox('Thread comments'));
+      await user.click(columnsBox('PRs touched'));
+
+      expect(headings().slice(0, 3)).toEqual(['Reviewer', 'Comments', 'Thread comments']);
+      expect(headings()).not.toContain('PRs touched');
+      await waitFor(() => expect(savedDefaults.reviewStatsColumns).toEqual({ threadComments: true, prCount: false }));
+      expect(savedDefaults.repo).toBe('owner/repo');
+      expect(JSON.parse(window.localStorage.getItem(REVIEW_STATS_COLUMNS_STORAGE_KEY))).toEqual({ threadComments: true, prCount: false });
+
+      // Back to the defaults: nothing left to save.
+      await user.click(columnsBox('Thread comments'));
+      await user.click(columnsBox('PRs touched'));
+      await waitFor(() => expect(savedDefaults).not.toHaveProperty('reviewStatsColumns'));
+    });
+
+    test('the choices saved in user-defaults.json apply once read, over the browser copy', async () => {
+      window.localStorage.setItem(REVIEW_STATS_COLUMNS_STORAGE_KEY, JSON.stringify({ threadComments: true }));
+      savedDefaults = { reviewStatsColumns: { sources: true, comments: false, unknown: true } };
+      renderContent(buildStats());
+
+      // The browser copy draws first...
+      expect(headings()).toContain('Thread comments');
+      // ...then the saved choices take over.
+      await waitFor(() => expect(headings()).toContain('Sources'));
+      expect(headings()).not.toContain('Thread comments');
+      expect(headings()).not.toContain('Comments');
+    });
+
+    test('hiding Sources while a reviewer\'s sources are open hides them too', async () => {
+      const user = userEvent.setup();
+      showSourcesColumn();
+      renderContent(buildStats());
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+
+      await user.click(screen.getByRole('button', { name: 'Show sources' }));
+      const sourcesRow = document.querySelector('.stats-sources-row:not([hidden])');
+      expect(sourcesRow).not.toBeNull();
+      await user.click(columnsBox('Sources'));
+      expect(sourcesRow).toHaveAttribute('hidden');
+    });
+
+    test('each reviewer is a row header with an avatar, the display name, and the login on hover', () => {
+      const stats = buildStats();
+      stats.reviewerRows[0] = { ...stats.reviewerRows[0], login: 'alex-k', name: 'Alex Kim' };
+      renderContent(stats);
+
+      const header = screen.getByRole('rowheader', { name: 'Alex Kim' });
+      expect(header.querySelector('.ui-avatar')).toHaveTextContent('AK');
+      expect(header.querySelector('.stats-reviewer')).toHaveAttribute('title', 'alex-k');
+    });
+
+    test('the viewer is marked "(you)" with the avatar ring', () => {
+      const stats = buildStats();
+      stats.reviewerRows[0] = { ...stats.reviewerRows[0], login: 'me', name: 'Me Myself' };
+      render(
+        <TabStateContext.Provider value={{ activeDataTab: 'review-stats', setActiveDataTab: () => {} }}>
+          <PrDataProvider initialPayload={{ byPrNumber: { 1: {} } }}>
+            {/* Inside PrDataProvider, which provides its own. */}
+            <ActorIdentityContext.Provider value={{ ...defaultActorIdentity, getEffectiveViewerLogin: () => 'me' }}>
+              <ReviewStatsContext.Provider value={{ ...defaultReviewStats, ...buildReviewStatsOverrides(stats) }}>
+                <ReviewStatsContent />
+              </ReviewStatsContext.Provider>
+            </ActorIdentityContext.Provider>
+          </PrDataProvider>
+        </TabStateContext.Provider>,
+      );
+
+      const header = screen.getByRole('rowheader', { name: /Me Myself/ });
+      expect(header).toHaveTextContent('Me Myself (you)');
+      expect(header.querySelector('.ui-avatar')).toHaveAttribute('data-viewer', 'true');
+    });
+
+    test('the table sits in a box that scrolls sideways', () => {
+      renderContent(buildStats());
+      expect(screen.getByRole('table', { name: 'Reviewers' }).parentElement).toHaveClass('stats-table-scroll');
     });
   });
 });

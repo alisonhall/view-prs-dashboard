@@ -2984,10 +2984,10 @@ test("React-owned Review Stats controls render, respond to changes, and survive 
   await page.getByRole("tab", { name: "Review stats" }).click();
 
   const controlsRoot = page.getByRole("group", { name: "Review statistics controls", exact: true, includeHidden: true });
-  for (const name of ["Sort by", "Filter"]) {
+  for (const name of ["Sort by", "Show"]) {
     await expect(controlsRoot.getByRole("combobox", { name, exact: true })).toHaveCount(1);
   }
-  for (const name of ["Min comments", "Top reviewers", "Start date", "End date"]) {
+  for (const name of ["Minimum comments", "Reviewers to list", "Start date", "End date"]) {
     await expect(controlsRoot.getByLabel(name, { exact: true })).toHaveCount(1);
   }
 
@@ -2996,7 +2996,7 @@ test("React-owned Review Stats controls render, respond to changes, and survive 
   await sortSelect.selectOption("reviews");
   await expect(sortSelect).toHaveValue("reviews");
 
-  const minCommentsInput = page.getByLabel("Min comments", { exact: true });
+  const minCommentsInput = page.getByLabel("Minimum comments", { exact: true });
   await minCommentsInput.fill("4");
   await minCommentsInput.blur();
   await expect(minCommentsInput).toHaveValue("4");
@@ -3021,7 +3021,7 @@ test("React-owned Review Stats controls render, respond to changes, and survive 
   await page.getByRole("tab", { name: "Review stats" }).click();
 
   await expect(page.getByRole("combobox", { name: "Sort by", exact: true, includeHidden: true })).toHaveValue("reviews");
-  await expect(page.getByLabel("Min comments", { exact: true })).toHaveValue("4");
+  await expect(page.getByLabel("Minimum comments", { exact: true })).toHaveValue("4");
   await expect(page.getByRole("combobox", { name: "Sort by", exact: true, includeHidden: true })).toHaveAttribute(
     "data-e2e-identity-marker",
     "still-the-same-node",
@@ -3086,6 +3086,60 @@ test("React-owned Review Stats content renders cards/table and \"View in table\"
   // sits outside the sections, so it shows whichever section the row is in.
   await expect(page.getByRole("tabpanel", { name: "Pull requests", exact: true, includeHidden: true })).toBeVisible();
   await expect(detailPane(page).getByRole("tablist", { name: /^PR #\d+ details$/ })).toBeVisible();
+});
+
+test("Review stats: a column chosen in the Columns menu is kept after a reload; a narrow window scrolls the table, not the page", async ({ page }) => {
+  // Starts from no saved choices, and leaves none even if a check fails.
+  await clearSavedSettings(page.request, ["reviewStatsColumns"]);
+  try {
+    await page.goto("/");
+    await waitForPrTable(page);
+    await page.getByRole("tab", { name: "Review stats" }).click();
+    const table = page.getByRole("table", { name: "Reviewers", exact: true });
+    await expect(table.getByRole("columnheader", { name: "Comments", exact: true })).toBeVisible();
+    await expect(table.getByRole("columnheader", { name: "Thread comments", exact: true })).toHaveCount(0);
+
+    await page.locator(".stats-columns summary").click();
+    const saved = page.waitForResponse((response) => response.url().includes("/view-prs/user-defaults") && response.request().method() === "PUT");
+    await page.getByRole("checkbox", { name: "Thread comments", exact: true }).check();
+    await saved;
+    await expect(table.getByRole("columnheader", { name: "Thread comments", exact: true })).toBeVisible();
+
+    // Without the browser copy (a fresh browser), user-defaults.json still has it.
+    await page.evaluate(() => window.localStorage.clear());
+    await page.reload();
+    await waitForPrTable(page);
+    await page.getByRole("tab", { name: "Review stats" }).click();
+    await expect(table.getByRole("columnheader", { name: "Thread comments", exact: true })).toBeVisible();
+    const { overrides } = await (await page.request.get("/view-prs/user-defaults")).json();
+    expect(overrides.reviewStatsColumns).toEqual({ threadComments: true });
+
+    // At 600px the table scrolls in its box, the headings unbroken, and
+    // the page itself doesn't scroll sideways.
+    await page.setViewportSize({ width: 600, height: 900 });
+    const widths = await page.evaluate(() => {
+      const box = document.querySelector(".stats-table-scroll");
+      const headings = [...document.querySelectorAll(".stats-table thead th")];
+      // The lines a one-word heading's text takes.
+      const lines = (th) => {
+        const range = document.createRange();
+        range.selectNodeContents(th);
+        return new Set([...range.getClientRects()].map((rect) => Math.round(rect.top))).size;
+      };
+      return {
+        boxScrolls: box.scrollWidth > box.clientWidth,
+        pageScrolls: document.documentElement.scrollWidth > window.innerWidth,
+        reviewerSticky: getComputedStyle(headings[0]).position,
+        oneWordLines: headings.filter((th) => !th.textContent.trim().includes(" ")).map(lines),
+      };
+    });
+    expect(widths).toMatchObject({ boxScrolls: true, pageScrolls: false, reviewerSticky: "sticky" });
+    // "Reviewer", "Comments"... each on one line, not "Revi / ewe / r".
+    expect(widths.oneWordLines.length).toBeGreaterThan(2);
+    expect(new Set(widths.oneWordLines)).toEqual(new Set([1]));
+  } finally {
+    await clearSavedSettings(page.request, ["reviewStatsColumns"]);
+  }
 });
 
 test("Review stats: an empty table says why in its one row, and Clear dates clears the start date", async ({ page }) => {

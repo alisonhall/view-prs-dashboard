@@ -45,17 +45,29 @@ import { usePrData } from '../state/PrDataContext';
 import { useReviewStats, type ReviewStatsValue } from '../state/ReviewStatsContext';
 import { useIsTabPanelVisible } from '../state/useIsTabPanelVisible';
 import { useNavigateToPrInTable } from '../state/useNavigateToPrInTable';
+import { useActorIdentity } from '../state/ActorIdentityContext';
+import { useReviewStatsColumns } from '../state/useReviewStatsColumns';
+import { REVIEW_STATS_FILTER_MODES } from './ReviewStatsControls';
+import { Avatar } from './ui/Avatar';
 import { Button } from './ui/Button';
+import { MultiSelectDropdown } from './ui/MultiSelectDropdown';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.ts';
+import { createPrUserInitialsHelpers } from '../helpers/pr-user-initials.helpers.ts';
+import {
+  isReviewStatsColumnShown,
+  REVIEW_STATS_COLUMN_CATALOG,
+  type ReviewStatsColumnChoices,
+} from '../helpers/review-stats-columns.helpers.ts';
 import type { ReviewerRow as ReviewerRowData, StatsSource } from '../helpers/pr-review-stats-aggregation.helpers.ts';
 
 const { formatIsoDatetime } = createPrFormattingHelpers();
+const { getUserInitials } = createPrUserInitialsHelpers();
 
 // The extra text after a source's PR (e.g. "3 comments").
 type SourceFormatter = (item: StatsSource) => string;
 type SourceSection = [label: string, items: StatsSource[], formatter: SourceFormatter];
 // activeReviewerCount: reviewers with any activity in the date range,
-// before Filter and Min comments.
+// before Show and Minimum comments.
 type ControlledStats = ReturnType<ReviewStatsValue['applyStatsControls']> & { activeReviewerCount: number };
 
 function SourceItemRow({ item, detailText }: { item: StatsSource; detailText: string }) {
@@ -170,7 +182,9 @@ function ReviewerSourcesContent({ sections }: { sections: SourceSection[] }) {
   );
 }
 
-const STATS_COLUMN_COUNT = 12;
+// The columns after Reviewer that show (the Columns menu's choices).
+const shownColumnKeys = (choices: ReviewStatsColumnChoices) =>
+  REVIEW_STATS_COLUMN_CATALOG.filter(({ key }) => isReviewStatsColumnShown(choices, key)).map(({ key }) => key);
 
 // "Aug 6, 2026" from an <input type="date"> value.
 const formatStatsDate = (value: string) => {
@@ -188,10 +202,18 @@ const describeStatsDateRange = ({ startDate, endDate }: { startDate?: string; en
 };
 
 // The table's only row when it lists no one: why, and the way out - the
-// date range (it starts three months back), or Filter and Min comments.
+// date range (it starts three months back), or Show and Minimum comments.
 // The button goes once pressed, so onCleared moves focus to the table
 // rather than leaving it nowhere.
-function StatsTableEmpty({ activeReviewerCount, onCleared }: { activeReviewerCount: number; onCleared: () => void }) {
+function StatsTableEmpty({
+  activeReviewerCount,
+  columnCount,
+  onCleared,
+}: {
+  activeReviewerCount: number;
+  columnCount: number;
+  onCleared: () => void;
+}) {
   const { statsViewState, getNormalizedStatsDateRange, setStatsViewState } = useReviewStats();
   const range = describeStatsDateRange(getNormalizedStatsDateRange());
   const clear = (patch: Parameters<typeof setStatsViewState>[0]) => {
@@ -202,12 +224,14 @@ function StatsTableEmpty({ activeReviewerCount, onCleared }: { activeReviewerCou
   let action: ReactNode = null;
   if (activeReviewerCount > 0) {
     const who = activeReviewerCount === 1 ? '1 reviewer has' : `${activeReviewerCount} reviewers have`;
-    // Names only the controls that are set.
-    const hiding = [
-      String(statsViewState?.filterMode || 'all') !== 'all' && 'Filter',
-      Number(statsViewState?.minComments) > 0 && 'Min comments',
+    // Says only what's set: "No reviewers with risky approvals and at
+    // least 3 comments."
+    const minComments = Number(statsViewState?.minComments) || 0;
+    const wanted = [
+      REVIEW_STATS_FILTER_MODES.find(([value]) => value !== 'all' && value === statsViewState?.filterMode)?.[1],
+      minComments > 0 && `at least ${minComments} ${minComments === 1 ? 'comment' : 'comments'}`,
     ].filter(Boolean);
-    message = `No reviewers match ${hiding.length ? hiding.join(' and ') : 'the stats filters'}. ${who} activity${range ? ` ${range}` : ''}.`;
+    message = `No reviewers with ${wanted.length ? wanted.join(' and ') : 'those settings'}. ${who} activity${range ? ` ${range}` : ''}.`;
     action = (
       <Button onClick={() => clear({ filterMode: 'all', minComments: 0 })}>
         Show all reviewers
@@ -225,7 +249,7 @@ function StatsTableEmpty({ activeReviewerCount, onCleared }: { activeReviewerCou
   }
   return (
     <tr className="stats-table-empty">
-      <td colSpan={STATS_COLUMN_COUNT}>
+      <td colSpan={columnCount}>
         <div className="stats-table-empty-content">
           <span>{message}</span>
           {action}
@@ -235,42 +259,60 @@ function StatsTableEmpty({ activeReviewerCount, onCleared }: { activeReviewerCou
   );
 }
 
-function ReviewerRow({ reviewer }: { reviewer: ReviewerRowData }) {
+// The reviewer's avatar and name, as the PR table's Who column; the
+// login on hover when the name differs.
+function ReviewerIdentity({ reviewer }: { reviewer: ReviewerRowData }) {
+  const { getEffectiveViewerLogin } = useActorIdentity();
+  const login = String(reviewer.login || '');
+  const name = String(reviewer.name || login);
+  const viewerLogin = String(getEffectiveViewerLogin({}) || '').toLowerCase();
+  const isViewer = Boolean(viewerLogin) && login.toLowerCase() === viewerLogin;
+  return (
+    <span className="stats-reviewer" title={name !== login ? login : undefined}>
+      <Avatar initials={getUserInitials(name, login)} login={login} isViewer={isViewer} size="sm" />
+      <span>
+        {name}
+        {isViewer && <span className="stats-reviewer-you"> (you)</span>}
+      </span>
+    </span>
+  );
+}
+
+function ReviewerRow({ reviewer, columnKeys }: { reviewer: ReviewerRowData; columnKeys: string[] }) {
   const [expanded, setExpanded] = useState(false);
   const sections = getReviewerSourceSections(reviewer);
   const hasSources = sections.length > 0;
+  const showsSources = columnKeys.includes('sources');
 
   return (
     <>
       <tr>
-        <td>{reviewer.name}</td>
-        <td>{reviewer.comments}</td>
-        <td>{reviewer.threadComments}</td>
-        <td>{reviewer.reviews}</td>
-        <td>{reviewer.approvals}</td>
-        <td>{reviewer.riskyApprovals}</td>
-        <td>{reviewer.highRiskApprovals}</td>
-        <td>{reviewer.usefulnessSignals}</td>
-        <td>{reviewer.commentsFollowedByAuthorCommit}</td>
-        <td>{reviewer.resolvedThreadComments}</td>
-        <td>{reviewer.prCount}</td>
-        <td className="stats-sources-cell">
-          {hasSources ? (
-            <button
-              type="button"
-              className="stats-sources-toggle"
-              aria-expanded={expanded ? 'true' : 'false'}
-              onClick={() => setExpanded((previous) => !previous)}
-            >
-              {expanded ? 'Hide sources' : 'Show sources'}
-            </button>
+        <th scope="row">
+          <ReviewerIdentity reviewer={reviewer} />
+        </th>
+        {columnKeys.map((key) =>
+          key === 'sources' ? (
+            <td key={key} className="stats-sources-cell">
+              {hasSources ? (
+                <button
+                  type="button"
+                  className="stats-sources-toggle"
+                  aria-expanded={expanded ? 'true' : 'false'}
+                  onClick={() => setExpanded((previous) => !previous)}
+                >
+                  {expanded ? 'Hide sources' : 'Show sources'}
+                </button>
+              ) : (
+                '-'
+              )}
+            </td>
           ) : (
-            '-'
-          )}
-        </td>
+            <td key={key}>{String(reviewer[key as keyof ReviewerRowData] ?? 0)}</td>
+          ),
+        )}
       </tr>
-      <tr className="stats-sources-row" hidden={!expanded}>
-        <td colSpan={STATS_COLUMN_COUNT} className="stats-sources-row-cell">
+      <tr className="stats-sources-row" hidden={!expanded || !showsSources}>
+        <td colSpan={columnKeys.length + 1} className="stats-sources-row-cell">
           {hasSources ? <ReviewerSourcesContent sections={sections} /> : 'No sources'}
         </td>
       </tr>
@@ -287,6 +329,8 @@ export function ReviewStatsContent() {
   const isVisible = useIsTabPanelVisible('tab-panel-review-stats');
   const lastStatsRef = useRef<ControlledStats | null>(null);
   const tableRef = useRef<HTMLTableElement>(null);
+  const { choices: columnChoices, setColumnShown } = useReviewStatsColumns();
+  const columnKeys = shownColumnKeys(columnChoices);
 
   // Memoized on [payload, buildReviewerStats, applyStatsControls, isVisible]
   // specifically, not [rows, actorsMap] (which would be new references on
@@ -364,35 +408,46 @@ export function ReviewStatsContent() {
 
       <StatsVisuals stats={stats} rows={rows} actorsMap={actorsMap} />
 
-      <table ref={tableRef} className="stats-table" aria-label="Reviewers" tabIndex={-1}>
-        <thead>
-          <tr>
-            {[
-              'Reviewer',
-              'Comments',
-              'Thread comments',
-              'Reviews',
-              'Approvals',
-              'Risky approvals',
-              'High-risk approvals',
-              'Useful comment signals',
-              'Comments → author commit',
-              'Resolved thread comments',
-              'PRs touched',
-              'Sources',
-            ].map((label) => (
-              <th key={label}>{label}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {stats.reviewerRows.length === 0 ? (
-            <StatsTableEmpty activeReviewerCount={stats.activeReviewerCount} onCleared={() => tableRef.current?.focus()} />
-          ) : (
-            stats.reviewerRows.map((reviewer) => <ReviewerRow key={reviewer.name} reviewer={reviewer} />)
-          )}
-        </tbody>
-      </table>
+      <div className="stats-table-bar">
+        <MultiSelectDropdown
+          listId="review-stats-columns"
+          label="Columns"
+          idPrefix="review-stats-column"
+          className="stats-columns"
+          options={REVIEW_STATS_COLUMN_CATALOG.map(({ key, label }) => ({ value: key, label }))}
+          checked={new Set(columnKeys)}
+          onToggle={(key) => setColumnShown(key, !columnKeys.includes(key))}
+        />
+      </div>
+
+      {/* Scrolls sideways when the columns don't fit, Reviewer staying put. */}
+      <div className="stats-table-scroll">
+        <table ref={tableRef} className="stats-table" aria-label="Reviewers" tabIndex={-1}>
+          <thead>
+            <tr>
+              <th scope="col">Reviewer</th>
+              {REVIEW_STATS_COLUMN_CATALOG.filter(({ key }) => columnKeys.includes(key)).map(({ key, label }) => (
+                <th key={key} scope="col">
+                  {label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {stats.reviewerRows.length === 0 ? (
+              <StatsTableEmpty
+                activeReviewerCount={stats.activeReviewerCount}
+                columnCount={columnKeys.length + 1}
+                onCleared={() => tableRef.current?.focus()}
+              />
+            ) : (
+              stats.reviewerRows.map((reviewer) => (
+                <ReviewerRow key={reviewer.login || reviewer.name} reviewer={reviewer} columnKeys={columnKeys} />
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
 
       {stats.reviewerRows.length > 0 && (
         <p className="stats-note">

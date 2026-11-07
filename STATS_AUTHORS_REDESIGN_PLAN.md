@@ -110,6 +110,14 @@ matters (layout, focus), and before/after screenshots in light and dark.
   comments hiding the active reviewers (`Show all reviewers`). The
   "Showing 0 of 0" note goes; the controls follow a change made from
   the table.
+- **Phase 3 done (2026-11-07):** the table scrolls sideways in its own
+  box, Reviewer fixed (common.css's fixed layout and break-anywhere
+  were what broke the headings mid-word); each reviewer is a row header
+  with an avatar and display name; the labels are Show ("Reviewers with
+  risky approvals"...), Minimum comments and Reviewers to list. A
+  `Columns` dropdown (the filter bar's `MultiSelectDropdown`, opening
+  in place since the view's box clips) saves `reviewStatsColumns` in
+  user-defaults.json and a browser copy, as the sections are saved.
 
 ## Decided
 

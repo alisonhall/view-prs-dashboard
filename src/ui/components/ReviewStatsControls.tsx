@@ -37,12 +37,15 @@ const SORT_OPTIONS = [
   ['reviews', 'Reviews'],
 ];
 
-const FILTER_MODE_OPTIONS = [
+// Show's choices: which reviewers the table lists. The phrase finishes
+// "Reviewers with ..." (the option) and "No reviewers with ..." (the
+// empty table, ReviewStatsContent).
+export const REVIEW_STATS_FILTER_MODES = [
   ['all', 'All reviewers'],
-  ['risky-only', 'Only risky approvals'],
-  ['high-risk-approvals', 'Only high-risk approvals'],
-  ['useful-comments', 'Only useful-comment signals'],
-];
+  ['risky-only', 'risky approvals'],
+  ['high-risk-approvals', 'high-risk approvals'],
+  ['useful-comments', 'useful-comment signals'],
+] as const;
 
 // The shared non-credential-field attributes (form-parsing.helpers.ts);
 // this file had its own identical copy until the window-bridge elimination
@@ -102,18 +105,18 @@ export function ReviewStatsControls() {
       </label>
 
       <label className="ui-field">
-        Filter
+        Show
         <select value={state.filterMode} onChange={(e) => commit({ filterMode: e.target.value })}>
-          {FILTER_MODE_OPTIONS.map(([value, label]) => (
+          {REVIEW_STATS_FILTER_MODES.map(([value, phrase]) => (
             <option key={value} value={value}>
-              {label}
+              {value === 'all' ? phrase : `Reviewers with ${phrase}`}
             </option>
           ))}
         </select>
       </label>
 
       <label className="ui-field">
-        Min comments
+        Minimum comments
         <input
           type="number"
           min="0"
@@ -124,7 +127,7 @@ export function ReviewStatsControls() {
       </label>
 
       <label className="ui-field">
-        Top reviewers
+        Reviewers to list
         <input
           type="number"
           min="1"
