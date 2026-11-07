@@ -1240,6 +1240,25 @@ Additional notes:
   - **Top reviewers by comments/approvals/signals**: Stacked bar composition charts with click-to-sort interactivity
   - Source rows in the statistics view include a `View in table` button that switches to the Pull requests view, scrolls to the matching PR, and shows it in the detail pane.
   - `Start date` begins three months back. When the table lists no one, its one row says why: no reviewer activity in the dates (`No reviewer activity since Aug 6, 2026.`, with `Clear dates`), or `Show` and `Minimum comments` hiding the reviewers who have some (`No reviewers with risky approvals and at least 3 comments.`, with `Show all reviewers`).
+  - **How Review stats counts.** Each card's label and each column heading says this on hover and focus (dotted underline). Everything counts only what falls between `Start date` and `End date`.
+    - Cards:
+      - `PRs`: Stored PRs the numbers come from: with dates set, those with a comment, review, approval or open review thread in them; with no dates, every stored PR.
+      - `Comments on others' PRs`: Comments on PRs by anyone but the PR's author, top-level and in review threads.
+      - `Approvals`: Approvals of PRs. Risky: the PR got a comment, review, change request or commit after the approval. High-risk: a change request after it, or 3 or more of those.
+      - `Comment usefulness`: Signs that comments on others' PRs were acted on, one point each: the comment's thread was resolved, the PR's author committed after it, and did so within 24 hours - up to 3 per comment.
+    - Columns:
+      - `Reviewer`: Anyone who commented on, reviewed or approved someone else's PR.
+      - `Comments`: Their comments on others' PRs, top-level and in review threads.
+      - `Thread comments`: Of those, the ones in review threads (on lines of code).
+      - `Reviews`: Reviews they submitted on others' PRs, whatever the outcome: approved, commented, changes requested or dismissed.
+      - `Approvals`: Their reviews that approved.
+      - `Risky approvals`: Their approvals after which the PR got a comment, review, change request or commit.
+      - `High-risk approvals`: Their approvals followed by a change request, or by 3 or more comments, reviews, change requests and commits.
+      - `Useful comment signals`: Their comments' points, one each: the thread was resolved, the PR's author committed after it, and within 24 hours - up to 3 per comment.
+      - `Comments → author commit`: Their comments the PR's author committed after.
+      - `Resolved thread comments`: Their comments in review threads that are now resolved.
+      - `PRs touched`: Others' PRs they commented on, reviewed or approved.
+      - `Sources`: The PRs behind their numbers.
 - The `Authors` view shows per-PR review notes grouped by author. The author filter dropdown and metadata cards use resolved real names from `actorsMap`. PR cards in the Authors view include a `View in table` button with the same navigation behavior.
 - The page-level and per-PR insights now show usefulness and approval-risk signals (for example, comments followed by author commits and high-risk approvals).
 

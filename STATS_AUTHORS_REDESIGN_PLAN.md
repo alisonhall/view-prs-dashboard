@@ -118,6 +118,14 @@ matters (layout, focus), and before/after screenshots in light and dark.
   `Columns` dropdown (the filter bar's `MultiSelectDropdown`, opening
   in place since the view's box clips) saves `reviewStatsColumns` in
   user-defaults.json and a browser copy, as the sections are saved.
+- **Phase 4 done (2026-11-07):** each card's label and column heading
+  has a tooltip saying how it's counted, from
+  `review-stats-explanations.helpers.ts`, worked out from
+  buildReviewerStats and the script's approval risk; the README's "How
+  Review stats counts" repeats them (a test checks they match). The
+  first card, "Filtered rows - Current local filter scope", was wrong
+  (the stats never followed the table's filters): it's "PRs", "Every
+  stored PR" or "With review activity in the dates".
 
 ## Decided
 

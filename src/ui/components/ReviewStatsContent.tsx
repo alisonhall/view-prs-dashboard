@@ -51,6 +51,7 @@ import { REVIEW_STATS_FILTER_MODES } from './ReviewStatsControls';
 import { Avatar } from './ui/Avatar';
 import { Button } from './ui/Button';
 import { MultiSelectDropdown } from './ui/MultiSelectDropdown';
+import { Tooltip } from './ui/Tooltip';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.ts';
 import { createPrUserInitialsHelpers } from '../helpers/pr-user-initials.helpers.ts';
 import {
@@ -58,6 +59,10 @@ import {
   REVIEW_STATS_COLUMN_CATALOG,
   type ReviewStatsColumnChoices,
 } from '../helpers/review-stats-columns.helpers.ts';
+import {
+  REVIEW_STATS_CARD_EXPLANATIONS,
+  REVIEW_STATS_COLUMN_EXPLANATIONS,
+} from '../helpers/review-stats-explanations.helpers.ts';
 import type { ReviewerRow as ReviewerRowData, StatsSource } from '../helpers/pr-review-stats-aggregation.helpers.ts';
 
 const { formatIsoDatetime } = createPrFormattingHelpers();
@@ -132,18 +137,31 @@ function SourcesDetails({ items, formatter }: { items: StatsSource[] | undefined
   );
 }
 
+// A card's label or a column heading, with how it's counted on hover and
+// focus (review-stats-explanations.helpers.ts).
+function Explained({ explanation, className, children }: { explanation: string; className?: string; children: ReactNode }) {
+  return (
+    <Tooltip content={explanation} focusTarget>
+      <span className={['stats-explained', className].filter(Boolean).join(' ')}>{children}</span>
+    </Tooltip>
+  );
+}
+
 interface StatCardProps {
   label: string;
+  explanation: string;
   value: string;
   detail?: string;
   sources?: StatsSource[];
   formatter: SourceFormatter;
 }
 
-function StatCard({ label, value, detail, sources, formatter }: StatCardProps) {
+function StatCard({ label, explanation, value, detail, sources, formatter }: StatCardProps) {
   return (
     <div className="stat-card" role="group" aria-label={label}>
-      <span className="stat-card-label">{label}</span>
+      <Explained explanation={explanation} className="stat-card-label">
+        {label}
+      </Explained>
       <span className="stat-card-value">{value}</span>
       {detail && <span className="stat-card-detail">{detail}</span>}
       <SourcesDetails items={sources} formatter={formatter} />
@@ -374,9 +392,10 @@ export function ReviewStatsContent() {
     <>
       <div className="stats-grid">
         <StatCard
-          label="Filtered rows"
+          label="PRs"
+          explanation={REVIEW_STATS_CARD_EXPLANATIONS.prs}
           value={String(stats.summary.rows)}
-          detail="Current local filter scope"
+          detail={dateRange.startDate || dateRange.endDate ? 'With review activity in the dates' : 'Every stored PR'}
           sources={stats.summary.sources.rows}
           formatter={(item) => {
             const author = String(item?.prAuthor || '').trim();
@@ -385,6 +404,7 @@ export function ReviewStatsContent() {
         />
         <StatCard
           label="Comments on others' PRs"
+          explanation={REVIEW_STATS_CARD_EXPLANATIONS.commentsOnOthersPrs}
           value={String(stats.summary.commentsOnOthersPrs)}
           detail="Top-level and thread comments combined"
           sources={stats.summary.sources.commentsOnOthersPrs}
@@ -392,6 +412,7 @@ export function ReviewStatsContent() {
         />
         <StatCard
           label="Approvals"
+          explanation={REVIEW_STATS_CARD_EXPLANATIONS.approvals}
           value={String(stats.summary.approvals)}
           detail={`${stats.summary.riskyApprovals} risky | ${stats.summary.highRiskApprovals} high-risk`}
           sources={stats.summary.sources.approvals}
@@ -399,6 +420,7 @@ export function ReviewStatsContent() {
         />
         <StatCard
           label="Comment usefulness"
+          explanation={REVIEW_STATS_CARD_EXPLANATIONS.usefulness}
           value={String(stats.summary.usefulnessSignals)}
           detail={`${stats.summary.commentsFollowedByAuthorCommit} comments were followed by author commits`}
           sources={stats.summary.sources.usefulnessSignals}
@@ -425,10 +447,12 @@ export function ReviewStatsContent() {
         <table ref={tableRef} className="stats-table" aria-label="Reviewers" tabIndex={-1}>
           <thead>
             <tr>
-              <th scope="col">Reviewer</th>
-              {REVIEW_STATS_COLUMN_CATALOG.filter(({ key }) => columnKeys.includes(key)).map(({ key, label }) => (
+              <th scope="col">
+                <Explained explanation={REVIEW_STATS_COLUMN_EXPLANATIONS.reviewer}>Reviewer</Explained>
+              </th>
+              {REVIEW_STATS_COLUMN_CATALOG.filter(({ key }) => columnKeys.includes(key)).map(({ key, label, explanation }) => (
                 <th key={key} scope="col">
-                  {label}
+                  <Explained explanation={explanation}>{label}</Explained>
                 </th>
               ))}
             </tr>

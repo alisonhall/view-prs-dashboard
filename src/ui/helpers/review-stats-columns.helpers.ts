@@ -5,25 +5,39 @@
 // copy (REVIEW_STATS_COLUMNS_STORAGE_KEY) lets the table draw with them
 // straight away, before user-defaults.json has been read.
 
+import { REVIEW_STATS_COLUMN_EXPLANATIONS as EXPLAINED } from './review-stats-explanations.helpers.ts';
+
 export interface ReviewStatsColumnEntry {
   key: string;
   label: string;
   defaultShown: boolean;
+  // How it's counted: its heading's tooltip.
+  explanation: string;
 }
 
 // Every column after Reviewer, in the table's order.
 export const REVIEW_STATS_COLUMN_CATALOG: ReadonlyArray<ReviewStatsColumnEntry> = [
-  { key: 'comments', label: 'Comments', defaultShown: true },
-  { key: 'threadComments', label: 'Thread comments', defaultShown: false },
-  { key: 'reviews', label: 'Reviews', defaultShown: true },
-  { key: 'approvals', label: 'Approvals', defaultShown: true },
-  { key: 'riskyApprovals', label: 'Risky approvals', defaultShown: true },
-  { key: 'highRiskApprovals', label: 'High-risk approvals', defaultShown: true },
-  { key: 'usefulnessSignals', label: 'Useful comment signals', defaultShown: true },
-  { key: 'commentsFollowedByAuthorCommit', label: 'Comments → author commit', defaultShown: true },
-  { key: 'resolvedThreadComments', label: 'Resolved thread comments', defaultShown: false },
-  { key: 'prCount', label: 'PRs touched', defaultShown: true },
-  { key: 'sources', label: 'Sources', defaultShown: false },
+  { key: 'comments', label: 'Comments', defaultShown: true, explanation: EXPLAINED.comments },
+  { key: 'threadComments', label: 'Thread comments', defaultShown: false, explanation: EXPLAINED.threadComments },
+  { key: 'reviews', label: 'Reviews', defaultShown: true, explanation: EXPLAINED.reviews },
+  { key: 'approvals', label: 'Approvals', defaultShown: true, explanation: EXPLAINED.approvals },
+  { key: 'riskyApprovals', label: 'Risky approvals', defaultShown: true, explanation: EXPLAINED.riskyApprovals },
+  { key: 'highRiskApprovals', label: 'High-risk approvals', defaultShown: true, explanation: EXPLAINED.highRiskApprovals },
+  { key: 'usefulnessSignals', label: 'Useful comment signals', defaultShown: true, explanation: EXPLAINED.usefulnessSignals },
+  {
+    key: 'commentsFollowedByAuthorCommit',
+    label: 'Comments → author commit',
+    defaultShown: true,
+    explanation: EXPLAINED.commentsFollowedByAuthorCommit,
+  },
+  {
+    key: 'resolvedThreadComments',
+    label: 'Resolved thread comments',
+    defaultShown: false,
+    explanation: EXPLAINED.resolvedThreadComments,
+  },
+  { key: 'prCount', label: 'PRs touched', defaultShown: true, explanation: EXPLAINED.prCount },
+  { key: 'sources', label: 'Sources', defaultShown: false, explanation: EXPLAINED.sources },
 ];
 
 export const REVIEW_STATS_COLUMNS_OVERRIDE_KEY = 'reviewStatsColumns';

@@ -3057,7 +3057,7 @@ test("React-owned Review Stats content renders cards/table and \"View in table\"
   await waitForPrTable(page);
   await page.getByRole("tab", { name: "Review stats" }).click();
 
-  // "Filtered rows" only counts every row unconditionally when there's no
+  // "PRs" only counts every row unconditionally when there's no
   // active date-range filter (see buildReviewerStats in
   // pr-review-stats-aggregation.helpers.ts) - statsViewState defaults to a
   // recent start date that excludes this fixture's Jan 2026 PRs, so clear
@@ -3067,12 +3067,13 @@ test("React-owned Review Stats content renders cards/table and \"View in table\"
   await startDateInput.blur();
 
   const contentRoot = page.getByRole("region", { name: "Review statistics", exact: true, includeHidden: true });
-  for (const cardName of ["Filtered rows", "Comments on others' PRs", "Approvals", "Comment usefulness"]) {
+  for (const cardName of ["PRs", "Comments on others' PRs", "Approvals", "Comment usefulness"]) {
     await expect(contentRoot.getByRole("group", { name: cardName, exact: true })).toBeVisible();
   }
 
-  const filteredRowsCard = contentRoot.getByRole("group", { name: "Filtered rows", exact: true });
+  const filteredRowsCard = contentRoot.getByRole("group", { name: "PRs", exact: true });
   await expect(filteredRowsCard.getByText("3", { exact: true })).toBeVisible();
+  await expect(filteredRowsCard).toContainText("Every stored PR");
 
   await filteredRowsCard.getByText(/^Show sources \(/).click();
   const viewInTableButton = filteredRowsCard.getByRole("button", { name: "View in table", exact: true }).first();
@@ -3120,17 +3121,18 @@ test("Review stats: a column chosen in the Columns menu is kept after a reload; 
     const widths = await page.evaluate(() => {
       const box = document.querySelector(".stats-table-scroll");
       const headings = [...document.querySelectorAll(".stats-table thead th")];
-      // The lines a one-word heading's text takes.
+      // The lines a one-word heading's text takes (its own text, not its
+      // tooltip's hidden description).
       const lines = (th) => {
         const range = document.createRange();
-        range.selectNodeContents(th);
+        range.selectNodeContents(th.querySelector(".stats-explained"));
         return new Set([...range.getClientRects()].map((rect) => Math.round(rect.top))).size;
       };
       return {
         boxScrolls: box.scrollWidth > box.clientWidth,
         pageScrolls: document.documentElement.scrollWidth > window.innerWidth,
         reviewerSticky: getComputedStyle(headings[0]).position,
-        oneWordLines: headings.filter((th) => !th.textContent.trim().includes(" ")).map(lines),
+        oneWordLines: headings.filter((th) => !th.querySelector(".stats-explained").textContent.trim().includes(" ")).map(lines),
       };
     });
     expect(widths).toMatchObject({ boxScrolls: true, pageScrolls: false, reviewerSticky: "sticky" });
@@ -3140,6 +3142,27 @@ test("Review stats: a column chosen in the Columns menu is kept after a reload; 
   } finally {
     await clearSavedSettings(page.request, ["reviewStatsColumns"]);
   }
+});
+
+test("Review stats: a card's label and a column heading say how they're counted, on hover and on focus", async ({ page }) => {
+  await page.goto("/");
+  await waitForPrTable(page);
+  await page.getByRole("tab", { name: "Review stats" }).click();
+  const tooltip = page.locator(".ui-tooltip");
+
+  const heading = page.getByRole("table", { name: "Reviewers", exact: true }).getByRole("columnheader", { name: "Risky approvals", exact: true });
+  await heading.locator(".stats-explained").hover();
+  await expect(tooltip).toBeVisible();
+  await expect(tooltip).toHaveText("Their approvals after which the PR got a comment, review, change request or commit.");
+
+  // From the keyboard: the card's label takes focus and opens its own.
+  await page.mouse.move(0, 0);
+  await expect(tooltip).toBeHidden();
+  const approvalsLabel = page.getByRole("group", { name: "Approvals", exact: true }).locator(".ui-tooltip-target");
+  await approvalsLabel.focus();
+  await expect(tooltip).toHaveText(/^Approvals of PRs\. Risky: /);
+  await page.keyboard.press("Escape");
+  await expect(tooltip).toBeHidden();
 });
 
 test("Review stats: an empty table says why in its one row, and Clear dates clears the start date", async ({ page }) => {

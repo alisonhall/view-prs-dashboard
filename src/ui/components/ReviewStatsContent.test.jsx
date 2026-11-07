@@ -15,6 +15,10 @@ const { TabStateContext } = require('../state/TabStateContext');
 const { ReviewStatsProvider } = require('./ReviewStatsProvider');
 const { ReviewStatsControls } = require('./ReviewStatsControls');
 const { REVIEW_STATS_COLUMNS_STORAGE_KEY } = require('../helpers/review-stats-columns.helpers');
+const {
+  REVIEW_STATS_CARD_EXPLANATIONS,
+  REVIEW_STATS_COLUMN_EXPLANATIONS,
+} = require('../helpers/review-stats-explanations.helpers');
 const { ActorIdentityContext, defaultActorIdentity } = require('../state/ActorIdentityContext');
 
 // A stand-in for /view-prs/user-defaults: GET returns `savedDefaults`, PUT
@@ -163,7 +167,7 @@ describe('ReviewStatsContent', () => {
   test('given reviewer stats, when rendering, then each of the four cards is a group named by its label', () => {
     renderContent(buildStats());
 
-    for (const name of ['Filtered rows', "Comments on others' PRs", 'Approvals', 'Comment usefulness']) {
+    for (const name of ['PRs', "Comments on others' PRs", 'Approvals', 'Comment usefulness']) {
       expect(screen.getByRole('group', { name })).toBeInTheDocument();
     }
   });
@@ -216,7 +220,7 @@ describe('ReviewStatsContent', () => {
     window.addEventListener('pr-navigate-to-insights', handler);
     renderContent(buildStats());
 
-    const filteredRowsCard = screen.getByText('Filtered rows').closest('.stat-card');
+    const filteredRowsCard = screen.getByRole('group', { name: 'PRs' });
     await user.click(filteredRowsCard.querySelector('summary'));
     await user.click(filteredRowsCard.querySelector('.author-insights-table-link'));
 
@@ -449,8 +453,56 @@ describe('ReviewStatsContent', () => {
     });
   });
 
+  describe('how each number is counted, on hover and focus', () => {
+    test('each card label is focusable and described by how it is counted', () => {
+      renderContent(buildStats());
+
+      for (const [name, key] of [
+        ['PRs', 'prs'],
+        ["Comments on others' PRs", 'commentsOnOthersPrs'],
+        ['Approvals', 'approvals'],
+        ['Comment usefulness', 'usefulness'],
+      ]) {
+        const label = within(screen.getByRole('group', { name })).getByText(name).closest('.ui-tooltip-target');
+        expect(label).toHaveAttribute('tabindex', '0');
+        expect(label).toHaveAttribute('data-tip', REVIEW_STATS_CARD_EXPLANATIONS[key]);
+        expect(label).toHaveAccessibleDescription(REVIEW_STATS_CARD_EXPLANATIONS[key]);
+      }
+    });
+
+    test('each column heading shown, Reviewer included, is described by how it is counted', () => {
+      window.localStorage.setItem(REVIEW_STATS_COLUMNS_STORAGE_KEY, JSON.stringify({ threadComments: true, resolvedThreadComments: true, sources: true }));
+      savedDefaults = { reviewStatsColumns: { threadComments: true, resolvedThreadComments: true, sources: true } };
+      renderContent(buildStats());
+
+      const headers = screen.getAllByRole('columnheader');
+      expect(headers).toHaveLength(12);
+      headers.forEach((header) => {
+        const target = header.querySelector('.ui-tooltip-target');
+        const description = target.getAttribute('data-tip');
+        expect(description).toBeTruthy();
+        expect(target).toHaveAccessibleDescription(description);
+        // Its name is still just the heading.
+        expect(header).toHaveAccessibleName(header.querySelector('.stats-explained').textContent);
+      });
+      expect(headers[0].querySelector('.ui-tooltip-target')).toHaveAttribute('data-tip', REVIEW_STATS_COLUMN_EXPLANATIONS.reviewer);
+    });
+
+    test('the PRs card says which PRs it counts: every stored PR, or those with activity in the dates', () => {
+      const { unmount } = renderContent(buildStats());
+      expect(screen.getByRole('group', { name: 'PRs' })).toHaveTextContent('Every stored PR');
+      unmount();
+
+      renderContent(buildStats(), {
+        reviewStatsOverrides: { getNormalizedStatsDateRange: () => ({ startDate: '2026-07-01', endDate: '' }) },
+      });
+      expect(screen.getByRole('group', { name: 'PRs' })).toHaveTextContent('With review activity in the dates');
+    });
+  });
+
   describe('the table: its columns, the Columns menu and the reviewer cell', () => {
-    const headings = () => screen.getAllByRole('columnheader').map((cell) => cell.textContent);
+    // The heading's own text, not its tooltip's hidden description.
+    const headings = () => screen.getAllByRole('columnheader').map((cell) => cell.querySelector('.stats-explained').textContent);
     const columnsBox = (name) => screen.getByRole('checkbox', { name });
 
     test('starts without Thread comments, Resolved thread comments and Sources; Reviewer always shows', () => {
