@@ -126,6 +126,14 @@ matters (layout, focus), and before/after screenshots in light and dark.
   first card, "Filtered rows - Current local filter scope", was wrong
   (the stats never followed the table's filters): it's "PRs", "Every
   stored PR" or "With review activity in the dates".
+- **Phase 5 done (2026-11-07):** `Author` is a `ComboBox` (`ui/ComboBox.tsx`,
+  the ARIA combobox with a list, opening in place): typing narrows it by
+  name or login; authors with a PR updated in the last 30 days (by
+  anyone) come first under "Recent PRs", newest first, then "Everyone
+  else" by name (`author-picker.helpers.ts`), and the view opens on the
+  author of the most recently updated PR. The header has the author's avatar, name and login, and
+  their open and merged PRs and saved comments (the count once they've
+  loaded; a save after a failed load now clears its error).
 
 ## Decided
 

@@ -60,6 +60,25 @@ const openFilterBar = async (page) => {
 };
 // One of the filter bar's lists ("Labels", "Authors"...), by name.
 const filterBarList = (page, name) => filterBar(page).getByRole("group", { name, exact: true, includeHidden: true });
+// The Authors view's Author picker: a text box that narrows its list.
+const authorPicker = (page) => page.getByRole("combobox", { name: "Author", exact: true });
+// The picker's options, opening its list if it isn't.
+const authorOptions = async (page) => {
+  const picker = authorPicker(page);
+  if ((await picker.getAttribute("aria-expanded")) !== "true") await picker.click();
+  return page.getByRole("listbox", { name: "Author", exact: true }).getByRole("option");
+};
+// Picks an author by display name, typing it to narrow the list (after
+// clearing the box: typing what it already says changes nothing).
+const pickAuthor = async (page, name) => {
+  await authorPicker(page).fill("");
+  await authorPicker(page).fill(name);
+  await page
+    .getByRole("listbox", { name: "Author", exact: true })
+    .getByRole("option", { name: new RegExp(`^${name}( |$)`) })
+    .click();
+  await expect(authorPicker(page)).toHaveValue(name);
+};
 // The filter bar's chips, one per applied filter (a group only while any is).
 const filterChips = (page) => filterBar(page).getByRole("group", { name: "Applied table filters", exact: true });
 // The Settings drawer (a modal dialog, opened from the app header).
@@ -1786,7 +1805,7 @@ test("'View in table' for a flagged PR shows and focuses it in an open section, 
   ).toBeAttached();
 
   await page.getByRole("tab", { name: "Authors" }).click();
-  await page.getByRole("combobox", { name: /^Author/ }).selectOption("hubot");
+  await pickAuthor(page, "Hubot");
   await page.getByRole("button", { name: "View in table", exact: true }).first().click();
 
   const visiblePrLinks = prTables(page).getByRole("link", { name: "#2 opens GitHub in a new tab", exact: true }).filter({ visible: true });
@@ -3207,14 +3226,14 @@ test("React-owned Author Insights selector renders options, changes the selected
   await waitForPrTable(page);
   await page.getByRole("tab", { name: "Authors" }).click();
 
-  const select = page.getByRole("combobox", { name: "Author", exact: true, includeHidden: true });
+  const select = authorPicker(page);
   await expect(select).toBeVisible();
-  const optionCount = await select.getByRole("option", { includeHidden: true }).count();
-  expect(optionCount).toBeGreaterThan(1);
+  const options = await authorOptions(page);
+  expect(await options.count()).toBeGreaterThan(1);
 
-  await select.selectOption({ index: 1 });
+  await options.nth(1).click();
   const selectedValue = await select.inputValue();
-  await expect(page.getByText(/^Showing insights for /)).toBeVisible();
+  await expect(page.getByRole("region", { name: "Selected author", exact: true }).getByRole("list", { name: "Counts", exact: true })).toBeVisible();
 
   // Force an unrelated author-insights re-render: switch to PR data,
   // apply an unrelated local filter in the filter bar (which re-renders the whole PR data
@@ -3261,13 +3280,12 @@ test("React-owned Author Insights \"created PRs\" section updates on author swit
   const createdRoot = page.getByRole("region", { name: "Author's created PRs", exact: true, includeHidden: true });
   await expect(createdRoot.getByRole("heading", { name: "PRs created by this author", exact: true })).toBeVisible();
 
-  const select = page.getByRole("combobox", { name: "Author", exact: true, includeHidden: true });
-  const optionCount = await select.getByRole("option", { includeHidden: true }).count();
+  const optionCount = await (await authorOptions(page)).count();
   expect(optionCount).toBeGreaterThan(1);
 
   const textForEachAuthor = [];
   for (let i = 0; i < optionCount; i++) {
-    await select.selectOption({ index: i });
+    await (await authorOptions(page)).nth(i).click();
     textForEachAuthor.push(await createdRoot.textContent());
   }
   // Every author's fixture PR is different, so the section's content must
@@ -3284,7 +3302,7 @@ test("React-owned Author Insights \"created PRs\" section updates on author swit
   // against. Selecting PR #1's author first keeps the selection stable
   // across the filter, so any change in the section afterward is
   // actually the regression this test exists to catch.
-  await select.selectOption({ label: "The Octocat" });
+  await pickAuthor(page, "The Octocat");
   const pr1AuthorText = await createdRoot.textContent();
 
   // Force an unrelated author-insights re-render: switch to PR data,
@@ -3327,23 +3345,22 @@ test("React-owned Author Insights header updates on author switch and survives a
   await page.getByRole("tab", { name: "Authors" }).click();
 
   const headerRoot = page.getByRole("region", { name: "Selected author", exact: true, includeHidden: true });
-  const header = headerRoot.getByText(/^Showing insights for /);
+  const header = headerRoot.locator(".author-insights-selected");
   await expect(header).toBeVisible();
 
-  const select = page.getByRole("combobox", { name: "Author", exact: true, includeHidden: true });
-  const optionCount = await select.getByRole("option", { includeHidden: true }).count();
+  const optionCount = await (await authorOptions(page)).count();
   expect(optionCount).toBeGreaterThan(1);
 
   const textForEachAuthor = [];
   for (let i = 0; i < optionCount; i++) {
-    await select.selectOption({ index: i });
+    await (await authorOptions(page)).nth(i).click();
     textForEachAuthor.push(await header.textContent());
   }
   // Every author's name is different, so the header's text must actually
   // change each time, not get stuck on whichever author was selected first.
   expect(new Set(textForEachAuthor).size).toBe(optionCount);
 
-  await select.selectOption({ label: "The Octocat" });
+  await pickAuthor(page, "The Octocat");
   const headerText = await header.textContent();
 
   // Force an unrelated author-insights re-render: switch to PR data,
@@ -3364,6 +3381,49 @@ test("React-owned Author Insights header updates on author switch and survives a
   await openFilterBar(page);
   await filterBar(page).getByLabel("PRs", { exact: true }).fill("");
   await waitForFilterPersist(page);
+});
+
+test("Authors: the picker narrows to what's typed and picks from the keyboard; the header shows the author and their counts", async ({ page }) => {
+  await page.goto("/");
+  await waitForPrTable(page);
+  await page.getByRole("tab", { name: "Authors" }).click();
+  const picker = authorPicker(page);
+  const list = page.getByRole("listbox", { name: "Author", exact: true });
+  await expect(picker).toBeVisible();
+  await expect(list).toBeHidden();
+
+  // Typing narrows the list (by login too); Enter picks the first match.
+  await picker.fill("hub");
+  await expect(list).toBeVisible();
+  await expect(list.getByRole("option")).toHaveCount(1);
+  await expect(list.getByRole("option")).toHaveAccessibleName(/^Hubot( |$)/);
+  await page.keyboard.press("Enter");
+  await expect(picker).toHaveValue("Hubot");
+  await expect(list).toBeHidden();
+  await expect(picker).toBeFocused();
+
+  const header = page.getByRole("region", { name: "Selected author", exact: true });
+  await expect(header.locator(".author-insights-selected-name")).toHaveText(/^Hubot/);
+  await expect(header.getByRole("list", { name: "Counts", exact: true }).getByRole("listitem").first()).toHaveText(/^\d+ open PRs?$/);
+  await expect(header.getByRole("listitem").nth(1)).toHaveText(/^\d+ merged$/);
+  // Once the author's comments have loaded.
+  await expect(header.getByRole("listitem").nth(2)).toHaveText(/^\d+ comments? saved$/);
+
+  // Down opens it on the picked author; Escape closes it without a change.
+  await page.keyboard.press("ArrowDown");
+  await expect(list).toBeVisible();
+  const activeId = await picker.getAttribute("aria-activedescendant");
+  await expect(page.locator(`[id="${activeId}"]`)).toHaveAccessibleName(/^Hubot( |$)/);
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Escape");
+  await expect(list).toBeHidden();
+  await expect(picker).toHaveValue("Hubot");
+
+  // Nothing matching says so.
+  await picker.fill("no-such-author-zzz");
+  await expect(list).toContainText("No authors match");
+  await page.keyboard.press("Escape");
+  await expect(picker).toHaveValue("Hubot");
 });
 
 test("React-owned Author Insights PR-linked notes section survives an unrelated re-render", async ({ page }) => {
@@ -3423,8 +3483,7 @@ test("React-owned Author Insights manual comments composer can save and edit a c
   await waitForPrTable(page);
   await page.getByRole("tab", { name: "Authors" }).click();
 
-  const select = page.getByRole("combobox", { name: "Author", exact: true, includeHidden: true });
-  await select.selectOption({ label: "The Octocat" });
+  await pickAuthor(page, "The Octocat");
 
   const commentsRoot = page.getByRole("region", { name: "Author comments", exact: true, includeHidden: true });
   const textarea = commentsRoot.getByPlaceholder("Add a manual comment about this author...");
@@ -3522,8 +3581,7 @@ test("typing an unsaved Author Insights comment draft holds back a real data pol
   await page.getByRole("tab", { name: "Authors" }).click();
   const indicator = page.getByRole("status", { name: "Auto update paused", exact: true, includeHidden: true });
 
-  const select = page.getByRole("combobox", { name: "Author", exact: true, includeHidden: true });
-  await select.selectOption({ label: "The Octocat" });
+  await pickAuthor(page, "The Octocat");
 
   const textarea = page.getByRole("region", { name: "Author comments", exact: true, includeHidden: true }).getByPlaceholder("Add a manual comment about this author...");
   await textarea.fill("an unsaved draft left during this test");

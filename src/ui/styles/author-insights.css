@@ -5,11 +5,54 @@
   max-width: 100%;
 }
 
+/* The selected author: avatar, name and login, then their counts. */
 .author-insights-selected {
-  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.author-insights-selected-text {
+  min-width: 0;
+}
+
+.author-insights-selected-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: var(--space-2);
+  margin: 0;
+  font-size: var(--font-size-lg);
   font-weight: 600;
   color: var(--color-text);
-  margin-bottom: 12px;
+  overflow-wrap: anywhere;
+}
+
+.author-insights-selected-you {
+  font-weight: 400;
+  color: var(--color-text-muted);
+}
+
+.author-insights-selected-login {
+  font-size: var(--font-size-md);
+  font-weight: 400;
+  color: var(--color-text-muted);
+}
+
+.author-insights-selected-counts {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--font-size-md);
+  color: var(--color-text-muted);
+}
+
+.author-insights-selected-counts li + li::before {
+  content: "\00b7";
+  margin: 0 var(--space-2);
 }
 
 .author-insights-section {

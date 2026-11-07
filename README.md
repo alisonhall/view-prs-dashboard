@@ -1260,6 +1260,8 @@ Additional notes:
       - `PRs touched`: Others' PRs they commented on, reviewed or approved.
       - `Sources`: The PRs behind their numbers.
 - The `Authors` view shows per-PR review notes grouped by author. The author filter dropdown and metadata cards use resolved real names from `actorsMap`. PR cards in the Authors view include a `View in table` button with the same navigation behavior.
+  - `Author` is a text box that narrows its list to what's typed (a name or a login). The list puts the authors with a PR updated in the last 30 days (by anyone) first, newest first, under `Recent PRs`, then `Everyone else` by name; Up and Down move through it, Enter picks, and Escape closes it without a change. Opening the view shows the author of the most recently updated PR.
+  - Under it, the chosen author's avatar, name and login, then how many of their stored PRs are open and merged and how many comments you've saved about them.
 - The page-level and per-PR insights now show usefulness and approval-risk signals (for example, comments followed by author commits and high-risk approvals).
 
 ## Modifier options

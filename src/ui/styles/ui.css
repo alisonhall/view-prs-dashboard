@@ -79,6 +79,12 @@
   font-size: 9px;
 }
 
+.ui-avatar[data-size="lg"] {
+  width: 40px;
+  height: 40px;
+  font-size: 15px;
+}
+
 .ui-avatar[data-viewer="true"] {
   box-shadow: 0 0 0 2px var(--color-surface), 0 0 0 4px var(--color-accent);
 }
@@ -510,4 +516,94 @@
   background: var(--color-surface);
   font: var(--font-size-md) var(--font-sans);
   color: var(--color-text);
+}
+
+/* ComboBox: a .ui-field whose text box narrows a list that opens in
+   place below it. */
+.ui-combobox-control {
+  position: relative;
+}
+
+.ui-field .ui-combobox-control input {
+  padding-right: 26px;
+}
+
+/* The chevron: a box's two borders, turned. */
+.ui-combobox-control::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  width: 6px;
+  height: 6px;
+  margin-top: -5px;
+  border-right: 1.5px solid var(--color-text-muted);
+  border-bottom: 1.5px solid var(--color-text-muted);
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+
+.ui-combobox-list {
+  max-height: 280px;
+  overflow-y: auto;
+  margin-top: 2px;
+  padding: var(--space-1);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.ui-combobox-list[hidden] {
+  display: none;
+}
+
+.ui-combobox-group-label {
+  padding: 6px 8px 2px;
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.ui-combobox-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-md);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.ui-combobox-option:hover {
+  background: var(--color-surface-hover);
+}
+
+.ui-combobox-option[data-active="true"] {
+  background: var(--color-surface-selected);
+  box-shadow: inset 2px 0 0 var(--color-accent);
+}
+
+.ui-combobox-option[data-picked="true"] .ui-combobox-option-label {
+  font-weight: 600;
+}
+
+.ui-combobox-option[data-picked="true"]::after {
+  content: "\2713";
+  margin-left: auto;
+  color: var(--color-accent-text);
+}
+
+.ui-combobox-option-detail {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.ui-combobox-none {
+  margin: 0;
+  padding: 6px 8px;
+  font-size: var(--font-size-md);
+  color: var(--color-text-muted);
 }
