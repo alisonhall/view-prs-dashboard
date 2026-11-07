@@ -74,8 +74,8 @@ export function ReviewStatsControls() {
   };
 
   return (
-    <div className="stats-controls">
-      <label>
+    <div className="ui-toolbar stats-controls">
+      <label className="ui-field">
         Sort by
         <select value={state.sortBy} onChange={(e) => commit({ sortBy: e.target.value })}>
           {SORT_OPTIONS.map(([value, label]) => (
@@ -86,7 +86,7 @@ export function ReviewStatsControls() {
         </select>
       </label>
 
-      <label>
+      <label className="ui-field">
         Filter
         <select value={state.filterMode} onChange={(e) => commit({ filterMode: e.target.value })}>
           {FILTER_MODE_OPTIONS.map(([value, label]) => (
@@ -97,7 +97,7 @@ export function ReviewStatsControls() {
         </select>
       </label>
 
-      <label>
+      <label className="ui-field">
         Min comments
         <input
           type="number"
@@ -108,7 +108,7 @@ export function ReviewStatsControls() {
         />
       </label>
 
-      <label>
+      <label className="ui-field">
         Top reviewers
         <input
           type="number"
@@ -119,7 +119,7 @@ export function ReviewStatsControls() {
         />
       </label>
 
-      <label>
+      <label className="ui-field">
         Start date
         <input
           type="date"
@@ -130,7 +130,7 @@ export function ReviewStatsControls() {
         />
       </label>
 
-      <label>
+      <label className="ui-field">
         End date
         <input
           type="date"

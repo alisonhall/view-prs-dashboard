@@ -96,15 +96,25 @@ matters (layout, focus), and before/after screenshots in light and dark.
    (status, approvals, checks, conversations, viewed files) and `View in
    table` as a link button.
 
+## Progress
+
+- **Phase 1 done (2026-11-06):** each view is one panel (the inner
+  `.stats-panel` / `.author-insights-panel` boxes are gone) with an h2
+  and a line on what it's for (`ui/ViewHeading.tsx`); the controls are
+  in a toolbar box with the shared field style (`.ui-toolbar`,
+  `.ui-field` in `ui.css`), each control its own width. Their labels
+  are unchanged until phase 3.
+
 ## Decided
 
 - **Phase 3 (2026-11-06):** a `Columns` menu, saved in
   `user-defaults.json`.
+- **Phase 6 (2026-11-06):** a lighter list, not the PR table's row: two
+  lines per PR (number, title, status and date; then the table's signal
+  icons with their tooltips, labels and `View in table`). No Who column,
+  row actions or selection; acting on a PR stays in the table.
 
 ## To decide
 
-- **Phase 6:** reuse the PR table's row (with its column headings) for an
-  author's PRs, or a lighter list with the same icons? The row brings
-  everything (selection, the detail pane) but is wide for this view.
 - **Out of scope unless wanted:** `ROADMAP.md`'s author filter for Review
   stats; it fits phase 3 if so.

@@ -13,6 +13,7 @@ import { Snackbar } from '../Snackbar';
 import { DataViewHeader } from '../filter-bar/DataViewHeader';
 import { SettingsDrawer } from '../settings/SettingsDrawer';
 import { ErrorBoundary } from '../ui/ErrorBoundary';
+import { ViewHeading } from '../ui/ViewHeading';
 import { AppHeader } from './AppHeader';
 import { AutoUpdatePausedBanner } from './AutoUpdatePausedBanner';
 import { ErrorNotice } from './ErrorNotice';
@@ -158,7 +159,11 @@ export function AppShell() {
         <TabPanel id="tab-panel-review-stats" labelledBy="tab-review-stats">
           <LazyView id="tab-panel-review-stats">
             <ReviewStatsProvider>
-              <div id="pr-stats" className="stats-panel">
+              <div id="pr-stats">
+                <ViewHeading
+                  title="Review stats"
+                  description="How each reviewer has reviewed other people's PRs - comments, approvals and how risky those were - from the stored PRs in the dates below."
+                />
                 <div id="stats-controls-root" role="group" aria-label="Review statistics controls">
                   <ReviewStatsControls />
                 </div>
@@ -175,7 +180,11 @@ export function AppShell() {
             {/* The selected author's data; AuthorInsightsDraftsProvider,
                 above the shell, keeps unsaved comments. */}
             <AuthorInsightsProvider>
-              <div id="author-insights" className="author-insights-panel">
+              <div id="author-insights">
+                <ViewHeading
+                  title="Authors"
+                  description="One author at a time: your comments about them, your notes on their PRs, and the PRs they've opened."
+                />
                 <div id="author-insights-selector-root">
                   <AuthorInsightsSelector />
                 </div>

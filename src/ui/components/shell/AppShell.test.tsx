@@ -92,6 +92,9 @@ test('renders the page: the header, the three views labelled by their tabs, and 
   await user.click(screen.getByRole('tab', { name: 'Authors' }));
   expect(await screen.findByTestId('author-created-prs')).toBeInTheDocument();
   const stats = within(panel('Review stats') as HTMLElement);
+  // Each view names itself under the header's h1.
+  expect(stats.getByRole('heading', { level: 2, name: 'Review stats', hidden: true })).toBeInTheDocument();
+  expect(within(panel('Authors') as HTMLElement).getByRole('heading', { level: 2, name: 'Authors' })).toBeInTheDocument();
   expect(stats.getByRole('group', { name: 'Review statistics controls', hidden: true })).toContainElement(screen.getByTestId('stats-controls'));
   expect(stats.getByRole('region', { name: 'Review statistics', hidden: true })).toContainElement(screen.getByTestId('stats-content'));
   const authors = within(panel('Authors') as HTMLElement);

@@ -79,12 +79,11 @@ export function AuthorInsightsSelector() {
   }
 
   return (
-    <div className="author-insights-controls">
-      <label className="author-insights-label">
+    <div className="ui-toolbar author-insights-controls">
+      <label className="ui-field author-insights-label">
         Author
         <select
           id="author-insights-select"
-          className="author-insights-select"
           value={selectedAuthorLogin || ''}
           onChange={(e) => setSelectedAuthorLogin(e.target.value)}
         >

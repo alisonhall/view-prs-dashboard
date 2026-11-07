@@ -1,35 +1,8 @@
 /* The Authors view (AuthorInsights*). Moved from index.css (phase 10-1). */
 
-.author-insights-panel {
-  border: 1px solid var(--color-border-strong);
-  border-radius: 10px;
-  padding: 12px;
-  background: var(--color-surface-inset);
-  margin-bottom: 12px;
-}
-
-.author-insights-controls {
-  margin-bottom: 12px;
-}
-
 .author-insights-label {
-  display: grid;
-  gap: 4px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--color-text-muted);
-  max-width: 320px;
-}
-
-.author-insights-select {
-  height: 34px;
-  border: 1px solid var(--color-border-strong);
-  border-radius: 8px;
-  padding: 0 10px;
-  font-size: 14px;
-  box-sizing: border-box;
-  background: var(--color-surface);
-  color: var(--color-text);
+  width: 320px;
+  max-width: 100%;
 }
 
 .author-insights-selected {
