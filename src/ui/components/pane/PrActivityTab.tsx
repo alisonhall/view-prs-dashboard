@@ -16,6 +16,8 @@ import {
   buildActivityFeed,
   describeDay,
   formatTimeOfDay,
+  newCommitOidsFor,
+  withAckEvents,
   type ActivityKind,
   type ActivityScope,
   type FeedItem,
@@ -56,6 +58,8 @@ export interface PrActivityTabProps {
   pr: PrData;
   actorsMap?: ActorsMap;
   lastLookedAt: string;
+  // Your Acks of the PR (buildAckEvents), shown among its events.
+  ackEvents?: PrActivityEvent[];
   filters: ActivityFilters;
   onFiltersChange: (filters: ActivityFilters) => void;
   // Day headings and times use this zone; the browser's when omitted.
@@ -75,6 +79,7 @@ const iconFor = (event: PrActivityEvent): { icon: IconName; tone: Tone } => {
   if (state === 'CHANGES_REQUESTED') return { icon: 'alert', tone: 'attention' };
   if (type === 'merged') return { icon: 'merge', tone: 'done' };
   if (type === 'closed') return { icon: 'prClosed', tone: 'danger' };
+  if (type === 'ack') return { icon: 'check', tone: 'success' };
   return { icon: KIND_META[activityKindOf(event)].icon, tone: 'muted' };
 };
 
@@ -159,7 +164,9 @@ function EventItem({ event, pr, actorsMap, timeZone }: { event: PrActivityEvent;
   const prUrl = String(pr?.url || '').trim();
   const isReview = event?.channel === 'review';
   const directIsPrRoot = Boolean(directUrl) && normalizePrRootUrl(directUrl) === normalizePrRootUrl(prUrl) && !directUrl.includes('#');
-  const linkUrl = directUrl ? (directIsPrRoot && isReview ? '' : directUrl) : isReview ? '' : prUrl;
+  // Your Acks happened here, not on GitHub: no link.
+  const linkUrl =
+    event?.type === 'ack' ? '' : directUrl ? (directIsPrRoot && isReview ? '' : directUrl) : isReview ? '' : prUrl;
 
   return (
     <li className="pr-activity-item" data-kind={activityKindOf(event)}>
@@ -247,17 +254,21 @@ function Item({ item, pr, actorsMap, timeZone }: { item: FeedItem; pr: PrData; a
   return <EventItem event={item.event} pr={pr} actorsMap={actorsMap} timeZone={timeZone} />;
 }
 
-export function PrActivityTab({ pr, actorsMap, lastLookedAt, filters, onFiltersChange, timeZone }: PrActivityTabProps) {
+export function PrActivityTab({ pr, actorsMap, lastLookedAt, ackEvents, filters, onFiltersChange, timeZone }: PrActivityTabProps) {
   const now = useNow();
   const { buildActivityEvents } = usePrInsightsDisplay();
   // Built again only when the PR or the filters change, not on each minute
   // tick (useNow) or other re-render.
-  const events = useMemo(() => buildActivityEvents(pr, Number.POSITIVE_INFINITY), [buildActivityEvents, pr]);
+  const events = useMemo(
+    () => withAckEvents(buildActivityEvents(pr, Number.POSITIVE_INFINITY), ackEvents || []),
+    [buildActivityEvents, pr, ackEvents],
+  );
   const hasLastLooked = Boolean(lastLookedAt);
   const scope: ActivityScope = hasLastLooked ? filters.scope : 'all';
+  const newCommitOids = useMemo(() => newCommitOidsFor(pr, lastLookedAt), [lastLookedAt, pr]);
   const feed = useMemo(
-    () => buildActivityFeed(events, { scope, lastLookedAt, kinds: filters.kinds, timeZone }),
-    [events, scope, lastLookedAt, filters.kinds, timeZone],
+    () => buildActivityFeed(events, { scope, lastLookedAt, kinds: filters.kinds, timeZone, newCommitOids }),
+    [events, scope, lastLookedAt, filters.kinds, timeZone, newCommitOids],
   );
   const prNumber = String(pr?.number ?? '');
   // A closed PR's timeline stops at its close date (mergedAt wins, else

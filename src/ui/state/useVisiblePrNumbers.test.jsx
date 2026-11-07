@@ -23,11 +23,10 @@ const { render, act } = require('@testing-library/react');
 const { PrDataContext } = require('./PrDataContext');
 const { FilterStateContext } = require('./FilterStateContext');
 const { RowFilterSelectionProvider } = require('./RowFilterSelectionProvider');
-const { useFilteredPrRows } = require('./useVisiblePrNumbers');
+const { useFilteredPrRows, useVisiblePrKeys, FILTER_SEARCH_DEBOUNCE_MS } = require('./useVisiblePrNumbers');
 
 // The hook's own fallback shape (it isn't exported) - just the fields it reads.
 const BASE_FILTER_VALUES = {
-  scopeMode: 'all',
   filterPrNumbers: '',
   alwaysShowInReview: false,
   filterCustomComments: '',
@@ -89,7 +88,7 @@ describe('useFilteredPrRows filter-match cache', () => {
         });
       }
 
-      expect(latest.visiblePrNumbers).toBeDefined();
+      expect(latest.visiblePrKeys).toBeDefined();
       // The hook's own cache instance (the only one created for it).
       const cache = mockCacheInstances[0];
       expect(cache).toBeDefined();
@@ -98,4 +97,113 @@ describe('useFilteredPrRows filter-match cache', () => {
       });
     },
   );
+});
+
+describe('useVisiblePrKeys', () => {
+  test('typing a search keeps the same arrays until its debounced words change what they are', () => {
+    jest.useFakeTimers();
+    try {
+      const payload = makePayload(3);
+      let latest;
+      function Probe() {
+        latest = useVisiblePrKeys();
+        return null;
+      }
+      const renderWith = (search) => (
+        <PrDataContext.Provider value={{ payload }}>
+          <FilterStateContext.Provider value={{ values: { ...BASE_FILTER_VALUES, filterSearch: search } }}>
+            <RowFilterSelectionProvider>
+              <Probe />
+            </RowFilterSelectionProvider>
+          </FilterStateContext.Provider>
+        </PrDataContext.Provider>
+      );
+
+      const { rerender } = render(renderWith(''));
+      const first = latest;
+      expect(first.visiblePrKeys).toHaveLength(3);
+      act(() => rerender(renderWith('q')));
+      act(() => rerender(renderWith('qz')));
+      expect(latest.visiblePrKeys).toBe(first.visiblePrKeys);
+      expect(latest.searchTerms).toBe(first.searchTerms);
+
+      act(() => jest.advanceTimersByTime(FILTER_SEARCH_DEBOUNCE_MS));
+      expect(latest.visiblePrKeys).toEqual([]);
+      expect(latest.searchTerms).toEqual(['qz']);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+});
+
+describe('useFilteredPrRows search', () => {
+  test("a PR without an author isn't found by the resolver's \"unknown\"", () => {
+    jest.useFakeTimers();
+    try {
+      const payload = makePayload(2);
+      let latest;
+      function Probe() {
+        latest = useFilteredPrRows();
+        return null;
+      }
+      render(
+        <PrDataContext.Provider value={{ payload }}>
+          <FilterStateContext.Provider value={{ values: { ...BASE_FILTER_VALUES, filterSearch: 'unknown' } }}>
+            <RowFilterSelectionProvider>
+              <Probe />
+            </RowFilterSelectionProvider>
+          </FilterStateContext.Provider>
+        </PrDataContext.Provider>,
+      );
+      expect(latest.searchTerms).toEqual(['unknown']);
+      expect(latest.visiblePrKeys).toEqual([]);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+});
+
+describe('useFilteredPrRows conversation filters', () => {
+  const thread = (comments, extra = {}) => ({ isResolved: false, comments, participants: comments.map((c) => c.authorLogin), ...extra });
+  const comment = (authorLogin, createdAt, body = 'A note') => ({ authorLogin, createdAt, body, state: 'SUBMITTED' });
+  const payload = {
+    byPrNumber: {
+      // Waiting on me: the latest comment is someone else's.
+      'owner/repo#1': { prNumber: '1', repo: 'owner/repo', data: { number: 1, viewerLogin: 'me', reviewThreads: [thread([comment('me', '2026-11-01T00:00:00Z'), comment('ann', '2026-11-02T00:00:00Z')])] } },
+      // With me, answered: the latest comment is mine.
+      'owner/repo#2': { prNumber: '2', repo: 'owner/repo', data: { number: 2, viewerLogin: 'me', reviewThreads: [thread([comment('ann', '2026-11-01T00:00:00Z'), comment('me', '2026-11-02T00:00:00Z')])] } },
+      // Someone else's conversation, and a resolved one of mine.
+      'owner/repo#3': {
+        prNumber: '3',
+        repo: 'owner/repo',
+        data: {
+          number: 3,
+          viewerLogin: 'me',
+          reviewThreads: [thread([comment('ann', '2026-11-01T00:00:00Z')]), thread([comment('me', '2026-11-01T00:00:00Z'), comment('ann', '2026-11-02T00:00:00Z')], { isResolved: true })],
+        },
+      },
+    },
+  };
+  const visibleWith = (values) => {
+    let latest;
+    function Probe() {
+      latest = useFilteredPrRows();
+      return null;
+    }
+    render(
+      <PrDataContext.Provider value={{ payload }}>
+        <FilterStateContext.Provider value={{ values: { ...BASE_FILTER_VALUES, ...values } }}>
+          <RowFilterSelectionProvider>
+            <Probe />
+          </RowFilterSelectionProvider>
+        </FilterStateContext.Provider>
+      </PrDataContext.Provider>,
+    );
+    return [...latest.visiblePrKeys].sort();
+  };
+
+  test('Open conversations with me: unresolved ones I took part in; Waiting on me: of those, the ones someone else spoke last in', () => {
+    expect(visibleWith({ onlyOpenConversationsWithMe: true })).toEqual(['owner/repo#1', 'owner/repo#2']);
+    expect(visibleWith({ onlyWaitingOnMe: true })).toEqual(['owner/repo#1']);
+  });
 });

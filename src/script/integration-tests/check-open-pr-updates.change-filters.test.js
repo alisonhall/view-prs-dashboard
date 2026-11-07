@@ -1,4 +1,5 @@
 const { execFileSync } = require("child_process");
+const { countExternalCommits } = require("../compute-pr-row");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
@@ -145,17 +146,20 @@ describe("change filter application in jq queries", () => {
 const makeTempDir = () => fs.mkdtempSync(path.join(os.tmpdir(), "change-filters-")).split(path.sep).join("/");
 const writeJson = (dir, name, value) => fs.writeFileSync(path.join(dir, name), JSON.stringify(value));
 
-// The script's own count_external_commits (sourced, not a copy of its jq),
-// with the config load_change_filter_config reads from user-defaults.json.
+// The config the script reads from user-defaults.json
+// (load_change_filter_config, sourced) - passed to each row's computation as
+// compute_pr_state_json does - counted by compute-pr-row.js.
 const countCommits = ({ commits, userDefaults, since = "" }) => {
   const tempDir = makeTempDir();
-  writeJson(tempDir, "detail.json", { commits });
   if (userDefaults) {
     writeJson(tempDir, "user-defaults.json", userDefaults);
   }
-  return runShell(
-    `source "${scriptPath}"; DATA_DIR="${tempDir}"; VIEWER_LOGIN="viewer"; load_change_filter_config; count_external_commits "$(cat "${tempDir}/detail.json")" "${since}"`,
+  const settings = JSON.parse(
+    runShell(
+      `source "${scriptPath}"; DATA_DIR="${tempDir}"; load_change_filter_config; jq -n --arg ignoreCommitPatterns "$CHANGE_FILTER_IGNORE_COMMIT_PATTERNS" --argjson mergeHeadlinePatterns "$MERGE_COMMIT_HEADLINE_PATTERNS_JSON" --argjson mergeLogins "$MERGE_COMMIT_LOGINS_JSON" '$ARGS.named'`,
+    ),
   );
+  return String(countExternalCommits({ commits }, { viewerLogin: "viewer", since, ...settings }));
 };
 
 const commit = (login, messageHeadline, committedDate = "2024-01-15T10:00:00Z") => ({
@@ -164,7 +168,7 @@ const commit = (login, messageHeadline, committedDate = "2024-01-15T10:00:00Z") 
   messageHeadline,
 });
 
-describe("count_external_commits (merge commit rules and ignore patterns)", () => {
+describe("counting external commits (merge commit rules and ignore patterns)", () => {
   test("given the default rules, when counting, then any 'Merge ...' headline (any case) and the viewer's own commits are left out", () => {
     const count = countCommits({
       commits: [

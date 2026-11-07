@@ -941,7 +941,8 @@ describe("route behavior", () => {
         appModule.viewPrsSchedulerState.dispatcher.entries[
           "acme-org/repo-config-test::autoRefresh"
         ];
-      expect(entry.priority).toBe(9);
+      // The boost adds to auto refresh's default priority, 3.
+      expect(entry.priority).toBe(3 + 9);
       expect(entry.intervalMs).toBe(60000);
     } finally {
       if (savedAutoRepos === undefined) {
@@ -950,6 +951,29 @@ describe("route behavior", () => {
         process.env.VIEW_PRS_AUTO_REPOS = savedAutoRepos;
       }
       appModule.viewPrsSchedulerState.dispatcher = { entries: {}, reservedGhSlots: 0 };
+    }
+  });
+
+  test("GET /view-prs/dispatcher/settings lists the scheduled repos and each task type's defaults", async () => {
+    const savedAutoRepos = process.env.VIEW_PRS_AUTO_REPOS;
+    process.env.VIEW_PRS_AUTO_REPOS = "acme-org/settings-a,acme-org/settings-b";
+    try {
+      const { response, payload } = await requestJson(server, "/view-prs/dispatcher/settings");
+      expect(response.status).toBe(200);
+      expect(payload.ok).toBe(true);
+      expect(payload.repos).toEqual(expect.arrayContaining(["acme-org/settings-a", "acme-org/settings-b"]));
+      expect(payload.taskTypes.map((entry) => [entry.taskType, entry.priority])).toEqual([
+        ["quickCheck", 5],
+        ["autoRefresh", 3],
+        ["mergedDrain", 1],
+      ]);
+      payload.taskTypes.forEach((entry) => expect(entry.intervalMs).toBeGreaterThan(0));
+    } finally {
+      if (savedAutoRepos === undefined) {
+        delete process.env.VIEW_PRS_AUTO_REPOS;
+      } else {
+        process.env.VIEW_PRS_AUTO_REPOS = savedAutoRepos;
+      }
     }
   });
 
@@ -1513,9 +1537,11 @@ describe("route behavior", () => {
     ]);
     const originalRun = appModule.runViewPrsScript;
     const scriptCalls = [];
+    const tasksSeen = [];
     appModule.runViewPrsScript = async (commandArgs) => {
       const repoIndex = commandArgs.indexOf("--repo");
       scriptCalls.push(repoIndex >= 0 ? commandArgs[repoIndex + 1] : null);
+      tasksSeen.push(...appModule.getViewPrsSchedulerPublicState().tasks);
       return { stdout: "", stderr: "" };
     };
     try {
@@ -1532,6 +1558,8 @@ describe("route behavior", () => {
       await new Promise((resolve) => setImmediate(resolve));
       expect(scriptCalls).toContain("owner/repo-run-auto-free");
       expect(scriptCalls).not.toContain("owner/repo-run-auto-busy");
+      // Activity says you started it.
+      expect(tasksSeen).toContainEqual(expect.objectContaining({ kind: "autoRefresh", origin: "you" }));
     } finally {
       appModule.runViewPrsScript = originalRun;
       appModule.viewPrsSchedulerState.isAutoRunInProgress = false;
@@ -1576,10 +1604,14 @@ describe("route behavior", () => {
     const originalRun = appModule.runViewPrsScript;
     const originalAutoRepos = process.env.VIEW_PRS_AUTO_REPOS;
     process.env.VIEW_PRS_AUTO_REPOS = "owner/repo-quick-check-route";
-    appModule.runViewPrsScript = async () => ({
-      stdout: JSON.stringify({ pendingOpen: ["901", "902"], pendingMergedClosed: ["903"] }),
-      stderr: "",
-    });
+    const tasksSeen = [];
+    appModule.runViewPrsScript = async () => {
+      tasksSeen.push(...appModule.getViewPrsSchedulerPublicState().tasks);
+      return {
+        stdout: JSON.stringify({ pendingOpen: ["901", "902"], pendingMergedClosed: ["903"] }),
+        stderr: "",
+      };
+    };
     try {
       const { response, payload } = await postJson(server, "/quick-check", {});
 
@@ -1590,6 +1622,8 @@ describe("route behavior", () => {
       expect(payload.reposChecked).toContain("owner/repo-quick-check-route");
       expect(payload.reposFailed).toEqual([]);
       expect(payload).toHaveProperty("lastQuickCheckAt");
+      // Activity says you started it.
+      expect(tasksSeen).toContainEqual(expect.objectContaining({ kind: "quickCheck", origin: "you" }));
     } finally {
       appModule.runViewPrsScript = originalRun;
       if (originalAutoRepos === undefined) {
@@ -2365,6 +2399,46 @@ describe("route behavior", () => {
       expect(updated.byPrNumber["703"].data.labels).toEqual(["bug"]);
     } finally {
       appModule.runViewPrsBashCommand = originalBash;
+      if (dataFileExisted) {
+        fs.writeFileSync(dataFilePath, originalDataRaw, "utf8");
+      } else {
+        fs.rmSync(dataFilePath, { force: true });
+      }
+    }
+  });
+
+  test("POST /labels/apply still patches the stored labels past a PR-data lock left by a killed script run (over a minute old), and leaves it", async () => {
+    const dataFilePath = appModule.viewPrsDataFile;
+    const lockDir = dataFilePath.replace(/\.json$/, ".lock");
+    const dataFileExisted = fs.existsSync(dataFilePath);
+    const originalDataRaw = dataFileExisted ? fs.readFileSync(dataFilePath, "utf8") : "";
+    const originalBash = appModule.runViewPrsBashCommand;
+
+    fs.mkdirSync(path.dirname(dataFilePath), { recursive: true });
+    fs.writeFileSync(
+      dataFilePath,
+      JSON.stringify({ byPrNumber: { 704: { repo: "owner/repo", data: { number: 704, labels: [] } } }, lastRun: null }),
+      "utf8",
+    );
+    fs.mkdirSync(lockDir, { recursive: true });
+    const old = new Date(Date.now() - 5 * 60 * 1000);
+    fs.utimesSync(lockDir, old, old);
+    appModule.runViewPrsBashCommand = async (bashArgs) =>
+      String(bashArgs?.[1] || "").includes("gh pr view")
+        ? { stdout: JSON.stringify(["bug"]), stderr: "" }
+        : { stdout: "", stderr: "" };
+
+    try {
+      const { response, payload } = await postJson(server, "/labels/apply", { repo: "owner/repo", label: "bug", prNumbers: "704" });
+
+      expect(response.status).toBe(200);
+      expect(payload.refreshErrors).toEqual([]);
+      expect(JSON.parse(fs.readFileSync(dataFilePath, "utf8")).byPrNumber["704"].data.labels).toEqual(["bug"]);
+      // Not this patch's to remove: the script recovers it.
+      expect(fs.existsSync(lockDir)).toBe(true);
+    } finally {
+      appModule.runViewPrsBashCommand = originalBash;
+      fs.rmSync(lockDir, { recursive: true, force: true });
       if (dataFileExisted) {
         fs.writeFileSync(dataFilePath, originalDataRaw, "utf8");
       } else {

@@ -148,6 +148,12 @@ const validationPayload = {
     data && Object.prototype.hasOwnProperty.call(data, "lastRun")
       ? data.lastRun
       : null,
+  // Each when present: older data has none of them.
+  ...Object.fromEntries(
+    ["lastFullRun", "lastRunByRepo", "lastFullRunByRepo"]
+      .filter((key) => data && Object.prototype.hasOwnProperty.call(data, key))
+      .map((key) => [key, data[key]]),
+  ),
 };
 
 const userStateValidationPayload = {
@@ -180,6 +186,18 @@ const userStateValidationPayload = {
     typeof userState.flaggedByRepo === "object" &&
     userState.flaggedByRepo !== null
       ? userState.flaggedByRepo
+      : {},
+  ackHistoryByRepo:
+    userState &&
+    typeof userState.ackHistoryByRepo === "object" &&
+    userState.ackHistoryByRepo !== null
+      ? userState.ackHistoryByRepo
+      : {},
+  threadChecksByRepo:
+    userState &&
+    typeof userState.threadChecksByRepo === "object" &&
+    userState.threadChecksByRepo !== null
+      ? userState.threadChecksByRepo
       : {},
 };
 

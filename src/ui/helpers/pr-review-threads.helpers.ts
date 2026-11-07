@@ -1,4 +1,4 @@
-import type { PrData, ReviewThread, ReviewThreadComment } from "../types/pr-data.ts";
+import type { PrData, ReviewThread, ReviewThreadComment, ThreadChecksByRepo } from "../types/pr-data.ts";
 import { asArray } from "./pr-as-array.helpers.ts";
 import { parseSortableTime } from "./pr-sortable-time.helpers.ts";
 
@@ -72,6 +72,74 @@ export const isWaitingOnViewer = (thread: ReviewThread, viewerLogin: string): bo
   return loginKey(latest?.authorLogin) !== viewer || mentions(latest?.body, viewer);
 };
 
+// "Resolved for you": a thread the viewer started that someone else
+// resolved, left for the viewer to confirm it was handled. Others may
+// resolve the viewer's threads on high-priority PRs once they've checked
+// - which no data says, so every one is listed - but not the PR author
+// (byPrAuthor). A confirmation (the user state's threadChecksByRepo)
+// holds while the thread's signature - who resolved it, and its submitted
+// comments - is unchanged: a new reply, or resolving it again as someone
+// else, asks again.
+export type ThreadConfirmations = Record<string, string | undefined>;
+
+export interface ThreadCheck {
+  threadId: string;
+  resolvedByLogin: string;
+  byPrAuthor: boolean;
+  signature: string;
+  confirmed: boolean;
+}
+
+export const threadCheckSignature = (thread: ReviewThread): string => {
+  const submitted = sortedComments(thread).filter((comment) => !isPending(comment));
+  return [loginKey(thread?.resolvedByLogin), submitted.length, String(submitted[submitted.length - 1]?.id || "")].join("|");
+};
+
+export const getThreadCheck = (
+  thread: ReviewThread,
+  viewerLogin: string,
+  prAuthorLogin: string,
+  confirmations: ThreadConfirmations = {},
+): ThreadCheck | null => {
+  const viewer = loginKey(viewerLogin);
+  const threadId = String(thread?.id || "").trim();
+  const resolvedBy = loginKey(thread?.resolvedByLogin);
+  if (!viewer || !threadId || thread?.isResolved !== true || !resolvedBy || resolvedBy === viewer) return null;
+  if (loginKey(sortedComments(thread)[0]?.authorLogin) !== viewer) return null;
+  const signature = threadCheckSignature(thread);
+  return {
+    threadId,
+    resolvedByLogin: String(thread?.resolvedByLogin || "").trim(),
+    byPrAuthor: resolvedBy === loginKey(prAuthorLogin),
+    signature,
+    confirmed: confirmations[threadId] === signature,
+  };
+};
+
+export const getThreadChecks = (
+  pr: PrData,
+  viewerLogin: string,
+  prAuthorLogin: string,
+  confirmations: ThreadConfirmations = {},
+): ThreadCheck[] =>
+  asArray(pr?.reviewThreads)
+    .map((thread) => getThreadCheck(thread, viewerLogin, prAuthorLogin, confirmations))
+    .filter((check): check is ThreadCheck => check !== null);
+
+export const countThreadsToCheck = (
+  pr: PrData,
+  viewerLogin: string,
+  prAuthorLogin: string,
+  confirmations: ThreadConfirmations = {},
+): number => getThreadChecks(pr, viewerLogin, prAuthorLogin, confirmations).filter((check) => !check.confirmed).length;
+
+// One PR's confirmations from the data payload.
+export const threadConfirmationsFor = (
+  threadChecksByRepo: ThreadChecksByRepo | null | undefined,
+  repo: unknown,
+  prNumber: unknown,
+): ThreadConfirmations => threadChecksByRepo?.[String(repo || "")]?.[String(prNumber ?? "")] || {};
+
 export type ThreadState = "waiting" | "open" | "wrong" | "resolved";
 
 export interface ThreadComment {
@@ -94,6 +162,8 @@ export interface ThreadView {
   isOutdated: boolean;
   resolvedByLogin: string;
   resolvedByAuthor: boolean;
+  // Resolved for you, to confirm; null when it isn't.
+  check: ThreadCheck | null;
   // Oldest first: the starter, then the replies.
   comments: ThreadComment[];
   participants: string[];
@@ -104,6 +174,8 @@ export interface ConversationsContext {
   prAuthorLogin: string;
   viewerLogin: string;
   policy: ThreadResolutionPolicy;
+  // The viewer's confirmations for this PR (threadConfirmationsFor).
+  confirmations?: ThreadConfirmations;
 }
 
 const toComment = (comment: ReviewThreadComment & { author?: { name?: string } }, index: number): ThreadComment => ({
@@ -144,6 +216,7 @@ export const buildThreadViews = (pr: PrData, context: ConversationsContext): Thr
       isOutdated: thread?.isOutdated === true,
       resolvedByLogin: String(thread?.resolvedByLogin || "").trim(),
       resolvedByAuthor,
+      check: getThreadCheck(thread, context.viewerLogin, context.prAuthorLogin, context.confirmations),
       comments,
       participants: asArray(thread?.participants)
         .map((login) => String(login || "").trim())
@@ -158,6 +231,8 @@ export interface ConversationCounts {
   waiting: number;
   // Resolved by the PR author against the rule.
   wrong: number;
+  // Resolved for you and not confirmed yet.
+  toCheck: number;
   total: number;
 }
 
@@ -165,15 +240,25 @@ export const countThreads = (threads: readonly ThreadView[]): ConversationCounts
   unresolved: threads.filter((thread) => thread.state === "waiting" || thread.state === "open").length,
   waiting: threads.filter((thread) => thread.state === "waiting").length,
   wrong: threads.filter((thread) => thread.state === "wrong").length,
+  toCheck: threads.filter(isToCheck).length,
   total: threads.length,
 });
 
-export type ConversationFilter = "unresolved" | "waiting" | "all";
+export type ConversationFilter = "unresolved" | "waiting" | "check" | "all";
 
-// "Unresolved" also shows the threads resolved by the wrong person: they
-// still need someone to look.
+const isToCheck = (thread: ThreadView) => Boolean(thread.check && !thread.check.confirmed);
+
+// "Unresolved" also shows the threads resolved by the wrong person, and
+// those resolved for you that you haven't confirmed: they still need
+// someone to look. "To check": only the latter.
 export const threadMatches = (thread: ThreadView, filter: ConversationFilter): boolean =>
-  filter === "all" ? true : filter === "waiting" ? thread.state === "waiting" : thread.state !== "resolved";
+  filter === "all"
+    ? true
+    : filter === "waiting"
+      ? thread.state === "waiting"
+      : filter === "check"
+        ? isToCheck(thread)
+        : thread.state !== "resolved" || isToCheck(thread);
 
 export const filterCount = (threads: readonly ThreadView[], filter: ConversationFilter): number =>
   threads.filter((thread) => threadMatches(thread, filter)).length;
@@ -206,7 +291,7 @@ export const groupThreadsByFile = (
 };
 
 // "Next unresolved": the next thread the "Unresolved" filter shows (so the
-// wrongly resolved too) after `currentId`, in the order the "All" filter
+// wrongly resolved, and those to check, too) after `currentId`, in the order the "All" filter
 // lists them, wrapping; the first when there's no current one. Null when
 // the filter shows none.
 export const nextUnresolvedId = (threads: readonly ThreadView[], currentId: string | null): string | null => {

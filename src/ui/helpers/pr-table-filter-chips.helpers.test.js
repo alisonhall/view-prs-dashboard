@@ -9,7 +9,8 @@ describe("pr table filter chips helpers", () => {
 
       expect(
         buildTableFilterChipsViewModel({
-          scopeMode: "all",
+          onlyNeedsAttention: false,
+          onlyThreadsToCheck: false,
           filterPrNumbers: "",
           includeLabels: [],
           excludeLabels: [],
@@ -32,16 +33,36 @@ describe("pr table filter chips helpers", () => {
       expect(buildTableFilterChipsViewModel()).toEqual([]);
     });
 
-    test("given a non-default scopeMode, when building chips, then includes a Scope chip clearing back to 'all'", () => {
+    test("given the \"only\" checkboxes checked, when building chips, then a chip each, unchecking it", () => {
       const { buildTableFilterChipsViewModel } = createPrTableFilterChipsHelpers();
 
-      const chips = buildTableFilterChipsViewModel({ scopeMode: "needs-attention" });
+      const chips = buildTableFilterChipsViewModel({
+        onlyNeedsAttention: true,
+        onlyOpenConversationsWithMe: true,
+        onlyWaitingOnMe: true,
+        onlyThreadsToCheck: true,
+      });
 
       expect(chips).toEqual([
         {
-          id: "scopeMode",
-          label: "Scope: needs-attention",
-          clear: { kind: "field", key: "scopeMode", value: "all" },
+          id: "onlyNeedsAttention",
+          label: "Needs attention",
+          clear: { kind: "field", key: "onlyNeedsAttention", value: false },
+        },
+        {
+          id: "onlyOpenConversationsWithMe",
+          label: "Open conversations with me",
+          clear: { kind: "field", key: "onlyOpenConversationsWithMe", value: false },
+        },
+        {
+          id: "onlyWaitingOnMe",
+          label: "Waiting on me",
+          clear: { kind: "field", key: "onlyWaitingOnMe", value: false },
+        },
+        {
+          id: "onlyThreadsToCheck",
+          label: "Conversations resolved for you",
+          clear: { kind: "field", key: "onlyThreadsToCheck", value: false },
         },
       ]);
     });
@@ -60,10 +81,23 @@ describe("pr table filter chips helpers", () => {
       expect(chips).toEqual([
         {
           id: "filterPrNumbers",
-          label: "PR #: 123, 456",
+          label: "PRs: 123, 456",
           clear: { kind: "field", key: "filterPrNumbers", value: "" },
         },
       ]);
+    });
+
+    test("given a search, when building chips, then includes a trimmed Search chip, first, clearing back to ''", () => {
+      const { buildTableFilterChipsViewModel } = createPrTableFilterChipsHelpers();
+
+      const chips = buildTableFilterChipsViewModel({ filterPrNumbers: "12", filterSearch: "  fix parser " });
+
+      expect(chips[0]).toEqual({
+        id: "filterSearch",
+        label: "Search: fix parser",
+        clear: { kind: "field", key: "filterSearch", value: "" },
+      });
+      expect(buildTableFilterChipsViewModel({ filterSearch: "   " })).toEqual([]);
     });
 
     test("given multiple selected labels, when building chips, then includes one chip per label each clearing just that one", () => {
@@ -189,7 +223,7 @@ describe("pr table filter chips helpers", () => {
       const { buildTableFilterChipsViewModel } = createPrTableFilterChipsHelpers();
 
       const chips = buildTableFilterChipsViewModel({
-        scopeMode: "needs-attention",
+        onlyNeedsAttention: true,
         filterPrNumbers: "42",
         includeLabels: ["bug"],
         authorLogins: ["alice"],
@@ -197,7 +231,7 @@ describe("pr table filter chips helpers", () => {
       });
 
       expect(chips.map((chip) => chip.id)).toEqual([
-        "scopeMode",
+        "onlyNeedsAttention",
         "filterPrNumbers",
         "label-list:bug",
         "author-list:alice",

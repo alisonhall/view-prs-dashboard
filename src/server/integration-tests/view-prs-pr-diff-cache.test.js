@@ -173,4 +173,27 @@ describe("view-prs pr-diff cache protection", () => {
     const writtenPath = cache.getPrDiffCacheFilePath("owner/repo", "456");
     expect(fs.existsSync(writtenPath)).toBe(true);
   });
+
+  test("fetches a GitHub Enterprise repo's diff from its host (GH_HOST)", async () => {
+    const run = jest.fn(async () => ({ stdout: "diff --git a/a.js b/a.js\n+line\n" }));
+    const cache = createViewPrsPrDiffCache({
+      fs,
+      safeReadJsonFile,
+      toTrimmedString,
+      isRepoSlug,
+      getPrDiffCommitFingerprint: (entry) => String(entry?.fingerprint || ""),
+      extractRawDiffText: (stdout) => String(stdout || ""),
+      buildPrDiffCacheFilePath: getPrDiffCacheFilePath,
+      runViewPrsCommand: run,
+      getRepoGhEnv: (repo) => (repo === "corp/tool" ? { GH_HOST: "github.example.com" } : {}),
+      viewPrsPrDiffDir: tmpDir,
+      viewPrsPrDiffTimeoutMs: 5000,
+      viewPrsPrDiffConcurrency: 1,
+      allowDestructiveWriteRaw: "",
+    });
+
+    await cache.syncPrDiffForEntry({ repo: "corp/tool", prNumber: "5", fingerprint: "fp-5" }, { force: true });
+
+    expect(run.mock.calls[0][3]).toMatchObject({ env: { GH_HOST: "github.example.com" } });
+  });
 });

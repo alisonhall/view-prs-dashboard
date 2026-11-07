@@ -23,6 +23,28 @@ const renderMenu = (entries = buildEntries()) =>
   );
 
 describe('MenuButton', () => {
+  test('lists choices as radio items, the chosen one checked', async () => {
+    const user = userEvent.setup();
+    const onRecent = jest.fn();
+    renderMenu([
+      {
+        id: 'by',
+        label: 'Sort by',
+        items: [
+          { id: 'number', label: 'PR number', checked: true, onSelect: jest.fn() },
+          { id: 'updated', label: 'Last updated', checked: false, onSelect: onRecent },
+        ],
+      },
+    ]);
+
+    await user.click(screen.getByRole('button', { name: 'More actions for PR #2' }));
+
+    expect(screen.getByRole('menuitemradio', { name: 'PR number' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('menuitemradio', { name: 'Last updated' })).toHaveAttribute('aria-checked', 'false');
+    await user.click(screen.getByRole('menuitemradio', { name: 'Last updated' }));
+    expect(onRecent).toHaveBeenCalledTimes(1);
+  });
+
   test('is a closed menu button until clicked', async () => {
     const user = userEvent.setup();
     renderMenu();

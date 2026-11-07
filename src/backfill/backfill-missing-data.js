@@ -310,9 +310,9 @@ const migrateLegacyStories = ({ userState, data }) => {
 
 // The lock directory check-open-pr-updates.sh uses for a state file (e.g.
 // check-open-pr-updates.data.json -> check-open-pr-updates.data.lock; the
-// server also takes the data one for its label patch), so this never
-// interleaves with their read-modify-write. The server's own user state
-// writes (notes saves) don't take a lock - see migrateLegacyStoriesInFiles.
+// server also takes the data one for its label patch, and the user state
+// one for its writes - notes saves - since 2026-11-03), so this never
+// interleaves with their read-modify-write.
 const getLockDir = (filePath) => filePath.replace(/\.json$/, ".lock");
 
 // Why a lock is still held, for the error: its age and the holder the shell
@@ -404,10 +404,11 @@ const createStateWriter = ({ dataPath, userStatePath, backupDir }) => {
 // and written under its lock; a missing file is skipped). With dryRun,
 // only reports. Returns the PR numbers changed in each file.
 //
-// The lock doesn't cover the dashboard's own notes saves, which write the
-// user state without one. So the file is read again just before writing,
-// and if it changed in the meantime (e.g. a note was saved) the conversion
-// is redone on the fresh copy rather than overwriting that save.
+// Before 2026-11-03 the dashboard's notes saves wrote the user state
+// without the lock (an older server still does). So the file is read again
+// just before writing, and if it changed in the meantime (e.g. a note was
+// saved) the conversion is redone on the fresh copy rather than
+// overwriting that save.
 const MAX_CONVERT_ATTEMPTS = 3;
 
 const migrateLegacyStoriesInFiles = async ({
@@ -499,7 +500,31 @@ const runWithConcurrency = async ({
   await Promise.all(workers);
 };
 
-const runRefresh = ({ refreshScriptPath, repo, prNumber, jobs }) =>
+// The GitHub Enterprise host each repo is on, from the server's sources
+// file (beside the data file, or VIEW_PRS_SOURCES_FILE): a subscription's,
+// else a PR added from it. Read as it is - not through the server's
+// storage, which sets an unreadable file aside - and none when it can't be.
+const readRepoHosts = (dataPath) => {
+  const sourcesFile =
+    process.env.VIEW_PRS_SOURCES_FILE || path.join(path.dirname(dataPath), "check-open-pr-updates.sources.json");
+  try {
+    const sources = JSON.parse(fs.readFileSync(sourcesFile, "utf8"));
+    const hosts = {};
+    [...(Array.isArray(sources?.subscriptions) ? sources.subscriptions : []), ...(Array.isArray(sources?.trackedPrs) ? sources.trackedPrs : [])].forEach(
+      (entry) => {
+        const repo = String(entry?.repo || "").trim();
+        const host = String(entry?.host || "").trim().toLowerCase();
+        if (repo && host && !hosts[repo]) hosts[repo] = host;
+      },
+    );
+    return hosts;
+  } catch (_error) {
+    return {};
+  }
+};
+
+// ghHost: GH_HOST for the run, for a repo on a GitHub Enterprise host.
+const runRefresh = ({ refreshScriptPath, repo, prNumber, jobs, ghHost = "" }) =>
   new Promise((resolve) => {
     const args = [
       refreshScriptPath,
@@ -519,7 +544,7 @@ const runRefresh = ({ refreshScriptPath, repo, prNumber, jobs }) =>
     const child = spawn("bash", args, {
       cwd: viewPrsDir,
       stdio: ["ignore", "pipe", "pipe"],
-      env: process.env,
+      env: ghHost ? { ...process.env, GH_HOST: ghHost } : process.env,
     });
 
     let stdout = "";
@@ -595,6 +620,7 @@ const main = async () => {
   }
 
   const toProcess = candidates.slice(0, options.maxPrs);
+  const repoHosts = readRepoHosts(options.dataPath);
   console.log(
     `[backfill] processing ${toProcess.length} row(s) (max-prs=${options.maxPrs}, delay-ms=${options.delayMs}, jobs=${options.jobs}, concurrency=${options.concurrency}, dry-run=${options.dryRun})`,
   );
@@ -619,6 +645,7 @@ const main = async () => {
         repo: item.repo,
         prNumber: item.prNumber,
         jobs: options.jobs,
+        ghHost: repoHosts[item.repo] || "",
       });
 
       if (!result.ok) {
@@ -647,6 +674,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  readRepoHosts,
   buildDefaultOptions,
   collectBackfillCandidates,
   migrateLegacyStories,

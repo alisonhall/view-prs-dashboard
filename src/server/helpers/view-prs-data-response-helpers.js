@@ -1,3 +1,13 @@
+// The user state's per-repo maps the page gets (readViewPrsData).
+const USER_STATE_MAP_KEYS = [
+  "ackByRepo",
+  "ackHistoryByRepo",
+  "reverifyByRepo",
+  "inReviewByRepo",
+  "flaggedByRepo",
+  "threadChecksByRepo",
+];
+
 const createViewPrsDataResponseHelpers = ({
   getViewPrsDataMeta,
   getViewPrsSchedulerPublicState,
@@ -32,10 +42,20 @@ const createViewPrsDataResponseHelpers = ({
     ...getViewPrsDataMeta(),
   });
 
-  const buildDataManifestPayload = ({ manifest }) => ({
+  // With the user state's per-repo maps (readViewPrsData's), which a poll
+  // has no rows to carry: an Ack the script cleared, or one made in
+  // another tab, reaches the page with them.
+  const buildDataManifestPayload = ({ manifest, data }) => ({
     ok: true,
     manifest,
     dataMeta: getViewPrsDataMeta(),
+    ...(data
+      ? {
+          userState: Object.fromEntries(
+            USER_STATE_MAP_KEYS.map((key) => [key, data[key] || {}]),
+          ),
+        }
+      : {}),
   });
 
   const buildSchedulerPayload = () => ({
@@ -49,6 +69,9 @@ const createViewPrsDataResponseHelpers = ({
     dataMeta: getViewPrsDataMeta(),
     scheduler: getViewPrsSchedulerPublicState(),
     lastRun: data?.lastRun || null,
+    lastFullRun: data?.lastFullRun || null,
+    lastRunByRepo: data?.lastRunByRepo || {},
+    lastFullRunByRepo: data?.lastFullRunByRepo || {},
   });
 
   return {

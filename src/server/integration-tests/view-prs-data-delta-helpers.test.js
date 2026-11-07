@@ -23,6 +23,14 @@ describe("view-prs data-delta helpers", () => {
     expect(result).toEqual(["123", "456", "0456"]);
   });
 
+  test("given row keys (repo#number), when parsing requested PR numbers, then they're kept as the rows' keys", () => {
+    const helpers = createViewPrsDataDeltaHelpers({ isObject });
+
+    expect(
+      helpers.parseRequestedPrNumbers({ prNumbers: ["acme/api#12", "acme/web#12", "acme/api#12", "#12", "acme#12", "acme/api#x"] }),
+    ).toEqual(["acme/api#12", "acme/web#12"]);
+  });
+
   test("given requested numbers and data rows, when building a delta payload, then only existing rows are returned with missing numbers listed", () => {
     const helpers = createViewPrsDataDeltaHelpers({ isObject });
 

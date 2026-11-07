@@ -1,7 +1,7 @@
 /** @jest-environment jsdom */
 
 const React = require('react');
-const { render, screen } = require('@testing-library/react');
+const { render, screen, waitFor, within } = require('@testing-library/react');
 const userEvent = require('@testing-library/user-event').default;
 require('@testing-library/jest-dom');
 const { ReviewStatsContent } = require('./ReviewStatsContent');
@@ -12,6 +12,38 @@ const { createPrDataProbe } = require('../test-fixtures/pr-data-probe');
 const prDataProbe = createPrDataProbe();
 const { ReviewStatsContext, defaultReviewStats } = require('../state/ReviewStatsContext');
 const { TabStateContext } = require('../state/TabStateContext');
+const { ReviewStatsProvider } = require('./ReviewStatsProvider');
+const { ReviewStatsControls } = require('./ReviewStatsControls');
+const { REVIEW_STATS_COLUMNS_STORAGE_KEY } = require('../helpers/review-stats-columns.helpers');
+const {
+  REVIEW_STATS_CARD_EXPLANATIONS,
+  REVIEW_STATS_COLUMN_EXPLANATIONS,
+} = require('../helpers/review-stats-explanations.helpers');
+const { ActorIdentityContext, defaultActorIdentity } = require('../state/ActorIdentityContext');
+
+// A stand-in for /view-prs/user-defaults: GET returns `savedDefaults`, PUT
+// replaces it.
+let savedDefaults;
+const fetchMock = jest.fn(async (_input, init) => {
+  if (init?.method === 'PUT') {
+    savedDefaults = JSON.parse(String(init.body));
+    return { ok: true, json: async () => ({}) };
+  }
+  return { ok: true, json: async () => ({ overrides: { ...savedDefaults } }) };
+});
+
+beforeEach(() => {
+  savedDefaults = {};
+  fetchMock.mockClear();
+  global.fetch = fetchMock;
+  window.localStorage.clear();
+});
+
+// The Sources column starts hidden; these tests are about it.
+const showSourcesColumn = () => {
+  window.localStorage.setItem(REVIEW_STATS_COLUMNS_STORAGE_KEY, JSON.stringify({ sources: true }));
+  savedDefaults = { reviewStatsColumns: { sources: true } };
+};
 
 const buildStats = (overrides = {}) => ({
   summary: {
@@ -135,7 +167,7 @@ describe('ReviewStatsContent', () => {
   test('given reviewer stats, when rendering, then each of the four cards is a group named by its label', () => {
     renderContent(buildStats());
 
-    for (const name of ['Filtered rows', "Comments on others' PRs", 'Approvals', 'Comment usefulness']) {
+    for (const name of ['PRs', "Comments on others' PRs", 'Approvals', 'Comment usefulness']) {
       expect(screen.getByRole('group', { name })).toBeInTheDocument();
     }
   });
@@ -152,6 +184,7 @@ describe('ReviewStatsContent', () => {
 
   test('given a reviewer with sources, when clicking "Show sources", then the sources row becomes visible', async () => {
     const user = userEvent.setup();
+    showSourcesColumn();
     renderContent(buildStats());
 
     const toggleButtons = screen.getAllByRole('button', { name: 'Show sources' });
@@ -168,6 +201,7 @@ describe('ReviewStatsContent', () => {
   });
 
   test('given a reviewer with no sources, when rendering, then its sources cell shows "-" with no button', () => {
+    showSourcesColumn();
     renderContent(buildStats());
 
     const rows = document.querySelectorAll('.stats-table tbody tr:not(.stats-sources-row)');
@@ -186,7 +220,7 @@ describe('ReviewStatsContent', () => {
     window.addEventListener('pr-navigate-to-insights', handler);
     renderContent(buildStats());
 
-    const filteredRowsCard = screen.getByText('Filtered rows').closest('.stat-card');
+    const filteredRowsCard = screen.getByRole('group', { name: 'PRs' });
     await user.click(filteredRowsCard.querySelector('summary'));
     await user.click(filteredRowsCard.querySelector('.author-insights-table-link'));
 
@@ -289,6 +323,292 @@ describe('ReviewStatsContent', () => {
 
       expect(buildReviewerStatsSpy).toHaveBeenCalledTimes(1);
       expect(screen.getByText(/Showing 2 of 2 reviewers/)).toBeInTheDocument();
+    });
+  });
+
+  describe('when the table lists no one, its one row says why and offers a way out', () => {
+    const emptyStats = (activeReviewers = []) => ({
+      ...buildReviewStatsOverrides(buildStats({ reviewerRows: activeReviewers })),
+      applyStatsControls: ({ summary }) => ({ summary, reviewerRows: [], totalBeforeLimit: 0 }),
+    });
+    const emptyRow = () => document.querySelector('.stats-table tbody tr.stats-table-empty');
+
+    test('with a start date: no activity since then, and Clear dates clears both dates', async () => {
+      const user = userEvent.setup();
+      const setStatsViewState = jest.fn();
+      renderContent(null, {
+        reviewStatsOverrides: {
+          ...emptyStats(),
+          getNormalizedStatsDateRange: () => ({ startDate: '2026-08-06', endDate: '' }),
+          setStatsViewState,
+        },
+      });
+
+      expect(document.querySelectorAll('.stats-table tbody tr')).toHaveLength(1);
+      expect(emptyRow()).toHaveTextContent('No reviewer activity since Aug 6, 2026.');
+      // Reviewer and the 8 columns shown to start.
+      expect(emptyRow().querySelector('td')).toHaveAttribute('colspan', '9');
+      // The headings stay; the "Showing 0 of 0" note goes.
+      expect(screen.getByRole('columnheader', { name: 'Reviewer' })).toBeInTheDocument();
+      expect(screen.queryByText(/Showing 0 of 0/)).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: 'Clear dates' }));
+      expect(setStatsViewState).toHaveBeenCalledWith({ startDate: '', endDate: '' });
+      // The button goes once the dates clear; focus lands on the table, not nowhere.
+      expect(screen.getByRole('table', { name: 'Reviewers' })).toHaveFocus();
+    });
+
+    test('with both dates, or only an end date, it names the range', () => {
+      const { unmount } = renderContent(null, {
+        reviewStatsOverrides: {
+          ...emptyStats(),
+          getNormalizedStatsDateRange: () => ({ startDate: '2026-07-01', endDate: '2026-07-10' }),
+        },
+      });
+      expect(emptyRow()).toHaveTextContent('No reviewer activity between Jul 1, 2026 and Jul 10, 2026.');
+      unmount();
+
+      renderContent(null, {
+        reviewStatsOverrides: { ...emptyStats(), getNormalizedStatsDateRange: () => ({ startDate: '', endDate: '2026-07-10' }) },
+      });
+      expect(emptyRow()).toHaveTextContent('No reviewer activity up to Jul 10, 2026.');
+    });
+
+    test('with no dates, it says no one has reviewed yet, with no button', () => {
+      renderContent(null, { reviewStatsOverrides: emptyStats() });
+
+      expect(emptyRow()).toHaveTextContent("No reviewer activity yet: no one has commented on or reviewed someone else's PR.");
+      expect(within(emptyRow()).queryByRole('button')).not.toBeInTheDocument();
+    });
+
+    test('when Show or Minimum comments hide active reviewers: says how many, and Show all reviewers resets both', async () => {
+      const user = userEvent.setup();
+      const setStatsViewState = jest.fn();
+      const active = buildStats().reviewerRows;
+      renderContent(null, {
+        reviewStatsOverrides: {
+          ...emptyStats(active),
+          statsViewState: { filterMode: 'risky-only', minComments: 3 },
+          getNormalizedStatsDateRange: () => ({ startDate: '2026-08-06', endDate: '' }),
+          setStatsViewState,
+        },
+      });
+
+      expect(emptyRow()).toHaveTextContent('No reviewers with risky approvals and at least 3 comments. 2 reviewers have activity since Aug 6, 2026.');
+      expect(within(emptyRow()).queryByRole('button', { name: 'Clear dates' })).not.toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Show all reviewers' }));
+      expect(setStatsViewState).toHaveBeenCalledWith({ filterMode: 'all', minComments: 0 });
+      expect(screen.getByRole('table', { name: 'Reviewers' })).toHaveFocus();
+    });
+
+    test('names only the control that hides them', () => {
+      renderContent(null, {
+        reviewStatsOverrides: { ...emptyStats(buildStats().reviewerRows.slice(0, 1)), statsViewState: { filterMode: 'all', minComments: 5 } },
+      });
+      expect(emptyRow()).toHaveTextContent('No reviewers with at least 5 comments. 1 reviewer has activity.');
+    });
+
+    test('with one comment the minimum, it says "comment"', () => {
+      renderContent(null, {
+        reviewStatsOverrides: { ...emptyStats(buildStats().reviewerRows), statsViewState: { filterMode: 'all', minComments: 1 } },
+      });
+      expect(emptyRow()).toHaveTextContent('No reviewers with at least 1 comment. 2 reviewers have activity.');
+    });
+
+    test('with the real Provider: Clear dates empties the Start date control and brings the reviewer back', async () => {
+      const user = userEvent.setup();
+      const payload = {
+        byPrNumber: {
+          7: {
+            prNumber: '7',
+            data: {
+              number: '7',
+              title: 'Old PR',
+              authorLogin: 'author',
+              reviews: [{ authorLogin: 'reviewer', state: 'APPROVED', submittedAt: '2020-01-02T00:00:00Z' }],
+            },
+          },
+        },
+      };
+      render(
+        <TabStateContext.Provider value={{ activeDataTab: 'review-stats', setActiveDataTab: () => {} }}>
+          <PrDataProvider
+            initialPayload={payload}
+            initialStatsViewState={{ sortBy: 'reviews', filterMode: 'all', topN: 12, minComments: 0, startDate: '2026-08-06', endDate: '' }}
+          >
+            <ReviewStatsProvider>
+              <ReviewStatsControls />
+              <ReviewStatsContent />
+            </ReviewStatsProvider>
+          </PrDataProvider>
+        </TabStateContext.Provider>,
+      );
+
+      expect(emptyRow()).toHaveTextContent('No reviewer activity since Aug 6, 2026.');
+      await user.click(screen.getByRole('button', { name: 'Clear dates' }));
+
+      expect(screen.getByLabelText('Start date')).toHaveValue('');
+      expect(emptyRow()).toBeNull();
+      expect(screen.getByText(/Showing 1 of 1 reviewers/)).toBeInTheDocument();
+    });
+  });
+
+  describe('how each number is counted, on hover and focus', () => {
+    test('each card label is focusable and described by how it is counted', () => {
+      renderContent(buildStats());
+
+      for (const [name, key] of [
+        ['PRs', 'prs'],
+        ["Comments on others' PRs", 'commentsOnOthersPrs'],
+        ['Approvals', 'approvals'],
+        ['Comment usefulness', 'usefulness'],
+      ]) {
+        const label = within(screen.getByRole('group', { name })).getByText(name).closest('.ui-tooltip-target');
+        expect(label).toHaveAttribute('tabindex', '0');
+        expect(label).toHaveAttribute('data-tip', REVIEW_STATS_CARD_EXPLANATIONS[key]);
+        expect(label).toHaveAccessibleDescription(REVIEW_STATS_CARD_EXPLANATIONS[key]);
+      }
+    });
+
+    test('each column heading shown, Reviewer included, is described by how it is counted', () => {
+      window.localStorage.setItem(REVIEW_STATS_COLUMNS_STORAGE_KEY, JSON.stringify({ threadComments: true, resolvedThreadComments: true, sources: true }));
+      savedDefaults = { reviewStatsColumns: { threadComments: true, resolvedThreadComments: true, sources: true } };
+      renderContent(buildStats());
+
+      const headers = screen.getAllByRole('columnheader');
+      expect(headers).toHaveLength(12);
+      headers.forEach((header) => {
+        const target = header.querySelector('.ui-tooltip-target');
+        const description = target.getAttribute('data-tip');
+        expect(description).toBeTruthy();
+        expect(target).toHaveAccessibleDescription(description);
+        // Its name is still just the heading.
+        expect(header).toHaveAccessibleName(header.querySelector('.stats-explained').textContent);
+      });
+      expect(headers[0].querySelector('.ui-tooltip-target')).toHaveAttribute('data-tip', REVIEW_STATS_COLUMN_EXPLANATIONS.reviewer);
+    });
+
+    test('the PRs card says which PRs it counts: every stored PR, or those with activity in the dates', () => {
+      const { unmount } = renderContent(buildStats());
+      expect(screen.getByRole('group', { name: 'PRs' })).toHaveTextContent('Every stored PR');
+      unmount();
+
+      renderContent(buildStats(), {
+        reviewStatsOverrides: { getNormalizedStatsDateRange: () => ({ startDate: '2026-07-01', endDate: '' }) },
+      });
+      expect(screen.getByRole('group', { name: 'PRs' })).toHaveTextContent('With review activity in the dates');
+    });
+  });
+
+  describe('the table: its columns, the Columns menu and the reviewer cell', () => {
+    // The heading's own text, not its tooltip's hidden description.
+    const headings = () => screen.getAllByRole('columnheader').map((cell) => cell.querySelector('.stats-explained').textContent);
+    const columnsBox = (name) => screen.getByRole('checkbox', { name });
+
+    test('starts without Thread comments, Resolved thread comments and Sources; Reviewer always shows', () => {
+      renderContent(buildStats());
+
+      expect(headings()).toEqual([
+        'Reviewer',
+        'Comments',
+        'Reviews',
+        'Approvals',
+        'Risky approvals',
+        'High-risk approvals',
+        'Useful comment signals',
+        'Comments → author commit',
+        'PRs touched',
+      ]);
+      const menu = screen.getByRole('group', { name: 'Columns' });
+      expect(within(menu).queryByRole('checkbox', { name: 'Reviewer' })).not.toBeInTheDocument();
+      expect(columnsBox('Thread comments')).not.toBeChecked();
+      expect(columnsBox('Comments')).toBeChecked();
+      // Each row's cells line up with the headings.
+      const alexRow = screen.getByRole('rowheader', { name: /Alex/ }).closest('tr');
+      expect(alexRow.children).toHaveLength(9);
+    });
+
+    test('a column ticked in the menu shows, in its place, and the choice is saved in user-defaults.json and the browser copy', async () => {
+      const user = userEvent.setup();
+      savedDefaults = { repo: 'owner/repo' };
+      renderContent(buildStats());
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+
+      await user.click(columnsBox('Thread comments'));
+      await user.click(columnsBox('PRs touched'));
+
+      expect(headings().slice(0, 3)).toEqual(['Reviewer', 'Comments', 'Thread comments']);
+      expect(headings()).not.toContain('PRs touched');
+      await waitFor(() => expect(savedDefaults.reviewStatsColumns).toEqual({ threadComments: true, prCount: false }));
+      expect(savedDefaults.repo).toBe('owner/repo');
+      expect(JSON.parse(window.localStorage.getItem(REVIEW_STATS_COLUMNS_STORAGE_KEY))).toEqual({ threadComments: true, prCount: false });
+
+      // Back to the defaults: nothing left to save.
+      await user.click(columnsBox('Thread comments'));
+      await user.click(columnsBox('PRs touched'));
+      await waitFor(() => expect(savedDefaults).not.toHaveProperty('reviewStatsColumns'));
+    });
+
+    test('the choices saved in user-defaults.json apply once read, over the browser copy', async () => {
+      window.localStorage.setItem(REVIEW_STATS_COLUMNS_STORAGE_KEY, JSON.stringify({ threadComments: true }));
+      savedDefaults = { reviewStatsColumns: { sources: true, comments: false, unknown: true } };
+      renderContent(buildStats());
+
+      // The browser copy draws first...
+      expect(headings()).toContain('Thread comments');
+      // ...then the saved choices take over.
+      await waitFor(() => expect(headings()).toContain('Sources'));
+      expect(headings()).not.toContain('Thread comments');
+      expect(headings()).not.toContain('Comments');
+    });
+
+    test('hiding Sources while a reviewer\'s sources are open hides them too', async () => {
+      const user = userEvent.setup();
+      showSourcesColumn();
+      renderContent(buildStats());
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+
+      await user.click(screen.getByRole('button', { name: 'Show sources' }));
+      const sourcesRow = document.querySelector('.stats-sources-row:not([hidden])');
+      expect(sourcesRow).not.toBeNull();
+      await user.click(columnsBox('Sources'));
+      expect(sourcesRow).toHaveAttribute('hidden');
+    });
+
+    test('each reviewer is a row header with an avatar, the display name, and the login on hover', () => {
+      const stats = buildStats();
+      stats.reviewerRows[0] = { ...stats.reviewerRows[0], login: 'alex-k', name: 'Alex Kim' };
+      renderContent(stats);
+
+      const header = screen.getByRole('rowheader', { name: 'Alex Kim' });
+      expect(header.querySelector('.ui-avatar')).toHaveTextContent('AK');
+      expect(header.querySelector('.stats-reviewer')).toHaveAttribute('title', 'alex-k');
+    });
+
+    test('the viewer is marked "(you)" with the avatar ring', () => {
+      const stats = buildStats();
+      stats.reviewerRows[0] = { ...stats.reviewerRows[0], login: 'me', name: 'Me Myself' };
+      render(
+        <TabStateContext.Provider value={{ activeDataTab: 'review-stats', setActiveDataTab: () => {} }}>
+          <PrDataProvider initialPayload={{ byPrNumber: { 1: {} } }}>
+            {/* Inside PrDataProvider, which provides its own. */}
+            <ActorIdentityContext.Provider value={{ ...defaultActorIdentity, getEffectiveViewerLogin: () => 'me' }}>
+              <ReviewStatsContext.Provider value={{ ...defaultReviewStats, ...buildReviewStatsOverrides(stats) }}>
+                <ReviewStatsContent />
+              </ReviewStatsContext.Provider>
+            </ActorIdentityContext.Provider>
+          </PrDataProvider>
+        </TabStateContext.Provider>,
+      );
+
+      const header = screen.getByRole('rowheader', { name: /Me Myself/ });
+      expect(header).toHaveTextContent('Me Myself (you)');
+      expect(header.querySelector('.ui-avatar')).toHaveAttribute('data-viewer', 'true');
+    });
+
+    test('the table sits in a box that scrolls sideways', () => {
+      renderContent(buildStats());
+      expect(screen.getByRole('table', { name: 'Reviewers' }).parentElement).toHaveClass('stats-table-scroll');
     });
   });
 });

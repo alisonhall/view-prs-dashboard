@@ -72,6 +72,20 @@ describe("pr-row-match-filters helpers", () => {
     expect(rowMatchesUiFilters(entry, criteria)).toBe(true);
   });
 
+  test("given search words, when called, then only rows with every word match - the author's shown name included", () => {
+    const { rowMatchesUiFilters } = makeHelpers({ getAuthorDisplayName: (row) => (row.authorLogin === "ada" ? "Ada Lovelace" : "") });
+    const entry = { data: { number: 1, title: "Fix the parser", authorLogin: "ada" } };
+    expect(rowMatchesUiFilters(entry, { ...emptyCriteria(), searchTerms: ["parser"] })).toBe(true);
+    expect(rowMatchesUiFilters(entry, { ...emptyCriteria(), searchTerms: ["parser", "lovelace"] })).toBe(true);
+    expect(rowMatchesUiFilters(entry, { ...emptyCriteria(), searchTerms: ["parser", "lexer"] })).toBe(false);
+  });
+
+  test("given search words and alwaysShowInReview, when the row is in review, then it shows whatever the search", () => {
+    const { rowMatchesUiFilters } = makeHelpers();
+    const entry = { data: { number: 1, title: "Unrelated", inReview: "true" } };
+    expect(rowMatchesUiFilters(entry, { ...emptyCriteria(), alwaysShowInReview: true, searchTerms: ["parser"] })).toBe(true);
+  });
+
   test("given a PR-number filter, when the row's number isn't in it, then it doesn't match", () => {
     const { rowMatchesUiFilters } = makeHelpers();
     const entry = { data: { number: 7 } };

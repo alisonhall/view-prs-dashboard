@@ -2,11 +2,13 @@ import { useId, useState } from 'react';
 import { Button } from '../ui/Button';
 import { Icon } from '../ui/Icon';
 import { useTableFilterChips } from '../../state/useTableFilterChips';
-import { AlwaysShowInReviewCheckbox } from './AlwaysShowInReviewCheckbox';
+import { useSavedFilterViews } from '../../state/useSavedFilterViews';
+import { SavedFilterViewsBar, SavedFilterViewsManager } from './SavedFilterViews';
+import { FilterCheckbox } from './FilterCheckbox';
 import { FilterMultiSelect } from './FilterMultiSelect';
 import { FilterOptionSelect } from './FilterOptionSelect';
+import { FilterSearchInput } from './FilterSearchInput';
 import { PrNumberFilterInput } from './PrNumberFilterInput';
-import { ScopeFilterSelect } from './ScopeFilterSelect';
 import { NOTES_FILTER_FIELDS, ROW_FILTER_LISTS } from './filter-bar-fields';
 
 // Whether the bar was left open, per browser (like the detail pane's
@@ -42,21 +44,29 @@ export interface FilterBarProps {
 
 /**
  * The filter bar above the PR table (UI_REDESIGN_PLAN.md, phase 8): the
- * row filters - scope, PR numbers, the label/author/assigned/approver
- * lists, the notes filters, and "Always show PRs in review".
+ * row filters - PR numbers, "Only PRs that need attention", "Always show
+ * PRs in review", the label/author/assigned/approver lists, the notes
+ * filters, and Conversations' "Open conversations with me", "Waiting on
+ * me" and "Resolved for you to check".
  *
  * Its header always shows: the Filters button (with how many are applied),
- * "Showing N of M PRs", and a removable chip per applied filter with
- * "Clear all". The button opens the panel of controls below it; the bar
- * remembers whether it was left open. Controls stay mounted while it's
+ * the search box, "Showing N of M PRs", and a removable chip per applied
+ * filter (the search's too) with
+ * "Clear all". Under it, the saved views (SavedFilterViews.tsx): one
+ * click each, and "Save as view" for the applied filters; the panel's
+ * Manage saved views group renames, updates and deletes them. The button opens
+ * the panel of controls below it; the bar remembers whether it was left
+ * open. Controls stay mounted while it's
  * closed (hidden). The lists' selections are kept in step with their
  * options by <ListSelectionSeeding />, mounted beside it.
  */
 export function FilterBar({ shownCount, totalCount, loaded, hiddenCount = 0 }: FilterBarProps) {
   const { chips } = useTableFilterChips();
+  // One instance for the views row and the panel's Manage saved views group.
+  const savedViews = useSavedFilterViews();
   const [open, setOpen] = useState(readOpen);
   const panelId = useId();
-  const headingIds = { rows: useId(), people: useId(), notes: useId() };
+  const headingIds = { rows: useId(), people: useId(), notes: useId(), conversations: useId(), views: useId() };
 
   const toggleOpen = () => {
     setOpen(!open);
@@ -78,6 +88,7 @@ export function FilterBar({ shownCount, totalCount, loaded, hiddenCount = 0 }: F
           {chips.length > 0 && <span className="filter-bar-badge">{chips.length}</span>}
           <Icon name={open ? 'chevronUp' : 'chevronDown'} size={14} />
         </Button>
+        <FilterSearchInput />
         <p className="filter-bar-count" aria-live="polite">
           {loaded
             ? `Showing ${shownCount} of ${totalCount} ${totalCount === 1 ? 'PR' : 'PRs'}${hiddenCount > 0 ? ` · ${hiddenCount} in hidden sections` : ''}`
@@ -101,6 +112,7 @@ export function FilterBar({ shownCount, totalCount, loaded, hiddenCount = 0 }: F
           </>
         )}
       </div>
+      <SavedFilterViewsBar value={savedViews} />
 
       <div id={panelId} className="filter-bar-panel" hidden={!open}>
         <div className="filter-bar-group" role="group" aria-labelledby={headingIds.rows}>
@@ -110,17 +122,31 @@ export function FilterBar({ shownCount, totalCount, loaded, hiddenCount = 0 }: F
           {/* Labels by "for", not wrapping: a wrapping label's text would
               take in a select's option texts. */}
           <div className="filter-bar-field">
-            <label htmlFor="scope-mode">View scope</label>
-            <ScopeFilterSelect />
+            <label htmlFor="filter-pr-numbers">PRs</label>
+            <PrNumberFilterInput />
+            <p id="filter-pr-numbers-hint" className="filter-bar-hint">
+              Numbers (any repo), owner/repo#12, PR or repo URLs, or a repo. The PRs named show whatever the
+              checkboxes below say.
+            </p>
           </div>
           <div className="filter-bar-field">
-            <label htmlFor="filter-pr-numbers">PR numbers</label>
-            <PrNumberFilterInput />
+            <label className="filter-bar-check">
+              <FilterCheckbox id="only-needs-attention" valueKey="onlyNeedsAttention" />
+              Only PRs that need attention
+            </label>
+            <p id="only-needs-attention-hint" className="filter-bar-hint">
+              Every section shows only the PRs with the warning icon - Settings › Attention rules decides which.
+            </p>
           </div>
-          <label className="filter-bar-check">
-            <AlwaysShowInReviewCheckbox />
-            Always show PRs in review
-          </label>
+          <div className="filter-bar-field">
+            <label className="filter-bar-check">
+              <FilterCheckbox id="always-show-in-review" valueKey="alwaysShowInReview" />
+              Always show PRs in review
+            </label>
+            <p id="always-show-in-review-hint" className="filter-bar-hint">
+              PRs you've marked in review stay in view, whatever the other filters say.
+            </p>
+          </div>
         </div>
 
         <div className="filter-bar-group" role="group" aria-labelledby={headingIds.people}>
@@ -139,10 +165,55 @@ export function FilterBar({ shownCount, totalCount, loaded, hiddenCount = 0 }: F
           {NOTES_FILTER_FIELDS.map((field) => (
             <div key={field.id} className="filter-bar-field">
               <label htmlFor={field.id}>{field.label}</label>
-              <FilterOptionSelect id={field.id} name={field.key} filterStateKey={field.key} options={field.options} />
+              <FilterOptionSelect
+                id={field.id}
+                name={field.key}
+                filterStateKey={field.key}
+                options={field.options}
+                describedBy={`${field.id}-hint`}
+              />
+              <p id={`${field.id}-hint`} className="filter-bar-hint">
+                {field.description}
+              </p>
             </div>
           ))}
         </div>
+
+        <div className="filter-bar-group" role="group" aria-labelledby={headingIds.conversations}>
+          <h3 id={headingIds.conversations} className="filter-bar-heading">
+            Conversations
+          </h3>
+          <div className="filter-bar-field">
+            <label className="filter-bar-check">
+              <FilterCheckbox id="only-open-conversations-with-me" valueKey="onlyOpenConversationsWithMe" />
+              Open conversations with me
+            </label>
+            <p id="only-open-conversations-with-me-hint" className="filter-bar-hint">
+              Only PRs with an unresolved conversation you started or replied in (the Review column's speech bubble).
+            </p>
+          </div>
+          <div className="filter-bar-field">
+            <label className="filter-bar-check">
+              <FilterCheckbox id="only-waiting-on-me" valueKey="onlyWaitingOnMe" />
+              Waiting on me
+            </label>
+            <p id="only-waiting-on-me-hint" className="filter-bar-hint">
+              Only PRs with an unresolved conversation you took part in whose latest comment is someone else's or mentions
+              you (the filled bubble).
+            </p>
+          </div>
+          <div className="filter-bar-field">
+            <label className="filter-bar-check">
+              <FilterCheckbox id="only-threads-to-check" valueKey="onlyThreadsToCheck" />
+              Resolved for you to check
+            </label>
+            <p id="only-threads-to-check-hint" className="filter-bar-hint">
+              Only PRs with conversations you started that someone else resolved, until you confirm them.
+            </p>
+          </div>
+        </div>
+
+        <SavedFilterViewsManager value={savedViews} headingId={headingIds.views} />
       </div>
     </section>
   );

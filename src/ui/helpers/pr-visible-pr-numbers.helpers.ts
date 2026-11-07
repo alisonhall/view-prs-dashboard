@@ -1,14 +1,14 @@
 import type { PrDataPayload, PrEntry } from "../types/pr-data.ts";
 import type { RowFilterCriteria, RowFilterCriteriaInput } from "./pr-row-filtering.helpers.ts";
-import { parseCsvTokens } from "./form-parsing.helpers.ts";
+import { parsePrFilterInput, prFilterPicksPrs } from "./pr-filter-input.helpers.ts";
 import type { AttentionConfig } from "./pr-needs-attention.helpers.ts";
+import { buildPrEntryKey } from "./pr-entry-keys.helpers.ts";
+import { parseSearchTerms } from "./pr-row-search.helpers.ts";
 
 // Which PRs the table shows for the current filters, computed reactively
-// (useVisiblePrNumbers wires it to Context). Composes the injected scope
-// and row-filter helpers (resolveScopedRows/buildRowFilterCriteria/
-// applyRowUiFilters) rather than reimplementing them. Returns
-// `{ visiblePrNumbers, scopeLabel }`: useAppliedFilterSummary needs the
-// scope label too, and it falls out of the same scope-resolution pass.
+// (useVisiblePrNumbers wires it to Context). Composes the injected
+// narrowing and row-filter helpers (narrowRows/buildRowFilterCriteria/
+// applyRowUiFilters) rather than reimplementing them.
 export interface RowFilterSelections {
   includeLabels?: string[];
   excludeLabels?: string[];
@@ -17,25 +17,32 @@ export interface RowFilterSelections {
   approverLogins?: string[];
 }
 
-interface ScopedRowsInput {
-  rowsForRepo: PrEntry[];
-  ignoreScopeForPrNumberFilter: boolean;
-  runStamp: string;
-  useLastRunScope: boolean;
-  selectedScope: string;
+interface NarrowRowsInput {
+  rows: PrEntry[];
+  picksPrs: boolean;
+  alwaysShowInReview: boolean;
+  onlyNeedsAttention: boolean;
+  onlyOpenConversationsWithMe: boolean;
+  onlyWaitingOnMe: boolean;
+  onlyThreadsToCheck: boolean;
   attentionConfig: AttentionConfig | undefined;
 }
 
 export interface PrVisiblePrNumbersDeps {
-  resolveScopedRows?: (input: ScopedRowsInput) => { rows: PrEntry[]; scopeLabel: string };
-  normalizeSelectedScope?: (scopeMode: unknown) => string;
+  narrowRows?: (input: NarrowRowsInput) => PrEntry[];
   buildRowFilterCriteria?: (input: RowFilterCriteriaInput) => RowFilterCriteria;
   applyRowUiFilters?: (rows: PrEntry[], criteria: RowFilterCriteria) => PrEntry[];
 }
 
 export interface VisiblePrNumbersInput {
   payload?: PrDataPayload | null;
-  scopeMode?: string;
+  // The filter bar's "Only PRs that need attention", and Conversations'
+  // "Open conversations with me", "Waiting on me" and "Resolved for you
+  // to check".
+  onlyNeedsAttention?: boolean;
+  onlyOpenConversationsWithMe?: boolean;
+  onlyWaitingOnMe?: boolean;
+  onlyThreadsToCheck?: boolean;
   filterPrNumbersRaw?: string;
   attentionConfig?: AttentionConfig;
   rowFilterSelections?: RowFilterSelections;
@@ -45,30 +52,27 @@ export interface VisiblePrNumbersInput {
   prDifficulty?: string;
   stories?: string;
   analysisOfPr?: string;
+  // The search box, as typed.
+  search?: string;
 }
 
 export interface VisiblePrNumbersResult {
-  visiblePrNumbers: string[];
-  scopeLabel: string;
-  // Every stored row, before scope and filters (the filter bar's "of M").
+  // Each shown row's repo-and-number key ("owner/repo#123"): a bare
+  // number would also match another repo's PR with it.
+  visiblePrKeys: string[];
+  // Every stored row, before any filter (the filter bar's "of M").
   totalCount: number;
+  // The search box's words, as applied.
+  searchTerms: string[];
 }
 
 const createPrVisiblePrNumbersHelpers = ({
-  resolveScopedRows,
-  normalizeSelectedScope,
+  narrowRows,
   buildRowFilterCriteria,
   applyRowUiFilters,
 }: PrVisiblePrNumbersDeps = {}) => {
-  const resolveScopedRowsSafe =
-    typeof resolveScopedRows === "function"
-      ? resolveScopedRows
-      : ({ rowsForRepo }: ScopedRowsInput) => ({
-          rows: Array.isArray(rowsForRepo) ? rowsForRepo : [],
-          scopeLabel: "all stored rows",
-        });
-  const normalizeSelectedScopeSafe =
-    typeof normalizeSelectedScope === "function" ? normalizeSelectedScope : () => "all";
+  const narrowRowsSafe =
+    typeof narrowRows === "function" ? narrowRows : ({ rows }: NarrowRowsInput) => (Array.isArray(rows) ? rows : []);
   // Without the real builder, the input object stands in for the criteria
   // (as before conversion); only tests rely on this.
   const buildRowFilterCriteriaSafe =
@@ -80,7 +84,10 @@ const createPrVisiblePrNumbersHelpers = ({
 
   const computeVisiblePrNumbers = ({
     payload,
-    scopeMode,
+    onlyNeedsAttention = false,
+    onlyOpenConversationsWithMe = false,
+    onlyWaitingOnMe = false,
+    onlyThreadsToCheck = false,
     filterPrNumbersRaw,
     attentionConfig,
     rowFilterSelections = {},
@@ -90,30 +97,31 @@ const createPrVisiblePrNumbersHelpers = ({
     prDifficulty,
     stories,
     analysisOfPr,
+    search,
   }: VisiblePrNumbersInput = {}): VisiblePrNumbersResult => {
     const allEntries = Object.values(payload?.byPrNumber || {});
-    const lastRun = payload?.lastRun || null;
-    const runStamp = String(lastRun?.updatedAt || "").trim();
 
-    const filterPrNumbers = parseCsvTokens(filterPrNumbersRaw)
-      .map((value) => String(value || "").trim())
-      .filter((value) => /^\d+$/.test(value));
+    const prFilter = parsePrFilterInput(filterPrNumbersRaw);
+    const searchTerms = parseSearchTerms(search);
 
-    const selectedScope = normalizeSelectedScopeSafe(scopeMode);
-    const ignoreScopeForPrNumberFilter = filterPrNumbers.length > 0;
-    const useLastRunScope = selectedScope === "last-run";
-
-    const { rows: scopedRows, scopeLabel } = resolveScopedRowsSafe({
-      rowsForRepo: allEntries,
-      ignoreScopeForPrNumberFilter,
-      runStamp,
-      useLastRunScope,
-      selectedScope,
+    // PRs picked by number (or repo and number), and those marked In review
+    // with "Always show PRs in review", show whatever the "only" checkboxes
+    // say.
+    const narrowedRows = narrowRowsSafe({
+      rows: allEntries,
+      picksPrs: prFilterPicksPrs(prFilter),
+      alwaysShowInReview: Boolean(alwaysShowInReview),
+      onlyNeedsAttention: Boolean(onlyNeedsAttention),
+      onlyOpenConversationsWithMe: Boolean(onlyOpenConversationsWithMe),
+      onlyWaitingOnMe: Boolean(onlyWaitingOnMe),
+      onlyThreadsToCheck: Boolean(onlyThreadsToCheck),
       attentionConfig,
     });
 
     const criteria = buildRowFilterCriteriaSafe({
-      prNumbers: filterPrNumbers,
+      prNumbers: prFilter.prNumbers,
+      prKeys: prFilter.prKeys,
+      repos: prFilter.repos,
       includeLabels: rowFilterSelections.includeLabels,
       excludeLabels: rowFilterSelections.excludeLabels,
       authorLogins: rowFilterSelections.authorLogins,
@@ -125,15 +133,19 @@ const createPrVisiblePrNumbersHelpers = ({
       prDifficulty,
       stories,
       analysisOfPr,
+      searchTerms,
     });
 
-    const filteredRows = applyRowUiFiltersSafe(scopedRows, criteria);
+    const filteredRows = applyRowUiFiltersSafe(narrowedRows, criteria);
 
-    const visiblePrNumbers = filteredRows
-      .map((entry) => String(entry?.data?.number ?? entry?.prNumber ?? ""))
+    const visiblePrKeys = filteredRows
+      .map((entry) => {
+        const prNumber = String(entry?.data?.number ?? entry?.prNumber ?? "").trim();
+        return prNumber ? buildPrEntryKey(entry?.repo, prNumber) : "";
+      })
       .filter(Boolean);
 
-    return { visiblePrNumbers, scopeLabel, totalCount: allEntries.length };
+    return { visiblePrKeys, totalCount: allEntries.length, searchTerms };
   };
 
   return {

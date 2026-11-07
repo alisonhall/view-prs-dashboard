@@ -4,6 +4,21 @@
  * Or from the view-prs directory: node server.js
  */
 
+const fs = require("fs");
+const path = require("path");
+
+// Local settings (the insights hook script) from an optional, gitignored
+// .env in the project folder - see .env.example - so no start command
+// needs changing. What's already set in the environment wins.
+// Loaded before app.js, which reads its config as it loads. Tests skip the
+// project's .env (it's the user's own) unless VIEW_PRS_ENV_FILE names one.
+const envFile =
+  process.env.VIEW_PRS_ENV_FILE ||
+  (process.env.NODE_ENV === "test" ? "" : path.resolve(__dirname, "../../.env"));
+if (envFile && fs.existsSync(envFile)) {
+  process.loadEnvFile(envFile);
+}
+
 const {
   createViewPrsApp,
   initializeScheduler,
@@ -25,11 +40,17 @@ const requestedPort =
       ? Number(rawRequestedPort)
       : 9000;
 
+// This computer only, by default: the server has no sign-in, and anyone
+// who can reach it can read the notes and data, start runs, and apply
+// labels on GitHub as this machine's gh account. VIEW_PRS_HOST=0.0.0.0
+// opens it to the network.
+const requestedHost = String(process.env.VIEW_PRS_HOST || "").trim() || "127.0.0.1";
+
 // Create the app
 const app = createViewPrsApp();
 
 // Start the server
-const server = app.listen(requestedPort, () => {
+const server = app.listen(requestedPort, requestedHost, () => {
   // Get the actual port (in case 0 was requested)
   const actualPort = server.address().port;
   const baseUrl = `http://localhost:${actualPort}`;

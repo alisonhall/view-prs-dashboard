@@ -21,7 +21,7 @@
  * @module components/ReviewStatsControls
  */
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useReviewStats } from '../state/ReviewStatsContext';
 import type { ReviewStatsViewState } from '../state/PrDataContext';
 import { NON_CREDENTIAL_INPUT_PROPS } from '../helpers/form-parsing.helpers.ts';
@@ -37,12 +37,15 @@ const SORT_OPTIONS = [
   ['reviews', 'Reviews'],
 ];
 
-const FILTER_MODE_OPTIONS = [
+// Show's choices: which reviewers the table lists. The phrase finishes
+// "Reviewers with ..." (the option) and "No reviewers with ..." (the
+// empty table, ReviewStatsContent).
+export const REVIEW_STATS_FILTER_MODES = [
   ['all', 'All reviewers'],
-  ['risky-only', 'Only risky approvals'],
-  ['high-risk-approvals', 'Only high-risk approvals'],
-  ['useful-comments', 'Only useful-comment signals'],
-];
+  ['risky-only', 'risky approvals'],
+  ['high-risk-approvals', 'high-risk approvals'],
+  ['useful-comments', 'useful-comment signals'],
+] as const;
 
 // The shared non-credential-field attributes (form-parsing.helpers.ts);
 // this file had its own identical copy until the window-bridge elimination
@@ -52,6 +55,21 @@ const NON_CREDENTIAL_DATE_ATTRS = NON_CREDENTIAL_INPUT_PROPS;
 export function ReviewStatsControls() {
   const { statsViewState, setStatsViewState } = useReviewStats();
   const [state, setState] = useState(statsViewState);
+
+  // A change made elsewhere (the table's Clear dates or Show all
+  // reviewers) shows here too: only the keys that changed, so a number
+  // being typed but not yet committed keeps its text.
+  const previousViewStateRef = useRef(statsViewState);
+  useEffect(() => {
+    const previous = previousViewStateRef.current;
+    previousViewStateRef.current = statsViewState;
+    if (previous === statsViewState) return;
+    const changed = (Object.keys(statsViewState) as (keyof ReviewStatsViewState)[]).filter(
+      (key) => statsViewState[key] !== previous[key],
+    );
+    if (changed.length === 0) return;
+    setState((current) => ({ ...current, ...Object.fromEntries(changed.map((key) => [key, statsViewState[key]])) }));
+  }, [statsViewState]);
 
   // Commits a change to Context (setStatsViewState) - expensive enough
   // (triggers a full stats recompute) that it must only happen once per
@@ -74,8 +92,8 @@ export function ReviewStatsControls() {
   };
 
   return (
-    <div className="stats-controls">
-      <label>
+    <div className="ui-toolbar stats-controls">
+      <label className="ui-field">
         Sort by
         <select value={state.sortBy} onChange={(e) => commit({ sortBy: e.target.value })}>
           {SORT_OPTIONS.map(([value, label]) => (
@@ -86,19 +104,19 @@ export function ReviewStatsControls() {
         </select>
       </label>
 
-      <label>
-        Filter
+      <label className="ui-field">
+        Show
         <select value={state.filterMode} onChange={(e) => commit({ filterMode: e.target.value })}>
-          {FILTER_MODE_OPTIONS.map(([value, label]) => (
+          {REVIEW_STATS_FILTER_MODES.map(([value, phrase]) => (
             <option key={value} value={value}>
-              {label}
+              {value === 'all' ? phrase : `Reviewers with ${phrase}`}
             </option>
           ))}
         </select>
       </label>
 
-      <label>
-        Min comments
+      <label className="ui-field">
+        Minimum comments
         <input
           type="number"
           min="0"
@@ -108,8 +126,8 @@ export function ReviewStatsControls() {
         />
       </label>
 
-      <label>
-        Top reviewers
+      <label className="ui-field">
+        Reviewers to list
         <input
           type="number"
           min="1"
@@ -119,7 +137,7 @@ export function ReviewStatsControls() {
         />
       </label>
 
-      <label>
+      <label className="ui-field">
         Start date
         <input
           type="date"
@@ -130,7 +148,7 @@ export function ReviewStatsControls() {
         />
       </label>
 
-      <label>
+      <label className="ui-field">
         End date
         <input
           type="date"

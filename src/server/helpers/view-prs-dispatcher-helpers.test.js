@@ -141,18 +141,29 @@ describe("View Prs Dispatcher Helpers", () => {
 
       const entries = helpers.getOrInitRegistry();
 
-      expect(entries["owner/repoA::autoRefresh"].priority).toBe(9);
+      expect(entries["owner/repoA::autoRefresh"].priority).toBe(3 + 9);
       expect(entries["owner/repoA::autoRefresh"].intervalMs).toBe(60000);
-      // priority is repo-wide (not per-task) per schedulerRepoConfig's shape,
-      // so the untouched task type picks up the same overridden priority -
-      // only its interval stays at the default since no *Interval override
-      // was given for it.
-      expect(entries["owner/repoA::quickCheck"].priority).toBe(9);
+      // The priority boost is repo-wide, added to each task type's own
+      // default, so the quick check keeps its lead over the full refresh;
+      // its interval stays at the default since no override was given for it.
+      expect(entries["owner/repoA::quickCheck"].priority).toBe(5 + 9);
       expect(entries["owner/repoA::quickCheck"].intervalMs).toBe(DEFAULT_INTERVALS.quickCheck);
+      expect(entries["owner/repoA::mergedDrain"].priority).toBe(1 + 9);
+    });
+
+    test("When a repo's priority boost is negative, Then its tasks rank below the defaults", () => {
+      schedulerRepoConfig = { "owner/repoA": { priority: -2 } };
+
+      const entries = helpers.getOrInitRegistry();
+
+      expect(entries["owner/repoA::quickCheck"].priority).toBe(3);
+      expect(entries["owner/repoA::autoRefresh"].priority).toBe(1);
+      expect(entries["owner/repoA::mergedDrain"].priority).toBe(-1);
+      expect(mockConsole.warn).not.toHaveBeenCalled();
     });
 
     test("When schedulerRepoConfig has an invalid override, Then it falls back to the default instead of throwing", () => {
-      schedulerRepoConfig = { "owner/repoA": { priority: -3, autoRefreshIntervalMs: "not-a-number" } };
+      schedulerRepoConfig = { "owner/repoA": { priority: "high", autoRefreshIntervalMs: "not-a-number" } };
 
       const entries = helpers.getOrInitRegistry();
 
@@ -160,6 +171,54 @@ describe("View Prs Dispatcher Helpers", () => {
       expect(entries["owner/repoA::autoRefresh"].intervalMs).toBe(DEFAULT_INTERVALS.autoRefresh);
       expect(mockConsole.warn).toHaveBeenCalledWith(expect.stringContaining("priority"));
       expect(mockConsole.warn).toHaveBeenCalledWith(expect.stringContaining("autoRefreshIntervalMs"));
+    });
+
+    test("When an interval changes after a successful run, Then the wait under way uses the new interval", () => {
+      const entries = helpers.getOrInitRegistry();
+      const quickCheck = entries["owner/repoA::quickCheck"];
+      helpers.markEntryFinished(quickCheck, { nowMs: BASE_MS, ok: true });
+      expect(quickCheck.nextDueAt).toBe(iso(BASE_MS + DEFAULT_INTERVALS.quickCheck));
+
+      schedulerRepoConfig = { "owner/repoA": { quickCheckIntervalMs: 60000 } };
+      helpers.getOrInitRegistry();
+      expect(quickCheck.nextDueAt).toBe(iso(BASE_MS + 60000));
+
+      // Longer again: later, from the same finish.
+      schedulerRepoConfig = { "owner/repoA": { quickCheckIntervalMs: 20 * 60 * 1000 } };
+      helpers.getOrInitRegistry();
+      expect(quickCheck.nextDueAt).toBe(iso(BASE_MS + 20 * 60 * 1000));
+    });
+
+    test("When an interval changes for an entry that's bumped, deferred or backing off, Then its due time stays", () => {
+      const entries = helpers.getOrInitRegistry();
+      const quickCheck = entries["owner/repoA::quickCheck"];
+      const autoRefresh = entries["owner/repoA::autoRefresh"];
+      const mergedDrain = entries["owner/repoA::mergedDrain"];
+      helpers.markEntryFinished(quickCheck, { nowMs: BASE_MS, ok: true });
+      helpers.bumpEntryUrgent("owner/repoA", "quickCheck");
+      helpers.markEntryDeferred(autoRefresh, { nowMs: BASE_MS });
+      helpers.markEntryFinished(mergedDrain, { nowMs: BASE_MS, ok: false });
+      const before = [quickCheck, autoRefresh, mergedDrain].map((entry) => entry.nextDueAt);
+
+      schedulerRepoConfig = {
+        "owner/repoA": { quickCheckIntervalMs: 60000, autoRefreshIntervalMs: 60000, mergedDrainIntervalMs: 60000 },
+      };
+      helpers.getOrInitRegistry();
+
+      expect([quickCheck, autoRefresh, mergedDrain].map((entry) => entry.nextDueAt)).toEqual(before);
+    });
+  });
+
+  describe("Given getRepoSettingsDefaults", () => {
+    test("Then it lists the scheduled repos and each task type's default interval and priority", () => {
+      expect(helpers.getRepoSettingsDefaults()).toEqual({
+        repos: ["owner/repoA"],
+        taskTypes: [
+          { taskType: "quickCheck", intervalMs: DEFAULT_INTERVALS.quickCheck, priority: 5 },
+          { taskType: "autoRefresh", intervalMs: DEFAULT_INTERVALS.autoRefresh, priority: 3 },
+          { taskType: "mergedDrain", intervalMs: DEFAULT_INTERVALS.mergedDrain, priority: 1 },
+        ],
+      });
     });
   });
 
@@ -378,6 +437,72 @@ describe("View Prs Dispatcher Helpers", () => {
     });
   });
 
+  describe("Given a fast-follow that refreshes only the changed PRs (keepSchedule)", () => {
+    const sweepDueMs = BASE_MS + 15 * 60 * 1000;
+    let entry;
+    beforeEach(() => {
+      helpers.getOrInitRegistry();
+      entry = viewPrsSchedulerState.dispatcher.entries["owner/repoA::autoRefresh"];
+      entry.nextDueAt = iso(sweepDueMs);
+    });
+
+    test("When bumped twice before it runs, Then it remembers when it was due before the first bump", () => {
+      clockMs = BASE_MS + 1000;
+      helpers.bumpEntryUrgent("owner/repoA", "autoRefresh", { reason: "quick-check-pending-open" });
+      clockMs = BASE_MS + 2000;
+      helpers.bumpEntryUrgent("owner/repoA", "autoRefresh", { reason: "quick-check-pending-open" });
+
+      expect(entry.bumpedFromDueAt).toBe(iso(sweepDueMs));
+      expect(helpers.isBumpedOnlyFor(entry, "quick-check-pending-open")).toBe(true);
+      expect(helpers.isBumpedOnlyFor(entry, "something-else")).toBe(false);
+    });
+
+    test("When its own time has come anyway, Then it isn't due only because of the bump", () => {
+      helpers.bumpEntryUrgent("owner/repoA", "autoRefresh", { reason: "quick-check-pending-open" });
+      expect(helpers.isBumpedOnlyFor(entry, "quick-check-pending-open", { nowMs: sweepDueMs + 1 })).toBe(false);
+      expect(helpers.isBumpedOnlyFor({ ...entry, bumpReasons: undefined }, "quick-check-pending-open")).toBe(false);
+    });
+
+    test("When something else bumped it too since its last run, Then it isn't only for the quick check, whichever came last", () => {
+      helpers.bumpEntryUrgent("owner/repoA", "autoRefresh", { reason: "manual" });
+      helpers.bumpEntryUrgent("owner/repoA", "autoRefresh", { reason: "quick-check-pending-open" });
+
+      expect(entry.lastBumpReason).toBe("quick-check-pending-open");
+      expect(helpers.isBumpedOnlyFor(entry, "quick-check-pending-open")).toBe(false);
+
+      // A run forgets them.
+      helpers.markEntryFinished(entry, { nowMs: BASE_MS + 1000, ok: true });
+      entry.nextDueAt = iso(sweepDueMs);
+      helpers.bumpEntryUrgent("owner/repoA", "autoRefresh", { reason: "quick-check-pending-open" });
+      expect(helpers.isBumpedOnlyFor(entry, "quick-check-pending-open")).toBe(true);
+    });
+
+    test("When it finishes with keepSchedule, Then it goes back to the sweep's time, and forgets the bump", () => {
+      helpers.bumpEntryUrgent("owner/repoA", "autoRefresh", { reason: "quick-check-pending-open" });
+      helpers.markEntryFinished(entry, { nowMs: BASE_MS + 60 * 1000, ok: true, keepSchedule: true });
+
+      expect(entry.nextDueAt).toBe(iso(sweepDueMs));
+      expect(entry.bumpedFromDueAt).toBeUndefined();
+      expect(entry.lastBumpReason).toBeUndefined();
+    });
+
+    test("When the sweep's time passed during the run, or the run failed, or it was the full sweep, Then the usual next time applies", () => {
+      helpers.bumpEntryUrgent("owner/repoA", "autoRefresh", { reason: "quick-check-pending-open" });
+      helpers.markEntryFinished(entry, { nowMs: sweepDueMs + 1, ok: true, keepSchedule: true });
+      expect(entry.nextDueAt).toBe(iso(sweepDueMs + 1 + DEFAULT_INTERVALS.autoRefresh));
+
+      entry.nextDueAt = iso(sweepDueMs + 10 * 60 * 1000);
+      helpers.bumpEntryUrgent("owner/repoA", "autoRefresh", { reason: "quick-check-pending-open" });
+      helpers.markEntryFinished(entry, { nowMs: sweepDueMs + 2, ok: false, keepSchedule: true });
+      expect(Date.parse(entry.nextDueAt)).toBeGreaterThan(sweepDueMs + 2 + DEFAULT_INTERVALS.autoRefresh);
+
+      entry.nextDueAt = iso(sweepDueMs + 20 * 60 * 1000);
+      helpers.bumpEntryUrgent("owner/repoA", "autoRefresh", { reason: "quick-check-pending-open" });
+      helpers.markEntryFinished(entry, { nowMs: sweepDueMs + 3, ok: true });
+      expect(entry.nextDueAt).toBe(iso(sweepDueMs + 3 + DEFAULT_INTERVALS.autoRefresh));
+    });
+  });
+
   describe("Given getDispatcherQueueSnapshot", () => {
     beforeEach(() => {
       helpers = makeHelpers({
@@ -408,6 +533,20 @@ describe("View Prs Dispatcher Helpers", () => {
         "owner/repoA::mergedDrain",
         "owner/repoB::autoRefresh",
       ]);
+    });
+
+    test("When an auto refresh is due only because a quick check found PRs changed, Then the snapshot says it's for changed PRs (not a full refresh)", () => {
+      const entries = viewPrsSchedulerState.dispatcher.entries;
+      entries["owner/repoA::autoRefresh"].nextDueAt = iso(BASE_MS + 10 * 60 * 1000);
+      entries["owner/repoB::autoRefresh"].nextDueAt = iso(BASE_MS + 10 * 60 * 1000);
+      helpers.bumpEntryUrgent("owner/repoA", "autoRefresh", { reason: "quick-check-pending-open" });
+      // Run now: a full refresh, even bumped.
+      helpers.bumpEntryUrgent("owner/repoB", "autoRefresh", { reason: "manual" });
+
+      const byKey = Object.fromEntries(helpers.getDispatcherQueueSnapshot({ limit: 20 }).map((e) => [`${e.repo}::${e.taskType}`, e]));
+      expect(byKey["owner/repoA::autoRefresh"].forChangedPrs).toBe(true);
+      expect(byKey["owner/repoB::autoRefresh"].forChangedPrs).toBe(false);
+      expect(byKey["owner/repoA::quickCheck"].forChangedPrs).toBe(false);
     });
 
     test("When there are more entries than the limit, Then the snapshot is capped", () => {
@@ -461,6 +600,37 @@ describe("View Prs Dispatcher Helpers", () => {
       viewPrsSchedulerState.dispatcher.entries["owner/repoB::autoRefresh"].lastFinishedAt = iso(BASE_MS + 5000);
 
       expect(helpers.latestFinishedAtAcrossEntries("autoRefresh")).toBe(iso(BASE_MS + 5000));
+    });
+  });
+
+  describe("Given getEntryIntervalMs", () => {
+    test("When the repo has an entry, Then it gives that entry's interval (its override, or the default)", () => {
+      schedulerRepoConfig = { "owner/repoA": { quickCheckIntervalMs: 120000 } };
+      helpers.getOrInitRegistry();
+      expect(helpers.getEntryIntervalMs("owner/repoA", "quickCheck")).toBe(120000);
+      expect(helpers.getEntryIntervalMs("owner/repoA", "autoRefresh")).toBe(DEFAULT_INTERVALS.autoRefresh);
+    });
+
+    test("When the repo has no entry, Then null, without creating the dispatcher state", () => {
+      expect(helpers.getEntryIntervalMs("owner/other", "quickCheck")).toBeNull();
+      expect(viewPrsSchedulerState.dispatcher).toBeUndefined();
+    });
+  });
+
+  describe("Given getEntryIntervalsByRepo", () => {
+    test("When repos have entries, Then each one's interval for that task type", () => {
+      helpers = makeHelpers({ getViewPrsAutoRefreshRepos: () => ["owner/repoA", "owner/repoB"] });
+      schedulerRepoConfig = { "owner/repoB": { quickCheckIntervalMs: 120000 } };
+      helpers.getOrInitRegistry();
+      expect(helpers.getEntryIntervalsByRepo("quickCheck")).toEqual({
+        "owner/repoA": DEFAULT_INTERVALS.quickCheck,
+        "owner/repoB": 120000,
+      });
+    });
+
+    test("When there are no entries, Then none, without creating the dispatcher state", () => {
+      expect(helpers.getEntryIntervalsByRepo("quickCheck")).toEqual({});
+      expect(viewPrsSchedulerState.dispatcher).toBeUndefined();
     });
   });
 

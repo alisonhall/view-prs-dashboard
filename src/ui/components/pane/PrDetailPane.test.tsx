@@ -26,8 +26,8 @@ const baseEntry: PrEntry = {
 
 const Providers = ({ children, dirty = [] as string[] }: { children: ReactNode; dirty?: string[] }) => (
   <RequestActivityContext.Provider value={{ beginRequestActivity: () => () => {} } as never}>
-    <RepoLabelsContext.Provider value={{ labels: [{ name: 'bug' }, { name: 'docs' }], refresh: () => {} }}>
-      <NotesDirtyContext.Provider value={{ dirtyPrNumbers: dirty, setNotesDirty: () => {} }}>{children}</NotesDirtyContext.Provider>
+    <RepoLabelsContext.Provider value={{ labels: [], refresh: () => {}, labelsByRepo: { 'owner/repo': [{ name: 'bug' }, { name: 'docs' }] }, ensureLabels: () => {} }}>
+      <NotesDirtyContext.Provider value={{ dirtyPrKeys: dirty, setNotesDirty: () => {} }}>{children}</NotesDirtyContext.Provider>
     </RepoLabelsContext.Provider>
   </RequestActivityContext.Provider>
 );
@@ -90,8 +90,27 @@ describe('PrDetailPane', () => {
       expect(within(pane).getByRole('heading', { level: 2 })).toHaveTextContent('Fix the parser');
       expect(within(pane).getByRole('link', { name: /#7/ })).toHaveAttribute('href', 'https://github.com/owner/repo/pull/7');
       expect(pane).toHaveTextContent('by The Octocat');
-      expect(pane).toHaveTextContent('fix/parser → main');
+      expect(pane).toHaveTextContent('From fix/parser into main');
       expect(within(pane).getByRole('button', { name: 'Copy branch name' })).toBeEnabled();
+      expect(pane).not.toHaveTextContent(', with');
+    });
+
+    // The same people as the row's Who cell (its "+N" and tooltip).
+    test('"by" lists the author, then the others with non-merge commits', () => {
+      const commit = (login: string, name: string) => ({ messageHeadline: 'Change it', authors: [{ login, name }] });
+      const withCommits = (commits: ReturnType<typeof commit>[]): PrEntry => ({
+        ...baseEntry,
+        data: { ...baseEntry.data, commits },
+      });
+
+      const { view } = renderPane({ entry: withCommits([commit('octocat', 'The Octocat'), commit('hubot', 'Hubot')]) });
+      expect(document.querySelector('.pr-pane-meta')).toHaveTextContent('by The Octocat, with Hubot');
+      view.unmount();
+
+      renderPane({
+        entry: withCommits([commit('hubot', 'Hubot'), commit('monalisa', 'Mona Lisa'), commit('defunkt', 'Chris')]),
+      });
+      expect(document.querySelector('.pr-pane-meta')).toHaveTextContent('by The Octocat, with Hubot, Mona Lisa and Chris');
     });
 
     test('previous/next are disabled without a neighbour and call back with one', async () => {
@@ -169,6 +188,7 @@ describe('PrDetailPane', () => {
 
       const ack = screen.getByRole('button', { name: "Ack'd" });
       expect(ack).toHaveAttribute('aria-pressed', 'true');
+      expect(ack).toHaveAccessibleDescription('Click again to undo the Ack');
       await user.click(ack);
       expect(handlers.onAckAction).toHaveBeenCalledWith('7', true, 'owner/repo');
 
@@ -301,6 +321,26 @@ describe('PrDetailPane', () => {
       expect(screen.getByRole('tablist', { name: 'PR #8 details' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /Comments/ })).toHaveAttribute('aria-pressed', 'false');
     });
+
+    test('a request for "Since I last looked" (a summary\'s "See all") sets the scope back, keeping the event types', async () => {
+      const user = userEvent.setup();
+      const entry = withEvents('7', '2026-01-03T00:00:00Z');
+      const { rerender } = render(
+        <Providers>
+          <PrDetailPane {...paneProps({ tab: 'activity', entry, activitySinceRequest: 1 })} />
+        </Providers>,
+      );
+      await user.click(screen.getByRole('button', { name: /^All/ }));
+      await user.click(screen.getByRole('button', { name: /Commits/ }));
+
+      rerender(
+        <Providers>
+          <PrDetailPane {...paneProps({ tab: 'activity', entry, activitySinceRequest: 2 })} />
+        </Providers>,
+      );
+      expect(screen.getByRole('button', { name: /Since I last looked/ })).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByRole('button', { name: /Commits/ })).toHaveAttribute('aria-pressed', 'false');
+    });
   });
 
   describe('tabs', () => {
@@ -342,7 +382,7 @@ describe('PrDetailPane', () => {
             data: { ...baseEntry.data, openConversationCount: '2' },
           },
         },
-        { dirty: ['7'] },
+        { dirty: ['owner/repo#7'] },
       );
       const tabs = screen.getByRole('tablist', { name: 'PR #7 details' });
       expect(within(tabs).getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
@@ -351,6 +391,12 @@ describe('PrDetailPane', () => {
         'Conversations2 open',
         'Notesunsaved',
       ]);
+    });
+
+    test("another repo's PR with the same number having unsaved notes doesn't mark this one's", () => {
+      renderPane({}, { dirty: ['other/repo#7'] });
+      const notesTab = within(screen.getByRole('tablist', { name: 'PR #7 details' })).getByRole('tab', { name: /Notes/ });
+      expect(notesTab).toHaveTextContent(/^Notes$/);
     });
 
     test('picking a tab reports it, and the selected tab shows its content', async () => {

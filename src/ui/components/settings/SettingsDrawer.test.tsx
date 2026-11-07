@@ -13,7 +13,8 @@ jest.mock('./AttentionRulesSection', () => ({ AttentionRulesSection: () => <p>At
 jest.mock('./MergeCommitsSection', () => ({ MergeCommitsSection: () => <p>Merge commits content</p> }));
 jest.mock('./ChangeDetectionSection', () => ({ ChangeDetectionSection: () => <p>Change detection content</p> }));
 jest.mock('./BackfillSection', () => ({ BackfillSection: () => <p>Backfill content</p> }));
-jest.mock('./ActionLogSection', () => ({ ActionLogSection: () => <p>Action log content</p> }));
+jest.mock('./BackgroundUpdatesSection', () => ({ BackgroundUpdatesSection: () => <p>Background updates content</p> }));
+jest.mock('./ActionLogSection',() => ({ ActionLogSection: () => <p>Action log content</p> }));
 jest.mock('./ActorNamesSection', () => ({ ActorNamesSection: () => <p>Actor names content</p> }));
 jest.mock('./ExportSection', () => ({ ExportSection: () => <p>Export content</p> }));
 
@@ -122,7 +123,9 @@ describe('SettingsDrawer', () => {
       'Attention rules',
       'Merge commits',
       'Change detection',
+      'Sources',
       'Script options',
+      'Background updates',
       'Backfill',
       'Action log',
       'Actor names',
@@ -131,9 +134,10 @@ describe('SettingsDrawer', () => {
     ]);
   });
 
-  test('Backfill is mounted from the start; Action log, Actor names and Export once first opened, then they stay', async () => {
+  test('Backfill is mounted from the start; Background updates, Action log, Actor names and Export once first opened, then they stay', async () => {
     renderDrawer(false);
     expect(screen.getByText('Backfill content')).toBeInTheDocument();
+    expect(screen.queryByText('Background updates content')).not.toBeInTheDocument();
     expect(screen.queryByText('Action log content')).not.toBeInTheDocument();
     expect(screen.queryByText('Actor names content')).not.toBeInTheDocument();
     expect(screen.queryByText('Export content')).not.toBeInTheDocument();
@@ -146,7 +150,10 @@ describe('SettingsDrawer', () => {
     expect(await screen.findByText('Action log content')).toBeVisible();
     act(() => drawer.open('export'));
     expect(await screen.findByText('Export content')).toBeVisible();
+    act(() => drawer.open('background-updates'));
+    expect(await screen.findByText('Background updates content')).toBeVisible();
     act(() => drawer.close());
+    expect(screen.getByText('Background updates content')).toBeInTheDocument();
     expect(screen.getByText('Action log content')).toBeInTheDocument();
     expect(screen.getByText('Export content')).toBeInTheDocument();
     expect(screen.queryByText('Actor names content')).not.toBeInTheDocument();

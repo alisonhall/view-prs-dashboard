@@ -1,109 +1,60 @@
 /** @jest-environment jsdom */
 
-const {
-  createPrScopeSelectionHelpers,
-} = require("./pr-scope-selection.helpers.ts");
+const { createPrScopeSelectionHelpers } = require("./pr-scope-selection.helpers.ts");
 
-describe("pr scope selection helpers", () => {
-  test("given invalid scope value, when normalizing selected scope, then all scope is returned", () => {
-    const { normalizeSelectedScope } = createPrScopeSelectionHelpers();
+const rows = [{ id: 1 }, { id: 2 }, { id: 3 }];
+const ids = (list) => list.map((entry) => entry.id);
 
-    expect(normalizeSelectedScope("not-a-scope")).toBe("all");
+describe("the filter bar's \"only\" checkboxes (narrowRows)", () => {
+  const { narrowRows } = createPrScopeSelectionHelpers({
+    entryNeedsAttention: (entry, attentionConfig) => entry.id !== 2 && attentionConfig.marker === "rules",
+    entryHasThreadsToCheck: (entry) => entry.id !== 1,
   });
 
-  test("given mixed case scope value, when normalizing selected scope, then normalized supported scope is returned", () => {
-    const { normalizeSelectedScope } = createPrScopeSelectionHelpers();
-
-    expect(normalizeSelectedScope(" Needs-Attention ")).toBe(
-      "needs-attention",
-    );
+  test("neither checked: every row", () => {
+    expect(narrowRows({ rows })).toBe(rows);
   });
 
-  test("given pr number filter scope bypass, when resolving scoped rows, then rows remain unchanged with all stored label", () => {
-    const rowsForRepo = [{ id: 1 }, { id: 2 }];
-    const { resolveScopedRows } = createPrScopeSelectionHelpers({
-      entryNeedsAttention: () => true,
-      entryHasYourLastActivity: () => true,
-    });
-
-    const result = resolveScopedRows({
-      rowsForRepo,
-      ignoreScopeForPrNumberFilter: true,
-      runStamp: "2026-07-17",
-      useLastRunScope: true,
-      selectedScope: "needs-attention",
-      attentionConfig: {},
-    });
-
-    expect(result).toEqual({
-      rows: rowsForRepo,
-      scopeLabel: "all stored rows",
-    });
+  test("Only PRs that need attention: by the attention rules given", () => {
+    expect(ids(narrowRows({ rows, onlyNeedsAttention: true, attentionConfig: { marker: "rules" } }))).toEqual([1, 3]);
   });
 
-  test("given last run scope with matching rows, when resolving scoped rows, then only matching updatedAt rows are returned", () => {
-    const rowsForRepo = [
-      { id: 1, updatedAt: "run-1" },
-      { id: 2, updatedAt: "run-2" },
-      { id: 3, updatedAt: "run-1" },
-    ];
-    const { resolveScopedRows } = createPrScopeSelectionHelpers();
-
-    const result = resolveScopedRows({
-      rowsForRepo,
-      ignoreScopeForPrNumberFilter: false,
-      runStamp: "run-1",
-      useLastRunScope: true,
-      selectedScope: "last-run",
-      attentionConfig: {},
-    });
-
-    expect(result.scopeLabel).toBe("last run rows");
-    expect(result.rows).toEqual([
-      { id: 1, updatedAt: "run-1" },
-      { id: 3, updatedAt: "run-1" },
-    ]);
+  test("Resolved for you to check: PRs with conversations to check", () => {
+    expect(ids(narrowRows({ rows, onlyThreadsToCheck: true }))).toEqual([2, 3]);
   });
 
-  test("given needs attention scope, when resolving scoped rows, then only attention rows are returned", () => {
-    const rowsForRepo = [{ id: 1 }, { id: 2 }, { id: 3 }];
-    const entryNeedsAttention = jest.fn((entry) => entry.id !== 2);
-    const { resolveScopedRows } = createPrScopeSelectionHelpers({
-      entryNeedsAttention,
-      entryHasYourLastActivity: () => false,
+  test("Open conversations with me, and Waiting on me: by the checks given, all of those checked", () => {
+    const { narrowRows: conversations } = createPrScopeSelectionHelpers({
+      entryHasOpenConversationsWithMe: (entry) => entry.id !== 3,
+      entryHasConversationWaitingOnMe: (entry) => entry.id === 2,
+      entryHasThreadsToCheck: (entry) => entry.id !== 2,
     });
-
-    const result = resolveScopedRows({
-      rowsForRepo,
-      ignoreScopeForPrNumberFilter: false,
-      runStamp: "",
-      useLastRunScope: false,
-      selectedScope: "needs-attention",
-      attentionConfig: { mode: "all" },
-    });
-
-    expect(result.scopeLabel).toBe("needs attention rows");
-    expect(result.rows).toEqual([{ id: 1 }, { id: 3 }]);
-    expect(entryNeedsAttention).toHaveBeenCalledTimes(3);
+    expect(ids(conversations({ rows, onlyOpenConversationsWithMe: true }))).toEqual([1, 2]);
+    expect(ids(conversations({ rows, onlyWaitingOnMe: true }))).toEqual([2]);
+    expect(ids(conversations({ rows, onlyOpenConversationsWithMe: true, onlyThreadsToCheck: true }))).toEqual([1]);
   });
 
-  test("given needs attention or interacted scope, when resolving scoped rows, then rows matching either predicate are returned", () => {
-    const rowsForRepo = [{ id: 1 }, { id: 2 }, { id: 3 }];
-    const { resolveScopedRows } = createPrScopeSelectionHelpers({
+  test("both: the PRs that are both", () => {
+    expect(ids(narrowRows({ rows, onlyNeedsAttention: true, onlyThreadsToCheck: true, attentionConfig: { marker: "rules" } }))).toEqual([3]);
+  });
+
+  test("PRs picked by number show whatever the checkboxes say", () => {
+    expect(narrowRows({ rows, picksPrs: true, onlyNeedsAttention: true, onlyThreadsToCheck: true })).toBe(rows);
+  });
+
+  test("so do PRs marked In review, with \"Always show PRs in review\"", () => {
+    const { narrowRows: withInReview } = createPrScopeSelectionHelpers({
       entryNeedsAttention: (entry) => entry.id === 1,
-      entryHasYourLastActivity: (entry) => entry.id === 3,
+      isInReviewEnabled: (row) => row.inReview === true,
     });
+    const inReviewRows = [{ id: 1 }, { id: 2, data: { inReview: true } }, { id: 3 }];
+    expect(ids(withInReview({ rows: inReviewRows, onlyNeedsAttention: true, alwaysShowInReview: true }))).toEqual([1, 2]);
+    expect(ids(withInReview({ rows: inReviewRows, onlyNeedsAttention: true }))).toEqual([1]);
+  });
 
-    const result = resolveScopedRows({
-      rowsForRepo,
-      ignoreScopeForPrNumberFilter: false,
-      runStamp: "",
-      useLastRunScope: false,
-      selectedScope: "needs-attention-or-interacted",
-      attentionConfig: {},
-    });
-
-    expect(result.scopeLabel).toBe("needs attention or interacted rows");
-    expect(result.rows).toEqual([{ id: 1 }, { id: 3 }]);
+  test("without the checks given, nothing passes a checked box; no rows, none", () => {
+    const { narrowRows: bare } = createPrScopeSelectionHelpers();
+    expect(bare({ rows, onlyNeedsAttention: true })).toEqual([]);
+    expect(bare({ rows: null })).toEqual([]);
   });
 });

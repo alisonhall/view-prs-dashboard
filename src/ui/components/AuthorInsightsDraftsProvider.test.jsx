@@ -135,6 +135,47 @@ describe('AuthorInsightsDraftsProvider', () => {
     expect(window.getAuthorManualCommentsForLogin).toBeUndefined();
   });
 
+  describe('hasLoadedManualComments: whether the author\'s comments are all there (the Authors header\'s count)', () => {
+    const realFetch = global.fetch;
+    afterEach(() => {
+      global.fetch = realFetch;
+    });
+
+    test('not before they load, nor while they do; then yes', async () => {
+      let answer;
+      global.fetch = jest.fn(() => new Promise((resolve) => (answer = resolve)));
+      renderProbe();
+      expect(probeValue.hasLoadedManualComments('octocat')).toBe(false);
+
+      act(() => {
+        probeValue.loadManualComments('octocat');
+      });
+      expect(probeValue.hasLoadedManualComments('octocat')).toBe(false);
+
+      await act(async () => {
+        answer({ ok: true, json: async () => ({ ok: true, comments: [{ id: 'c1' }] }) });
+      });
+      expect(probeValue.hasLoadedManualComments('octocat')).toBe(true);
+      expect(probeValue.getManualComments('octocat')).toEqual([{ id: 'c1' }]);
+    });
+
+    test('not after a failed load, until a save gives the whole list', async () => {
+      global.fetch = jest.fn(async () => ({ ok: false, json: async () => ({ ok: false, error: 'down' }) }));
+      renderProbe();
+
+      await act(async () => {
+        await probeValue.loadManualComments('octocat');
+      });
+      expect(probeValue.getManualCommentsLoadState('octocat').error).toBe('down');
+      expect(probeValue.hasLoadedManualComments('octocat')).toBe(false);
+
+      act(() => {
+        probeValue.setManualComments('octocat', [{ id: 'c1' }]);
+      });
+      expect(probeValue.hasLoadedManualComments('octocat')).toBe(true);
+    });
+  });
+
   test('given no updates at all, when Context getManualCommentsLoadState is read, then it defaults to not-loading with no error', () => {
     renderProbe();
 

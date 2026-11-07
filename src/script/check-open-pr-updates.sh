@@ -26,10 +26,32 @@ QUIET=0
 QUICK_CHECK=0
 QUICK_CHECK_NUMBERS_RAW_INPUT=''
 QUICK_CHECK_NUMBERS=''
+TARGET_PRS_RAW_INPUT=''
+TARGET_PRS=''
+TARGET_PRS_MISSING=''
+# PRs whose details or review threads couldn't be fetched this run (see
+# note_unfetched_pr): their stored rows are kept.
+UNFETCHED_PR_NUMBERS=''
+# Rows in the data file are keyed by repo#number: two repos can each have a
+# PR #12. pr_row looks one up, also under its bare number for a file not
+# migrated yet (ensure_pr_state_store migrates it).
+PR_KEY_JQ='
+  def pr_key($repo; $number): ($repo + "#" + ($number | tostring));
+  def pr_row($repo; $number):
+    (.byPrNumber // {}) as $rows
+    | ($rows[pr_key($repo; $number)] // ($rows[$number | tostring] | select(. != null and (.repo // "") == $repo)) // empty);
+'
 STATUS_COL_WIDTH=28
 APPROVED_COL_WIDTH=14
 GH_COMMAND_TIMEOUT_SECONDS="${GH_COMMAND_TIMEOUT_SECONDS:-45}"
-VIEW_PRS_CACHE_REVALIDATE_SECONDS="${VIEW_PRS_CACHE_REVALIDATE_SECONDS:-1800}"
+# A full run reuses a stored row whose PR hasn't changed (see
+# get_cached_row_json_for_pr); VIEW_PRS_SKIP_UNCHANGED=0 fetches every PR
+# instead. An open/draft row is fetched in full again once it's older than
+# this, for what GitHub changes without moving the PR's updatedAt.
+VIEW_PRS_OPEN_REVALIDATE_SECONDS="${VIEW_PRS_OPEN_REVALIDATE_SECONDS:-14400}"
+# Part of every row's localStateKey: bump it when compute_pr_state_json
+# changes what it writes, so stored rows are computed again.
+ROW_CACHE_VERSION=1
 VIEW_PRS_PREFETCH_GROUP_CONCURRENCY="${VIEW_PRS_PREFETCH_GROUP_CONCURRENCY:-3}"
 VIEW_PRS_PROGRESS_MARKERS="${VIEW_PRS_PROGRESS_MARKERS:-0}"
 
@@ -53,7 +75,6 @@ FILES_CACHE_DIR="${FILES_CACHE_DIR:-}"
 REVIEW_URL_CACHE_DIR="${REVIEW_URL_CACHE_DIR:-}"
 REVIEW_COMMENT_CACHE_DIR="${REVIEW_COMMENT_CACHE_DIR:-}"
 CI_MERGE_CACHE_DIR="${CI_MERGE_CACHE_DIR:-}"
-VIEWED_FILES_FRESH_CACHE_DIR="${VIEWED_FILES_FRESH_CACHE_DIR:-}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VIEW_PRS_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -79,6 +100,11 @@ if [[ -n "$JQ_BIN" ]]; then
   export -f jq
 fi
 
+# The Node that computes each row (compute-pr-row.js): the server passes
+# its own (process.execPath), which needn't be on PATH - nvm, Volta or an
+# editor's bundled Node; run standalone, `node` from PATH.
+NODE_BIN="${VIEW_PRS_NODE:-node}"
+
 DATA_DIR="${DATA_DIR:-$VIEW_PRS_DIR/data}"
 PR_STATE_FILE="${PR_STATE_FILE:-$DATA_DIR/check-open-pr-updates.data.json}"
 PR_STATE_LOCK_DIR="${PR_STATE_LOCK_DIR:-$DATA_DIR/check-open-pr-updates.data.lock}"
@@ -88,6 +114,10 @@ PR_DETAIL_DIR="${PR_DETAIL_DIR:-$DATA_DIR/pr-details}"
 LOCK_STALE_SECONDS="${LOCK_STALE_SECONDS:-900}"
 STATE_BACKUP_DIR="${STATE_BACKUP_DIR:-$DATA_DIR/backups}"
 STATE_BACKUP_RETENTION="${STATE_BACKUP_RETENTION:-50}"
+# Beyond those, the newest backup of each of this many days (the most
+# recent days with backups): runs every few minutes would otherwise leave
+# only the last few hours.
+STATE_BACKUP_DAILY_DAYS="${STATE_BACKUP_DAILY_DAYS:-7}"
 
 LEGACY_ACK_FILE="$HOME/.cache/check-open-pr-updates/ack.json"
 ACK_RAW_INPUT=''
@@ -118,7 +148,7 @@ CHANGE_FILTER_IGNORE_COMMENT_AUTHORS=''
 CHANGE_FILTER_IGNORE_REVIEW_AUTHORS=''
 CHANGE_FILTER_IGNORE_COMMIT_PATTERNS=''
 # What counts as a merge commit (user-defaults.json's mergeCommitRules), as
-# JSON arrays for jq; see count_external_commits.
+# JSON arrays; see countExternalCommits in compute-pr-row.js.
 MERGE_COMMIT_HEADLINE_PATTERNS_JSON='["^Merge\\b"]'
 MERGE_COMMIT_LOGINS_JSON='[]'
 USER_DEFAULTS_FILE=''
@@ -209,7 +239,7 @@ Options:
       --merged-limit <number>  Max closed/merged PRs to show per section (overrides default day-based mode)
       --jobs <number>          Parallel workers for API prefetch (default: 6)
       --ack <numbers>          Mark PR number(s) as acknowledged (comma-separated or repeat flag)
-      --ack-clear <numbers>    Clear acknowledgment for PR number(s)
+      --ack-clear <numbers>    Undo the acknowledgment of PR number(s), as if never made
       --in-review <numbers>    Mark PR number(s) as in-review (UI-only flag; does not change STATUS)
       --in-review-clear <numbers> Clear in-review toggle for PR number(s)
       --flagged <numbers>      Mark PR number(s) as flagged
@@ -229,6 +259,13 @@ Options:
                                 bypasses --limit/--merged-limit/the day-window entirely, so
                                 an older merged/closed PR can still be checked. Mutually
                                 exclusive with -p/--pr.
+      --prs <numbers>          Fully refresh exactly these PR number(s) (comma-separated),
+                                looked up directly in whatever state they're in - for
+                                refreshing only what a quick check found changed. Like
+                                -p/--pr, a run of chosen PRs keeps each existing row's run
+                                stamp and the last run, so "last run rows" still means the
+                                last full run. Mutually exclusive with -p/--pr and
+                                --quick-check.
   -h, --help                   Show this help
 
 Examples:
@@ -355,7 +392,7 @@ format_iso_datetime() {
 create_state_backup() {
   local target_file="$1"
   local tag="$2"
-  local ts suffix backup_file pattern retention
+  local ts suffix backup_file pattern retention daily_days
 
   [[ -f "$target_file" ]] || return 0
 
@@ -376,7 +413,24 @@ create_state_backup() {
       # propagate that failure through the whole pipeline and abort the
       # entire script — silently dropping whatever ack/flag/clear operation
       # was in progress. `|| true` keeps that race from being fatal.
-      ls -1t $pattern 2>/dev/null | awk -v keep="$retention" 'NR > keep { print }' | while IFS= read -r old_file; do
+      # Keeps the newest $retention, and the newest one of each day (from
+      # the name's UTC timestamp) until $daily_days days have one.
+      daily_days="$STATE_BACKUP_DAILY_DAYS"
+      [[ "$daily_days" =~ ^[0-9]+$ ]] || daily_days=7
+      ls -1t $pattern 2>/dev/null | awk -v keep="$retention" -v days="$daily_days" '
+        function day_of(name) {
+          return match(name, /\.[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]T/) ? substr(name, RSTART + 1, 8) : ""
+        }
+        {
+          day = day_of($0)
+          if (NR <= keep) {
+            if (day != "" && !(day in seen)) { seen[day] = 1; day_count++ }
+            next
+          }
+          if (day != "" && !(day in seen) && day_count < days) { seen[day] = 1; day_count++; next }
+          print
+        }
+      ' | while IFS= read -r old_file; do
         [[ -n "$old_file" ]] || continue
         rm -f "$old_file" 2>/dev/null || true
       done || true
@@ -400,7 +454,30 @@ replace_state_file() {
   fi
 
   create_state_backup "$target_file" "$tag"
-  command mv -f "$tmp_file" "$target_file"
+  move_into_state_file "$tmp_file" "$target_file"
+}
+
+# A temp file beside a state file, named like the server's own
+# (view-prs-state-storage.js), so moving it over the file is a rename.
+state_file_tmp_path() {
+  printf '%s.tmp-%s-%s' "$1" "${BASHPID:-$$}" "$RANDOM"
+}
+
+# Replaces target_file with tmp_file in one step. mktemp's files are in the
+# system temp folder - often another drive (C: here, data on D:) - and a
+# move between drives copies over the file in place, where the server's
+# poll could read it half-written. Moved beside it first, then renamed.
+move_into_state_file() {
+  local tmp_file="$1"
+  local target_file="$2"
+  local staged
+
+  staged=$(state_file_tmp_path "$target_file")
+  if ! command mv -f "$tmp_file" "$staged"; then
+    rm -f "$tmp_file" "$staged" 2>/dev/null || true
+    return 1
+  fi
+  command mv -f "$staged" "$target_file"
 }
 
 list_state_backups() {
@@ -505,37 +582,6 @@ get_in_review_required() {
   jq -r --arg repo "$REPO" --arg number "$number" '.inReviewByRepo[$repo][$number] // false' "$USER_STATE_FILE" 2>/dev/null
 }
 
-get_flagged_required() {
-  local number="$1"
-  jq -r --arg repo "$REPO" --arg number "$number" '.flaggedByRepo[$repo][$number] // false' "$USER_STATE_FILE" 2>/dev/null
-}
-
-set_reverify_required_unlocked() {
-  local number="$1"
-  local tmp
-  tmp=$(mktemp)
-  jq --arg repo "$REPO" --arg number "$number" '(.reverifyByRepo //= {}) | (.reverifyByRepo[$repo] //= {}) | .reverifyByRepo[$repo][$number] = true' "$USER_STATE_FILE" >"$tmp"
-  replace_state_file "$tmp" "$USER_STATE_FILE" 'user-state'
-}
-
-set_reverify_required() {
-  local number="$1"
-  with_user_state_lock set_reverify_required_unlocked "$number"
-}
-
-clear_reverify_required_unlocked() {
-  local number="$1"
-  local tmp
-  tmp=$(mktemp)
-  jq --arg repo "$REPO" --arg number "$number" 'if .reverifyByRepo[$repo] then del(.reverifyByRepo[$repo][$number]) else . end' "$USER_STATE_FILE" >"$tmp"
-  replace_state_file "$tmp" "$USER_STATE_FILE" 'user-state'
-}
-
-clear_reverify_required() {
-  local number="$1"
-  with_user_state_lock clear_reverify_required_unlocked "$number"
-}
-
 set_in_review_required_unlocked() {
   local number="$1"
   local tmp
@@ -588,12 +634,33 @@ clear_flagged_required() {
   with_user_state_lock clear_flagged_required_unlocked "$number"
 }
 
+# Every Ack of a PR, kept for its Activity tab (ackHistoryByRepo: repo ->
+# PR number -> times, oldest first) - the current one (ackByRepo) is the
+# last. An Ack adds its time; clearing it with Clear Ack takes that time
+# back out; new activity clearing it leaves the time, so you can see you'd
+# looked before it changed. ACK_HISTORY_JQ's record_ack puts the current
+# Ack in the history (an Ack from before there was one isn't there yet).
+ACK_HISTORY_JQ='
+  def record_ack:
+    (.ackByRepo[$repo][$number] // "") as $ack
+    | if $ack == "" then .
+      else (.ackHistoryByRepo //= {}) | (.ackHistoryByRepo[$repo] //= {})
+        | .ackHistoryByRepo[$repo][$number] = ((.ackHistoryByRepo[$repo][$number] // []) + [$ack] | unique)
+      end;
+  def unrecord_ack:
+    (.ackByRepo[$repo][$number] // "") as $ack
+    | if $ack == "" or (.ackHistoryByRepo[$repo][$number] == null) then .
+      else .ackHistoryByRepo[$repo][$number] |= map(select(. != $ack))
+        | if .ackHistoryByRepo[$repo][$number] == [] then del(.ackHistoryByRepo[$repo][$number]) else . end
+      end;
+'
+
 set_ack_ts_unlocked() {
   local number="$1"
   local ts="$2"
   local tmp
   tmp=$(mktemp)
-  jq --arg repo "$REPO" --arg number "$number" --arg ts "$ts" '(.ackByRepo //= {}) | (.ackByRepo[$repo] //= {}) | .ackByRepo[$repo][$number] = $ts | if .reverifyByRepo[$repo] then del(.reverifyByRepo[$repo][$number]) else . end' "$USER_STATE_FILE" >"$tmp"
+  jq --arg repo "$REPO" --arg number "$number" --arg ts "$ts" "$ACK_HISTORY_JQ"'record_ack | (.ackByRepo //= {}) | (.ackByRepo[$repo] //= {}) | .ackByRepo[$repo][$number] = $ts | record_ack | if .reverifyByRepo[$repo] then del(.reverifyByRepo[$repo][$number]) else . end' "$USER_STATE_FILE" >"$tmp"
   replace_state_file "$tmp" "$USER_STATE_FILE" 'user-state'
 }
 
@@ -605,38 +672,29 @@ set_ack_ts() {
 
 clear_ack_ts_unlocked() {
   local number="$1"
-  # set_reverify: the manual "--ack-clear" path (default) also sets
-  # reverifyByRepo so the row shows CHANGED("ack-cleared") even absent any
-  # real new activity. The automatic clear-on-new-activity path (see
-  # compute_pr_state_json) passes false: status is already CHANGED for a
-  # real reason there, and forcing reverifyByRepo too would keep pinning it
-  # to CHANGED forever once that real activity ages out of effective_last.
-  local set_reverify="${2:-true}"
+  # undo: the manual "--ack-clear" path (default) - the Ack button clicked
+  # again - undoes the Ack as if it was never made: it goes, and so does its
+  # time from the Ack history (ACK_HISTORY_JQ). New activity since an Ack
+  # clears it on its own, so there's never an earlier one to put back.
+  # (Before 2026-11-05 it also set reverifyByRepo, pinning the row to
+  # CHANGED("ack-cleared") until the next Ack; rows marked then still are.)
+  # The automatic clear-on-new-activity path (see compute_pr_state_json)
+  # passes false: the Ack stays in the history, as one that was made.
+  local undo="${2:-true}"
   local tmp
   tmp=$(mktemp)
-  if [[ "$set_reverify" == 'true' ]]; then
-    jq --arg repo "$REPO" --arg number "$number" 'if .ackByRepo[$repo] then del(.ackByRepo[$repo][$number]) else . end | (.reverifyByRepo //= {}) | (.reverifyByRepo[$repo] //= {}) | .reverifyByRepo[$repo][$number] = true' "$USER_STATE_FILE" >"$tmp"
+  if [[ "$undo" == 'true' ]]; then
+    jq --arg repo "$REPO" --arg number "$number" "$ACK_HISTORY_JQ"'unrecord_ack | if .ackByRepo[$repo] then del(.ackByRepo[$repo][$number]) else . end' "$USER_STATE_FILE" >"$tmp"
   else
-    jq --arg repo "$REPO" --arg number "$number" 'if .ackByRepo[$repo] then del(.ackByRepo[$repo][$number]) else . end' "$USER_STATE_FILE" >"$tmp"
+    jq --arg repo "$REPO" --arg number "$number" "$ACK_HISTORY_JQ"'record_ack | if .ackByRepo[$repo] then del(.ackByRepo[$repo][$number]) else . end' "$USER_STATE_FILE" >"$tmp"
   fi
   replace_state_file "$tmp" "$USER_STATE_FILE" 'user-state'
 }
 
 clear_ack_ts() {
   local number="$1"
-  local set_reverify="${2:-true}"
-  with_user_state_lock clear_ack_ts_unlocked "$number" "$set_reverify"
-}
-
-clear_all_repo_acks_unlocked() {
-  local tmp
-  tmp=$(mktemp)
-  jq --arg repo "$REPO" 'if .ackByRepo then del(.ackByRepo[$repo]) else . end' "$USER_STATE_FILE" >"$tmp"
-  replace_state_file "$tmp" "$USER_STATE_FILE" 'user-state'
-}
-
-clear_all_repo_acks() {
-  with_user_state_lock clear_all_repo_acks_unlocked
+  local undo="${2:-true}"
+  with_user_state_lock clear_ack_ts_unlocked "$number" "$undo"
 }
 
 ensure_user_state_store() {
@@ -660,9 +718,32 @@ ensure_user_state_store() {
 ensure_pr_state_store() {
   [[ -f "$PR_STATE_FILE" ]] || printf '{"byPrNumber":{},"lastRun":null}' >"$PR_STATE_FILE"
 
+  # Rewritten (and backed up) only when there's something to fix - not with
+  # every quick check. A run that writes rows backs it up itself (main).
+  if jq -e '(.byPrNumber | type) == "object" and ([has("ackByRepo", "reverifyByRepo", "inReviewByRepo", "flaggedByRepo")] | any | not) and ([.byPrNumber | to_entries[] | select((.key | test("^[0-9]+$")) and ((.value.repo // "") != ""))] | length == 0)' "$PR_STATE_FILE" >/dev/null 2>&1; then
+    return 0
+  fi
+
   local tmp
   tmp=$(mktemp)
-  jq '.byPrNumber //= {} | del(.ackByRepo, .reverifyByRepo, .inReviewByRepo, .flaggedByRepo)' "$PR_STATE_FILE" >"$tmp"
+  # Rows are keyed by repo#number (see PR_KEY_JQ); a row keyed by its bare
+  # number (before 2026-11-02, when two repos' PRs with the same number
+  # replaced each other) moves to its repo's key - unless that key already
+  # has a row, the newer one. A row without a repo keeps its number.
+  jq "$PR_KEY_JQ"'
+    .byPrNumber //= {}
+    | del(.ackByRepo, .reverifyByRepo, .inReviewByRepo, .flaggedByRepo)
+    | .byPrNumber = (
+        (.byPrNumber | to_entries) as $entries
+        | ([$entries[] | select(.key | test("^[0-9]+$") | not) | .key]) as $keyed
+        | reduce $entries[] as $e ({};
+            if ($e.key | test("^[0-9]+$")) and (($e.value.repo // "") != "") then
+              pr_key($e.value.repo; $e.key) as $k
+              | if ($keyed | index($k)) != null then . else .[$k] = $e.value end
+            else .[$e.key] = $e.value
+            end)
+      )
+  ' "$PR_STATE_FILE" >"$tmp"
   replace_state_file "$tmp" "$PR_STATE_FILE" 'pr-data'
 }
 
@@ -691,38 +772,6 @@ load_change_filter_config() {
       else [] end' "$USER_DEFAULTS_FILE" 2>/dev/null || echo '[]')
 
   debug_log "change_filter_config loaded: ignore_comment_authors=$CHANGE_FILTER_IGNORE_COMMENT_AUTHORS ignore_review_authors=$CHANGE_FILTER_IGNORE_REVIEW_AUTHORS ignore_commit_patterns=$CHANGE_FILTER_IGNORE_COMMIT_PATTERNS merge_commit_patterns=$MERGE_COMMIT_HEADLINE_PATTERNS_JSON merge_commit_logins=$MERGE_COMMIT_LOGINS_JSON"
-}
-
-# Counts the PR's commits ($1: the PR detail JSON) with at least one author
-# other than the viewer, committed after $2 (every commit when $2 is empty),
-# leaving out merge commits and commits matching the change filter's ignore
-# patterns. Merge commits follow the same rules as the UI
-# (src/ui/helpers/pr-merge-commit-rules.helpers.ts): the headline matches one
-# of the patterns (case-insensitive; an invalid pattern matches nothing), or
-# every author login is in the merge logins list.
-count_external_commits() {
-  local detail_json="$1"
-  local since="${2:-}"
-  printf '%s' "$detail_json" | jq -r \
-    --arg me "$VIEWER_LOGIN" \
-    --arg since "$since" \
-    --arg ignorePatterns "$CHANGE_FILTER_IGNORE_COMMIT_PATTERNS" \
-    --argjson mergePatterns "$MERGE_COMMIT_HEADLINE_PATTERNS_JSON" \
-    --argjson mergeLogins "$MERGE_COMMIT_LOGINS_JSON" '
-    ($mergeLogins | map(ascii_downcase)) as $mergeLoginList
-    | [
-      .commits[]?
-      | select(any(.authors[]?; .login != null and .login != $me))
-      | select($since == "" or (.committedDate // "") > $since)
-      | (.messageHeadline // "") as $headline
-      | select((any($mergePatterns[]; . as $pattern | try ($headline | test($pattern; "i")) catch false)) | not)
-      | select(([.authors[]? | .login // empty | ascii_downcase] as $logins
-          | ($mergeLoginList | length) > 0 and ($logins | length) > 0
-            and all($logins[]; . as $login | $mergeLoginList | index($login) != null)) | not)
-      | select(($ignorePatterns | length) == 0 or (($headline | test($ignorePatterns)) | not))
-    ]
-    | length
-  '
 }
 
 lock_info_file() {
@@ -815,6 +864,51 @@ recover_stale_lock_dir() {
   return 1
 }
 
+# A run that's stopped (the server sends a timed-out run SIGTERM) lets go
+# of the locks it holds, rather than leaving them for the next run to find
+# stale - meanwhile every write waits on them and fails. Each lock records
+# the shell holding it (set_current_shell_pid): a lock can be taken in a
+# $(...) subshell, which has its own traps, so taking one sets this shell's (when run as a
+# script - main sets MAIN_SHELL_PID - not when sourced by the tests). Only
+# the main shell removes main's temporary caches (EXIT_CLEANUP_PATHS). A
+# process killed outright (Windows ends a timed-out run that way) runs no
+# trap: the next run recovers its locks as before.
+PR_STATE_LOCK_HOLDER=''
+USER_STATE_LOCK_HOLDER=''
+EXIT_CLEANUP_PATHS=()
+CURRENT_SHELL_PID=''
+
+# Sets CURRENT_SHELL_PID to this shell's PID - a $(...) subshell's own,
+# which $$ isn't. A variable, not output: read through $(...), it would be
+# that substitution's subshell's. BASHPID is bash 4+; bash 3.2 (macOS's
+# /bin/bash) has no BASHPID, and set -u fails on it, so there it's the
+# parent of a process this shell starts (exec keeps the substitution from
+# adding a shell in between).
+set_current_shell_pid() {
+  if [[ -n "${BASHPID:-}" ]]; then
+    CURRENT_SHELL_PID=$BASHPID
+  else
+    CURRENT_SHELL_PID=$(exec sh -c 'printf "%s" "$PPID"')
+  fi
+}
+
+on_script_exit() {
+  set_current_shell_pid
+  [[ "$PR_STATE_LOCK_HOLDER" == "$CURRENT_SHELL_PID" ]] && release_pr_state_lock
+  [[ "$USER_STATE_LOCK_HOLDER" == "$CURRENT_SHELL_PID" ]] && release_user_state_lock
+  if [[ "$CURRENT_SHELL_PID" == "${MAIN_SHELL_PID:-}" && ${#EXIT_CLEANUP_PATHS[@]} -gt 0 ]]; then
+    rm -rf "${EXIT_CLEANUP_PATHS[@]}"
+  fi
+  return 0
+}
+
+set_exit_traps() {
+  [[ -n "${MAIN_SHELL_PID:-}" ]] || return 0
+  trap on_script_exit EXIT
+  trap 'exit 143' TERM
+  trap 'exit 130' INT
+}
+
 acquire_pr_state_lock() {
   local lock_label='PR state'
   local attempts=0
@@ -828,12 +922,16 @@ acquire_pr_state_lock() {
     sleep 0.05
   done
   write_lock_metadata "$PR_STATE_LOCK_DIR"
+  set_current_shell_pid
+  PR_STATE_LOCK_HOLDER=$CURRENT_SHELL_PID
+  set_exit_traps
   return 0
 }
 
 release_pr_state_lock() {
   rm -f "$PR_STATE_LOCK_DIR/lock-info" 2>/dev/null || true
   rmdir "$PR_STATE_LOCK_DIR" 2>/dev/null || true
+  PR_STATE_LOCK_HOLDER=''
 }
 
 with_pr_state_lock() {
@@ -859,12 +957,16 @@ acquire_user_state_lock() {
     sleep 0.05
   done
   write_lock_metadata "$USER_STATE_LOCK_DIR"
+  set_current_shell_pid
+  USER_STATE_LOCK_HOLDER=$CURRENT_SHELL_PID
+  set_exit_traps
   return 0
 }
 
 release_user_state_lock() {
   rm -f "$USER_STATE_LOCK_DIR/lock-info" 2>/dev/null || true
   rmdir "$USER_STATE_LOCK_DIR" 2>/dev/null || true
+  USER_STATE_LOCK_HOLDER=''
 }
 
 with_user_state_lock() {
@@ -880,43 +982,128 @@ with_user_state_lock() {
 upsert_pr_state_unlocked() {
   local row_json="$1"
   local section="$2"
-  local number tmp row_file
+  local tmp row_file
 
-  number=$(printf '%s' "$row_json" | jq -r '.number')
-  tmp=$(mktemp)
+  # Beside the data file, so replacing it is a rename (move_into_state_file).
+  tmp=$(state_file_tmp_path "$PR_STATE_FILE")
   row_file=$(mktemp)
   printf '%s' "$row_json" >"$row_file"
-  jq \
-    --arg number "$number" \
+  # fetchedAt: when this row was written - updatedAt is the run's start for
+  # every row, so a long run's late rows look older than they are. The
+  # server's live summary (view-prs-live-summary-helpers.js) only replaces a
+  # row's values when listed after this. Written after the row's data was
+  # fetched, so a listing it counts as newer always is. A row reused as it
+  # was (get_pr_row_json's __reused) wasn't fetched, so keeps its fetchedAt:
+  # the live summary still applies to it, and an open row is still fetched
+  # again once that's VIEW_PRS_OPEN_REVALIDATE_SECONDS old. ciFetchedAt: when
+  # its CI and mergeability were, which a reused open row's are
+  # (enrich_cached_row_with_ci_merge's __ciFetched) - so a listing older
+  # than that doesn't replace them.
+  #
+  # A run of chosen PRs (is_targeted_run) keeps an existing row's updatedAt
+  # and lastFullRun: they mark which rows the last full run saw - the "last
+  # run rows" view - which refreshing a few PRs doesn't change. A row it
+  # adds takes its repo's last full run's stamp too, so a new PR shows there
+  # straight away - or, in a repo with no full run yet (one whose PRs were
+  # only ever added one by one), this run's, recorded as the repo's full run
+  # so the rows it adds show there too. lastRun is every run's, for
+  # "updated N minutes ago".
+  # (Data from before lastFullRun takes its lastRun as one.) Each repo has
+  # its own as well - lastRunByRepo and lastFullRunByRepo - since several
+  # repos' runs take turns: the global ones are only the latest repo's.
+  # (Data from before those takes the global one for its repo.)
+  #
+  # Written straight over the file, without replace_state_file's backup and
+  # second parse: the run backed the file up once before its first row
+  # (main), and jq only succeeds with a whole document.
+  local targeted=false
+  is_targeted_run && targeted=true
+  if ! jq \
     --arg repo "$REPO" \
     --arg section "$section" \
     --arg updatedAt "$RUN_TS" \
     --argjson rowOrder "$RUN_ROW_INDEX" \
+    --argjson targeted "$targeted" \
     --slurpfile row_file "$row_file" \
-    '
+    "$PR_KEY_JQ"'
+      ($row_file[0] // {}) as $row |
+      ($row.number | tostring) as $number |
+      pr_key($repo; $number) as $key |
+      (now | todate) as $now |
       .byPrNumber //= {} |
-      .byPrNumber[$number] = (((.byPrNumber[$number] // {}) | del(.notes)) + {
+      ([pr_row($repo; $number)] | first // {}) as $existing |
+      (if ((.byPrNumber[$number].repo // "") == $repo) then del(.byPrNumber[$number]) else . end) |
+      (
+        (.lastFullRunByRepo // {})[$repo]
+        // ((.lastFullRun // .lastRun) | select(type == "object" and (.repo // "") == $repo))
+        // null
+      ) as $repoFullRun |
+      ($existing.updatedAt // $repoFullRun.updatedAt // null) as $existingUpdatedAt |
+      .byPrNumber[$key] = (($existing | del(.notes)) + {
         prNumber: $number,
         repo: $repo,
         section: $section,
-        updatedAt: $updatedAt,
-        rowOrder: ((.byPrNumber[$number].rowOrder // $rowOrder)),
-        data: ($row_file[0] // {})
+        updatedAt: (if $targeted then ($existingUpdatedAt // $updatedAt) else $updatedAt end),
+        fetchedAt: (if $row.__reused == true then $existing.fetchedAt else $now end),
+        ciFetchedAt: (
+          if $row.__reused != true or $row.__ciFetched == true then $now
+          else ($existing.ciFetchedAt // $existing.fetchedAt)
+          end
+        ),
+        rowOrder: (($existing.rowOrder // $rowOrder)),
+        data: ($row | del(.__reused, .__ciFetched))
       }) |
+      .lastFullRun = (if $targeted then (.lastFullRun // .lastRun) else {
+        repo: $repo,
+        updatedAt: $updatedAt
+      } end) |
       .lastRun = {
         repo: $repo,
         updatedAt: $updatedAt
-      }
-    ' "$PR_STATE_FILE" >"$tmp"
+      } |
+      .lastFullRunByRepo = (
+        (.lastFullRunByRepo // {})
+        | .[$repo] = ((if $targeted then $repoFullRun else null end) // {repo: $repo, updatedAt: $updatedAt})
+      ) |
+      .lastRunByRepo = ((.lastRunByRepo // {}) | .[$repo] = {repo: $repo, updatedAt: $updatedAt})
+    ' "$PR_STATE_FILE" >"$tmp" || [[ ! -s "$tmp" ]]; then
+    rm -f "$row_file" "$tmp"
+    echo "Refusing to replace $PR_STATE_FILE: couldn't add row" >&2
+    return 1
+  fi
   rm -f "$row_file"
-
-  replace_state_file "$tmp" "$PR_STATE_FILE" 'pr-data'
+  command mv -f "$tmp" "$PR_STATE_FILE"
 }
 
 upsert_pr_state() {
   local row_json="$1"
   local section="$2"
   with_pr_state_lock upsert_pr_state_unlocked "$row_json" "$section"
+}
+
+# A full run's records of its repo's run, which each row it saves writes
+# (upsert_pr_state_unlocked) - and this, at its end, for a run that saved
+# none: the repo kept its previous run's stamp otherwise, and the rows that
+# run saw stayed "last run rows" after dropping out of its listings.
+record_repo_full_run_unlocked() {
+  local tmp
+
+  tmp=$(state_file_tmp_path "$PR_STATE_FILE")
+  if ! jq \
+    --arg repo "$REPO" \
+    --arg updatedAt "$RUN_TS" \
+    '
+      {repo: $repo, updatedAt: $updatedAt} as $run |
+      .lastFullRun = $run |
+      .lastRun = $run |
+      .lastFullRunByRepo = ((.lastFullRunByRepo // {}) | .[$repo] = $run) |
+      .lastRunByRepo = ((.lastRunByRepo // {}) | .[$repo] = $run)
+    ' "$PR_STATE_FILE" >"$tmp" || [[ ! -s "$tmp" ]]; then
+    rm -f "$tmp"
+    echo "Refusing to replace $PR_STATE_FILE: couldn't record the run" >&2
+    return 1
+  fi
+  command mv -f "$tmp" "$PR_STATE_FILE"
 }
 
 apply_ack_changes() {
@@ -982,15 +1169,19 @@ fetch_pr_review_url_map_json() {
   fi
 
   # Returns a JSON object mapping "<submittedAt>_<authorLogin>" => html_url for
-  # each review, so that normalize_pr_reviews_json can be enriched with URLs.
+  # each review, so that compute-pr-row.js can give each review its URL.
   # The gh CLI's --json reviews schema doesn't expose url, so we use the REST API.
+  # Every page (it gave the first 30), and no leading slash: Git Bash
+  # rewrites an argument starting with one into a Windows path
+  # ("C:/Program Files/Git/repos/..."), so on Windows this always failed.
+  # --paginate prints one array a page; -s gathers them.
   local result
   local api_output
-  api_output=$(gh_with_retry gh api "/repos/$REPO_OWNER/$REPO_NAME/pulls/$number/reviews" 2>/dev/null) || api_output=''
-  result=$(printf '%s' "$api_output" | jq -c 'if type == "array" then [.[] | select(.submitted_at != null and .submitted_at != "") | {
+  api_output=$(gh_with_retry gh api --paginate "repos/$REPO_OWNER/$REPO_NAME/pulls/$number/reviews?per_page=100" 2>/dev/null) || api_output=''
+  result=$(printf '%s' "$api_output" | jq -cs 'map(select(type == "array")) | add // [] | [.[] | select(.submitted_at != null and .submitted_at != "") | {
       key: (.submitted_at + "_" + (.user.login // "unknown")),
       value: (.html_url // "")
-    }] | from_entries else {} end' 2>/dev/null) || result=''
+    }] | from_entries' 2>/dev/null) || result=''
     [[ -z "$result" ]] && result='{}'
   printf '%s' "$result" >"$cache_file"
   printf '%s' "$result"
@@ -1000,19 +1191,88 @@ get_pr_detail_json() {
   local number="$1"
   local cache_file="$DETAIL_CACHE_DIR/$number.json"
 
+  local detail_json
   if [[ -f "$cache_file" && "$number" != "$TARGET_PR_NUMBER" ]]; then
-    cat "$cache_file"
-    return
+    detail_json=$(cat "$cache_file")
+  else
+    detail_json=$(gh_with_retry gh pr view "$number" -R "$REPO" --json comments,reviews,reviewRequests,commits,assignees,statusCheckRollup,mergeable,mergeStateStatus) || return 1
   fi
+  # A PR over 100 commits: the rest of them, or no details (the run keeps
+  # its stored row) rather than details missing its newest commits.
+  complete_pr_detail_commits "$detail_json" "$number"
+}
 
-  gh_with_retry gh pr view "$number" -R "$REPO" --json comments,reviews,reviewRequests,commits,assignees,statusCheckRollup,mergeable,mergeStateStatus
+# Every commit of a PR, in gh pr view's shape: gh gives the first 100 only,
+# so a longer PR's newer commits - the ones that matter for what changed -
+# were missing. Pages of 100 through GraphQL, into a file (a page can be past
+# Windows' 32 KB command line). GitHub's API stops at 250 commits a PR,
+# newest included. Status 1 when a page can't be fetched.
+fetch_all_pr_commits_json() {
+  local number="$1"
+  local pages_file response cursor='' has_next
+  pages_file=$(mktemp)
+  while true; do
+    if ! response=$(gh_with_retry gh api graphql \
+      -f query='query($owner: String!, $name: String!, $number: Int!, $after: String) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { commits(first: 100, after: $after) { nodes { commit { oid authoredDate committedDate messageHeadline messageBody authors(first: 100) { nodes { email name user { id login } } } } } pageInfo { hasNextPage endCursor } } } } }' \
+      -f owner="$REPO_OWNER" \
+      -f name="$REPO_NAME" \
+      -F number="$number" \
+      ${cursor:+-f after="$cursor"} 2>/dev/null) ||
+      ! printf '%s' "$response" | jq -e '.data.repository.pullRequest.commits.nodes | type == "array"' >/dev/null 2>&1; then
+      rm -f "$pages_file"
+      return 1
+    fi
+    printf '%s\n' "$response" >>"$pages_file"
+    has_next=$(printf '%s' "$response" | jq -r '.data.repository.pullRequest.commits.pageInfo.hasNextPage')
+    cursor=$(printf '%s' "$response" | jq -r '.data.repository.pullRequest.commits.pageInfo.endCursor // ""')
+    [[ "$has_next" == 'true' && -n "$cursor" ]] || break
+  done
+  jq -cs '
+    [
+      .[].data.repository.pullRequest.commits.nodes[].commit
+      | {
+          authoredDate,
+          authors: [.authors.nodes[] | {email: (.email // ""), id: (.user.id // ""), login: (.user.login // ""), name: (.name // "")}],
+          committedDate,
+          messageBody,
+          messageHeadline,
+          oid
+        }
+    ]
+  ' "$pages_file"
+  local status=$?
+  rm -f "$pages_file"
+  return "$status"
+}
+
+# A PR's details with all its commits: gh's 100 replaced by the full list
+# when there may be more (exactly 100). Through files, not --argjson.
+complete_pr_detail_commits() {
+  local detail_json="$1"
+  local number="$2"
+  local detail_file commits_file
+  if ! printf '%s' "$detail_json" | jq -e '(.commits | type) == "array" and (.commits | length) >= 100' >/dev/null 2>&1; then
+    printf '%s' "$detail_json"
+    return 0
+  fi
+  commits_file=$(mktemp)
+  if ! fetch_all_pr_commits_json "$number" >"$commits_file"; then
+    rm -f "$commits_file"
+    return 1
+  fi
+  detail_file=$(mktemp)
+  printf '%s' "$detail_json" >"$detail_file"
+  jq -c --slurpfile commits "$commits_file" '.commits = $commits[0]' "$detail_file"
+  local status=$?
+  rm -f "$detail_file" "$commits_file"
+  return "$status"
 }
 
 prefetch_pr_details() {
   local numbers="$1"
   [[ -z "$numbers" ]] && return
 
-  printf '%s\n' "$numbers" | xargs -P "$JOBS" -I '{}' bash -c '
+  printf '%s\n' "$numbers" | xargs -P "$(prefetch_task_jobs)" -I '{}' bash -c '
     number="$1"
     repo="$2"
     cache_dir="$3"
@@ -1116,12 +1376,55 @@ fetch_quick_check_target_prs() {
   rm -rf "$scratch_dir"
 }
 
+# How many `gh` calls one prefetch task runs at once: --jobs shared among
+# the VIEW_PRS_PREFETCH_GROUP_CONCURRENCY tasks run together, so a group
+# runs about --jobs in all (the open/draft group and the merged/closed one
+# can overlap: about twice that). Not --jobs each - with every prefetch
+# working that was up to 36 at once, where the server budgets 4 a refresh.
+prefetch_task_jobs() {
+  local jobs="$JOBS"
+  local groups="$VIEW_PRS_PREFETCH_GROUP_CONCURRENCY"
+  [[ "$jobs" =~ ^[0-9]+$ ]] && ((jobs > 0)) || jobs=1
+  [[ "$groups" =~ ^[0-9]+$ ]] && ((groups > 0)) || groups=1
+  jobs=$((jobs / groups))
+  ((jobs < 1)) && jobs=1
+  printf '%s' "$jobs"
+}
+
+# Runs `fn number` for each number, prefetch_task_jobs at a time, each in a
+# background subshell, for the cache file it writes. A subshell has the
+# script's functions and variables; the `bash -c` these used to run under
+# xargs had neither, so they fetched nothing and every PR's was fetched one
+# at a time while its row was computed.
+run_for_each_number_in_parallel() {
+  local fn="$1"
+  local numbers="$2"
+  local max_parallel
+  local -a pids=()
+  local number pid
+
+  max_parallel=$(prefetch_task_jobs)
+
+  while IFS= read -r number; do
+    [[ -z "$number" ]] && continue
+    { "$fn" "$number" >/dev/null 2>&1 || true; } &
+    pids+=("$!")
+    if ((${#pids[@]} >= max_parallel)); then
+      wait "${pids[0]}"
+      pids=("${pids[@]:1}")
+    fi
+  done <<<"$numbers"
+
+  for pid in ${pids[@]+"${pids[@]}"}; do
+    wait "$pid"
+  done
+}
+
 prefetch_review_threads() {
   local numbers="$1"
   [[ -z "$numbers" ]] && return
 
-  printf '%s\n' "$numbers" | xargs -P "$JOBS" -I '{}' bash -c 'fetch_review_threads_json "{}" > /dev/null' _ '{}' 2>/dev/null &
-  wait
+  run_for_each_number_in_parallel fetch_review_threads_json "$numbers"
 }
 
 prefetch_review_comments() {
@@ -1129,8 +1432,7 @@ prefetch_review_comments() {
   [[ -z "$numbers" ]] && return
   [[ -z "$REVIEW_COMMENT_CACHE_DIR" ]] && return
 
-  printf '%s\n' "$numbers" | xargs -P "$JOBS" -I '{}' bash -c 'fetch_pr_review_comments_json "{}" > /dev/null' _ '{}' 2>/dev/null &
-  wait
+  run_for_each_number_in_parallel fetch_pr_review_comments_json "$numbers"
 }
 
 prefetch_review_urls() {
@@ -1138,35 +1440,14 @@ prefetch_review_urls() {
   [[ -z "$numbers" ]] && return
   [[ -z "$REVIEW_URL_CACHE_DIR" ]] && return
 
-  printf '%s\n' "$numbers" | xargs -P "$JOBS" -I '{}' bash -c 'fetch_pr_review_url_map_json "{}" > /dev/null' _ '{}' 2>/dev/null &
-  wait
+  run_for_each_number_in_parallel fetch_pr_review_url_map_json "$numbers"
 }
 
 prefetch_viewed_files_stats() {
   local numbers="$1"
   [[ -z "$numbers" ]] && return
 
-  printf '%s\n' "$numbers" | xargs -P "$JOBS" -I '{}' bash -c 'fetch_pr_viewed_files_stats_json "{}" > /dev/null' _ '{}' 2>/dev/null &
-  wait
-}
-
-prefetch_viewed_files_stats_fresh() {
-  local numbers="$1"
-  local previous_files_cache_dir
-  local number
-
-  [[ -z "$numbers" ]] && return
-  [[ -z "$VIEWED_FILES_FRESH_CACHE_DIR" ]] && return
-
-  previous_files_cache_dir="$FILES_CACHE_DIR"
-  FILES_CACHE_DIR="$VIEWED_FILES_FRESH_CACHE_DIR"
-
-  while IFS= read -r number; do
-    [[ -z "$number" ]] && continue
-    fetch_pr_viewed_files_stats_json "$number" >/dev/null 2>&1 || true
-  done <<<"$numbers"
-
-  FILES_CACHE_DIR="$previous_files_cache_dir"
+  run_for_each_number_in_parallel fetch_pr_viewed_files_stats_json "$numbers"
 }
 
 prefetch_ci_merge_stats() {
@@ -1174,7 +1455,7 @@ prefetch_ci_merge_stats() {
   [[ -z "$numbers" ]] && return
   [[ -z "$CI_MERGE_CACHE_DIR" ]] && return
 
-  printf '%s\n' "$numbers" | xargs -P "$JOBS" -I '{}' bash -c '
+  printf '%s\n' "$numbers" | xargs -P "$(prefetch_task_jobs)" -I '{}' bash -c '
     number="$1"
     repo="$2"
     cache_dir="$3"
@@ -1223,7 +1504,8 @@ run_prefetch_tasks_concurrently() {
     fi
   done
 
-  for pid in "${active_pids[@]}"; do
+  # The +-guard: bash before 4.4 calls an empty array unbound under set -u.
+  for pid in ${active_pids[@]+"${active_pids[@]}"}; do
     wait "$pid"
   done
 }
@@ -1251,15 +1533,19 @@ fetch_review_threads_json() {
         -f owner="$REPO_OWNER" \
         -f name="$REPO_NAME" \
         -F number="$number" \
-        -f after="$cursor")
+        -f after="$cursor") || return 1
     else
       response=$(gh_with_retry gh api graphql \
         -f query='query($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { reviewThreads(first: 100) { nodes { id isResolved isOutdated resolvedBy { login } comments(first: 100) { totalCount pageInfo { hasNextPage endCursor } nodes { id author { login } authorAssociation body createdAt publishedAt url replyTo { id } path line originalLine state } } } pageInfo { hasNextPage endCursor } } } } }' \
         -f owner="$REPO_OWNER" \
         -f name="$REPO_NAME" \
-        -F number="$number")
+        -F number="$number") || return 1
     fi
 
+    # A failed request, or a response without the threads (a GraphQL
+    # error): fail, rather than return no threads - an empty list would
+    # replace the row's threads (the prefetch caches what this returns).
+    printf '%s' "$response" | jq -e '.data.repository.pullRequest.reviewThreads.nodes | type == "array"' >/dev/null 2>&1 || return 1
     printf '%s' "$response" | jq -c '.data.repository.pullRequest.reviewThreads.nodes[]?' >>"$tmp_nodes"
     has_next=$(printf '%s' "$response" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage')
     cursor=$(printf '%s' "$response" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.endCursor // ""')
@@ -1301,7 +1587,11 @@ fetch_review_threads_json() {
         latestCommentAt: ([.comments[]?.createdAt | select(. != "")] | sort | last // "")
       })
     | sort_by(.latestCommentAt, .id)
-  ' "$tmp_nodes" >"$cache_file"
+  ' "$tmp_nodes" >"$cache_file.tmp-$$" || {
+    rm -f "$cache_file.tmp-$$"
+    return 1
+  }
+  command mv -f "$cache_file.tmp-$$" "$cache_file"
   cat "$cache_file"
 }
 
@@ -1326,16 +1616,22 @@ fetch_pr_review_comments_json() {
   local page_count
   local api_output='[]'
   local normalized
+  local pages_file
 
+  # The pages go through a file, not --argjson: a page of 100 comments
+  # (with their diff hunks) is past Windows' 32 KB command line, and can be
+  # past Linux's 128 KB an argument - the jq failed, and the PR lost its
+  # review comments.
+  pages_file=$(mktemp)
   while true; do
-    page_output=$(gh_with_retry gh api "/repos/$REPO_OWNER/$REPO_NAME/pulls/$number/comments?per_page=100&page=$page" 2>/dev/null) || page_output='[]'
-    api_output=$(jq -cn --argjson current "$api_output" --argjson pageData "$page_output" '
-      $current + (if ($pageData | type) == "array" then $pageData else [] end)
-    ' 2>/dev/null) || api_output='[]'
+    page_output=$(gh_with_retry gh api "repos/$REPO_OWNER/$REPO_NAME/pulls/$number/comments?per_page=100&page=$page" 2>/dev/null) || page_output='[]'
+    printf '%s\n' "$page_output" >>"$pages_file"
     page_count=$(printf '%s' "$page_output" | jq -r 'if type == "array" then length else 0 end' 2>/dev/null) || page_count=0
     [[ "$page_count" -lt 100 ]] && break
     page=$((page + 1))
   done
+  api_output=$(jq -cs 'map(if type == "array" then . else [] end) | add // []' "$pages_file" 2>/dev/null) || api_output='[]'
+  rm -f "$pages_file"
 
   normalized=$(printf '%s' "$api_output" | jq -c '
     if type == "array" then
@@ -1371,537 +1667,10 @@ fetch_pr_review_comments_json() {
   printf '%s' "$normalized"
 }
 
-normalize_pr_comments_json() {
-  local detail_json="$1"
-  printf '%s' "$detail_json" | jq -c '
-    [
-      .comments[]?
-      | {
-          id: (.id // ""),
-          authorLogin: (.author.login // "unknown"),
-          authorName: (.author.name // ""),
-          authorAssociation: (.authorAssociation // ""),
-          createdAt: (.createdAt // ""),
-          publishedAt: (.publishedAt // .createdAt // ""),
-          body: (.body // ""),
-          url: (.url // "")
-        }
-      | select(.createdAt != "")
-    ]
-    | sort_by(.createdAt, .id)
-  '
-}
-
-normalize_pr_reviews_json() {
-  local detail_json="$1"
-  printf '%s' "$detail_json" | jq -c '
-    [
-      .reviews[]?
-      | {
-          id: (.id // ""),
-          authorLogin: (.author.login // "unknown"),
-          authorName: (.author.name // ""),
-          authorAssociation: (.authorAssociation // ""),
-          submittedAt: (.submittedAt // ""),
-          state: (.state // ""),
-          body: (.body // ""),
-          url: (.url // ""),
-          commitOid: (.commit.oid // "")
-        }
-      | select(.submittedAt != "")
-    ]
-    | sort_by(.submittedAt, .id)
-  '
-}
-
-normalize_pr_commits_json() {
-  local detail_json="$1"
-  printf '%s' "$detail_json" | jq -c '
-    [
-      .commits[]?
-      | {
-          oid: (.oid // ""),
-          committedAt: (.committedDate // ""),
-          messageHeadline: (.messageHeadline // ""),
-          messageBody: (.messageBody // ""),
-          authors: [
-            (.authors // [])[]?
-            | {
-                login: (.login // ""),
-                name: (.name // ""),
-                email: (.email // "")
-              }
-          ]
-        }
-      | select(.committedAt != "")
-      | select(((.messageHeadline // "") | test("^(Merge (branch|remote-tracking branch).*(main|origin/main)|Merge main into )")) | not)
-    ]
-    | sort_by(.committedAt, .oid)
-  '
-}
-
-build_comment_events_json() {
-  local comments_json="$1"
-  local review_threads_json="$2"
-  local review_comments_json="${3:-[]}"  # REST /pulls/{n}/comments fallback
-  jq -cn \
-    --argjson comments "$comments_json" \
-    --argjson reviewThreads "$review_threads_json" \
-    --argjson reviewComments "$review_comments_json" '
-    [
-      ($comments[]? | {
-        sourceId: (.id // ""),
-        threadId: "",
-        occurredAt: (.createdAt // ""),
-        date: ((.createdAt // "") | split("T") | .[0]),
-        actor: (.authorLogin // "unknown"),
-        type: "comment",
-        channel: "top-level",
-        body: (.body // ""),
-        url: (.url // "")
-      }),
-      ($reviewThreads[]? as $thread
-        | $thread.comments[]?
-        | {
-            sourceId: (.id // ""),
-            threadId: ($thread.id // ""),
-            occurredAt: (.createdAt // ""),
-            date: ((.createdAt // "") | split("T") | .[0]),
-            actor: (.authorLogin // "unknown"),
-            type: "comment",
-            channel: "thread",
-            body: (.body // ""),
-            url: (.url // ""),
-            replyToId: (.replyToId // ""),
-            conversationResolved: ($thread.isResolved // false)
-          }
-      ),
-      ($reviewComments[]? | {
-        sourceId: (.id // ""),
-        threadId: (if (.reviewId // "") != "" then ("review-" + .reviewId) else "" end),
-        occurredAt: (.createdAt // ""),
-        date: ((.createdAt // "") | split("T") | .[0]),
-        actor: (.authorLogin // "unknown"),
-        type: "comment",
-        channel: "thread",
-        body: (.body // ""),
-        url: (.url // ""),
-        replyToId: (.inReplyToId // ""),
-        conversationResolved: false
-      })
-    ]
-    | map(select(.occurredAt != "" and .date != ""))
-    | unique_by(
-        ((.url // "") + "|" +
-        (.occurredAt // "") + "|" +
-        (.actor // "") + "|" +
-        (.channel // "") + "|" +
-        (.body // ""))
-      )
-    | sort_by(.occurredAt, .actor, .channel, .sourceId)
-  '
-}
-
-build_activity_events_json() {
-  local comment_events_json="$1"
-  local reviews_json="$2"
-  local commits_json="$3"
-  local created_at="$4"
-  local author_login="$5"
-  local merged_at="$6"
-  local merged_by_login="$7"
-  local closed_at="${8:-}"
-
-  jq -cn \
-    --argjson commentEvents "$comment_events_json" \
-    --argjson reviews "$reviews_json" \
-    --argjson commits "$commits_json" \
-    --arg createdAt "$created_at" \
-    --arg actor "$author_login" \
-    --arg mergedAt "$merged_at" \
-    --arg mergedBy "$merged_by_login" \
-    --arg closedAt "$closed_at" '
-    [
-      ($commentEvents[]?),
-      ($reviews[]? | {
-        sourceId: (.id // ""),
-        threadId: "",
-        occurredAt: (.submittedAt // ""),
-        date: ((.submittedAt // "") | split("T") | .[0]),
-        actor: (.authorLogin // "unknown"),
-        type: (if .state == "APPROVED" then "approval" else "review" end),
-        channel: "review",
-        state: (.state // ""),
-        body: (.body // ""),
-        url: (.url // ""),
-        commitOid: (.commitOid // "")
-      }),
-      ($commits[]? as $commit
-        | $commit.authors[]?
-        | select(((.login // "") != "") or ((.name // "") != "") or ((.email // "") != ""))
-        | {
-            sourceId: ($commit.oid // ""),
-            threadId: "",
-            occurredAt: ($commit.committedAt // ""),
-            date: (($commit.committedAt // "") | split("T") | .[0]),
-            actor: (if (.login // "") != "" then .login elif (.name // "") != "" then .name elif (.email // "") != "" then .email else "unknown" end),
-            type: "commit",
-            channel: "commit",
-            messageHeadline: ($commit.messageHeadline // ""),
-            messageBody: ($commit.messageBody // "")
-          }
-      ),
-      (if $createdAt != "" then {
-        sourceId: "opened",
-        threadId: "",
-        occurredAt: $createdAt,
-        date: ($createdAt | split("T") | .[0]),
-        actor: (if ($actor // "") != "" then $actor else "unknown" end),
-        type: "opened",
-        channel: "system"
-      } else empty end),
-      (if $mergedAt != "" then {
-        sourceId: "merged",
-        threadId: "",
-        occurredAt: $mergedAt,
-        date: ($mergedAt | split("T") | .[0]),
-        actor: (if ($mergedBy // "") != "" then $mergedBy else "unknown" end),
-        type: "merged",
-        channel: "system"
-      } else empty end),
-      (if $closedAt != "" and $mergedAt == "" then {
-        sourceId: "closed",
-        threadId: "",
-        occurredAt: $closedAt,
-        date: ($closedAt | split("T") | .[0]),
-        actor: "unknown",
-        type: "closed",
-        channel: "system"
-      } else empty end)
-    ]
-    | map(select(.occurredAt != "" and .date != ""))
-    | sort_by(.occurredAt, .actor, .type, .channel, .sourceId)
-  '
-}
-
-build_activity_timeline_json() {
-  local activity_events_json="$1"
-  printf '%s' "$activity_events_json" | jq -c '
-    sort_by(.occurredAt, .actor, .type, .channel, .sourceId)
-    | reduce .[] as $event (
-        [];
-        if length == 0 then
-          [{
-            date: $event.date,
-            actor: $event.actor,
-            type: $event.type,
-            count: 1,
-            earliestAt: $event.occurredAt,
-            latestAt: $event.occurredAt,
-            channels: ([$event.channel] | map(select(. != null and . != ""))),
-            events: [$event]
-          }]
-        else
-          (.[length - 1]) as $last
-          | if ($last.date == $event.date and $last.actor == $event.actor and $last.type == $event.type) then
-              .[length - 1] = ($last
-                | .count += 1
-                | .latestAt = $event.occurredAt
-                | .channels = (((.channels // []) + [$event.channel]) | map(select(. != null and . != "")) | unique)
-                | .events = ((.events // []) + [$event])
-              )
-            else
-              . + [{
-                date: $event.date,
-                actor: $event.actor,
-                type: $event.type,
-                count: 1,
-                earliestAt: $event.occurredAt,
-                latestAt: $event.occurredAt,
-                channels: ([$event.channel] | map(select(. != null and . != ""))),
-                events: [$event]
-              }]
-            end
-        end
-      )
-    | sort_by(.date, .latestAt, .actor, .type)
-    | reverse
-  '
-}
-
-build_activity_timeline_summary() {
-  local activity_timeline_json="$1"
-  printf '%s' "$activity_timeline_json" | jq -r '
-    def type_label($type; $count):
-      if $type == "comment" then (if $count > 1 then "comments" else "comment" end)
-      elif $type == "review" then (if $count > 1 then "reviews" else "review" end)
-      elif $type == "approval" then "approved"
-      elif $type == "commit" then (if $count > 1 then "commits" else "commit" end)
-      elif $type == "opened" then "opened PR"
-      elif $type == "merged" then "merged PR"
-      elif $type == "closed" then "closed PR"
-      else (if $count > 1 then ($type + "s") else $type end)
-      end;
-
-    sort_by(.date, .latestAt, .actor, .type)
-    | reverse
-    | group_by(.date)
-    | map(
-        .[0].date + ": " + (
-          map(
-            if .count > 1 then
-              (.actor + " " + (type_label(.type; .count)) + " (" + (.count | tostring) + ")")
-            else
-              (.actor + " " + (type_label(.type; .count)))
-            end
-          )
-          | join("; ")
-        )
-      )
-    | join("\n")
-  '
-}
-
-build_pr_metrics_json() {
-  local comments_json="$1"
-  local reviews_json="$2"
-  local commits_json="$3"
-  local review_threads_json="$4"
-  local comment_events_json="$5"
-  local activity_events_json="$6"
-  local author_login="$7"
-  local merged_at="$8"
-
-  local metrics_payload_dir metrics_out metrics_status
-  metrics_payload_dir=$(mktemp -d)
-  printf '%s' "${comments_json:-[]}" >"$metrics_payload_dir/comments.json"
-  printf '%s' "${reviews_json:-[]}" >"$metrics_payload_dir/reviews.json"
-  printf '%s' "${commits_json:-[]}" >"$metrics_payload_dir/commits.json"
-  printf '%s' "${review_threads_json:-[]}" >"$metrics_payload_dir/review-threads.json"
-  printf '%s' "${comment_events_json:-[]}" >"$metrics_payload_dir/comment-events.json"
-  printf '%s' "${activity_events_json:-[]}" >"$metrics_payload_dir/activity-events.json"
-
-  metrics_out=$(jq -cn \
-    --rawfile comments_raw "$metrics_payload_dir/comments.json" \
-    --rawfile reviews_raw "$metrics_payload_dir/reviews.json" \
-    --rawfile commits_raw "$metrics_payload_dir/commits.json" \
-    --rawfile review_threads_raw "$metrics_payload_dir/review-threads.json" \
-    --rawfile comment_events_raw "$metrics_payload_dir/comment-events.json" \
-    --rawfile activity_events_raw "$metrics_payload_dir/activity-events.json" \
-    --arg authorLogin "$author_login" \
-    --arg mergedAt "$merged_at" '
-    (($comments_raw | fromjson?) // []) as $comments
-    | (($reviews_raw | fromjson?) // []) as $reviews
-    | (($commits_raw | fromjson?) // []) as $commits
-    | (($review_threads_raw | fromjson?) // []) as $reviewThreads
-    | (($comment_events_raw | fromjson?) // []) as $commentEvents
-    | (($activity_events_raw | fromjson?) // []) as $activityEvents
-    | def non_empty_values: map(select(. != null and . != ""));
-    def to_epoch($value): try ($value | fromdateiso8601) catch null;
-    def minutes_between($start; $end):
-      (to_epoch($start)) as $startEpoch
-      | (to_epoch($end)) as $endEpoch
-      | if $startEpoch == null or $endEpoch == null then null else (($endEpoch - $startEpoch) / 60 | floor) end;
-
-    (
-      [
-        ($comments[]? | { login: (.authorLogin // ""), name: (.authorName // "") }),
-        ($reviews[]? | { login: (.authorLogin // ""), name: (.authorName // "") }),
-        ($reviewThreads[]? | .comments[]? | { login: (.authorLogin // ""), name: (.authorName // "") }),
-        ($commits[]? | .authors[]? | { login: (.login // ""), name: (.name // "") })
-      ]
-      | map(select(.login != ""))
-      | sort_by(.login, .name)
-      | group_by(.login)
-      | map({
-          key: .[0].login,
-          value: ((map(select(.name != .login) | .name) | non_empty_values | last) // "")
-        })
-      | map(select(.value != ""))
-      | from_entries
-    ) as $people
-    | (
-        $commentEvents
-        | sort_by(.actor, .occurredAt, .sourceId)
-        | group_by(.actor)
-        | map({
-            login: .[0].actor,
-            name: ($people[.[0].actor] // .[0].actor),
-            topLevelCount: (map(select(.channel == "top-level")) | length),
-            threadCount: (map(select(.channel == "thread")) | length),
-            resolvedThreadCount: (map(select(.channel == "thread" and .conversationResolved == true)) | length),
-            openThreadCount: (map(select(.channel == "thread" and .conversationResolved == false)) | length),
-            followedByAuthorCommitCount: ([
-              .[]?
-              | select((.occurredAt // "") != "") as $comment
-              | [
-                  $activityEvents[]?
-                  | select(.type == "commit" and .actor == $authorLogin)
-                  | select((.occurredAt // "") > ($comment.occurredAt // ""))
-                ]
-              | if length > 0 then 1 else 0 end
-            ] | add // 0),
-            followedByAuthorCommitWithin24hCount: ([
-              .[]?
-              | select((.occurredAt // "") != "") as $comment
-              | [
-                  $activityEvents[]?
-                  | select(.type == "commit" and .actor == $authorLogin)
-                  | select((.occurredAt // "") > ($comment.occurredAt // ""))
-                  | select(
-                      ((to_epoch(.occurredAt) // 0) - (to_epoch($comment.occurredAt) // 0)) <= (24 * 60 * 60)
-                    )
-                ]
-              | if length > 0 then 1 else 0 end
-            ] | add // 0),
-            totalCount: length,
-            firstCommentAt: ((map(.occurredAt) | non_empty_values | first) // ""),
-            lastCommentAt: ((map(.occurredAt) | non_empty_values | last) // ""),
-            isPrAuthor: (.[0].actor == $authorLogin),
-            commentsOnOthersPr: (.[0].actor != $authorLogin)
-          })
-        | map(. + {
-            usefulnessSignals: (
-              .resolvedThreadCount
-              + .followedByAuthorCommitCount
-              + .followedByAuthorCommitWithin24hCount
-            )
-          })
-        | sort_by(.totalCount, .lastCommentAt, .login)
-        | reverse
-      ) as $commentsByActor
-    | (
-        $reviews
-        | sort_by(.authorLogin, .submittedAt, .id)
-        | group_by(.authorLogin)
-        | map({
-            login: .[0].authorLogin,
-            name: ($people[.[0].authorLogin] // .[0].authorName // .[0].authorLogin),
-            reviewCount: length,
-            approvalCount: (map(select(.state == "APPROVED")) | length),
-            commentCount: (map(select(.state == "COMMENTED")) | length),
-            changesRequestedCount: (map(select(.state == "CHANGES_REQUESTED")) | length),
-            dismissedCount: (map(select(.state == "DISMISSED")) | length),
-            lastReviewAt: ((map(.submittedAt) | non_empty_values | last) // ""),
-            lastApprovalAt: ((map(select(.state == "APPROVED") | .submittedAt) | non_empty_values | last) // ""),
-            isPrAuthor: (.[0].authorLogin == $authorLogin),
-            reviewsOnOthersPr: (.[0].authorLogin != $authorLogin)
-          })
-        | sort_by(.approvalCount, .reviewCount, .lastReviewAt, .login)
-        | reverse
-      ) as $reviewsByActor
-    | (
-        [
-          $reviews[]?
-          | select(.state == "APPROVED") as $approval
-          | {
-              login: ($approval.authorLogin // "unknown"),
-              name: ($people[$approval.authorLogin] // $approval.authorName // $approval.authorLogin // "unknown"),
-              approvedAt: ($approval.submittedAt // ""),
-              mergeLeadMinutes: minutes_between(($approval.submittedAt // ""); $mergedAt),
-              commentCountAfterApproval: ([
-                $activityEvents[]?
-                | select((.occurredAt // "") > ($approval.submittedAt // ""))
-                | select(.type == "comment")
-              ] | length),
-              reviewCountAfterApproval: ([
-                $activityEvents[]?
-                | select((.occurredAt // "") > ($approval.submittedAt // ""))
-                | select(.type == "review")
-              ] | length),
-              changeRequestCountAfterApproval: ([
-                $reviews[]?
-                | select((.submittedAt // "") > ($approval.submittedAt // ""))
-                | select(.state == "CHANGES_REQUESTED")
-              ] | length),
-              commitCountAfterApproval: ([
-                $activityEvents[]?
-                | select((.occurredAt // "") > ($approval.submittedAt // ""))
-                | select(.type == "commit")
-              ] | length)
-            }
-          | .issueSignalsAfterApprovalCount = (
-              .commentCountAfterApproval
-              + .reviewCountAfterApproval
-              + .changeRequestCountAfterApproval
-              + .commitCountAfterApproval
-            )
-          | .highRiskApproval = (
-              (.changeRequestCountAfterApproval > 0)
-              or (.issueSignalsAfterApprovalCount >= 3)
-            )
-          | .riskyApproval = (.issueSignalsAfterApprovalCount > 0)
-        ]
-      ) as $approvals
-    | ([ $reviewThreads[]? | select(.isResolved == false) ] | length) as $openThreads
-    | ([ $reviewThreads[]? | select(.isResolved == true) ] | length) as $resolvedThreads
-    | ([ $commentEvents[]? | select(.channel == "top-level") | .sourceId ] | map(select(. != "")) | unique | length) as $topLevelConversations
-    | ([ $activityEvents[]?
-         | select(.channel == "review")
-         | select(.type == "review" or .type == "approval")
-         | .sourceId
-       ] | map(select(. != "")) | unique | length) as $reviewConversations
-    | (if ($reviewThreads | length) > 0 then ($reviewThreads | length) else ($topLevelConversations + $reviewConversations) end) as $estimatedTotalConversations
-    | (if ($reviewThreads | length) > 0 then $openThreads else ($topLevelConversations + ([ $reviews[]? | select(.state == "CHANGES_REQUESTED") ] | length)) end) as $estimatedOpenConversations
-    | {
-        counts: {
-          topLevelComments: ($comments | length),
-          threadComments: ([ $reviewThreads[]? | (.comments // [])[]? ] | length),
-          totalComments: ($commentEvents | length),
-          reviews: ($reviews | length),
-          approvals: ([ $reviews[]? | select(.state == "APPROVED") ] | length),
-          commits: ($commits | length),
-          conversations: $estimatedTotalConversations,
-          openConversations: $estimatedOpenConversations
-        },
-        commentsByActor: $commentsByActor,
-        reviewsByActor: $reviewsByActor,
-        approvals: $approvals,
-        approvalSummary: {
-          totalApprovals: ($approvals | length),
-          riskyApprovals: ([ $approvals[]? | select(.riskyApproval == true) ] | length),
-          highRiskApprovals: ([ $approvals[]? | select(.highRiskApproval == true) ] | length),
-          approvalsWithChangeRequestsAfter: ([ $approvals[]? | select(.changeRequestCountAfterApproval > 0) ] | length),
-          approvalsWithCommentsAfter: ([ $approvals[]? | select(.commentCountAfterApproval > 0) ] | length),
-          approvalsWithCommitsAfter: ([ $approvals[]? | select(.commitCountAfterApproval > 0) ] | length),
-          averageMergeLeadMinutes: (
-            [ $approvals[]? | .mergeLeadMinutes | select(. != null) ] as $mergeLeadMinutes
-            | if ($mergeLeadMinutes | length) == 0 then null else (($mergeLeadMinutes | add) / ($mergeLeadMinutes | length) | floor) end
-          )
-        },
-        commentUsefulnessSummary: {
-          commentsOnOthersPrs: ([ $commentsByActor[]? | select(.commentsOnOthersPr == true) | .totalCount ] | add // 0),
-          resolvedThreadCommentsOnOthersPrs: ([ $commentsByActor[]? | select(.commentsOnOthersPr == true) | .resolvedThreadCount ] | add // 0),
-          commentsFollowedByAuthorCommit: ([ $commentsByActor[]? | select(.commentsOnOthersPr == true) | .followedByAuthorCommitCount ] | add // 0),
-          commentsFollowedByAuthorCommitWithin24h: ([ $commentsByActor[]? | select(.commentsOnOthersPr == true) | .followedByAuthorCommitWithin24hCount ] | add // 0),
-          usefulnessSignals: ([ $commentsByActor[]? | select(.commentsOnOthersPr == true) | .usefulnessSignals ] | add // 0)
-        },
-        conversationSummary: {
-          totalThreads: ($reviewThreads | length),
-          openThreads: $openThreads,
-          resolvedThreads: $resolvedThreads,
-          totalThreadComments: ([ $reviewThreads[]? | (.comments // [])[]? ] | length),
-          topLevelConversations: $topLevelConversations,
-          reviewConversations: $reviewConversations,
-          estimatedTotalConversations: $estimatedTotalConversations,
-          estimatedOpenConversations: $estimatedOpenConversations
-        }
-      }
-  ')
-  metrics_status=$?
-  rm -rf "$metrics_payload_dir"
-  if [[ "$metrics_status" -ne 0 ]]; then
-    return "$metrics_status"
-  fi
-
-  printf '%s' "$metrics_out"
-}
-
 fetch_pr_viewed_files_stats_json() {
   local number="$1"
   local response
   local fetch_failed=0
-  local files_json='[]'
 
   if [[ -z "$FILES_CACHE_DIR" ]]; then
     FILES_CACHE_DIR=$(mktemp -d)
@@ -1958,34 +1727,15 @@ fetch_pr_viewed_files_stats_json() {
     return
   fi
 
-  if [[ -s "$tmp_nodes" ]]; then
-    files_json=$(jq -s '.' "$tmp_nodes" 2>/dev/null || echo '[]')
-  fi
-
-  jq -cn --arg changedFiles "$changed_files" --argjson files "$files_json" '
+  # The files straight from their file, not --argjson: a PR with a few
+  # hundred files is past Windows' 32 KB command line.
+  jq -cs --arg changedFiles "$changed_files" '
     {
       changedFiles: (($changedFiles | split("\n") | map(select(length > 0)) | .[0] // "0") | tonumber? // 0),
-      viewedFiles: (($files // []) | map(select((.viewerViewedState // "") == "VIEWED")) | length)
+      viewedFiles: (map(select((.viewerViewedState // "") == "VIEWED")) | length)
     }
-  ' >"$cache_file"
+  ' "$tmp_nodes" >"$cache_file"
   cat "$cache_file"
-}
-
-build_reasons() {
-  local reasons=''
-  while [[ $# -gt 1 ]]; do
-    local label="$1"
-    local value="$2"
-    shift 2
-    if [[ "$value" -gt 0 ]]; then
-      if [[ -z "$reasons" ]]; then
-        reasons="$label"
-      else
-        reasons+="|$label"
-      fi
-    fi
-  done
-  printf '%s' "$reasons"
 }
 
 parse_label_list() {
@@ -2080,540 +1830,108 @@ pr_passes_author_filters() {
   return 1
 }
 
-filter_prs_b64_by_filters() {
-  local b64_lines="$1"
-  local filtered=''
-  local pr_json
-
-  while IFS= read -r pr_item; do
-    [[ -z "$pr_item" ]] && continue
-    pr_json=$(printf '%s' "$pr_item" | base64 --decode)
-    if pr_passes_label_filters "$pr_json" && pr_passes_author_filters "$pr_json"; then
-      filtered+="$pr_item"$'\n'
-    fi
-  done <<<"$b64_lines"
-
-  printf '%s' "$filtered"
-}
-
 row_passes_display_filters() {
   local row_json="$1"
   pr_passes_label_filters "$row_json" && pr_passes_author_filters "$row_json"
 }
 
+# The PR's viewed-files counts as last stored, in
+# fetch_pr_viewed_files_stats_json's shape, or nothing: none stored, none
+# changed (likely a failed fetch), or stored while the PR was still open -
+# files pushed or viewed after that fetch would stay uncounted.
+get_stored_viewed_files_stats_json() {
+  local number="$1"
+  [[ -n "${PR_STATE_FILE:-}" && -f "$PR_STATE_FILE" ]] || return 0
+  jq -c --arg number "$number" --arg repo "$REPO" "$PR_KEY_JQ"'
+    pr_row($repo; $number)
+    | select(.section == "merged" or .section == "closed")
+    | .data
+    | select(.viewedFilesCount != null and .changedFilesCount != null)
+    | select((.changedFilesCount | tostring) != "0")
+    | {
+        viewedFiles: ((.viewedFilesCount | tonumber?) // 0),
+        changedFiles: ((.changedFilesCount | tonumber?) // 0)
+      }
+  ' "$PR_STATE_FILE" 2>/dev/null || true
+}
+
+# One PR's row: fetches its details, review threads, review comments and
+# links, and viewed files, reads its ack, re-verify and In Review marks, and
+# computes the row in compute-pr-row.js (one process; this was dozens of jq
+# calls - ROADMAP.md, Data freshness step 6). Clears the ack when the PR
+# changed since it, and writes the row's detail file. No row (status 1) when
+# its details or threads couldn't be fetched.
 compute_pr_state_json() {
   local pr_json="$1"
-
-  local number title url merged_at closed_at created_at merged_by_login source_updated_at source_branch target_branch additions deletions author_login author_name author_display author_is_viewer labels_json
-  local detail_json comments_json reviews_json requested_reviewers_json commits_json assignees_json threads_json comment_events_json activity_events_json metrics_json source_fingerprint
-  local my_last my_latest_review_state approved approval_count approval_count_others approval_count_all
-  local approvers_all_json approvers_json
-  local ack_at effective_last reverify_required in_review_required
-  local external_top_comment_count external_review_count external_commit_count
-  local unresolved_unanswered_count recent_thread_reply_count open_conversation_count
-  local viewed_files_stats_json viewed_files_count changed_files_count viewed_files_summary
-  local activity_timeline_json activity_timeline_summary
-  local status changed_reason
-  local check_state merge_state title_display
-  local row_payload_dir row_json_out jq_status
+  local number merged_at closed_at detail_json threads_json review_comments_json review_url_map_json viewed_files_stats_json
+  local input_dir computed ack_action row_json_out
 
   number=$(printf '%s' "$pr_json" | jq -r '.number')
   emit_pr_progress_marker 'START' "$number"
-  title=$(printf '%s' "$pr_json" | jq -r '.title')
-  url=$(printf '%s' "$pr_json" | jq -r '.url')
-  merged_at=$(printf '%s' "$pr_json" | jq -r '.mergedAt // ""')
-  closed_at=$(printf '%s' "$pr_json" | jq -r '.closedAt // ""')
-  created_at=$(printf '%s' "$pr_json" | jq -r '.createdAt // ""')
-  merged_by_login=$(printf '%s' "$pr_json" | jq -r '.mergedBy.login // ""')
-  source_updated_at=$(printf '%s' "$pr_json" | jq -r '.updatedAt // ""')
-  source_branch=$(printf '%s' "$pr_json" | jq -r '.headRefName // ""')
-  target_branch=$(printf '%s' "$pr_json" | jq -r '.baseRefName // ""')
-  additions=$(printf '%s' "$pr_json" | jq -r '.additions // 0 | tostring')
-  deletions=$(printf '%s' "$pr_json" | jq -r '.deletions // 0 | tostring')
-  labels_json=$(printf '%s' "$pr_json" | jq -c '.labels // [] | map(if type == "object" then (.name // "") else (tostring) end)')
-  author_login=$(printf '%s' "$pr_json" | jq -r '.author.login // "-"')
-  author_name=$(printf '%s' "$pr_json" | jq -r '.author.name // ""')
-  author_display=$(normalize_author_name "$author_login" "$author_name")
 
-  author_is_viewer=0
-  [[ "$author_login" == "$VIEWER_LOGIN" ]] && author_is_viewer=1
-
-  detail_json=$(get_pr_detail_json "$number")
-  comments_json=$(normalize_pr_comments_json "$detail_json")
-  reviews_json=$(normalize_pr_reviews_json "$detail_json")
-  requested_reviewers_json=$(printf '%s' "$detail_json" | jq -c '
-    [
-      .reviewRequests[]?
-      | (.requestedReviewer // .reviewer // .user // .)
-      | select(type == "object")
-      | {
-          login: (.login // ""),
-          name: (.name // "")
-        }
-      | select(.login != "")
-    ]
-    | unique_by(.login)
-  ')
-  local requested_reviewer_logins_json
-  requested_reviewer_logins_json=$(printf '%s' "$requested_reviewers_json" | jq -c '
-    [.[]? | (.login // "") | select(. != "")]
-    | unique
-  ')
-  commits_json=$(normalize_pr_commits_json "$detail_json")
-  assignees_json=$(printf '%s' "$detail_json" | jq -c '
-    [
-      .assignees[]?
-      | {
-          login: (.login // ""),
-          name: (.name // "")
-        }
-      | select(.login != "")
-    ]
-  ')
-  threads_json=$(fetch_review_threads_json "$number")
-  local review_comments_json
-  review_comments_json=$(fetch_pr_review_comments_json "$number") || review_comments_json='[]'
-  local review_url_map_json
-  review_url_map_json=$(fetch_pr_review_url_map_json "$number") || review_url_map_json='{}'
-  reviews_json=$(printf '%s' "$reviews_json" | jq -c --argjson urlMap "$review_url_map_json" '
-    map(. + {url: ($urlMap[(.submittedAt + "_" + .authorLogin)] // .url // "")})
-  ')
-
-  local review_comment_body_map_json
-  review_comment_body_map_json=$(printf '%s' "$review_comments_json" | jq -c '
-    reduce .[] as $comment (
-      {};
-      ($comment.reviewId // "") as $reviewId
-      | if $reviewId == "" then
-          .
-        elif (($comment.body // "") == "") then
-          .
-        else
-          . + {($reviewId): (.[ $reviewId ] // $comment.body)}
-        end
-    )
-  ' 2>/dev/null) || review_comment_body_map_json='{}'
-  [[ -z "$review_comment_body_map_json" ]] && review_comment_body_map_json='{}'
-
-  local review_comment_url_map_json
-  review_comment_url_map_json=$(printf '%s' "$review_comments_json" | jq -c '
-    reduce .[] as $comment (
-      {};
-      ($comment.reviewId // "") as $reviewId
-      | if $reviewId == "" then
-          .
-        elif (($comment.url // "") == "") then
-          .
-        else
-          . + {($reviewId): (.[ $reviewId ] // $comment.url)}
-        end
-    )
-  ' 2>/dev/null) || review_comment_url_map_json='{}'
-  [[ -z "$review_comment_url_map_json" ]] && review_comment_url_map_json='{}'
-
-  reviews_json=$(printf '%s' "$reviews_json" | jq -c --argjson reviewBodyMap "$review_comment_body_map_json" --argjson reviewUrlMap "$review_comment_url_map_json" '
-    map(
-      . as $review
-      | .url as $url
-      | (($url | split("pullrequestreview-") | .[1] // "") | split("?") | .[0] // "") as $reviewId
-      | . + {
-          body: (
-            if (($review.body // "") != "") then
-              $review.body
-            elif $reviewId != "" then
-              ($reviewBodyMap[$reviewId] // "")
-            else
-              ""
-            end
-          ),
-          url: (
-            if $reviewId != "" and (($reviewUrlMap[$reviewId] // "") != "") then
-              $reviewUrlMap[$reviewId]
-            else
-              ($review.url // "")
-            end
-          )
-        }
-    )
-  ')
-
-  comment_events_json=$(build_comment_events_json "$comments_json" "$threads_json" "$review_comments_json")
-  activity_events_json=$(build_activity_events_json "$comment_events_json" "$reviews_json" "$commits_json" "$created_at" "$author_login" "$merged_at" "$merged_by_login" "$closed_at")
-  activity_timeline_json=$(build_activity_timeline_json "$activity_events_json")
-  activity_timeline_summary=$(build_activity_timeline_summary "$activity_timeline_json")
-  metrics_json=$(build_pr_metrics_json "$comments_json" "$reviews_json" "$commits_json" "$threads_json" "$comment_events_json" "$activity_events_json" "$author_login" "$merged_at")
-
-  # Includes the viewer's own review-thread comments (inline diff replies),
-  # not just top-level PR comments/submitted reviews/commits - a viewer who
-  # only replies inline (a common review flow, e.g. answering a thread
-  # without submitting a formal review) previously had no activity here at
-  # all, leaving effective_last empty below even though the "N open
-  # conversations with me" summary (getOpenConversationCountWithMe in
-  # src/ui/helpers/pr-open-conversation-count.helpers.ts) already proves the viewer's own thread comments exist.
-  my_last=$(jq -nr --arg me "$VIEWER_LOGIN" --argjson detail "$detail_json" --argjson threads "${threads_json:-[]}" '
-    [
-      ($detail.comments[]? | select(.author.login == $me) | .createdAt),
-      ($detail.reviews[]? | select(.author.login == $me) | .submittedAt),
-      ($detail.commits[]? | .authors[]? | select(.login == $me) | .committedDate),
-      ($threads[]? | .comments[]? | select(.authorLogin == $me) | .createdAt)
-    ]
-    | map(select(. != null and . != ""))
-    | sort
-    | last // ""
-  ')
-
-  ack_at=$(get_ack_ts "$number")
-  effective_last="$my_last"
-  if [[ -n "$ack_at" && ( -z "$effective_last" || "$ack_at" > "$effective_last" ) ]]; then
-    effective_last="$ack_at"
-  fi
-
-  if [[ -n "$effective_last" ]]; then
-    external_top_comment_count=$(printf '%s' "$detail_json" | jq -r --arg me "$VIEWER_LOGIN" --arg since "$effective_last" --arg ignoreAuthors "$CHANGE_FILTER_IGNORE_COMMENT_AUTHORS" '
-      ($ignoreAuthors | split(",") | map(select(length > 0))) as $ignored
-      | [.comments[]? 
-         | select((.author.login // "") != "" and .author.login != $me) 
-         | select((.createdAt // "") > $since)
-         | select(($ignored | length) == 0 or (.author.login as $author | $ignored | index($author) | not))
-        ] 
-      | length
-    ')
-    external_review_count=$(printf '%s' "$detail_json" | jq -r --arg me "$VIEWER_LOGIN" --arg since "$effective_last" --arg ignoreAuthors "$CHANGE_FILTER_IGNORE_REVIEW_AUTHORS" '
-      ($ignoreAuthors | split(",") | map(select(length > 0))) as $ignored
-      | [
-        .reviews[]?
-        | select((.author.login // "") != "" and .author.login != $me)
-        | select((.submittedAt // "") > $since)
-        | select((.state // "") != "APPROVED")
-        | select(($ignored | length) == 0 or (.author.login as $author | $ignored | index($author) | not))
-      ]
-      | length
-    ')
-    external_commit_count=$(count_external_commits "$detail_json" "$effective_last")
-  else
-    external_top_comment_count=$(printf '%s' "$detail_json" | jq -r --arg me "$VIEWER_LOGIN" --arg ignoreAuthors "$CHANGE_FILTER_IGNORE_COMMENT_AUTHORS" '
-      ($ignoreAuthors | split(",") | map(select(length > 0))) as $ignored
-      | [.comments[]? 
-         | select((.author.login // "") != "" and .author.login != $me)
-         | select(($ignored | length) == 0 or (.author.login as $author | $ignored | index($author) | not))
-        ] 
-      | length
-    ')
-    external_review_count=$(printf '%s' "$detail_json" | jq -r --arg me "$VIEWER_LOGIN" --arg ignoreAuthors "$CHANGE_FILTER_IGNORE_REVIEW_AUTHORS" '
-      ($ignoreAuthors | split(",") | map(select(length > 0))) as $ignored
-      | [
-        .reviews[]?
-        | select((.author.login // "") != "" and .author.login != $me)
-        | select((.state // "") != "APPROVED")
-        | select(($ignored | length) == 0 or (.author.login as $author | $ignored | index($author) | not))
-      ]
-      | length
-    ')
-    external_commit_count=$(count_external_commits "$detail_json")
-  fi
-
-  my_latest_review_state=$(printf '%s' "$detail_json" | jq -r --arg me "$VIEWER_LOGIN" '
-    [
-      .reviews[]?
-      | select((.author.login // "") == $me and .submittedAt != null and .state != null)
-      | { submittedAt: .submittedAt, state: .state }
-    ]
-    | sort_by(.submittedAt)
-    | reduce .[] as $review ({state: ""};
-        if $review.state == "APPROVED" then
-          .state = "APPROVED"
-        elif ($review.state == "CHANGES_REQUESTED" or $review.state == "DISMISSED") then
-          .state = $review.state
-        else
-          .
-        end
-      )
-    | .state
-  ')
-  if printf '%s' "$requested_reviewer_logins_json" | jq -e --arg me "$VIEWER_LOGIN" 'index($me) != null' >/dev/null 2>&1; then
-    my_latest_review_state='RE_REQUESTED'
-  fi
-
-  approvers_all_json=$(printf '%s' "$detail_json" | jq -c --argjson requestedReviewerLogins "$requested_reviewer_logins_json" '
-    [
-      .reviews[]?
-      | select(.author.login != null and .submittedAt != null and .state != null)
-      | {
-          login: .author.login,
-          name: (.author.name // ""),
-          state: .state,
-          submittedAt: .submittedAt
-        }
-    ]
-    | sort_by(.login, .submittedAt)
-    | group_by(.login)
-    | map(
-        . as $reviewsByAuthor
-        | ($reviewsByAuthor[0].login // "") as $login
-        | ($reviewsByAuthor[0].name // "") as $name
-        | (
-            $reviewsByAuthor
-            | reduce .[] as $review ({state: "", approvedAt: ""};
-                if $review.state == "APPROVED" then
-                  .state = "APPROVED"
-                  | .approvedAt = ($review.submittedAt // .approvedAt)
-                elif ($review.state == "CHANGES_REQUESTED" or $review.state == "DISMISSED") then
-                  .state = $review.state
-                  | .approvedAt = ""
-                else
-                  .
-                end
-              )
-          ) as $effective
-        | select($effective.state == "APPROVED")
-        | { login: $login, name: $name, approvedAt: $effective.approvedAt }
-      )
-    | map(select((.login as $login | ($requestedReviewerLogins | index($login) | not))))
-    | sort_by(.approvedAt)
-  ')
-
-  approvers_json="$approvers_all_json"
-  if [[ "$author_is_viewer" -eq 1 ]]; then
-    approvers_json=$(printf '%s' "$approvers_all_json" | jq -c --arg me "$VIEWER_LOGIN" '[.[] | select(.login != $me)]')
-  fi
-
-  approval_count_all=$(printf '%s' "$approvers_all_json" | jq -r 'length')
-  approval_count_others=$(printf '%s' "$approvers_json" | jq -r 'length')
-
-  approved='NO'
-  if [[ "$author_is_viewer" -eq 1 ]]; then
-    approval_count="$approval_count_others"
-    [[ "$approval_count_others" -ge 2 ]] && approved='YES'
-  else
-    approval_count="$approval_count_all"
-    [[ "$my_latest_review_state" == 'APPROVED' ]] && approved='YES'
-  fi
-
-  open_conversation_count=$(printf '%s' "$metrics_json" | jq -r '.conversationSummary.estimatedOpenConversations // .conversationSummary.openThreads // 0')
-
-  viewed_files_stats_json=$(fetch_pr_viewed_files_stats_json "$number")
-  viewed_files_count=$(printf '%s' "$viewed_files_stats_json" | jq -r '.viewedFiles // 0')
-  changed_files_count=$(printf '%s' "$viewed_files_stats_json" | jq -r '.changedFiles // 0')
-  viewed_files_summary="${viewed_files_count}/${changed_files_count} viewed"
-
-  source_fingerprint=$(build_pr_source_fingerprint_value \
-    "$detail_json" \
-    "$comments_json" \
-    "$reviews_json" \
-    "$requested_reviewers_json" \
-    "$commits_json" \
-    "$assignees_json" \
-    "$threads_json" \
-    "$review_comments_json" \
-    "$review_url_map_json" \
-    "$viewed_files_stats_json" \
-    "$(printf '%s' "$detail_json" | jq -c '{statusCheckRollup: (.statusCheckRollup // []), mergeable: (.mergeable // ""), mergeStateStatus: (.mergeStateStatus // "")}' 2>/dev/null || echo '{}')")
-
-  unresolved_unanswered_count=0
-  recent_thread_reply_count=0
-  if [[ "$author_is_viewer" -eq 1 ]]; then
-    if [[ -n "$effective_last" ]]; then
-      unresolved_unanswered_count=$(printf '%s' "$threads_json" | jq -r --arg me "$VIEWER_LOGIN" --arg since "$effective_last" '
-        [
-          .[]?
-          | select(.isResolved == false)
-          | ((.comments // []) | sort_by(.createdAt) | last // null)
-          | select(. != null)
-          | select((.authorLogin // "") != "" and .authorLogin != $me)
-          | select((.createdAt // "") > $since)
-        ]
-        | length
-      ')
-      recent_thread_reply_count=$(printf '%s' "$threads_json" | jq -r --arg me "$VIEWER_LOGIN" --arg since "$effective_last" '
-        [
-          .[]?
-          | ((.comments // []) | sort_by(.createdAt) | last // null)
-          | select(. != null)
-          | select((.authorLogin // "") != "" and .authorLogin != $me)
-          | select((.createdAt // "") > $since)
-        ]
-        | length
-      ')
-    else
-      unresolved_unanswered_count=$(printf '%s' "$threads_json" | jq -r --arg me "$VIEWER_LOGIN" '
-        [
-          .[]?
-          | select(.isResolved == false)
-          | ((.comments // []) | sort_by(.createdAt) | last // null)
-          | select(. != null)
-          | select((.authorLogin // "") != "" and .authorLogin != $me)
-        ]
-        | length
-      ')
-      recent_thread_reply_count=$(printf '%s' "$threads_json" | jq -r --arg me "$VIEWER_LOGIN" '
-        [
-          .[]?
-          | ((.comments // []) | sort_by(.createdAt) | last // null)
-          | select(. != null)
-          | select((.authorLogin // "") != "" and .authorLogin != $me)
-        ]
-        | length
-      ')
-    fi
-  fi
-
-  status='NO_CHANGE'
-  changed_reason='-'
-
-  if [[ "$author_is_viewer" -eq 1 ]]; then
-    changed_reason=$(build_reasons 'unanswered-thread' "$unresolved_unanswered_count" 'thread-reply' "$recent_thread_reply_count" 'comment' "$external_top_comment_count" 'commit' "$external_commit_count")
-    if [[ -n "$changed_reason" ]]; then
-      status='CHANGED'
-    else
-      changed_reason='-'
-    fi
-  else
-    if [[ -z "$effective_last" ]]; then
-      status='NO_ACTIVITY'
-      changed_reason='-'
-    else
-      changed_reason=$(build_reasons 'comment' "$external_top_comment_count" 'review' "$external_review_count" 'commit' "$external_commit_count")
-      if [[ -n "$changed_reason" ]]; then
-        status='CHANGED'
-      else
-        status='NO_CHANGE'
-        changed_reason='-'
-      fi
-    fi
-  fi
-
-  # A PR acked earlier that has genuinely new activity since that ack
-  # (effective_last is pinned to at least ack_at above, so a CHANGED status
-  # here always means something happened after the ack) should no longer
-  # read as acknowledged - clear it so the row's Ack button/state matches
-  # the CHANGED status instead of contradicting it. Passes set_reverify=false
-  # since changed_reason already carries the real reason (comment/review/
-  # commit/etc.) - no need for the manual-clear-only 'ack-cleared' pin, which
-  # would keep forcing CHANGED even once this activity ages out of
-  # effective_last on a later run.
-  if [[ "$status" == 'CHANGED' && -n "$ack_at" ]]; then
-    clear_ack_ts "$number" false
-  fi
-
-  reverify_required=$(get_reverify_required "$number")
-  if [[ "$reverify_required" == 'true' && "$status" == 'NO_CHANGE' ]]; then
-    status='CHANGED'
-    changed_reason='ack-cleared'
-  fi
-
-  # Populates row.inReview (checkbox state, "In Review" smart group) without
-  # forcing status/changed_reason to CHANGED(in-review) — the dedicated
-  # "In Review" and "Needs Attention" groups already surface these PRs, so
-  # the status override is no longer needed to flag that they're being
-  # worked on.
-  in_review_required=$(get_in_review_required "$number")
-
-  check_state=$(printf '%s' "$detail_json" | jq -r '
-    def to_state:
-      if .__typename == "CheckRun" then
-        if (.status // "") != "COMPLETED" then "RUN"
-        else
-          ((.conclusion // "") | ascii_upcase) as $c
-          | if $c == "SUCCESS" then "PASS"
-            elif $c == "NEUTRAL" or $c == "SKIPPED" then "SKIP"
-            elif $c == "" then "RUN"
-            else "FAIL"
-            end
-        end
-      elif .__typename == "StatusContext" then
-        ((.state // "") | ascii_upcase) as $s
-        | if $s == "SUCCESS" then "PASS"
-          elif $s == "PENDING" or $s == "EXPECTED" then "RUN"
-          elif $s == "" then "RUN"
-          else "FAIL"
-          end
-      else "NA"
-      end;
-    ((.statusCheckRollup // []) | map(to_state)) as $states
-    | if ($states | length) == 0 then "NA"
-      elif ($states | any(. == "FAIL")) then "FAIL"
-      elif ($states | any(. == "RUN")) then "RUN"
-      elif ($states | any(. == "PASS")) then "PASS"
-      elif ($states | any(. == "SKIP")) then "SKIP"
-      else "NA"
-      end
-  ')
-
-  merge_state=$(printf '%s' "$detail_json" | jq -r '
-    ((.mergeable // "") | ascii_upcase) as $m
-    | if $m == "MERGEABLE" then "YES"
-      elif $m == "CONFLICTING" then "NO"
-      elif $m == "UNKNOWN" then "UNK"
-      elif $m == "" then "UNK"
-      else $m
-      end
-  ')
-
-  title_display="${title} [CHK:${check_state}][MRG:${merge_state}]"
-
-  row_payload_dir=$(mktemp -d)
-  printf '%s' "${approvers_json:-[]}" >"$row_payload_dir/approvers.json"
-  printf '%s' "${comments_json:-[]}" >"$row_payload_dir/comments.json"
-  printf '%s' "${reviews_json:-[]}" >"$row_payload_dir/reviews.json"
-  printf '%s' "${requested_reviewers_json:-[]}" >"$row_payload_dir/requested-reviewers.json"
-  printf '%s' "${commits_json:-[]}" >"$row_payload_dir/commits.json"
-  printf '%s' "${assignees_json:-[]}" >"$row_payload_dir/assignees.json"
-  printf '%s' "${threads_json:-[]}" >"$row_payload_dir/review-threads.json"
-  printf '%s' "${comment_events_json:-[]}" >"$row_payload_dir/comment-events.json"
-  printf '%s' "${activity_events_json:-[]}" >"$row_payload_dir/activity-events.json"
-  printf '%s' "${metrics_json:-"{}"}" >"$row_payload_dir/metrics.json"
-  printf '%s' "${activity_timeline_json:-[]}" >"$row_payload_dir/activity-timeline.json"
-  printf '%s' "${labels_json:-[]}" >"$row_payload_dir/labels.json"
-
-  row_json_out=$(jq -cn \
-    --arg number "$number" \
-    --arg title "$title" \
-    --arg url "$url" \
-    --arg mergedAt "$merged_at" \
-    --arg closedAt "$closed_at" \
-    --arg sourceUpdatedAt "$source_updated_at" \
-    --arg sourceFingerprint "$source_fingerprint" \
-    --arg sourceBranch "$source_branch" \
-    --arg targetBranch "$target_branch" \
-    --arg additions "$additions" \
-    --arg deletions "$deletions" \
-    --arg author "$author_display" \
-    --arg authorLogin "$author_login" \
-    --arg viewerLogin "$VIEWER_LOGIN" \
-    --arg status "$status" \
-    --arg approved "$approved" \
-    --arg approvalCount "$approval_count" \
-    --arg inReview "$in_review_required" \
-    --arg baseline "$effective_last" \
-    --arg reason "$changed_reason" \
-    --arg titleDisplay "$title_display" \
-    --rawfile approvers_raw "$row_payload_dir/approvers.json" \
-    --arg openConversationCount "$open_conversation_count" \
-    --arg viewedFilesCount "$viewed_files_count" \
-    --arg changedFilesCount "$changed_files_count" \
-    --arg viewedFilesSummary "$viewed_files_summary" \
-    --rawfile comments_raw "$row_payload_dir/comments.json" \
-    --rawfile reviews_raw "$row_payload_dir/reviews.json" \
-    --rawfile requested_reviewers_raw "$row_payload_dir/requested-reviewers.json" \
-    --rawfile commits_raw "$row_payload_dir/commits.json" \
-    --rawfile assignees_raw "$row_payload_dir/assignees.json" \
-    --rawfile review_threads_raw "$row_payload_dir/review-threads.json" \
-    --rawfile comment_events_raw "$row_payload_dir/comment-events.json" \
-    --rawfile activity_events_raw "$row_payload_dir/activity-events.json" \
-    --slurpfile metrics_file "$row_payload_dir/metrics.json" \
-    --arg activityTimelineSummary "$activity_timeline_summary" \
-    --rawfile activity_timeline_raw "$row_payload_dir/activity-timeline.json" \
-    --arg check_state "$check_state" \
-    --arg merge_state "$merge_state" \
-    --rawfile labels_raw "$row_payload_dir/labels.json" \
-    '{number:$number,title:$title,titleDisplay:$titleDisplay,url:$url,mergedAt:$mergedAt,closedAt:$closedAt,sourceUpdatedAt:$sourceUpdatedAt,sourceFingerprint:$sourceFingerprint,sourceBranch:$sourceBranch,targetBranch:$targetBranch,checkState:$check_state,mergeState:$merge_state,labels:(($labels_raw | fromjson?) // []),author:$author,authorLogin:$authorLogin,viewerLogin:$viewerLogin,status:$status,approved:$approved,approvalCount:$approvalCount,inReview:$inReview,approvers:(($approvers_raw | fromjson?) // []),requestedReviewers:(($requested_reviewers_raw | fromjson?) // []),assignees:(($assignees_raw | fromjson?) // []),openConversationCount:$openConversationCount,viewedFilesCount:$viewedFilesCount,changedFilesCount:$changedFilesCount,additions:$additions,deletions:$deletions,viewedFilesSummary:$viewedFilesSummary,comments:(($comments_raw | fromjson?) // []),reviews:(($reviews_raw | fromjson?) // []),commits:(($commits_raw | fromjson?) // []),reviewThreads:(($review_threads_raw | fromjson?) // []),commentEvents:(($comment_events_raw | fromjson?) // []),activityEvents:(($activity_events_raw | fromjson?) // []),metrics:($metrics_file[0] // {}),activityTimelineSummary:$activityTimelineSummary,activityTimeline:(($activity_timeline_raw | fromjson?) // []),baseline:$baseline,reason:$reason}'
-  )
-  jq_status=$?
-  rm -rf "$row_payload_dir"
-  if [[ "$jq_status" -ne 0 ]]; then
+  # Details or review threads that couldn't be fetched: no row, rather than
+  # one computed from nothing (no reviews, threads or activity). The run
+  # keeps the stored row and reports the PR (note_unfetched_pr).
+  if ! detail_json=$(get_pr_detail_json "$number") || ! printf '%s' "$detail_json" | jq -e 'type == "object"' >/dev/null 2>&1; then
     emit_pr_progress_marker 'END' "$number"
-    return "$jq_status"
+    return 1
   fi
+  if ! threads_json=$(fetch_review_threads_json "$number"); then
+    emit_pr_progress_marker 'END' "$number"
+    return 1
+  fi
+  review_comments_json=$(fetch_pr_review_comments_json "$number") || review_comments_json='[]'
+  review_url_map_json=$(fetch_pr_review_url_map_json "$number") || review_url_map_json='{}'
+
+  # A merged/closed PR's files are settled, and seldom viewed after: its
+  # stored counts stand once stored as such, saving their fetch (one or
+  # more calls).
+  IFS=$'\t' read -r merged_at closed_at <<<"$(printf '%s' "$pr_json" | jq -r '[(.mergedAt // ""), (.closedAt // "")] | @tsv')"
+  viewed_files_stats_json=''
+  if [[ -n "$merged_at" || -n "$closed_at" ]]; then
+    viewed_files_stats_json=$(get_stored_viewed_files_stats_json "$number")
+  fi
+  [[ -z "$viewed_files_stats_json" ]] && viewed_files_stats_json=$(fetch_pr_viewed_files_stats_json "$number")
+
+  [[ -n "$threads_json" ]] || threads_json='[]'
+  [[ -n "$review_comments_json" ]] || review_comments_json='[]'
+  [[ -n "$review_url_map_json" ]] || review_url_map_json='{}'
+  [[ -n "$viewed_files_stats_json" ]] || viewed_files_stats_json='{}'
+  input_dir=$(mktemp -d)
+  printf '%s' "$pr_json" >"$input_dir/pr.json"
+  printf '%s' "$detail_json" >"$input_dir/detail.json"
+  printf '%s' "$threads_json" >"$input_dir/threads.json"
+  printf '%s' "$review_comments_json" >"$input_dir/review-comments.json"
+  printf '%s' "$review_url_map_json" >"$input_dir/review-url-map.json"
+  printf '%s' "$viewed_files_stats_json" >"$input_dir/viewed-files.json"
+  jq -n \
+    --arg viewerLogin "$VIEWER_LOGIN" \
+    --arg ackAt "$(get_ack_ts "$number")" \
+    --arg reverifyRequired "$(get_reverify_required "$number")" \
+    --arg inReviewRequired "$(get_in_review_required "$number")" \
+    --arg ignoreCommentAuthors "$CHANGE_FILTER_IGNORE_COMMENT_AUTHORS" \
+    --arg ignoreReviewAuthors "$CHANGE_FILTER_IGNORE_REVIEW_AUTHORS" \
+    --arg ignoreCommitPatterns "$CHANGE_FILTER_IGNORE_COMMIT_PATTERNS" \
+    --argjson mergeHeadlinePatterns "$MERGE_COMMIT_HEADLINE_PATTERNS_JSON" \
+    --argjson mergeLogins "$MERGE_COMMIT_LOGINS_JSON" \
+    '$ARGS.named' >"$input_dir/settings.json"
+
+  if ! computed=$("$NODE_BIN" "$SCRIPT_DIR/compute-pr-row.js" "$input_dir"); then
+    # Reported with the unfetched PRs (its stored row stays); this says why.
+    echo "PR #$number: compute-pr-row.js failed; its row is kept as stored." >&2
+    rm -rf "$input_dir"
+    emit_pr_progress_marker 'END' "$number"
+    return 1
+  fi
+  rm -rf "$input_dir"
+  ack_action=${computed%%$'\n'*}
+  row_json_out=${computed#*$'\n'}
+
+  # A PR acked earlier with activity since that ack shouldn't read as
+  # acknowledged: the ack goes (undo=false - it stays in the Ack history,
+  # as one that was made).
+  [[ "$ack_action" == 'clear-ack' ]] && clear_ack_ts "$number" false
+
   row_json_out=$(attach_pr_detail_ref "$row_json_out")
   row_json_out=$(strip_inline_pr_detail_fields "$row_json_out")
   emit_pr_progress_marker 'END' "$number"
@@ -2695,15 +2013,13 @@ print_row() {
   local pr_text pr_pad_len pr_spaces pr_display
   local status_display approved_display date_display
 
-  number=$(printf '%s' "$row_json" | jq -r '.number')
-  title=$(printf '%s' "$row_json" | jq -r '.title')
-  title_display=$(printf '%s' "$row_json" | jq -r '.titleDisplay // .title')
-  url=$(printf '%s' "$row_json" | jq -r '.url')
-  author=$(printf '%s' "$row_json" | jq -r '.author')
-  status=$(printf '%s' "$row_json" | jq -r '.status')
-  approved=$(printf '%s' "$row_json" | jq -r '.approved')
-  approval_count=$(printf '%s' "$row_json" | jq -r '.approvalCount // "0"')
-  reason=$(printf '%s' "$row_json" | jq -r '.reason')
+  # One jq for every field (each call is a process), split on the unit
+  # separator so empty fields and tabs in a title survive.
+  IFS=$'\x1f' read -r number title title_display url author status approved approval_count reason <<<"$(printf '%s' "$row_json" | jq -r '
+    [.number, .title, (.titleDisplay // .title), .url, .author, .status, .approved, (.approvalCount // "0"), .reason]
+    | map(tostring | gsub("[\u001f\n\r]"; " "))
+    | join("\u001f")
+  ')"
 
   pr_text="#$number"
   pr_pad_len=$((8 - ${#pr_text}))
@@ -2755,9 +2071,11 @@ classify_pr_section() {
 reconcile_missing_open_rows() {
   local current_open_numbers="$1"
   local current_open_tmp stale_tmp stale_count number
-  local limit fresh_pr_b64 fresh_pr_json fresh_section row_json
+  local limit fresh_pr_b64 fresh_pr_json fresh_section row_json fetch_err_file fetch_err
 
-  [[ -n "$TARGET_PR_NUMBER" ]] && return 0
+  # A run of chosen PRs didn't list the open ones, so every other saved
+  # open row would look missing.
+  is_targeted_run && return 0
   RECONCILED_MISSING_OPEN_COUNT=0
 
   current_open_tmp=$(mktemp)
@@ -2772,7 +2090,7 @@ reconcile_missing_open_rows() {
       | to_entries[]
       | select(.value.repo == $repo)
       | select((.value.section // "") == "open" or (.value.section // "") == "draft")
-      | .key
+      | (.value.prNumber // (.key | split("#") | last) | tostring)
     ' "$PR_STATE_FILE" 2>/dev/null | awk 'NF' | sort -u >"$stale_tmp"
 
   stale_count=$(wc -l <"$stale_tmp" | tr -d '[:space:]')
@@ -2795,12 +2113,23 @@ reconcile_missing_open_rows() {
       break
     fi
 
-    fresh_pr_b64=$(gh_with_retry gh pr view "$number" -R "$REPO" --json number,title,url,labels,isDraft,author,mergedAt,closedAt,mergedBy,createdAt,updatedAt,headRefName,baseRefName,additions,deletions --jq '. | @base64' 2>/dev/null || true)
-    [[ -z "$fresh_pr_b64" ]] && continue
+    # A PR it can't look up keeps its open row - and says so: it used to be
+    # skipped silently, every run, while the row still showed it open.
+    fetch_err_file=$(mktemp)
+    fresh_pr_b64=$(gh_with_retry gh pr view "$number" -R "$REPO" --json number,title,url,labels,isDraft,author,mergedAt,closedAt,mergedBy,createdAt,updatedAt,headRefName,baseRefName,additions,deletions --jq '. | @base64' 2>"$fetch_err_file" || true)
+    fetch_err=$(tail -n 1 "$fetch_err_file" 2>/dev/null || true)
+    rm -f "$fetch_err_file"
+    if [[ -z "$fresh_pr_b64" ]]; then
+      echo "Could not check whether PR #$number (stored as open, not in the open listing) is still open: ${fetch_err:-gh pr view failed}" >&2
+      continue
+    fi
 
     fresh_pr_json=$(printf '%s' "$fresh_pr_b64" | base64 --decode)
     fresh_section=$(classify_pr_section "$fresh_pr_json")
-    row_json=$(compute_pr_state_json "$fresh_pr_json")
+    if ! row_json=$(get_pr_row_json "$fresh_pr_json" "$fresh_section"); then
+      note_unfetched_pr "$fresh_pr_json"
+      continue
+    fi
 
     RUN_ROW_INDEX=$((RUN_ROW_INDEX + 1))
     upsert_pr_state "$row_json" "$fresh_section"
@@ -2814,95 +2143,128 @@ reconcile_missing_open_rows() {
   rm -f "$current_open_tmp" "$stale_tmp"
 }
 
+# -p/--pr or --prs: a run of chosen PRs, not of the repo.
+is_targeted_run() {
+  [[ -n "$TARGET_PR_NUMBER" || -n "$TARGET_PRS" ]]
+}
+
 cache_shortcut_allowed() {
-  [[ "$ACK_ENABLED" -eq 0 && "$ACK_CLEAR_ENABLED" -eq 0 && "$ACK_CHANGED" -eq 0 && -z "$TARGET_PR_NUMBER" ]]
+  [[ "$ACK_ENABLED" -eq 0 && "$ACK_CLEAR_ENABLED" -eq 0 && "$ACK_CHANGED" -eq 0 ]] && ! is_targeted_run
 }
 
 cache_shortcut_allowed_for_section() {
   local section="$1"
   cache_shortcut_allowed || return 1
 
-  # Enable cache reuse for all sections, but require fresh source fingerprints
-  # so stale cached rows are only reused when all fetched inputs match.
-  # Check VIEW_PRS_SKIP_UNCHANGED=1 to opt into this behavior (defaults to off for now, can be enabled)
-  if [[ "${VIEW_PRS_SKIP_UNCHANGED:-0}" != '1' ]]; then
+  # On by default; VIEW_PRS_SKIP_UNCHANGED=0 fetches every PR in full.
+  if [[ "${VIEW_PRS_SKIP_UNCHANGED:-1}" == '0' ]]; then
     return 1
   fi
 
   return 0
 }
 
+# What a row's status depends on besides GitHub's data: the viewer's ack,
+# re-verify and in-review marks for the PR, the change filters and
+# merge-commit rules (user-defaults.json), and ROW_CACHE_VERSION. Stored
+# with each row computed (get_pr_row_json); a stored row is reused only
+# while it matches, so acking a PR or changing a filter recomputes it.
+# The key is "<checksum of what every PR shares>|<the PR's marks>", so
+# get_cached_row_json_for_pr can work out the marks in its own jq.
+ROW_LOCAL_STATE_MARKS_JQ='
+  def local_state_marks($user; $repo; $number):
+    [
+      ($user.ackByRepo[$repo][$number] // ""),
+      ($user.reverifyByRepo[$repo][$number] // false),
+      ($user.inReviewByRepo[$repo][$number] // false)
+    ] | map(tostring) | join("|");
+'
+
+# The shared part, set once a run (main) - each call is a process.
+ROW_LOCAL_STATE_SHARED_KEY=''
+row_local_state_shared_key() {
+  local sum
+  if [[ -n "$ROW_LOCAL_STATE_SHARED_KEY" ]]; then
+    printf '%s' "$ROW_LOCAL_STATE_SHARED_KEY"
+    return
+  fi
+  read -r sum _ <<<"$(printf '%s' "$ROW_CACHE_VERSION|$CHANGE_FILTER_IGNORE_COMMENT_AUTHORS|$CHANGE_FILTER_IGNORE_REVIEW_AUTHORS|$CHANGE_FILTER_IGNORE_COMMIT_PATTERNS|$MERGE_COMMIT_HEADLINE_PATTERNS_JSON|$MERGE_COMMIT_LOGINS_JSON" | cksum)"
+  printf '%s' "$sum"
+}
+
+# USER_STATE_FILE, or an empty document when there's none yet.
+user_state_file_or_empty() {
+  if [[ -f "${USER_STATE_FILE:-}" ]]; then
+    printf '%s' "$USER_STATE_FILE"
+  else
+    printf '%s' /dev/null
+  fi
+}
+
+build_row_local_state_key() {
+  local number="$1"
+  local marks
+
+  marks=$(jq -rn --slurpfile user "$(user_state_file_or_empty)" --arg repo "$REPO" --arg number "$number" \
+    "$ROW_LOCAL_STATE_MARKS_JQ"' local_state_marks($user[0] // {}; $repo; $number)' 2>/dev/null || true)
+
+  printf '%s|%s' "$(row_local_state_shared_key)" "$marks"
+}
+
+# Each of this repo's stored rows in its own small file (the data file's
+# shape, one PR in it), in ROW_REUSE_SNAPSHOT_DIR: get_cached_row_json_for_pr
+# then reads that instead of the whole data file, twice for every listed PR.
+# Taken before the run writes its first row; a row is only looked up before
+# it's written again. None when the run reuses nothing (chosen PRs, acks,
+# VIEW_PRS_SKIP_UNCHANGED=0).
+build_row_reuse_snapshot() {
+  local number entry_json
+  [[ -n "${ROW_REUSE_SNAPSHOT_DIR:-}" && -f "$PR_STATE_FILE" ]] || return 0
+  cache_shortcut_allowed_for_section 'open' || return 0
+  while IFS=$'\t' read -r number entry_json; do
+    [[ -n "$number" && -n "$entry_json" ]] || continue
+    printf '%s' "$entry_json" >"$ROW_REUSE_SNAPSHOT_DIR/$number.json"
+  done < <(jq -r --arg repo "$REPO" "$PR_KEY_JQ"'
+    (.byPrNumber // {}) | to_entries[]
+    | select(.value.repo == $repo)
+    | (.value.prNumber // (.key | split("#") | last) | tostring) as $number
+    | select($number | test("^[0-9]+$"))
+    | "\($number)\t\({byPrNumber: {(pr_key($repo; $number)): .value}} | tojson)"
+  ' "$PR_STATE_FILE" 2>/dev/null || true)
+}
+
+# The stored row for this listed PR when a full run can use it as it is -
+# the PR hasn't changed on GitHub (the same updatedAt) - or nothing, for a
+# full fetch. Also needs the same section, viewer and localStateKey, every
+# field a row has; and for an open/draft row, a full fetch (fetchedAt)
+# within VIEW_PRS_OPEN_REVALIDATE_SECONDS, since CI, mergeability, viewed
+# files and resolved threads change without moving updatedAt (the server's
+# live summary keeps those current in between). A merged/closed row is
+# reused for as long as its PR doesn't change.
 get_cached_row_json_for_pr() {
   local pr_json="$1"
   local section="$2"
-  local number source_updated_at source_fingerprint
-  local now_epoch_seconds max_cache_age_seconds has_prefetched_fingerprint_data
+  local number source_updated_at max_age_seconds state_file
 
   cache_shortcut_allowed_for_section "$section" || return 0
 
-  number=$(printf '%s' "$pr_json" | jq -r '.number')
-  source_updated_at=$(printf '%s' "$pr_json" | jq -r '.updatedAt // ""')
-  source_fingerprint=''
-  has_prefetched_fingerprint_data=0
+  IFS=$'\t' read -r number source_updated_at <<<"$(printf '%s' "$pr_json" | jq -r '[(.number // "" | tostring), (.updatedAt // "")] | @tsv')"
 
   [[ -z "$number" || "$number" == 'null' ]] && return 0
   [[ -z "$source_updated_at" || "$source_updated_at" == 'null' ]] && return 0
 
-  now_epoch_seconds=$(date '+%s' 2>/dev/null || echo '0')
-  if ! [[ "$now_epoch_seconds" =~ ^[0-9]+$ ]]; then
-    now_epoch_seconds=0
+  state_file="$PR_STATE_FILE"
+  if [[ -n "${ROW_REUSE_SNAPSHOT_DIR:-}" ]]; then
+    state_file="$ROW_REUSE_SNAPSHOT_DIR/$number.json"
+    [[ -f "$state_file" ]] || return 0
   fi
 
-  max_cache_age_seconds="$VIEW_PRS_CACHE_REVALIDATE_SECONDS"
-  if ! [[ "$max_cache_age_seconds" =~ ^[0-9]+$ ]]; then
-    max_cache_age_seconds=1800
+  max_age_seconds="$VIEW_PRS_OPEN_REVALIDATE_SECONDS"
+  if ! [[ "$max_age_seconds" =~ ^[0-9]+$ ]]; then
+    max_age_seconds=14400
   fi
-
-  if [[ -f "$DETAIL_CACHE_DIR/$number.json" && \
-    -f "$THREAD_CACHE_DIR/$number.json" && \
-    -f "$REVIEW_COMMENT_CACHE_DIR/$number.json" && \
-    -f "$REVIEW_URL_CACHE_DIR/$number.json" && \
-    -f "$FILES_CACHE_DIR/$number.json" && \
-    -f "$CI_MERGE_CACHE_DIR/$number.json" ]]; then
-    source_fingerprint=$(build_pr_source_fingerprint "$number")
-    if [[ -n "$source_fingerprint" ]]; then
-      has_prefetched_fingerprint_data=1
-    fi
-  fi
-
-  if [[ "$has_prefetched_fingerprint_data" -eq 1 ]]; then
-    jq -c \
-      --arg number "$number" \
-      --arg repo "$REPO" \
-      --arg section "$section" \
-      --arg viewerLogin "$VIEWER_LOGIN" \
-      --arg sourceUpdatedAt "$source_updated_at" \
-      --arg sourceFingerprint "$source_fingerprint" \
-      '
-        .byPrNumber[$number] // empty
-        | select(.repo == $repo and .section == $section)
-        | .data
-        | select((.viewerLogin // "") == $viewerLogin)
-        | select((.sourceUpdatedAt // "") == $sourceUpdatedAt)
-        | select((.sourceFingerprint // "") == $sourceFingerprint)
-        | select(has("sourceBranch") and .sourceBranch != null)
-        | select(has("targetBranch") and .targetBranch != null)
-        | select(has("approvers") and .approvers != null)
-        | select(has("openConversationCount") and .openConversationCount != null)
-        | select(has("viewedFilesCount") and .viewedFilesCount != null)
-        | select(has("changedFilesCount") and .changedFilesCount != null)
-        | select(has("viewedFilesSummary") and .viewedFilesSummary != null)
-        | select(has("comments") and .comments != null)
-        | select(has("reviews") and .reviews != null)
-        | select(has("commits") and .commits != null)
-        | select((has("detailRef") and .detailRef != null) or (has("reviewThreads") and .reviewThreads != null))
-        | select((has("detailRef") and .detailRef != null) or (has("commentEvents") and .commentEvents != null))
-        | select((has("detailRef") and .detailRef != null) or (has("activityEvents") and .activityEvents != null))
-        | select(has("metrics") and .metrics != null)
-        | select((has("detailRef") and .detailRef != null) or (has("activityTimeline") and .activityTimeline != null))
-        | select(has("activityTimelineSummary") and .activityTimelineSummary != null)
-      ' "$PR_STATE_FILE" 2>/dev/null || true
-    return 0
+  if [[ "$section" != 'open' && "$section" != 'draft' ]]; then
+    max_age_seconds=-1
   fi
 
   jq -c \
@@ -2911,22 +2273,23 @@ get_cached_row_json_for_pr() {
     --arg section "$section" \
     --arg viewerLogin "$VIEWER_LOGIN" \
     --arg sourceUpdatedAt "$source_updated_at" \
-    --argjson nowEpochSeconds "$now_epoch_seconds" \
-    --argjson maxCacheAgeSeconds "$max_cache_age_seconds" \
-    '
+    --arg sharedKey "$(row_local_state_shared_key)" \
+    --slurpfile user "$(user_state_file_or_empty)" \
+    --argjson maxAgeSeconds "$max_age_seconds" \
+    "$ROW_LOCAL_STATE_MARKS_JQ$PR_KEY_JQ"'
+      ($sharedKey + "|" + local_state_marks($user[0] // {}; $repo; $number)) as $localStateKey |
       def to_epoch($ts):
         (($ts | fromdateiso8601?) //
         (($ts | sub("\\.[0-9]+Z$"; "Z")) | fromdateiso8601?) //
         0);
 
-      .byPrNumber[$number] // empty
-      | select(.repo == $repo and .section == $section)
+      pr_row($repo; $number)
+      | select(.section == $section)
+      | select(($maxAgeSeconds < 0) or ((now - to_epoch(.fetchedAt // "")) <= $maxAgeSeconds))
       | .data
       | select((.viewerLogin // "") == $viewerLogin)
       | select((.sourceUpdatedAt // "") == $sourceUpdatedAt)
-      | select(($maxCacheAgeSeconds <= 0) or (
-          ($nowEpochSeconds - to_epoch(.updatedAt // "")) <= $maxCacheAgeSeconds
-        ))
+      | select((.localStateKey // "") == $localStateKey)
       | select(has("sourceBranch") and .sourceBranch != null)
       | select(has("targetBranch") and .targetBranch != null)
       | select(has("approvers") and .approvers != null)
@@ -2943,7 +2306,7 @@ get_cached_row_json_for_pr() {
       | select(has("metrics") and .metrics != null)
       | select((has("detailRef") and .detailRef != null) or (has("activityTimeline") and .activityTimeline != null))
       | select(has("activityTimelineSummary") and .activityTimelineSummary != null)
-    ' "$PR_STATE_FILE" 2>/dev/null || true
+    ' "$state_file" 2>/dev/null || true
 }
 
 enrich_cached_row_with_ci_merge() {
@@ -2953,8 +2316,13 @@ enrich_cached_row_with_ci_merge() {
 
   [[ -z "$cached_row_json" ]] && return
 
-  ci_merge_json=$(cat "$CI_MERGE_CACHE_DIR/$number.json" 2>/dev/null || echo '{}')
-  [[ -z "$ci_merge_json" ]] && ci_merge_json='{}'
+  # No fresh CI data (its fetch failed, or none ran): the row's own values
+  # stand, rather than read as no checks at all.
+  ci_merge_json=$(cat "${CI_MERGE_CACHE_DIR:-/nonexistent}/$number.json" 2>/dev/null || true)
+  if [[ -z "$ci_merge_json" ]]; then
+    printf '%s' "$cached_row_json"
+    return
+  fi
 
   printf '%s' "$cached_row_json" | jq -c \
     --arg check_state "$(printf '%s' "$ci_merge_json" | jq -r '
@@ -2996,89 +2364,54 @@ enrich_cached_row_with_ci_merge() {
         else $m
         end
     ' 2>/dev/null || echo '"UNK"')" \
-    '.checkState = $check_state | .mergeState = $merge_state | .titleDisplay = (.title + " [CHK:" + $check_state + "][MRG:" + $merge_state + "]")'
+    '.checkState = $check_state | .mergeState = $merge_state | .titleDisplay = (.title + " [CHK:" + $check_state + "][MRG:" + $merge_state + "]") | .__ciFetched = true'
 }
 
-enrich_cached_row_with_viewed_files() {
-  local cached_row_json="$1"
-  local number="$2"
-  local viewed_files_json
-  local viewed_files_count
-  local changed_files_count
-  local viewed_files_summary
-
-  [[ -z "$cached_row_json" ]] && return
-  [[ -z "$VIEWED_FILES_FRESH_CACHE_DIR" ]] && {
-    printf '%s' "$cached_row_json"
-    return
-  }
-
-  viewed_files_json=$(cat "$VIEWED_FILES_FRESH_CACHE_DIR/$number.json" 2>/dev/null || echo '{}')
-  [[ -z "$viewed_files_json" || "$viewed_files_json" == '{}' ]] && {
-    printf '%s' "$cached_row_json"
-    return
-  }
-
-  viewed_files_count=$(printf '%s' "$viewed_files_json" | jq -r '.viewedFiles // 0' 2>/dev/null || echo '0')
-  changed_files_count=$(printf '%s' "$viewed_files_json" | jq -r '.changedFiles // 0' 2>/dev/null || echo '0')
-  viewed_files_summary="${viewed_files_count}/${changed_files_count} viewed"
-
-  printf '%s' "$cached_row_json" | jq -c \
-    --arg viewedFilesCount "$viewed_files_count" \
-    --arg changedFilesCount "$changed_files_count" \
-    --arg viewedFilesSummary "$viewed_files_summary" \
-    '.viewedFilesCount = $viewedFilesCount | .changedFilesCount = $changedFilesCount | .viewedFilesSummary = $viewedFilesSummary'
+# A PR whose details or review threads couldn't be fetched (after
+# retries): its stored row stays as it was, and the run reports it at the
+# end - a run of chosen PRs then fails, so they stay queued.
+note_unfetched_pr() {
+  local number
+  number=$(printf '%s' "$1" | jq -r '.number // ""' 2>/dev/null || true)
+  [[ -n "$number" ]] && UNFETCHED_PR_NUMBERS+="$number"$'\n'
+  return 0
 }
 
 get_pr_row_json() {
   local pr_json="$1"
   local section="$2"
-  local row_json number
+  local row_json number local_state_key
 
   row_json=$(get_cached_row_json_for_pr "$pr_json" "$section")
   if [[ -z "$row_json" ]]; then
-    compute_pr_state_json "$pr_json"
+    number=$(printf '%s' "$pr_json" | jq -r '.number')
+    # Before computing: the state the row is computed from (computing may
+    # clear the ack, which then recomputes it once more next run).
+    local_state_key=$(build_row_local_state_key "$number")
+    row_json=$(compute_pr_state_json "$pr_json") || return 1
+    printf '%s' "$row_json" | jq -c --arg localStateKey "$local_state_key" '.localStateKey = $localStateKey' 2>/dev/null || printf '%s' "$row_json"
     return
   fi
 
   number=$(printf '%s' "$row_json" | jq -r '.number // ""')
   emit_pr_progress_marker 'START' "$number"
-  row_json=$(enrich_cached_row_with_ci_merge "$row_json" "$number")
-  row_json=$(enrich_cached_row_with_viewed_files "$row_json" "$number")
+  # The listing's own fields as they are now (a label renamed across the
+  # repo doesn't move a PR's updatedAt). __reused tells upsert_pr_state the
+  # row wasn't fetched, so it keeps the row's fetchedAt.
+  row_json=$(printf '%s' "$row_json" | jq -c --argjson pr "$pr_json" '
+    .title = ($pr.title // .title)
+    | .titleDisplay = (.title + " [CHK:" + (.checkState // "UNK") + "][MRG:" + (.mergeState // "UNK") + "]")
+    | .url = ($pr.url // .url)
+    | .labels = (($pr.labels // null) | if . == null then null else map(if type == "object" then (.name // "") else tostring end) end) // .labels
+    | .additions = (($pr.additions // null) | if . == null then null else tostring end) // .additions
+    | .deletions = (($pr.deletions // null) | if . == null then null else tostring end) // .deletions
+    | .__reused = true
+  ' 2>/dev/null || printf '%s' "$row_json")
+  if [[ "$section" == 'open' || "$section" == 'draft' ]]; then
+    row_json=$(enrich_cached_row_with_ci_merge "$row_json" "$number")
+  fi
   emit_pr_progress_marker 'END' "$number"
   printf '%s' "$row_json"
-}
-
-build_pr_source_fingerprint() {
-  local number="$1"
-  local detail_json comments_json reviews_json requested_reviewers_json commits_json assignees_json threads_json review_comments_json review_url_map_json viewed_files_stats_json ci_merge_json
-
-  [[ -z "$number" || "$number" == 'null' ]] && return 0
-
-  detail_json=$(cat "$DETAIL_CACHE_DIR/$number.json" 2>/dev/null || echo '{}')
-  comments_json=$(printf '%s' "$detail_json" | jq -c '.comments // []' 2>/dev/null || echo '[]')
-  reviews_json=$(printf '%s' "$detail_json" | jq -c '.reviews // []' 2>/dev/null || echo '[]')
-  requested_reviewers_json=$(printf '%s' "$detail_json" | jq -c '.reviewRequests // []' 2>/dev/null || echo '[]')
-  commits_json=$(printf '%s' "$detail_json" | jq -c '.commits // []' 2>/dev/null || echo '[]')
-  assignees_json=$(printf '%s' "$detail_json" | jq -c '.assignees // []' 2>/dev/null || echo '[]')
-  threads_json=$(cat "$THREAD_CACHE_DIR/$number.json" 2>/dev/null || echo '[]')
-  review_comments_json=$(cat "$REVIEW_COMMENT_CACHE_DIR/$number.json" 2>/dev/null || echo '[]')
-  review_url_map_json=$(cat "$REVIEW_URL_CACHE_DIR/$number.json" 2>/dev/null || echo '{}')
-  viewed_files_stats_json=$(cat "$FILES_CACHE_DIR/$number.json" 2>/dev/null || echo '{}')
-  ci_merge_json=$(cat "$CI_MERGE_CACHE_DIR/$number.json" 2>/dev/null || echo '{}')
-
-  build_pr_source_fingerprint_value \
-    "$detail_json" \
-    "$comments_json" \
-    "$reviews_json" \
-    "$requested_reviewers_json" \
-    "$commits_json" \
-    "$assignees_json" \
-    "$threads_json" \
-    "$review_comments_json" \
-    "$review_url_map_json" \
-    "$viewed_files_stats_json" \
-    "$ci_merge_json"
 }
 
 sanitize_detail_path_token() {
@@ -3202,64 +2535,6 @@ strip_inline_pr_detail_fields() {
   printf '%s' "$row_json"
 }
 
-build_pr_source_fingerprint_value() {
-  local detail_json="$1"
-  local comments_json="$2"
-  local reviews_json="$3"
-  local requested_reviewers_json="$4"
-  local commits_json="$5"
-  local assignees_json="$6"
-  local threads_json="$7"
-  local review_comments_json="$8"
-  local review_url_map_json="$9"
-  local viewed_files_stats_json="${10}"
-  local ci_merge_json="${11}"
-  local payload_json canonical_payload digest
-
-  payload_json=$(jq -cn \
-    --argjson detail "$detail_json" \
-    --argjson comments "$comments_json" \
-    --argjson reviews "$reviews_json" \
-    --argjson reviewRequests "$requested_reviewers_json" \
-    --argjson commits "$commits_json" \
-    --argjson assignees "$assignees_json" \
-    --argjson threads "$threads_json" \
-    --argjson reviewComments "$review_comments_json" \
-    --argjson reviewUrlMap "$review_url_map_json" \
-    --argjson viewedFiles "$viewed_files_stats_json" \
-    --argjson ciMerge "$ci_merge_json" \
-    '{detail:$detail,comments:$comments,reviews:$reviews,reviewRequests:$reviewRequests,commits:$commits,assignees:$assignees,threads:$threads,reviewComments:$reviewComments,reviewUrlMap:$reviewUrlMap,viewedFiles:$viewedFiles,ciMerge:$ciMerge}' 2>/dev/null)
-
-  canonical_payload=$(printf '%s' "$payload_json" | jq -cS . 2>/dev/null || true)
-  [[ -n "$canonical_payload" ]] || return 0
-
-  digest=$(hash_text_sha256 "$canonical_payload")
-  [[ -n "$digest" ]] || return 0
-
-  printf 'fp:v2:sha256:%s' "$digest"
-}
-
-hash_text_sha256() {
-  local text="$1"
-
-  if command -v shasum >/dev/null 2>&1; then
-    printf '%s' "$text" | shasum -a 256 | awk '{print $1}'
-    return 0
-  fi
-
-  if command -v sha256sum >/dev/null 2>&1; then
-    printf '%s' "$text" | sha256sum | awk '{print $1}'
-    return 0
-  fi
-
-  if command -v openssl >/dev/null 2>&1; then
-    printf '%s' "$text" | openssl dgst -sha256 2>/dev/null | awk '{print $NF}'
-    return 0
-  fi
-
-  return 1
-}
-
 collect_stale_numbers_from_b64() {
   local b64_lines="$1"
   local section="$2"
@@ -3297,7 +2572,7 @@ pr_updated_at_matches_cache() {
       --arg number "$number" \
       --arg repo "$REPO" \
       --arg section "$section" \
-      '.byPrNumber[$number] // empty | select(.repo == $repo and .section == $section) | (.data.sourceUpdatedAt // empty)' \
+      "$PR_KEY_JQ"'pr_row($repo; $number) | select(.section == $section) | (.data.sourceUpdatedAt // empty)' \
       "$PR_STATE_FILE" 2>/dev/null
   )
 
@@ -3306,7 +2581,7 @@ pr_updated_at_matches_cache() {
 
 # Cheap "did it change" check used by --quick-check: compares the just-listed
 # updatedAt against the cached row's sourceUpdatedAt directly, independent of
-# the full-fetch caching gate (VIEW_PRS_SKIP_UNCHANGED, off by default) and
+# the full run's row reuse (get_cached_row_json_for_pr, VIEW_PRS_SKIP_UNCHANGED) and
 # without requiring every other detail field to already be populated.
 collect_quick_check_pending_numbers() {
   local b64_lines="$1"
@@ -3379,7 +2654,9 @@ parse_number_list() {
   local raw="$1"
   local out=''
   IFS=',' read -r -a parts <<<"$raw"
-  for part in "${parts[@]}"; do
+  # Empty input reads as an empty array, which bash before 4.4 calls
+  # unbound under set -u: the +-guard.
+  for part in ${parts[@]+"${parts[@]}"}; do
     num=$(printf '%s' "$part" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
     [[ -z "$num" ]] && continue
     if ! [[ "$num" =~ ^[0-9]+$ ]]; then
@@ -3426,6 +2703,10 @@ parse_args() {
         ;;
       --quick-check-numbers)
         QUICK_CHECK_NUMBERS_RAW_INPUT="$2"
+        shift 2
+        ;;
+      --prs)
+        TARGET_PRS_RAW_INPUT="$2"
         shift 2
         ;;
       --label)
@@ -3529,6 +2810,9 @@ parse_args() {
 }
 
 main() {
+  set_current_shell_pid
+  MAIN_SHELL_PID=$CURRENT_SHELL_PID
+  set_exit_traps
   debug_log "start args=$*"
   parse_args "$@"
 
@@ -3595,6 +2879,18 @@ main() {
     QUICK_CHECK_NUMBERS=$(parse_number_list_or_fail "$QUICK_CHECK_NUMBERS_RAW_INPUT" '--quick-check-numbers')
   fi
 
+  if [[ -n "$TARGET_PRS_RAW_INPUT" ]]; then
+    if [[ -n "$TARGET_PR_NUMBER" ]]; then
+      echo '--prs cannot be combined with -p/--pr' >&2
+      exit 1
+    fi
+    if [[ "$QUICK_CHECK" -eq 1 ]]; then
+      echo '--prs cannot be combined with --quick-check' >&2
+      exit 1
+    fi
+    TARGET_PRS=$(parse_number_list_or_fail "$TARGET_PRS_RAW_INPUT" '--prs')
+  fi
+
   INCLUDE_LABEL=$(printf '%s' "$INCLUDE_LABEL" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
   EXCLUDE_LABEL=$(printf '%s' "$EXCLUDE_LABEL" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
   INCLUDE_AUTHOR=$(printf '%s' "$INCLUDE_AUTHOR" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
@@ -3655,6 +2951,12 @@ main() {
     exit 1
   fi
 
+  # Each row is computed in compute-pr-row.js.
+  if ! command -v "$NODE_BIN" >/dev/null 2>&1; then
+    echo 'node is required.' >&2
+    exit 1
+  fi
+
   if [[ "$ACK_ENABLED" -eq 1 ]]; then
     ACK_NUMBERS=$(parse_number_list_or_fail "$ACK_RAW_INPUT" '--ack')
   fi
@@ -3665,6 +2967,7 @@ main() {
 
   ensure_ack_store
   load_change_filter_config
+  ROW_LOCAL_STATE_SHARED_KEY=$(row_local_state_shared_key)
   apply_ack_changes
 
   if [[ "$ACK_ONLY" -eq 1 ]]; then
@@ -3715,8 +3018,10 @@ main() {
     echo
   fi
 
-  if [[ -n "$QUICK_CHECK_NUMBERS" ]]; then
-    quick_check_numbers_b64=$(fetch_quick_check_target_prs "$QUICK_CHECK_NUMBERS")
+  # --quick-check-numbers and --prs both look their PRs up by number, in
+  # whatever state they're in, rather than listing.
+  if [[ -n "$QUICK_CHECK_NUMBERS" || -n "$TARGET_PRS" ]]; then
+    quick_check_numbers_b64=$(fetch_quick_check_target_prs "${QUICK_CHECK_NUMBERS:-$TARGET_PRS}")
 
     prs_b64=''
     closed_prs_b64=''
@@ -3740,6 +3045,15 @@ main() {
         prs_b64+="$pr_b64_line"$'\n'
       fi
     done <<<"$quick_check_numbers_b64"
+
+    # --prs: the chosen PRs that couldn't be fetched (after retries). The
+    # rest are still refreshed; the run then fails (end of main), so they
+    # stay queued for update rather than look done.
+    if [[ -n "$TARGET_PRS" ]]; then
+      local fetched_numbers
+      fetched_numbers=$(collect_numbers_from_b64 "$quick_check_numbers_b64" | tr -d '\r' | awk 'NF' | sort -u)
+      TARGET_PRS_MISSING=$(printf '%s\n' "$TARGET_PRS" | awk 'NF' | sort -u | grep -vxF -f <(printf '%s\n' "$fetched_numbers") || true)
+    fi
   elif [[ -n "$TARGET_PR_NUMBER" ]]; then
     target_pr_b64=$(gh_with_retry gh pr view "$TARGET_PR_NUMBER" -R "$REPO" --json number,title,url,labels,isDraft,author,mergedAt,closedAt,mergedBy,createdAt,updatedAt,headRefName,baseRefName,additions,deletions --jq '. | @base64')
 
@@ -3853,6 +3167,11 @@ main() {
     exit 0
   fi
 
+  # One backup for the run, before its first row: upsert_pr_state writes
+  # each row without one (a backup per row filled the retention with copies
+  # from a single run).
+  create_state_backup "$PR_STATE_FILE" 'pr-data'
+
   current_open_numbers=$(collect_numbers_from_b64 "$prs_b64")
   current_closed_numbers=$(collect_numbers_from_b64 "$closed_prs_b64")
   current_merged_numbers=$(collect_numbers_from_b64 "$merged_prs_b64")
@@ -3864,7 +3183,6 @@ main() {
   review_url_cache_tmp=0
   review_comment_cache_tmp=0
   ci_merge_cache_tmp=0
-  viewed_files_fresh_cache_tmp=0
   if [[ -z "$DETAIL_CACHE_DIR" ]]; then
     DETAIL_CACHE_DIR=$(mktemp -d)
     detail_cache_tmp=1
@@ -3889,36 +3207,17 @@ main() {
     CI_MERGE_CACHE_DIR=$(mktemp -d)
     ci_merge_cache_tmp=1
   fi
-  if [[ -z "$VIEWED_FILES_FRESH_CACHE_DIR" ]]; then
-    VIEWED_FILES_FRESH_CACHE_DIR=$(mktemp -d)
-    viewed_files_fresh_cache_tmp=1
-  fi
+  ROW_REUSE_SNAPSHOT_DIR=$(mktemp -d)
+  build_row_reuse_snapshot
 
-  if [[ "$detail_cache_tmp" -eq 1 || "$thread_cache_tmp" -eq 1 || "$files_cache_tmp" -eq 1 || "$review_url_cache_tmp" -eq 1 || "$review_comment_cache_tmp" -eq 1 || "$ci_merge_cache_tmp" -eq 1 || "$viewed_files_fresh_cache_tmp" -eq 1 ]]; then
-    cleanup_cmd=''
-    if [[ "$detail_cache_tmp" -eq 1 ]]; then
-      cleanup_cmd+=' "$DETAIL_CACHE_DIR"'
-    fi
-    if [[ "$thread_cache_tmp" -eq 1 ]]; then
-      cleanup_cmd+=' "$THREAD_CACHE_DIR"'
-    fi
-    if [[ "$files_cache_tmp" -eq 1 ]]; then
-      cleanup_cmd+=' "$FILES_CACHE_DIR"'
-    fi
-    if [[ "$review_url_cache_tmp" -eq 1 ]]; then
-      cleanup_cmd+=' "$REVIEW_URL_CACHE_DIR"'
-    fi
-    if [[ "$review_comment_cache_tmp" -eq 1 ]]; then
-      cleanup_cmd+=' "$REVIEW_COMMENT_CACHE_DIR"'
-    fi
-    if [[ "$ci_merge_cache_tmp" -eq 1 ]]; then
-      cleanup_cmd+=' "$CI_MERGE_CACHE_DIR"'
-    fi
-    if [[ "$viewed_files_fresh_cache_tmp" -eq 1 ]]; then
-      cleanup_cmd+=' "$VIEWED_FILES_FRESH_CACHE_DIR"'
-    fi
-    trap "rm -rf${cleanup_cmd}" EXIT
-  fi
+  # Removed when the run ends, however it ends (on_script_exit).
+  EXIT_CLEANUP_PATHS+=("$ROW_REUSE_SNAPSHOT_DIR")
+  [[ "$detail_cache_tmp" -eq 1 ]] && EXIT_CLEANUP_PATHS+=("$DETAIL_CACHE_DIR")
+  [[ "$thread_cache_tmp" -eq 1 ]] && EXIT_CLEANUP_PATHS+=("$THREAD_CACHE_DIR")
+  [[ "$files_cache_tmp" -eq 1 ]] && EXIT_CLEANUP_PATHS+=("$FILES_CACHE_DIR")
+  [[ "$review_url_cache_tmp" -eq 1 ]] && EXIT_CLEANUP_PATHS+=("$REVIEW_URL_CACHE_DIR")
+  [[ "$review_comment_cache_tmp" -eq 1 ]] && EXIT_CLEANUP_PATHS+=("$REVIEW_COMMENT_CACHE_DIR")
+  [[ "$ci_merge_cache_tmp" -eq 1 ]] && EXIT_CLEANUP_PATHS+=("$CI_MERGE_CACHE_DIR")
 
   collect_prioritized_stale_number_sets "$prs_b64" "$closed_prs_b64" "$merged_prs_b64"
 
@@ -3934,6 +3233,12 @@ main() {
   CACHE_STALE_COUNT=$(printf '%s\n' "$STALE_ALL_PR_NUMBERS" | awk 'NF' | wc -l | tr -d '[:space:]')
   debug_log "cache stale=$CACHE_STALE_COUNT total=$CACHE_TOTAL_COUNT staleOpenDraft=$(printf '%s\n' \"$STALE_OPEN_DRAFT_PR_NUMBERS\" | awk 'NF' | wc -l | tr -d '[:space:]') staleClosed=$(printf '%s\n' \"$STALE_CLOSED_PR_NUMBERS\" | awk 'NF' | wc -l | tr -d '[:space:]') staleMerged=$(printf '%s\n' \"$STALE_MERGED_PR_NUMBERS\" | awk 'NF' | wc -l | tr -d '[:space:]')"
 
+  # Open/draft rows reused as they are (not stale) still get their CI and
+  # mergeability as they are now; the stale ones get both with their
+  # details.
+  local reused_open_numbers
+  reused_open_numbers=$(printf '%s\n' "$current_open_numbers" | awk 'NF' | grep -vxF -f <(printf '%s\n' "$STALE_OPEN_DRAFT_PR_NUMBERS" | awk 'NF') || true)
+
   # Prioritize data needed for open/draft rows so visible updates land sooner in the UI.
   run_prefetch_tasks_concurrently "$VIEW_PRS_PREFETCH_GROUP_CONCURRENCY" \
     prefetch_pr_details "$STALE_OPEN_DRAFT_PR_NUMBERS" \
@@ -3941,12 +3246,7 @@ main() {
     prefetch_review_comments "$STALE_OPEN_DRAFT_PR_NUMBERS" \
     prefetch_review_urls "$STALE_OPEN_DRAFT_PR_NUMBERS" \
     prefetch_viewed_files_stats "$STALE_OPEN_DRAFT_PR_NUMBERS" \
-    prefetch_ci_merge_stats "$current_open_numbers"
-
-  if [[ "${VIEW_PRS_SKIP_UNCHANGED:-0}" == '1' ]]; then
-    run_prefetch_tasks_concurrently "$VIEW_PRS_PREFETCH_GROUP_CONCURRENCY" \
-      prefetch_viewed_files_stats_fresh "$current_open_numbers"
-  fi
+    prefetch_ci_merge_stats "$reused_open_numbers"
 
   deferred_prefetch_pid=''
   closed_merged_stale_numbers=$(
@@ -3956,30 +3256,15 @@ main() {
     } | awk 'NF' | sort -u
   )
 
-  if [[ -n "$closed_merged_stale_numbers" || "${VIEW_PRS_SKIP_UNCHANGED:-0}" == '1' ]]; then
+  # Merged/closed: only the ones that changed (the rest are reused), and
+  # not their viewed files - see compute_pr_state_json.
+  if [[ -n "$closed_merged_stale_numbers" ]]; then
     (
       run_prefetch_tasks_concurrently "$VIEW_PRS_PREFETCH_GROUP_CONCURRENCY" \
         prefetch_pr_details "$closed_merged_stale_numbers" \
         prefetch_review_threads "$closed_merged_stale_numbers" \
         prefetch_review_comments "$closed_merged_stale_numbers" \
-        prefetch_review_urls "$closed_merged_stale_numbers" \
-        prefetch_viewed_files_stats "$closed_merged_stale_numbers"
-
-      if [[ "${VIEW_PRS_SKIP_UNCHANGED:-0}" == '1' ]]; then
-        run_prefetch_tasks_concurrently "$VIEW_PRS_PREFETCH_GROUP_CONCURRENCY" \
-          prefetch_pr_details "$current_closed_numbers" \
-          prefetch_review_threads "$current_closed_numbers" \
-          prefetch_review_comments "$current_closed_numbers" \
-          prefetch_review_urls "$current_closed_numbers" \
-          prefetch_viewed_files_stats "$current_closed_numbers" \
-          prefetch_ci_merge_stats "$current_closed_numbers" \
-          prefetch_pr_details "$current_merged_numbers" \
-          prefetch_review_threads "$current_merged_numbers" \
-          prefetch_review_comments "$current_merged_numbers" \
-          prefetch_review_urls "$current_merged_numbers" \
-          prefetch_viewed_files_stats "$current_merged_numbers" \
-          prefetch_ci_merge_stats "$current_merged_numbers"
-      fi
+        prefetch_review_urls "$closed_merged_stale_numbers"
     ) &
     deferred_prefetch_pid="$!"
   fi
@@ -4002,7 +3287,10 @@ main() {
     is_draft=$(printf '%s' "$pr_json" | jq -r '.isDraft')
     [[ "$is_draft" == 'true' ]] && continue
 
-    row_json=$(get_pr_row_json "$pr_json" 'open')
+    if ! row_json=$(get_pr_row_json "$pr_json" 'open'); then
+      note_unfetched_pr "$pr_json"
+      continue
+    fi
     status=$(printf '%s' "$row_json" | jq -r '.status')
     baseline=$(printf '%s' "$row_json" | jq -r '.baseline')
 
@@ -4052,7 +3340,10 @@ main() {
     is_draft=$(printf '%s' "$pr_json" | jq -r '.isDraft')
     [[ "$is_draft" != 'true' ]] && continue
 
-    row_json=$(get_pr_row_json "$pr_json" 'draft')
+    if ! row_json=$(get_pr_row_json "$pr_json" 'draft'); then
+      note_unfetched_pr "$pr_json"
+      continue
+    fi
     status=$(printf '%s' "$row_json" | jq -r '.status')
     baseline=$(printf '%s' "$row_json" | jq -r '.baseline')
 
@@ -4092,7 +3383,10 @@ main() {
     [[ -z "$pr_item" ]] && continue
     pr_json=$(printf '%s' "$pr_item" | base64 --decode)
 
-    row_json=$(get_pr_row_json "$pr_json" 'closed')
+    if ! row_json=$(get_pr_row_json "$pr_json" 'closed'); then
+      note_unfetched_pr "$pr_json"
+      continue
+    fi
 
     RUN_ROW_INDEX=$((RUN_ROW_INDEX + 1))
     upsert_pr_state "$row_json" 'closed'
@@ -4115,7 +3409,10 @@ main() {
     [[ -z "$pr_item" ]] && continue
     pr_json=$(printf '%s' "$pr_item" | base64 --decode)
 
-    row_json=$(get_pr_row_json "$pr_json" 'merged')
+    if ! row_json=$(get_pr_row_json "$pr_json" 'merged'); then
+      note_unfetched_pr "$pr_json"
+      continue
+    fi
 
     RUN_ROW_INDEX=$((RUN_ROW_INDEX + 1))
     upsert_pr_state "$row_json" 'merged'
@@ -4131,12 +3428,29 @@ main() {
 
   [[ "$merged_printed" -eq 0 ]] && echo '(none)'
 
+  if ((RUN_ROW_INDEX == 0)) && ! is_targeted_run; then
+    with_pr_state_lock record_repo_full_run_unlocked || exit 1
+  fi
+
   echo
   echo 'Summary:'
   echo "  CHANGED     : $changed_count"
   echo "  NO_CHANGE   : $no_change_count"
   echo "  NO_ACTIVITY : $no_activity_count"
   debug_log "summary changed=$changed_count no_change=$no_change_count no_activity=$no_activity_count"
+
+  if [[ -n "$UNFETCHED_PR_NUMBERS" ]]; then
+    if is_targeted_run; then
+      TARGET_PRS_MISSING=$(printf '%s\n%s\n' "$TARGET_PRS_MISSING" "$UNFETCHED_PR_NUMBERS" | awk 'NF' | sort -u)
+    else
+      echo "Could not fetch the details of PR(s), kept as stored: $(printf '%s' "$UNFETCHED_PR_NUMBERS" | awk 'NF' | sort -u | tr '\n' ',' | sed 's/,$//')" >&2
+    fi
+  fi
+
+  if [[ -n "$TARGET_PRS_MISSING" ]]; then
+    echo "Could not fetch PR(s): $(printf '%s' "$TARGET_PRS_MISSING" | tr '\n' ',' | sed 's/,$//')" >&2
+    exit 1
+  fi
 }
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then

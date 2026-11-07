@@ -46,6 +46,11 @@ const registerViewPrsDataRoutes = ({
   // due time. Safely no-ops if absent (e.g. in tests that don't wire it).
   bumpDispatcherEntry,
   dispatcherTaskTypes,
+  // () => { repos, taskTypes: [{ taskType, intervalMs, priority }] } - the
+  // defaults Settings › Background updates shows beside each repo's
+  // schedulerRepoConfig (saved through PUT /user-defaults like every other
+  // setting). Answers with no repos if absent (e.g. in tests that don't wire it).
+  getDispatcherSettings,
   // Per-repo circuit breaker manual reset (see view-prs-scheduler-helpers.js)
   // - e.g. for when a laptop sleep/lock caused a burst of failures that
   // shouldn't count once it's back. Safely no-ops if absent (e.g. in tests
@@ -103,6 +108,10 @@ const registerViewPrsDataRoutes = ({
   const dispatcherTaskTypesSafe = Array.isArray(dispatcherTaskTypes)
     ? dispatcherTaskTypes
     : [];
+  const getDispatcherSettingsSafe =
+    typeof getDispatcherSettings === "function"
+      ? getDispatcherSettings
+      : () => ({ repos: [], taskTypes: [] });
   const resetAutoCircuitBreakerSafe =
     typeof resetAutoCircuitBreaker === "function" ? resetAutoCircuitBreaker : () => {};
   const emitSchedulerStateChangedSafe =
@@ -259,6 +268,7 @@ const registerViewPrsDataRoutes = ({
         res,
         payload: buildDataManifestPayload({
           manifest: getViewPrsDataManifest(data),
+          data,
         }),
       });
       },
@@ -297,6 +307,15 @@ const registerViewPrsDataRoutes = ({
       sendSuccessPayload({ res, payload: buildSchedulerPayload() });
       },
       fallbackMessage: getDataRouteErrorMessage("scheduler"),
+    }),
+  );
+
+  app.get(
+    ["/dispatcher/settings", "/view-prs/dispatcher/settings"],
+    createSyncHandler({
+      handler: (_req, res) => {
+      sendSuccessPayload({ res, payload: { ok: true, ...getDispatcherSettingsSafe() } });
+      },
     }),
   );
 

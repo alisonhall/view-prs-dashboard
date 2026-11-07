@@ -64,6 +64,16 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
 
   const viewPrsPrDetailDir =
     env.VIEW_PRS_PR_DETAIL_DIR || path.join(path.dirname(viewPrsDataFile), "pr-details");
+  // Open PRs' live summary (view-prs-live-summary-helpers.js), beside the
+  // data file it's laid over - so tests' temp data file brings a temp one.
+  const viewPrsLiveSummaryFile =
+    env.VIEW_PRS_LIVE_SUMMARY_FILE ||
+    path.join(path.dirname(viewPrsDataFile), "check-open-pr-updates.live-summary.json");
+  // Which PRs are in view: repo subscriptions and PRs added one by one
+  // (view-prs-sources-storage.js), beside the data file like the above.
+  const viewPrsSourcesFile =
+    env.VIEW_PRS_SOURCES_FILE ||
+    path.join(path.dirname(viewPrsDataFile), "check-open-pr-updates.sources.json");
 
   // Test environment validation
   if (isTestEnv) {
@@ -137,6 +147,8 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
       VIEW_PRS_PR_DIFF_DIR: viewPrsPrDiffDir,
       VIEW_PRS_ACTION_LOG_FILE: viewPrsActionLogFile,
       VIEW_PRS_PR_DETAIL_DIR: viewPrsPrDetailDir,
+      VIEW_PRS_LIVE_SUMMARY_FILE: viewPrsLiveSummaryFile,
+      VIEW_PRS_SOURCES_FILE: viewPrsSourcesFile,
       VIEW_PRS_BACKFILL_PID_FILE: viewPrsBackfillPidFile,
       VIEW_PRS_BACKFILL_LOG_FILE: viewPrsBackfillLogFile,
       VIEW_PRS_USER_DEFAULTS_FILE: viewPrsUserDefaultsFile,
@@ -258,6 +270,15 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
     Number.parseInt(env.VIEW_PRS_EVENTS_MAX_CLIENTS || "25", 10) || 25,
   );
 
+  // How often, while a page is connected to the event stream, the server
+  // checks the data version (the data file, the live summary, the update
+  // queue) and pushes "data-changed" when it moved - so a script run's rows
+  // and each quick check's listing reach the page without its poll.
+  const viewPrsEventsDataWatchIntervalMs = Math.max(
+    500,
+    Number.parseInt(env.VIEW_PRS_EVENTS_DATA_WATCH_INTERVAL_MS || "3000", 10) || 3000,
+  );
+
   // Caps how often the job-events emitter will push a job-agnostic
   // "scheduler" SSE frame (activePrNumbers progress) - incrementActivePrNumber/
   // decrementActivePrNumber fire roughly twice per PR touched by a refresh,
@@ -317,7 +338,10 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
 
   // Optional, absent by default - only present if the user opts in to a
   // custom "More Insights" hook script (see runInsightsHookScript in app.js).
-  const viewPrsInsightsHookScript = env.VIEW_PRS_INSIGHTS_HOOK_SCRIPT || "";
+  // Passed to bash as given, run from the project folder - so a relative
+  // path (local-hooks/insights.sh) is from there, and a Git Bash path
+  // (/d/hooks/insights.sh) or a command on PATH works too.
+  const viewPrsInsightsHookScript = String(env.VIEW_PRS_INSIGHTS_HOOK_SCRIPT || "").trim();
 
   const viewPrsInsightsHookTimeoutMs = Math.max(
     1000,
@@ -343,6 +367,8 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
     viewPrsUiBuildDir,
     viewPrsUiBuildIndexFile,
     viewPrsDataFile,
+    viewPrsLiveSummaryFile,
+    viewPrsSourcesFile,
     viewPrsUserStateFile,
     viewPrsAuthorCommentsFile,
     viewPrsSchedulerFile,
@@ -376,6 +402,7 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
     viewPrsAckTotalRefreshTimeoutMs,
     viewPrsEventsHeartbeatIntervalMs,
     viewPrsEventsMaxClients,
+    viewPrsEventsDataWatchIntervalMs,
     viewPrsSchedulerStateThrottleMs,
     viewPrsBackfillStatusTimeoutMs,
     viewPrsBackfillActionTimeoutMs,

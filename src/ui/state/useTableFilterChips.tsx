@@ -2,19 +2,22 @@ import { useContext, useMemo } from 'react';
 import { FilterStateContext } from './FilterStateContext';
 import { useRowFilterSelection } from './RowFilterSelectionContext';
 import { useDebouncedValue } from './useDebouncedValue';
-import { FILTER_PR_NUMBERS_DEBOUNCE_MS } from './useVisiblePrNumbers';
+import { FILTER_PR_NUMBERS_DEBOUNCE_MS, FILTER_SEARCH_DEBOUNCE_MS } from './useVisiblePrNumbers';
 import { createPrTableFilterChipsHelpers } from '../helpers/pr-table-filter-chips.helpers.ts';
 import type { FilterValues } from './filterValuesStore';
 import type { RowFilterListId } from './RowFilterSelectionContext';
 
 const { buildTableFilterChipsViewModel } = createPrTableFilterChipsHelpers();
 
-// Used without a <FilterStateProvider> ancestor, as useVisiblePrNumbers.tsx/
-// useAppliedFilterSummary.tsx do. No openMode: it's a Run Script option,
+// Used without a <FilterStateProvider> ancestor, as useVisiblePrNumbers.tsx
+// is. No openMode: it's a Run Script option,
 // not a row-visibility filter (rowMatchesUiFilters never reads it), so a
 // chip for it would falsely imply clearing it changes the table.
 const DEFAULT_FILTER_STATE_VALUES: FilterValues = {
-  scopeMode: 'all',
+  onlyNeedsAttention: false,
+  onlyOpenConversationsWithMe: false,
+  onlyWaitingOnMe: false,
+  onlyThreadsToCheck: false,
   filterPrNumbers: '',
   alwaysShowInReview: false,
   filterCustomComments: '',
@@ -36,10 +39,10 @@ const DEFAULT_FILTER_STATE_VALUES: FilterValues = {
  * indistinguishable from the user unchecking/clearing the control itself.
  *
  * filterPrNumbers specifically is debounced here the same way
- * useVisiblePrNumbers.tsx/useAppliedFilterSummary.tsx both already debounce
+ * useVisiblePrNumbers.tsx already debounces
  * it (same FILTER_PR_NUMBERS_DEBOUNCE_MS) - without this, the chip would
  * flicker through every intermediate keystroke (e.g. briefly showing
- * "PR #: 1" while typing "12") out of step with the table's own debounced
+ * "PRs: 1" while typing "12") out of step with the table's own debounced
  * re-filter.
  */
 export interface TableFilterChip {
@@ -54,10 +57,16 @@ export function useTableFilterChips(): { chips: TableFilterChip[] } {
   const setValue = filterState?.setValue;
   const { checkedByListId, toggle } = useRowFilterSelection();
   const debouncedFilterPrNumbers = useDebouncedValue(values.filterPrNumbers, FILTER_PR_NUMBERS_DEBOUNCE_MS);
+  // Debounced like the table, as filterPrNumbers is.
+  const debouncedSearch = useDebouncedValue(values.filterSearch, FILTER_SEARCH_DEBOUNCE_MS);
 
   return useMemo(() => {
     const descriptors = buildTableFilterChipsViewModel({
-      scopeMode: values.scopeMode,
+      filterSearch: debouncedSearch,
+      onlyNeedsAttention: Boolean(values.onlyNeedsAttention),
+      onlyOpenConversationsWithMe: Boolean(values.onlyOpenConversationsWithMe),
+      onlyWaitingOnMe: Boolean(values.onlyWaitingOnMe),
+      onlyThreadsToCheck: Boolean(values.onlyThreadsToCheck),
       filterPrNumbers: debouncedFilterPrNumbers,
       includeLabels: Array.from(checkedByListId['label-list'] || []),
       excludeLabels: Array.from(checkedByListId['exclude-label-list'] || []),
@@ -85,5 +94,5 @@ export function useTableFilterChips(): { chips: TableFilterChip[] } {
     }));
 
     return { chips };
-  }, [values, debouncedFilterPrNumbers, checkedByListId, setValue, toggle]);
+  }, [values, debouncedFilterPrNumbers, debouncedSearch, checkedByListId, setValue, toggle]);
 }

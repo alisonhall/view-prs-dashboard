@@ -1,4 +1,5 @@
 const path = require("path");
+const { writeFileReplacingSync } = require("./file-io-helpers");
 
 const isPlainObject = (value) =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -30,6 +31,16 @@ const createViewPrsSchedulerHelpers = ({
   // supplies the real function via a late-bound reference (see app.js's
   // own comment at the call site) to avoid a circular construction order.
   getDispatcherDerivedFields = () => ({}),
+  // () => what's running and how far it's got (view-prs-progress-helpers.js),
+  // for the Activity popover. None without it (tests).
+  getProgressTasks = () => [],
+  // The sources file (view-prs-sources-storage.js): which repos are
+  // subscribed. Without it (tests building these helpers alone), the repos
+  // are inferred from the stored data as before it existed.
+  sourcesStorage = null,
+  // () => { dataVersion }, which moves with the data file: what's read from
+  // it is kept until then. Without it (tests), read each time.
+  getDataVersion = null,
 }) => {
   const getManualCooldownSkipReason = ({
     nowMs,
@@ -83,6 +94,22 @@ const createViewPrsSchedulerHelpers = ({
 
       if (isPlainObject(parsed.pendingByRepo)) {
         viewPrsSchedulerState.pendingByRepo = parsed.pendingByRepo;
+      }
+
+      if (isPlainObject(parsed.manualFullRunAtByRepo)) {
+        viewPrsSchedulerState.manualFullRunAtByRepo = parsed.manualFullRunAtByRepo;
+      }
+
+      if (isPlainObject(parsed.unreachablePrSince)) {
+        viewPrsSchedulerState.unreachablePrSince = parsed.unreachablePrSince;
+      }
+
+      if (isPlainObject(parsed.refreshFailureByRepo)) {
+        viewPrsSchedulerState.refreshFailureByRepo = parsed.refreshFailureByRepo;
+      }
+
+      if (isPlainObject(parsed.noLongerOpenQueuedAt)) {
+        viewPrsSchedulerState.noLongerOpenQueuedAt = parsed.noLongerOpenQueuedAt;
       }
 
       // Per-repo dispatcher registry (see view-prs-dispatcher-helpers.js) -
@@ -165,17 +192,17 @@ const createViewPrsSchedulerHelpers = ({
       lastQuickCheckAt: viewPrsSchedulerState.lastQuickCheckAt || null,
       lastMergedDrainAt: viewPrsSchedulerState.lastMergedDrainAt || null,
       pendingByRepo: viewPrsSchedulerState.pendingByRepo || {},
+      manualFullRunAtByRepo: viewPrsSchedulerState.manualFullRunAtByRepo || {},
+      unreachablePrSince: viewPrsSchedulerState.unreachablePrSince || {},
+      refreshFailureByRepo: viewPrsSchedulerState.refreshFailureByRepo || {},
+      noLongerOpenQueuedAt: viewPrsSchedulerState.noLongerOpenQueuedAt || {},
       dispatcherVersion: 2,
       entries: getPersistableDispatcherEntries(),
     };
 
     try {
       fs.mkdirSync(path.dirname(viewPrsSchedulerFile), { recursive: true });
-      fs.writeFileSync(
-        viewPrsSchedulerFile,
-        `${JSON.stringify(persisted, null, 2)}\n`,
-        "utf8",
-      );
+      writeFileReplacingSync(fs, viewPrsSchedulerFile, `${JSON.stringify(persisted, null, 2)}\n`);
     } catch (error) {
       console.warn(
         `Unable to write scheduler state at ${viewPrsSchedulerFile}: ${error.message}`,
@@ -183,10 +210,31 @@ const createViewPrsSchedulerHelpers = ({
     }
   };
 
-  const setLastManualRunNow = () => {
-    viewPrsSchedulerState.lastManualRunAt = new Date().toISOString();
+  // fullRunRepo: the repo a manual run refreshed in full ("*": every repo -
+  // a run with no --repo), whose auto refresh then waits out the manual
+  // cooldown (getManualFullRunAtForRepo); null for a run of chosen PRs,
+  // which doesn't cover the repo. lastManualRunAt is any manual run's, for
+  // display.
+  const setLastManualRunNow = ({ fullRunRepo = null } = {}) => {
+    const nowIso = new Date().toISOString();
+    viewPrsSchedulerState.lastManualRunAt = nowIso;
     viewPrsSchedulerState.lastAutoSkipReason = null;
+    if (fullRunRepo) {
+      viewPrsSchedulerState.manualFullRunAtByRepo = {
+        ...(viewPrsSchedulerState.manualFullRunAtByRepo || {}),
+        [fullRunRepo]: nowIso,
+      };
+    }
     persistViewPrsSchedulerState();
+  };
+
+  // When this repo was last refreshed in full by a manual run, or null.
+  const getManualFullRunAtForRepo = (repo) => {
+    const byRepo = viewPrsSchedulerState.manualFullRunAtByRepo || {};
+    const stamps = [byRepo[toTrimmedString(repo)], byRepo["*"]].filter(
+      (value) => parseTimestamp(value) !== null,
+    );
+    return stamps.sort().pop() || null;
   };
 
   const getPendingCounts = () => {
@@ -202,6 +250,12 @@ const createViewPrsSchedulerHelpers = ({
     return { pendingOpenCount, pendingMergedClosedCount };
   };
 
+  // { repo, prNumber } pairs with a PR number, as app.js tracks them.
+  const toActivePrPairs = (list) =>
+    (Array.isArray(list) ? list : [])
+      .map((entry) => ({ repo: toTrimmedString(entry?.repo), prNumber: String(entry?.prNumber ?? "").trim() }))
+      .filter((entry) => /^\d+$/.test(entry.prNumber));
+
   const getViewPrsSchedulerPublicState = () => {
     // isXInProgress/lastXAt are now derived from the dispatcher's own
     // per-repo registry (see view-prs-dispatcher-helpers.js's
@@ -216,11 +270,13 @@ const createViewPrsSchedulerHelpers = ({
     const dispatcherFields = getDispatcherDerivedFields() || {};
 
     return {
-      activePrNumbers: Array.isArray(viewPrsSchedulerState.activePrNumbers)
-        ? viewPrsSchedulerState.activePrNumbers
-          .map((prNumber) => String(prNumber || "").trim())
-          .filter((prNumber) => /^\d+$/.test(prNumber))
-        : [],
+      // The PRs a run is fetching right now (the rows' spinners), and those
+      // a run of chosen PRs will fetch next ("queued"): { repo, prNumber }
+      // pairs, as PR numbers are only unique within a repo. (Before
+      // 2026-11-05 these were turned into strings and dropped as not
+      // numbers, so no background run's spinners reached the page.)
+      activePrNumbers: toActivePrPairs(viewPrsSchedulerState.activePrNumbers),
+      queuedPrNumbers: toActivePrPairs(viewPrsSchedulerState.queuedPrNumbers),
       intervalMinutes: Math.round(viewPrsAutoIntervalMs / 60000),
       manualCooldownMinutes: Math.round(viewPrsManualCooldownMs / 60000),
       quickCheckIntervalMinutes: Math.max(
@@ -269,6 +325,14 @@ const createViewPrsSchedulerHelpers = ({
       dispatcherQueue: Array.isArray(dispatcherFields.dispatcherQueue)
         ? dispatcherFields.dispatcherQueue
         : [],
+      // What's running and how far it's got - the Activity popover's Now.
+      tasks: getProgressTasks(),
+      // For the rows that couldn't be refreshed: each repo's last refresh
+      // that failed, until one works ({ at, since, error, prNumbers }), and
+      // the PRs fetched on their own that couldn't be fetched
+      // ("repo#number" => since when).
+      refreshFailures: viewPrsSchedulerState.refreshFailureByRepo || {},
+      unreachablePrs: viewPrsSchedulerState.unreachablePrSince || {},
     };
   };
 
@@ -317,6 +381,33 @@ const createViewPrsSchedulerHelpers = ({
       return;
     }
     delete pendingByRepo[safeRepo];
+  };
+
+  // After a refresh of chosen PRs: clears just those, so anything a quick
+  // check queued while it ran stays queued.
+  const clearPendingNumbersForRepo = (repo, numbers) => {
+    const safeRepo = toTrimmedString(repo);
+    const pendingByRepo = viewPrsSchedulerState.pendingByRepo || {};
+    const entry = pendingByRepo[safeRepo];
+    if (!entry) {
+      return;
+    }
+    const cleared = new Set((Array.isArray(numbers) ? numbers : []).map((value) => String(value).trim()));
+    const open = (entry.open || []).filter((value) => !cleared.has(String(value)));
+    const mergedClosed = (entry.mergedClosed || []).filter((value) => !cleared.has(String(value)));
+    if (open.length === 0 && mergedClosed.length === 0) {
+      delete pendingByRepo[safeRepo];
+      return;
+    }
+    pendingByRepo[safeRepo] = { ...entry, open, mergedClosed };
+  };
+
+  const getPendingForRepo = (repo) => {
+    const entry = (viewPrsSchedulerState.pendingByRepo || {})[toTrimmedString(repo)] || {};
+    return {
+      open: Array.isArray(entry.open) ? [...entry.open] : [],
+      mergedClosed: Array.isArray(entry.mergedClosed) ? [...entry.mergedClosed] : [],
+    };
   };
 
   const getReposWithPendingOpen = () => {
@@ -555,7 +646,10 @@ const createViewPrsSchedulerHelpers = ({
     resetAutoCircuitBreaker();
   };
 
-  const getViewPrsAutoRefreshRepos = (
+  // The repos tracked before the sources file existed: VIEW_PRS_AUTO_REPOS,
+  // every repo with a stored row, and the last run's - which seeds the
+  // file's subscriptions the first time.
+  const inferTrackedRepos = (
     data = readViewPrsData(),
     extraReposRaw = process.env.VIEW_PRS_AUTO_REPOS || "",
   ) => {
@@ -597,11 +691,158 @@ const createViewPrsSchedulerHelpers = ({
     return repos;
   };
 
+  const loadSources = () =>
+    sourcesStorage ? sourcesStorage.loadSources({ seedRepos: seedSubscriptionRepos }) : null;
+
+  // The repos the background updates fetch in full: VIEW_PRS_AUTO_REPOS
+  // and the "recent" subscriptions - not every repo with a stored row, or
+  // a single PR added from another repo would bring in all of that repo's.
+  // Until the sources file is seeded (no file, and no repo to seed it from
+  // yet - or data that couldn't be read), inferred as before - VIEW_PRS_REPO
+  // when nothing names a repo, so a fresh install still starts. Not after:
+  // unsubscribing the last repo mustn't bring VIEW_PRS_REPO back.
+  const getFullRefreshRepos = (sources, extraReposRaw) => {
+    if (!sources) {
+      return inferTrackedRepos(readViewPrsData(), extraReposRaw);
+    }
+    const repos = [];
+    const seen = new Set();
+    const addRepo = (repo) => {
+      const normalizedRepo = toTrimmedString(repo);
+      if (!isRepoSlug(normalizedRepo) || normalizedRepo.toLowerCase() === "owner/repo" || seen.has(normalizedRepo)) {
+        return;
+      }
+      seen.add(normalizedRepo);
+      repos.push(normalizedRepo);
+    };
+    parseRepoCsv(extraReposRaw).forEach(addRepo);
+    sourcesStorage.getRecentSubscriptionRepos(sources).forEach(addRepo);
+    return repos;
+  };
+
+  // How long a merged or closed PR fetched on its own keeps being checked.
+  const EXPLICIT_PR_DONE_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+
+  // The PRs fetched on their own (a "numbers" subscription's, and those
+  // added by URL), by repo - only in repos not fetched in full, whose runs
+  // cover them - less those merged or closed over 30 days ago, which have
+  // stopped changing. A repo left with none is left out.
+  // When each stored merged or closed PR was, by repo#number - read again
+  // only when the data's version moves (the dispatcher asks every tick).
+  let doneAtCache = { version: null, byKey: new Map() };
+  const getDoneAtByKey = () => {
+    const version = getDataVersion ? getDataVersion()?.dataVersion : null;
+    if (version && version === doneAtCache.version) return doneAtCache.byKey;
+    const byKey = new Map();
+    Object.values(readViewPrsData()?.byPrNumber || {}).forEach((entry) => {
+      if (entry?.section !== "merged" && entry?.section !== "closed") return;
+      const doneAtMs = parseTimestamp(entry?.data?.mergedAt || entry?.data?.closedAt);
+      if (doneAtMs !== null) byKey.set(`${entry.repo}#${entry.prNumber}`, doneAtMs);
+    });
+    doneAtCache = { version, byKey };
+    return byKey;
+  };
+
+  const getExplicitRefreshNumbersByRepo = (sources, fullRepos, nowMs = Date.now()) => {
+    const explicitByRepo = sources ? sourcesStorage.getExplicitPrNumbersByRepo(sources) : {};
+    const repos = Object.keys(explicitByRepo).filter((repo) => !fullRepos.includes(repo));
+    if (repos.length === 0) return {};
+    const doneAtByKey = getDoneAtByKey();
+    const byRepo = {};
+    repos.forEach((repo) => {
+      const numbers = explicitByRepo[repo].filter((number) => {
+        const doneAtMs = doneAtByKey.get(`${repo}#${number}`);
+        return doneAtMs === undefined || nowMs - doneAtMs <= EXPLICIT_PR_DONE_WINDOW_MS;
+      });
+      if (numbers.length > 0) byRepo[repo] = numbers;
+    });
+    return byRepo;
+  };
+
+  // Every repo the background updates fetch: those fetched in full, then
+  // those with PRs fetched on their own (getExplicitRefreshNumbers says
+  // which).
+  const getViewPrsAutoRefreshRepos = (extraReposRaw = process.env.VIEW_PRS_AUTO_REPOS || "") => {
+    const sources = loadSources();
+    const fullRepos = getFullRefreshRepos(sources, extraReposRaw);
+    return [...fullRepos, ...Object.keys(getExplicitRefreshNumbersByRepo(sources, fullRepos))];
+  };
+
+  // The PR numbers a background refresh of this repo is limited to: those
+  // of a repo with PRs fetched on their own and not fetched in full - []
+  // when none is left to check, so it's skipped, never fetched in full: one
+  // PR added from a repo mustn't bring in all of its PRs. Null - no limit -
+  // for any other repo: one fetched in full, or one asked for by name.
+  const getExplicitRefreshNumbers = (repo, extraReposRaw = process.env.VIEW_PRS_AUTO_REPOS || "") => {
+    const sources = loadSources();
+    if (!sources || !sourcesStorage.getExplicitPrNumbersByRepo(sources)[repo]) return null;
+    const fullRepos = getFullRefreshRepos(sources, extraReposRaw);
+    if (fullRepos.includes(repo)) return null;
+    return getExplicitRefreshNumbersByRepo(sources, fullRepos)[repo] || [];
+  };
+
+  // Which stored rows the page shows: { repos, prKeys } - every row of a
+  // repo fetched in full, and each PR fetched on their own (repo#number,
+  // merged or closed long ago included: those stop being checked, not
+  // shown). A repo unsubscribed is hidden, not deleted - its rows and notes
+  // stay, and come back with it. Null, showing every row, until the
+  // sources file is seeded.
+  const getRowVisibility = (extraReposRaw = process.env.VIEW_PRS_AUTO_REPOS || "") => {
+    const sources = loadSources();
+    if (!sources) return null;
+    const prKeys = new Set();
+    Object.entries(sourcesStorage.getExplicitPrNumbersByRepo(sources)).forEach(([repo, numbers]) =>
+      numbers.forEach((number) => prKeys.add(`${repo}#${number}`)),
+    );
+    return { repos: new Set(getFullRefreshRepos(sources, extraReposRaw)), prKeys };
+  };
+
+  // A repo's PRs fetched on their own still worth checking, whether or not
+  // it's fetched in full too (whose runs may not reach the older ones).
+  const getExplicitPrNumbersInWindow = (repo) =>
+    getExplicitRefreshNumbersByRepo(loadSources(), [])[repo] || [];
+
+  // The environment the script and gh run in for a repo: GH_HOST for one
+  // on a GitHub Enterprise host (gh's own -R takes owner/repo against it).
+  const getRepoGhEnv = (repo) => {
+    const host = sourcesStorage ? sourcesStorage.getRepoHost(sourcesStorage.readSources(), repo) : "";
+    return host ? { GH_HOST: host } : {};
+  };
+
+  // The first sources file's subscriptions: the repos tracked until then,
+  // without VIEW_PRS_AUTO_REPOS's (read each time instead) or the
+  // VIEW_PRS_REPO fallback (likewise). Null when the data couldn't be read
+  // (readViewPrsData then gives no rows and a readError): that's not "no
+  // repos".
+  const seedSubscriptionRepos = () => {
+    const data = readViewPrsData();
+    if (data?.readError) return null;
+    const seed = [];
+    const add = (repo) => {
+      const normalizedRepo = toTrimmedString(repo);
+      if (isRepoSlug(normalizedRepo) && normalizedRepo.toLowerCase() !== "owner/repo" && !seed.includes(normalizedRepo)) {
+        seed.push(normalizedRepo);
+      }
+    };
+    Object.values(data?.byPrNumber || {}).forEach((entry) => add(entry?.repo));
+    add(data?.lastRun?.repo);
+    return seed;
+  };
+
+  // A full manual run of a repo subscribes it, as running it always added
+  // it to the background updates (a run of chosen PRs doesn't).
+  // Not the "owner/repo" placeholder, which nothing fetches.
+  const subscribeRepoToRecent = (repo) =>
+    sourcesStorage && toTrimmedString(repo).toLowerCase() !== "owner/repo"
+      ? sourcesStorage.subscribeRepo(repo, { seedRepos: seedSubscriptionRepos })
+      : false;
+
   return {
     getManualCooldownSkipReason,
     readViewPrsSchedulerState,
     persistViewPrsSchedulerState,
     setLastManualRunNow,
+    getManualFullRunAtForRepo,
     getViewPrsSchedulerPublicState,
     getViewPrsAutoCircuitOpenState,
     buildAckRefreshBudgetSkipErrors,
@@ -611,8 +852,17 @@ const createViewPrsSchedulerHelpers = ({
     resetAutoCircuitBreaker,
     getOpenAutoCircuitRepos,
     getViewPrsAutoRefreshRepos,
+    getExplicitRefreshNumbers,
+    getExplicitPrNumbersInWindow,
+    getRowVisibility,
+    getRepoGhEnv,
+    inferTrackedRepos,
+    subscribeRepoToRecent,
+    seedSubscriptionRepos,
     setPendingForRepo,
     clearPendingForRepo,
+    clearPendingNumbersForRepo,
+    getPendingForRepo,
     getReposWithPendingOpen,
     getReposWithPendingMergedClosed,
     getPendingUpdatePrNumberKeys,

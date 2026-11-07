@@ -8,7 +8,7 @@ import { createPrAutoRenderIndicatorHelpers } from '../../helpers/pr-auto-render
 // The "jump to unsaved" links: one per PR with unsaved notes, one per
 // author with an unsaved Insights draft.
 function BlockedLinks() {
-  const { blockingPrNumbers, blockingAuthorInsightsLogins, blockingPrLabel } = useAutoRenderBlocking();
+  const { blockingPrKeys, blockingAuthorInsightsLogins, blockingPrLabel } = useAutoRenderBlocking();
   const { getAuthorInsightsDisplayName } = useAuthorInsights();
   const label = useMemo(
     () =>
@@ -18,10 +18,10 @@ function BlockedLinks() {
       }),
     [getAuthorInsightsDisplayName, blockingPrLabel, blockingAuthorInsightsLogins],
   );
-  if (!blockingPrNumbers.length && !blockingAuthorInsightsLogins.length) return null;
+  if (!blockingPrKeys.length && !blockingAuthorInsightsLogins.length) return null;
   return (
     <div id="auto-render-blocked-pr-links" className="auto-render-blocked-pr-links" role="group" aria-label={label}>
-      <AutoRenderBlockedLinks prNumbers={blockingPrNumbers} authorLogins={blockingAuthorInsightsLogins} />
+      <AutoRenderBlockedLinks prKeys={blockingPrKeys} authorLogins={blockingAuthorInsightsLogins} />
     </div>
   );
 }

@@ -1,4 +1,10 @@
 const path = require("path");
+const {
+  isLegacyPrEntryKey,
+  prNumberFromKey,
+  normalizePrEntryKeys,
+  migrateNotesKeys,
+} = require("../helpers/view-prs-pr-keys");
 
 const createViewPrsStateStorage = ({
   fs,
@@ -140,9 +146,9 @@ const createViewPrsStateStorage = ({
     }
   };
 
-  const writeViewPrsUserState = (state) => {
-    const incoming = normalizeViewPrsUserState(state);
-
+  // The user state file as it is, normalized - restored from its latest
+  // backup first when it's malformed (refusing when there's none to restore).
+  const readUserStateRestoringBackup = () => {
     let existingRead = readJsonFileIfExistsDetailed(viewPrsUserStateFile);
     if (existingRead.exists && existingRead.parseError) {
       const restoredFrom = tryRestoreJsonFileFromLatestBackup(
@@ -161,12 +167,26 @@ const createViewPrsStateStorage = ({
         );
       }
     }
+    return normalizeViewPrsUserState(existingRead.value || {});
+  };
 
-    const existing = normalizeViewPrsUserState(existingRead.value || {});
+  const writeViewPrsUserStateUnlocked = (state) => {
+    const incoming = normalizeViewPrsUserState(state);
+    const existing = readUserStateRestoringBackup();
 
-    for (const [prNumber, notes] of Object.entries(existing.notesByPrNumber)) {
-      if (!incoming.notesByPrNumber[prNumber]) {
-        incoming.notesByPrNumber[prNumber] = notes;
+    // Notes keyed by a bare number that the incoming state already has under
+    // a repo key (migrated - see view-prs-pr-keys.js) aren't brought back.
+    const incomingKeyedNumbers = new Set(
+      Object.keys(incoming.notesByPrNumber)
+        .filter((key) => !isLegacyPrEntryKey(key))
+        .map((key) => prNumberFromKey(key)),
+    );
+    for (const [prKey, notes] of Object.entries(existing.notesByPrNumber)) {
+      if (isLegacyPrEntryKey(prKey) && incomingKeyedNumbers.has(prKey)) {
+        continue;
+      }
+      if (!incoming.notesByPrNumber[prKey]) {
+        incoming.notesByPrNumber[prKey] = notes;
       }
     }
 
@@ -174,9 +194,81 @@ const createViewPrsStateStorage = ({
     mergeMissingPerRepoMap(incoming.reverifyByRepo, existing.reverifyByRepo);
     mergeMissingPerRepoMap(incoming.inReviewByRepo, existing.inReviewByRepo);
     mergeMissingPerRepoMap(incoming.flaggedByRepo, existing.flaggedByRepo);
+    // Only the script changes the Ack history (ACK_HISTORY_JQ in
+    // check-open-pr-updates.sh), so the file's is always the latest: a write
+    // here keeps it, rather than an older copy read before the script
+    // recorded an Ack.
+    incoming.ackHistoryByRepo = existing.ackHistoryByRepo;
 
     writeJsonFileWithBackup(viewPrsUserStateFile, incoming, "user-state");
   };
+
+  // The script's user-state lock (USER_STATE_LOCK_DIR in
+  // check-open-pr-updates.sh, beside the file), held around a read and its
+  // write so neither side writes over a change the other made in between -
+  // the script's jq, validation, backup and rename take long enough for a
+  // notes save to land in the middle. A bare directory, with no lock-info:
+  // the script then judges it by its age, not a pid (Git Bash's pids aren't
+  // Node's), as the server's PR-data lock (acquirePrStateLockForPatch).
+  // The script holds it for one write; one older than a minute was left by
+  // a script that died, and is passed over (written without, as before
+  // there was this lock) rather than failing every save until the script
+  // recovers it.
+  const userStateLockDir = viewPrsUserStateFile.replace(/\.json$/, "") + ".lock";
+  const USER_STATE_LOCK_WAIT_MS = 3000;
+  const USER_STATE_LOCK_ABANDONED_MS = 60000;
+  const sleepSync = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+  const isLockAbandoned = () => {
+    try {
+      return Date.now() - fs.statSync(userStateLockDir).mtimeMs > USER_STATE_LOCK_ABANDONED_MS;
+    } catch (_error) {
+      return false;
+    }
+  };
+  const withUserStateLock = (fn) => {
+    const deadlineMs = Date.now() + USER_STATE_LOCK_WAIT_MS;
+    let held = false;
+    for (;;) {
+      try {
+        fs.mkdirSync(userStateLockDir);
+        held = true;
+        break;
+      } catch (error) {
+        // No data folder yet (or an fs without mkdirSync): nothing to
+        // race with.
+        if (error?.code !== "EEXIST" || isLockAbandoned()) break;
+        if (Date.now() >= deadlineMs) {
+          throw new Error("Unable to acquire the user state lock", { cause: error });
+        }
+        sleepSync(25);
+      }
+    }
+    try {
+      return fn();
+    } finally {
+      if (held) {
+        try {
+          fs.rmdirSync(userStateLockDir);
+        } catch (_error) {
+          // Best effort.
+        }
+      }
+    }
+  };
+
+  const writeViewPrsUserState = (state) => withUserStateLock(() => writeViewPrsUserStateUnlocked(state));
+
+  // Reads the user state, hands it (normalized) to change, and writes what
+  // that returns - all under the lock, so the change is made to the latest
+  // (a malformed file's backup, not an empty state that would drop what
+  // the merge doesn't bring back, like conversation confirmations).
+  const updateViewPrsUserState = (change) =>
+    withUserStateLock(() => {
+      const current = readUserStateRestoringBackup();
+      const next = change(current) || current;
+      writeViewPrsUserStateUnlocked(next);
+      return next;
+    });
 
   const writeViewPrsAuthorComments = (state) => {
     const incoming = normalizeViewPrsAuthorComments(state);
@@ -227,6 +319,18 @@ const createViewPrsStateStorage = ({
         delete entry.notes;
         dataFileChanged = true;
       }
+    }
+
+    // Notes keyed by a bare number move to their PR's repo key (see
+    // view-prs-pr-keys.js): two repos can each have a PR with that number.
+    const migratedNotes = migrateNotesKeys(
+      migrated.notesByPrNumber,
+      normalizePrEntryKeys(byPrNumber),
+      String(main.lastFullRun?.repo || main.lastRun?.repo || ""),
+    );
+    if (migratedNotes !== migrated.notesByPrNumber) {
+      migrated.notesByPrNumber = migratedNotes;
+      userStateChanged = true;
     }
 
     const legacyAckByRepo = normalizePerRepoMap(main.ackByRepo, "string");
@@ -305,6 +409,7 @@ const createViewPrsStateStorage = ({
   return {
     writeJsonFileWithBackup,
     writeViewPrsUserState,
+    updateViewPrsUserState,
     writeViewPrsAuthorComments,
     mergeMissingPerRepoMap,
     migrateLegacyViewPrsUserState,

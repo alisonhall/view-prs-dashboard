@@ -12,12 +12,23 @@ export type SettingsSectionId =
   | 'attention'
   | 'merge-commits'
   | 'change-detection'
+  | 'sources'
   | 'script-options'
+  | 'background-updates'
   | 'backfill'
   | 'action-log'
   | 'actor-names'
   | 'export'
   | 'appearance';
+
+// An Action log entry to show: one of a kind, logged nearest a time (a
+// Just finished item's). `requestedAt` tells two requests for the same
+// entry apart.
+export interface ActionLogFocus {
+  kind: string;
+  atMs: number;
+  requestedAt: number;
+}
 
 export interface SettingsDrawerValue {
   isOpen: boolean;
@@ -25,6 +36,9 @@ export interface SettingsDrawerValue {
   open: (section?: SettingsSectionId) => void;
   close: () => void;
   setSection: (section: SettingsSectionId) => void;
+  actionLogFocus: ActionLogFocus | null;
+  // Opens the Action log at that entry.
+  openActionLogAt: (focus: { kind: string; atMs: number }) => void;
 }
 
 const noop = () => {};
@@ -35,6 +49,8 @@ export const SettingsDrawerContext = createContext<SettingsDrawerValue>({
   open: noop,
   close: noop,
   setSection: noop,
+  actionLogFocus: null,
+  openActionLogAt: noop,
 });
 
 export function useSettingsDrawer(): SettingsDrawerValue {
@@ -57,7 +73,18 @@ export function SettingsDrawerProvider({
     setIsOpen(true);
   }, []);
   const close = useCallback(() => setIsOpen(false), []);
-  const value = useMemo(() => ({ isOpen, section, open, close, setSection }), [isOpen, section, open, close]);
+  const [actionLogFocus, setActionLogFocus] = useState<ActionLogFocus | null>(null);
+  const openActionLogAt = useCallback(
+    (focus: { kind: string; atMs: number }) => {
+      setActionLogFocus({ ...focus, requestedAt: Date.now() });
+      open('action-log');
+    },
+    [open],
+  );
+  const value = useMemo(
+    () => ({ isOpen, section, open, close, setSection, actionLogFocus, openActionLogAt }),
+    [isOpen, section, open, close, actionLogFocus, openActionLogAt],
+  );
   return <SettingsDrawerContext.Provider value={value}>{children}</SettingsDrawerContext.Provider>;
 }
 

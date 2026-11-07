@@ -16,6 +16,8 @@ export interface RowFilterList {
   // load (pr-pending-multi-select-selections.helpers.ts).
   pendingKey: string;
   normalizeToken?: (value: unknown) => unknown;
+  // What picking options does (at the top of the open list).
+  description: string;
 }
 
 export const ROW_FILTER_LISTS: readonly RowFilterList[] = [
@@ -26,6 +28,7 @@ export const ROW_FILTER_LISTS: readonly RowFilterList[] = [
     optionsKey: 'labelOptions',
     pendingKey: 'pendingLabelSelections',
     normalizeToken: normalizeFilterToken,
+    description: 'Shows PRs with any of these labels.',
   },
   {
     listId: 'exclude-label-list',
@@ -34,10 +37,32 @@ export const ROW_FILTER_LISTS: readonly RowFilterList[] = [
     optionsKey: 'excludeLabelOptions',
     pendingKey: 'pendingExcludeLabelSelections',
     normalizeToken: normalizeFilterToken,
+    description: 'Hides PRs with any of these labels.',
   },
-  { listId: 'author-list', label: 'Authors', idPrefix: 'author', optionsKey: 'authorOptions', pendingKey: 'pendingAuthorSelections' },
-  { listId: 'assigned-list', label: 'Assigned to', idPrefix: 'assigned', optionsKey: 'assignedOptions', pendingKey: 'pendingAssignedSelections' },
-  { listId: 'approver-list', label: 'Approved by', idPrefix: 'approver', optionsKey: 'approverOptions', pendingKey: 'pendingApproverSelections' },
+  {
+    listId: 'author-list',
+    label: 'Authors',
+    idPrefix: 'author',
+    optionsKey: 'authorOptions',
+    pendingKey: 'pendingAuthorSelections',
+    description: 'Shows PRs opened by any of these people.',
+  },
+  {
+    listId: 'assigned-list',
+    label: 'Assigned to',
+    idPrefix: 'assigned',
+    optionsKey: 'assignedOptions',
+    pendingKey: 'pendingAssignedSelections',
+    description: 'Shows PRs assigned to any of these people.',
+  },
+  {
+    listId: 'approver-list',
+    label: 'Approved by',
+    idPrefix: 'approver',
+    optionsKey: 'approverOptions',
+    pendingKey: 'pendingApproverSelections',
+    description: 'Shows PRs approved by any of these people.',
+  },
 ];
 
 export interface NotesFilterField {
@@ -45,6 +70,8 @@ export interface NotesFilterField {
   // The FilterStateContext key, also the <select>'s name.
   key: string;
   label: string;
+  // What it filters on (the hint under it).
+  description: string;
   options: ReadonlyArray<{ value: string; label: string }>;
 }
 
@@ -54,6 +81,7 @@ export const NOTES_FILTER_FIELDS: readonly NotesFilterField[] = [
     id: 'filter-custom-comments',
     key: 'filterCustomComments',
     label: 'Custom comments',
+    description: "The comments you write in a PR's Notes tab.",
     options: [
       { value: '', label: 'Any (with or without)' },
       { value: 'with', label: 'With custom comments' },
@@ -64,6 +92,7 @@ export const NOTES_FILTER_FIELDS: readonly NotesFilterField[] = [
     id: 'filter-other-notes',
     key: 'filterOtherNotes',
     label: 'Other notes',
+    description: 'The Notes tab\'s "Other notes" field.',
     options: [
       { value: '', label: 'Any (with or without)' },
       { value: 'with', label: 'With other notes' },
@@ -74,6 +103,7 @@ export const NOTES_FILTER_FIELDS: readonly NotesFilterField[] = [
     id: 'filter-pr-difficulty',
     key: 'filterPrDifficulty',
     label: 'PR difficulty',
+    description: 'The difficulty (1 to 5) you gave the PR in its Notes tab.',
     options: [
       { value: '', label: 'Any (set or not set)' },
       { value: '1', label: '1' },
@@ -90,6 +120,7 @@ export const NOTES_FILTER_FIELDS: readonly NotesFilterField[] = [
     id: 'filter-stories',
     key: 'filterStories',
     label: 'Stories',
+    description: 'The stories (a name, a URL, or both) you linked in its Notes tab; one that matches is enough.',
     options: [
       { value: '', label: 'Any' },
       { value: 'none', label: 'Without any story details' },
@@ -102,6 +133,7 @@ export const NOTES_FILTER_FIELDS: readonly NotesFilterField[] = [
     id: 'filter-analysis-of-pr',
     key: 'filterAnalysisOfPr',
     label: 'Analysis of PR',
+    description: 'The analysis you pasted into its Notes tab.',
     options: [
       { value: '', label: 'Any (with or without)' },
       { value: 'with', label: 'With analysis' },

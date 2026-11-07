@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { Fragment, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import type { PrData, PrDataPayload, PrEntry } from '../../types/pr-data.ts';
 import type { ActorsMap } from '../../helpers/pr-actor-identity.helpers.ts';
 import type { PaneTab } from '../../state/PrTableUiStateContext';
@@ -14,11 +14,15 @@ import { PrNotesTab } from './PrNotesTab';
 import { InsightsHookContent, useInsightsHookHtml } from '../insights/InsightsHook';
 import { PrOverview } from './PrOverview';
 import { DEFAULT_ACTIVITY_FILTERS, PrActivityTab, type ActivityFilters } from './PrActivityTab';
-import { getLastLookedAt } from '../../helpers/pr-activity-feed.helpers.ts';
-import { useRepoLabels } from '../../state/RepoLabelsContext';
+import { buildAckEvents, getLastLookedAt } from '../../helpers/pr-activity-feed.helpers.ts';
+import { useLabelsForRepo } from '../../state/RepoLabelsContext';
 import { usePrInsightsDisplay } from '../../state/PrInsightsDisplayContext';
 import { useActorIdentity } from '../../state/ActorIdentityContext';
+import { useNeedsAttention } from '../../state/NeedsAttentionContext';
+import { createPrAuthorCellHelpers } from '../../helpers/pr-author-cell.helpers.ts';
+import { buildPrEntryKey } from '../../helpers/pr-entry-keys.helpers.ts';
 import { useNotesDirty } from '../../state/NotesDirtyContext';
+import { useOptionalPrData } from '../../state/PrDataContext';
 import { useFocusTrap } from '../../state/useFocusTrap';
 import { getLabelName } from '../../helpers/pr-filter-label-extraction.helpers.ts';
 import { createPrStatusDisplayHelpers } from '../../helpers/pr-status-display.helpers.ts';
@@ -58,6 +62,9 @@ export interface PrDetailPaneProps {
   ackedAt?: string;
   tab: PaneTab;
   onTabChange: (tab: PaneTab) => void;
+  // Each change asks for the Activity tab's "Since I last looked" (a row
+  // summary's "See all N in Activity"), the event types kept as picked.
+  activitySinceRequest?: number;
   onPrevious?: () => void;
   onNext?: () => void;
   // Close: hides the pane (and clears the selection).
@@ -88,12 +95,17 @@ function EmptyState() {
 }
 
 export function PrDetailPane(props: PrDetailPaneProps) {
-  const { entry, mode, onClose, onClearSelection = onClose } = props;
+  const { entry, mode, onClose, onClearSelection = onClose, activitySinceRequest = 0 } = props;
   useTooltipController();
   const containerRef = useRef<HTMLElement>(null);
   // The Activity tab's filters, held here (not in the per-PR content) so
   // they stay as picked for the next PR.
   const [activityFilters, setActivityFilters] = useState<ActivityFilters>(DEFAULT_ACTIVITY_FILTERS);
+  const [seenSinceRequest, setSeenSinceRequest] = useState(activitySinceRequest);
+  if (activitySinceRequest !== seenSinceRequest) {
+    setSeenSinceRequest(activitySinceRequest);
+    setActivityFilters({ ...activityFilters, scope: 'since' });
+  }
   const isDrawer = mode === 'drawer';
   useFocusTrap(containerRef, isDrawer && Boolean(entry), onClose);
 
@@ -179,10 +191,29 @@ function PaneContent({
   const repo = entry.repo || fallbackRepo;
   const ref = { prNumber, repo };
   const url = pr.url || `https://github.com/${repo}/pull/${prNumber}`;
-  const { labels: repoLabels } = useRepoLabels();
-  const { buildRowActorsMap } = useActorIdentity();
+  // This PR's repo's labels, not the current repo's, fetched when the
+  // Add label menu first opens.
+  const { labels: repoLabels, loaded: labelsLoaded, load: loadLabels } = useLabelsForRepo(repo);
+  const { buildRowActorsMap, getEffectiveViewerLogin, getPreferredActorKey } = useActorIdentity();
+  // "by" lists who the row's Who cell does: the author, then anyone else
+  // with non-merge commits (its "+N" and tooltip) - same helper, same
+  // merge-commit rules and alias dedupe.
+  const { mergeCommitRules } = useNeedsAttention().attentionConfig;
+  const { collectPrAuthors } = useMemo(
+    () => createPrAuthorCellHelpers({ getPreferredActorKey, mergeCommitRules }),
+    [getPreferredActorKey, mergeCommitRules],
+  );
+  const otherCommitters = collectPrAuthors(pr).slice(1);
   const { buildActivityEvents, getOpenConversationCountWithMe } = usePrInsightsDisplay();
-  const { dirtyPrNumbers } = useNotesDirty();
+  // Every Ack of the PR (the user state's history, and the current one),
+  // for the Activity tab: one cleared by a change since still shows you'd
+  // looked, and is when you last did.
+  const ackHistory = useOptionalPrData()?.payload?.ackHistoryByRepo?.[repo]?.[prNumber];
+  const viewerLogin = String(getEffectiveViewerLogin(pr) || '');
+  const ackEvents = useMemo(() => buildAckEvents(ackHistory, ackedAt || '', viewerLogin), [ackHistory, ackedAt, viewerLogin]);
+  const lastAckedAt = String(ackEvents[0]?.occurredAt || '');
+  const lastLookedAt = getLastLookedAt(pr.baseline, lastAckedAt);
+  const { dirtyPrKeys } = useNotesDirty();
   const hookHtml = useInsightsHookHtml(repo, prNumber, String(pr.sourceUpdatedAt || entry.updatedAt || ''));
   const rowActorsMap = buildRowActorsMap(pr, actorsMap);
 
@@ -199,8 +230,11 @@ function PaneContent({
     : undefined;
   // Every event, not the feed's first 60. Built again only when the PR
   // changes, not on every pane render.
-  const eventCount = useMemo(() => buildActivityEvents(pr, Number.POSITIVE_INFINITY).length, [buildActivityEvents, pr]);
-  const notesUnsaved = dirtyPrNumbers.includes(prNumber);
+  const eventCount = useMemo(
+    () => buildActivityEvents(pr, Number.POSITIVE_INFINITY).length + ackEvents.length,
+    [buildActivityEvents, pr, ackEvents],
+  );
+  const notesUnsaved = dirtyPrKeys.includes(buildPrEntryKey(repo, prNumber));
 
   const tabs: TabItem[] = [
     { id: 'overview', label: 'Overview' },
@@ -235,16 +269,32 @@ function PaneContent({
         <p className="pr-pane-meta">
           <span>
             by <ActorIdentity row={pr} login={pr.authorLogin} actorsMap={rowActorsMap} fallbackName={pr.author} />
+            {otherCommitters.length > 0 && (
+              <>
+                , with{' '}
+                {otherCommitters.map((committer, index) => (
+                  <Fragment key={committer.key}>
+                    {index > 0 && (index === otherCommitters.length - 1 ? ' and ' : ', ')}
+                    <ActorIdentity row={pr} login={committer.key} actorsMap={rowActorsMap} fallbackName={committer.name} />
+                  </Fragment>
+                ))}
+              </>
+            )}
           </span>
           {sourceBranch && (
             <span className="pr-pane-branch">
-              <code>{sourceBranch}</code>
-              <CopyIconButton text={sourceBranch} label="Copy branch name" />
+              From{' '}
+              {/* The copy button stays on the name's line. */}
+              <span className="pr-pane-branch-name">
+                <code>{sourceBranch}</code>
+                <CopyIconButton text={sourceBranch} label="Copy branch name" />
+              </span>
+              {/* "into" stays with the branch it's about. */}
+              {targetBranch && ' '}
               {targetBranch && (
-                <>
-                  {' → '}
-                  <code>{targetBranch}</code>
-                </>
+                <span className="pr-pane-branch-name">
+                  into <code>{targetBranch}</code>
+                </span>
               )}
             </span>
           )}
@@ -255,7 +305,12 @@ function PaneContent({
         <Button icon="refresh" onClick={() => void onUpdatePr?.(pr.number, ref, pr)}>
           Update
         </Button>
-        <Button icon="check" pressed={isAcknowledged} onClick={() => onAckAction?.(pr.number, isAcknowledged, repo)}>
+        <Button
+          icon="check"
+          pressed={isAcknowledged}
+          hint={isAcknowledged ? 'Click again to undo the Ack' : undefined}
+          onClick={() => onAckAction?.(pr.number, isAcknowledged, repo)}
+        >
           {isAcknowledged ? "Ack'd" : 'Ack'}
         </Button>
         <Button icon="eye" pressed={isInReview} onClick={() => onCheckboxChange?.(pr.number, 'inReview', !isInReview, repo)}>
@@ -267,11 +322,12 @@ function PaneContent({
         <MenuButton
           icon="tag"
           label="Add label"
+          onOpen={loadLabels}
           entries={[
             {
               id: 'labels',
               label: 'Labels',
-              emptyText: 'No labels to add',
+              emptyText: labelsLoaded ? 'No labels to add' : 'Loading labels…',
               items: availableLabels.map((name) => ({ id: name, label: name, onSelect: () => onApplyLabel?.(pr.number, name, repo) })),
             },
           ]}
@@ -287,17 +343,22 @@ function PaneContent({
         onSelect={(id) => onTabChange(id as PaneTab)}
       />
       <TabPanel idPrefix={TAB_ID_PREFIX} tabId={selectedTab} className="pr-pane-panel">
-        {selectedTab === 'overview' && <PrOverview entry={entry} pr={pr} actorsMap={rowActorsMap} />}
+        {selectedTab === 'overview' && (
+          <PrOverview entry={entry} pr={pr} actorsMap={rowActorsMap} lastLookedAt={lastLookedAt} lastAckedAt={lastAckedAt} />
+        )}
         {selectedTab === 'activity' && (
           <PrActivityTab
             pr={pr}
             actorsMap={rowActorsMap}
-            lastLookedAt={getLastLookedAt(pr.baseline, ackedAt)}
+            lastLookedAt={lastLookedAt}
+            ackEvents={ackEvents}
             filters={activityFilters}
             onFiltersChange={onActivityFiltersChange}
           />
         )}
-        {selectedTab === 'conversations' && <PrConversationsTab pr={pr} actorsMap={rowActorsMap} />}
+        {selectedTab === 'conversations' && (
+          <PrConversationsTab pr={pr} actorsMap={rowActorsMap} entry={entry} onDataRefresh={onDataRefresh} />
+        )}
         {/* Kept mounted (hidden) on the other tabs: unmounting would drop
             unsaved edits, which the "unsaved" badge still promises. */}
         <div className="pr-pane-notes" hidden={selectedTab !== 'notes'}>

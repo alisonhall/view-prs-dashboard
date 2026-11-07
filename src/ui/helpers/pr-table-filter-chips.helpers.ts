@@ -14,7 +14,10 @@ export interface FilterChip {
 }
 
 export interface TableFilterChipsInput {
-  scopeMode?: string;
+  onlyNeedsAttention?: boolean;
+  onlyOpenConversationsWithMe?: boolean;
+  onlyWaitingOnMe?: boolean;
+  onlyThreadsToCheck?: boolean;
   filterPrNumbers?: string;
   includeLabels?: string[];
   excludeLabels?: string[];
@@ -27,6 +30,7 @@ export interface TableFilterChipsInput {
   filterPrDifficulty?: string;
   filterStories?: string;
   filterAnalysisOfPr?: string;
+  filterSearch?: string;
 }
 
 const WITH_WITHOUT_LABELS: Record<string, string> = { with: "with", without: "without" };
@@ -53,7 +57,10 @@ const createPrTableFilterChipsHelpers = () => {
     }));
 
   const buildTableFilterChipsViewModel = ({
-    scopeMode,
+    onlyNeedsAttention,
+    onlyOpenConversationsWithMe,
+    onlyWaitingOnMe,
+    onlyThreadsToCheck,
     filterPrNumbers,
     includeLabels,
     excludeLabels,
@@ -66,17 +73,31 @@ const createPrTableFilterChipsHelpers = () => {
     filterPrDifficulty,
     filterStories,
     filterAnalysisOfPr,
+    filterSearch,
   }: TableFilterChipsInput = {}): FilterChip[] => {
     const chips: FilterChip[] = [];
 
-    if (scopeMode && scopeMode !== "all") {
-      chips.push(fieldChip("scopeMode", `Scope: ${scopeMode}`, "scopeMode", "all"));
+    if (String(filterSearch || "").trim()) {
+      chips.push(fieldChip("filterSearch", `Search: ${String(filterSearch).trim()}`, "filterSearch", ""));
+    }
+
+    if (onlyNeedsAttention) {
+      chips.push(fieldChip("onlyNeedsAttention", "Needs attention", "onlyNeedsAttention", false));
+    }
+    if (onlyOpenConversationsWithMe) {
+      chips.push(fieldChip("onlyOpenConversationsWithMe", "Open conversations with me", "onlyOpenConversationsWithMe", false));
+    }
+    if (onlyWaitingOnMe) {
+      chips.push(fieldChip("onlyWaitingOnMe", "Waiting on me", "onlyWaitingOnMe", false));
+    }
+    if (onlyThreadsToCheck) {
+      chips.push(fieldChip("onlyThreadsToCheck", "Conversations resolved for you", "onlyThreadsToCheck", false));
     }
     if (String(filterPrNumbers || "").trim()) {
       chips.push(
         fieldChip(
           "filterPrNumbers",
-          `PR #: ${String(filterPrNumbers).trim()}`,
+          `PRs: ${String(filterPrNumbers).trim()}`,
           "filterPrNumbers",
           "",
         ),

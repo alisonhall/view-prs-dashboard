@@ -12,7 +12,7 @@ const BLOCKED: AutoRenderBlockingValue = {
   isBlocked: true,
   statusText: 'New data waits for 1 unsaved PR.',
   discardAndApply: () => {},
-  blockingPrNumbers: [],
+  blockingPrKeys: [],
   blockingAuthorInsightsLogins: [],
   blockingPrLabel: '',
 };
@@ -62,14 +62,14 @@ describe('AutoUpdatePausedBanner', () => {
 
   test('links each PR with unsaved notes, in a group named by the PR label', () => {
     renderBanner({
-      blockingPrNumbers: ['7', '42'],
-      blockingPrLabel: 'Blocking PRs: #7, #42',
+      blockingPrKeys: ['acme/api#7', 'acme/web#42'],
+      blockingPrLabel: 'Blocking PRs: acme/api#7, acme/web#42',
     });
     const links = within(banner()).getByRole('group', {
-      name: 'Blocking PRs: #7, #42',
+      name: 'Blocking PRs: acme/api#7, acme/web#42',
     });
-    expect(within(links).getByRole('button', { name: '#7' })).toBeInTheDocument();
-    expect(within(links).getByRole('button', { name: '#42' })).toBeInTheDocument();
+    expect(within(links).getByRole('button', { name: 'acme/api#7' })).toBeInTheDocument();
+    expect(within(links).getByRole('button', { name: 'acme/web#42' })).toBeInTheDocument();
   });
 
   test('links each author with an unsaved draft by name; the group says whose', () => {

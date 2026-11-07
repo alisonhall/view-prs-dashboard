@@ -68,7 +68,17 @@ describe('PrReviewCell', () => {
 
   test('shows open conversations "with you" when that\'s what\'s counted, and nothing at zero', () => {
     renderCell({}, { display: { getOpenConversationCountWithMe: () => ({ count: 2, isViewerSpecific: true }) } as never });
-    expect(screen.getByRole('img', { name: '2 open conversations with you' })).toBeInTheDocument();
+    const icon = screen.getByRole('img', { name: '2 open conversations with you' });
+    expect(icon.querySelector('[fill="currentColor"]')).toBeNull();
+  });
+
+  test('fills the conversations icon in when any is waiting on you, and says how many', () => {
+    renderCell({}, {
+      display: { getOpenConversationCountWithMe: () => ({ count: 3, isViewerSpecific: true, waitingCount: 1 }) } as never,
+    });
+    const icon = screen.getByRole('img', { name: '3 open conversations with you, 1 waiting on you' });
+    expect(icon.querySelector('[fill="currentColor"]')).not.toBeNull();
+    expect(icon.closest('.ui-signal')).toHaveAttribute('data-tone', 'attention');
   });
 
   test('omits conversations at zero', () => {
@@ -174,5 +184,29 @@ describe('PrReviewCell', () => {
       expect(screen.queryByRole('group', { name: 'Assigned' })).not.toBeInTheDocument();
       expect(screen.queryByRole('group', { name: 'Reviewer' })).not.toBeInTheDocument();
     });
+  });
+});
+
+describe('PrReviewCell: conversations resolved for you', () => {
+  const identity = {
+    getEffectiveViewerLogin: () => 'me',
+    getPreferredActorKey: (login: unknown) => String(login || ''),
+  } as unknown as Partial<ActorIdentityValue>;
+  const resolvedForMe = (id: string) => ({
+    id,
+    isResolved: true,
+    resolvedByLogin: 'bob',
+    comments: [{ id: `${id}-c`, authorLogin: 'me', createdAt: '2026-01-01T00:00:00Z' }],
+  });
+
+  test('"N to check" for threads you started that someone else resolved', () => {
+    renderCell({ authorLogin: 'author', reviewThreads: [resolvedForMe('T1'), resolvedForMe('T2')] }, { identity });
+    const signal = screen.getByRole('img', { name: '2 conversations you started resolved by someone else, to check' });
+    expect(signal.closest('.ui-signal')).toHaveTextContent('2 to check');
+  });
+
+  test('nothing when there are none', () => {
+    renderCell({ authorLogin: 'author', reviewThreads: [] }, { identity });
+    expect(screen.queryByText(/to check/)).not.toBeInTheDocument();
   });
 });

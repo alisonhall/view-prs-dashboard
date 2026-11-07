@@ -40,8 +40,8 @@ export interface ShouldShowNeedsAttentionInput {
   config?: AttentionConfig;
 }
 
-// What each change-reason token from check-open-pr-updates.sh's
-// build_reasons means. An unknown token is shown as it is.
+// What each change-reason token from src/script/compute-pr-row.js's
+// buildReasons means. An unknown token is shown as it is.
 const CHANGE_REASON_TEXT: Record<string, string> = {
   "unanswered-thread": "Unanswered review threads",
   "thread-reply": "New replies in review threads",
@@ -77,6 +77,27 @@ const parseChangeReasonTokens = (row: PrData = {}): string[] => {
 // counts the change as needing attention.
 export const describeChangeReasons = (row: PrData = {}): string[] =>
   parseChangeReasonTokens(row).map((token) => CHANGE_REASON_TEXT[token] ?? `Changed: ${token}`);
+
+// What a changed PR shows without reasons of its own.
+export const CHANGED_FALLBACK_TEXT = "Changed since your last ack";
+
+// The change reasons a count of what's new doesn't already say (an
+// unanswered thread, a cleared Ack): each counted kind stands in for its
+// reasons.
+export const describeChangeReasonsBesides = (
+  row: PrData,
+  counted: { commits: number; reviews: number; comments: number },
+): string[] =>
+  parseChangeReasonTokens(row)
+    .filter(
+      (token) =>
+        !(
+          (token === "commit" && counted.commits) ||
+          (token === "review" && counted.reviews) ||
+          ((token === "comment" || token === "thread-reply") && counted.comments)
+        ),
+    )
+    .map((token) => CHANGE_REASON_TEXT[token] ?? `Changed: ${token}`);
 
 const NO_ACTIVITY_TEXT: Record<string, string> = {
   "assigned-only": "No recent activity on a PR assigned to you",
@@ -164,7 +185,7 @@ const createPrNeedsAttentionHelpers = ({
 
   const describeChange = (row: PrData): string[] => {
     const reasons = describeChangeReasons(row);
-    return reasons.length ? reasons : ["Changed since your last ack"];
+    return reasons.length ? reasons : [CHANGED_FALLBACK_TEXT];
   };
 
   // Why a PR needs attention, in words (the attention icon's tooltip, the

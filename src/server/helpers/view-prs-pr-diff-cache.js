@@ -10,6 +10,9 @@ const createViewPrsPrDiffCache = ({
   viewPrsPrDiffDir,
   viewPrsPrDiffTimeoutMs,
   viewPrsPrDiffConcurrency,
+  // (repo) => the env gh needs for it (GH_HOST for a GitHub Enterprise
+  // repo); none without it.
+  getRepoGhEnv = () => ({}),
   allowDestructiveWriteRaw = process.env.VIEW_PRS_ALLOW_DESTRUCTIVE_WRITE,
 }) => {
   const isDestructiveWriteAllowed =
@@ -45,7 +48,7 @@ const createViewPrsPrDiffCache = ({
         `repos/${safeRepo}/pulls/${safePr}`,
       ],
       20 * 1024 * 1024,
-      { timeoutMs: viewPrsPrDiffTimeoutMs },
+      { timeoutMs: viewPrsPrDiffTimeoutMs, env: getRepoGhEnv(safeRepo) },
     );
     return extractRawDiffText(result?.stdout);
   };

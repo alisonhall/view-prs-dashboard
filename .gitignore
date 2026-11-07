@@ -11,3 +11,4 @@ playwright/.cache
 .slingshot
 .claude
 local-hooks
+.env

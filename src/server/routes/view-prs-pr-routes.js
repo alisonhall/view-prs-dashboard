@@ -4,6 +4,13 @@ const {
 const {
   createViewPrsPrRouteHelpers,
 } = require("../helpers/view-prs-pr-route-helpers");
+const {
+  buildPrEntryKey,
+  findPrEntryKey,
+  migrateNotesKeys,
+  normalizePrEntryKeys,
+  prNumberFromKey,
+} = require("../helpers/view-prs-pr-keys");
 
 const NOTE_TONES = ["Positive", "Negative", "Neutral"];
 const validIsoOrNull = (value) => {
@@ -51,11 +58,8 @@ const registerViewPrsPrRoutes = ({
   fs,
   viewPrsDataFile,
   viewPrsAuthorCommentsFile,
-  normalizeViewPrsUserState,
   normalizeViewPrsAuthorComments,
-  readJsonFileIfExists,
-  viewPrsUserStateFile,
-  writeViewPrsUserState,
+  updateViewPrsUserState,
   readViewPrsAuthorComments,
   writeViewPrsAuthorComments,
   appendActionLogEntry,
@@ -147,7 +151,14 @@ const registerViewPrsPrRoutes = ({
         data = JSON.parse(fs.readFileSync(viewPrsDataFile, "utf8"));
       }
 
-      if (!data.byPrNumber || !data.byPrNumber[prNumber]) {
+      // The PR by repo and number (two repos can each have a PR with this
+      // number); without a repo (an older page), the row with this number.
+      const repo = String(body.repo || "").trim();
+      const rows = normalizePrEntryKeys(data.byPrNumber || {});
+      const rowKey = repo
+        ? findPrEntryKey(rows, repo, prNumber)
+        : Object.keys(rows).find((key) => prNumberFromKey(key) === String(prNumber));
+      if (!rowKey || !rows[rowKey]) {
         sendErrorStatus({
           res,
           statusCode: 404,
@@ -155,34 +166,91 @@ const registerViewPrsPrRoutes = ({
         });
         return;
       }
+      const rowRepo = String(rows[rowKey].repo || repo || "").trim();
+      const notesKey = rowRepo ? buildPrEntryKey(rowRepo, prNumber) : String(prNumber);
 
-      const userState = normalizeViewPrsUserState(
-        readJsonFileIfExists(viewPrsUserStateFile, {}),
-      );
-      const comments = buildSavedNoteComments(
-        rawComments,
-        userState.notesByPrNumber[prNumber]?.comments,
-        new Date().toISOString(),
-      );
-      const notes = normalizeNotes({
-        comments,
-        otherNotes: String(body.otherNotes ?? ""),
-        prDifficulty: String(body.prDifficulty ?? ""),
-        stories: body.stories,
-        // Older clients send these instead of stories.
-        rallyStories: body.rallyStories,
-        rallyLinks: body.rallyLinks,
-        analysisOfPr: String(body.analysisOfPr ?? ""),
+      // Read and written under the script's lock (updateViewPrsUserState),
+      // so a script run's Ack change and this save can't undo each other.
+      let comments = [];
+      updateViewPrsUserState((userState) => {
+        // Notes still keyed by a bare number go to their repo keys first, as
+        // when the data is read - one may be another repo's PR #N.
+        userState.notesByPrNumber = migrateNotesKeys(
+          userState.notesByPrNumber,
+          rows,
+          String(data.lastFullRun?.repo || data.lastRun?.repo || ""),
+        );
+        const previousNotes = userState.notesByPrNumber[notesKey];
+        comments = buildSavedNoteComments(
+          rawComments,
+          previousNotes?.comments,
+          new Date().toISOString(),
+        );
+        userState.notesByPrNumber[notesKey] = normalizeNotes({
+          comments,
+          otherNotes: String(body.otherNotes ?? ""),
+          prDifficulty: String(body.prDifficulty ?? ""),
+          stories: body.stories,
+          // Older clients send these instead of stories.
+          rallyStories: body.rallyStories,
+          rallyLinks: body.rallyLinks,
+          analysisOfPr: String(body.analysisOfPr ?? ""),
+        });
+        return userState;
       });
-      userState.notesByPrNumber[prNumber] = notes;
-      writeViewPrsUserState(userState);
 
       appendActionLogEntry({
         action: "post/notes",
         triggeredAt: notesStartedAt,
         durationMs: Date.now() - notesTriggerMs,
         ok: true,
-        detail: { prNumber, commentCount: comments.length },
+        detail: { prNumber, repo: rowRepo, commentCount: comments.length },
+      });
+      sendSuccessPayload({ res, payload: { ok: true, prData: readViewPrsData() } });
+    } catch (error) {
+      sendInternalError({ res, error });
+    }
+  });
+
+  // Confirming that a thread you started, resolved by someone else, was
+  // handled (the Conversations tab's "To check"): its signature then
+  // (threadCheckSignature in pr-review-threads.helpers.ts), or with
+  // `confirmed: false` the confirmation removed. Kept in the user state's
+  // threadChecksByRepo, repo -> PR number -> thread id -> signature.
+  app.post(["/thread-checks", "/view-prs/thread-checks"], (req, res) => {
+    const body = req.body || {};
+    const repo = String(body.repo || "").trim();
+    const prNumber = String(body.prNumber ?? "").trim();
+    const threadId = String(body.threadId || "").trim();
+    const signature = String(body.signature || "").trim();
+    const confirmed = body.confirmed !== false;
+    const startedAt = new Date().toISOString();
+    const triggerMs = Date.now();
+
+    if (!isRepoSlug(repo) || !isValidPrNumber(prNumber) || !threadId || (confirmed && !signature)) {
+      sendErrorStatus({ res, statusCode: 400, error: "Needs repo, prNumber, threadId and (to confirm) signature" });
+      return;
+    }
+
+    try {
+      updateViewPrsUserState((userState) => {
+        const perRepo = { ...(userState.threadChecksByRepo[repo] || {}) };
+        const perPr = { ...(perRepo[prNumber] || {}) };
+        if (confirmed) perPr[threadId] = signature;
+        else delete perPr[threadId];
+        if (Object.keys(perPr).length > 0) perRepo[prNumber] = perPr;
+        else delete perRepo[prNumber];
+        userState.threadChecksByRepo = { ...userState.threadChecksByRepo, [repo]: perRepo };
+        if (Object.keys(perRepo).length === 0) delete userState.threadChecksByRepo[repo];
+        return userState;
+      });
+
+      appendActionLogEntry({
+        action: "post/thread-checks",
+        triggeredAt: startedAt,
+        durationMs: Date.now() - triggerMs,
+        ok: true,
+        detail: { prNumber, repo, threadId, confirmed },
       });
       sendSuccessPayload({ res, payload: { ok: true, prData: readViewPrsData() } });
     } catch (error) {

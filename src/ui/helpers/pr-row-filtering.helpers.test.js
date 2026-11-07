@@ -22,10 +22,13 @@ describe("pr row filtering helpers", () => {
       prDifficulty: "3",
       stories: "name-only",
       analysisOfPr: "with",
+      searchTerms: ["parser"],
     });
 
     expect(criteria).toEqual({
       prNumbers: ["101", "102"],
+      prKeys: [],
+      repos: [],
       includeLabels: ["bug"],
       excludeLabels: ["wip"],
       authorLogins: ["alice"],
@@ -37,6 +40,7 @@ describe("pr row filtering helpers", () => {
       prDifficulty: "3",
       stories: "name-only",
       analysisOfPr: "with",
+      searchTerms: ["parser"],
     });
   });
 
@@ -47,6 +51,8 @@ describe("pr row filtering helpers", () => {
 
     expect(criteria).toEqual({
       prNumbers: [],
+      prKeys: [],
+      repos: [],
       includeLabels: [],
       excludeLabels: [],
       authorLogins: [],
@@ -58,6 +64,7 @@ describe("pr row filtering helpers", () => {
       prDifficulty: "",
       stories: "",
       analysisOfPr: "",
+      searchTerms: [],
     });
   });
 

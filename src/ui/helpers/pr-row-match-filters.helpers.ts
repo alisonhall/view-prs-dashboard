@@ -2,6 +2,8 @@ import type { PrData, PrEntry } from "../types/pr-data.ts";
 import type { ManualNotesFieldSummary } from "./pr-manual-notes-summary.helpers.ts";
 import type { RowFilterCriteria } from "./pr-row-filtering.helpers.ts";
 import type { GetPreferredActorKey } from "./pr-actor-identity.helpers.ts";
+import { prFilterPicksPrs, rowMatchesPrFilter } from "./pr-filter-input.helpers.ts";
+import { matchRowSearch } from "./pr-row-search.helpers.ts";
 
 // Whether one PR entry passes the table's row filters (PR numbers, labels,
 // people, notes fields). Pure with respect to its (entry, filters) args;
@@ -19,6 +21,8 @@ export interface PrRowMatchFiltersDeps {
   normalizeFilterToken?: (value: string) => string;
   getManualNotesFieldSummary?: (entry: PrEntry, row: PrData) => Partial<ManualNotesFieldSummary>;
   isInReviewEnabled?: (row: PrData) => boolean;
+  // The author's name as the row shows it, for the search box.
+  getAuthorDisplayName?: (row: PrData) => string;
 }
 
 const createPrRowMatchFiltersHelpers = ({
@@ -29,6 +33,7 @@ const createPrRowMatchFiltersHelpers = ({
   normalizeFilterToken,
   getManualNotesFieldSummary,
   isInReviewEnabled,
+  getAuthorDisplayName,
 }: PrRowMatchFiltersDeps = {}) => {
   const getPreferredActorKeySafe =
     typeof getPreferredActorKey === "function" ? getPreferredActorKey : () => "";
@@ -61,11 +66,17 @@ const createPrRowMatchFiltersHelpers = ({
       return true;
     }
 
-    if (filters.prNumbers.length > 0 && !filters.prNumbers.includes(prNumber)) {
+    // The PRs field: PRs it picks show whatever the other filters say; repos
+    // alone filter like the rest.
+    const prFilter = { prNumbers: filters.prNumbers, prKeys: filters.prKeys || [], repos: filters.repos || [] };
+    if (
+      (prFilterPicksPrs(prFilter) || prFilter.repos.length > 0) &&
+      !rowMatchesPrFilter(String(entry?.repo || ""), prNumber, prFilter)
+    ) {
       return false;
     }
 
-    if (filters.prNumbers.length > 0) {
+    if (prFilterPicksPrs(prFilter)) {
       return true;
     }
 
@@ -104,6 +115,13 @@ const createPrRowMatchFiltersHelpers = ({
     if (
       filters.approverLogins.length > 0 &&
       !filters.approverLogins.some((login) => approverLogins.includes(login))
+    ) {
+      return false;
+    }
+
+    if (
+      filters.searchTerms?.length > 0 &&
+      !matchRowSearch(entry, filters.searchTerms, getAuthorDisplayName ? [getAuthorDisplayName(row)] : []).matches
     ) {
       return false;
     }

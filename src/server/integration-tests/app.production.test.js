@@ -16,6 +16,11 @@ process.env.VIEW_PRS_UI_BUILD_DIR = buildDir;
 
 const { createViewPrsApp } = require("../app.js");
 
+// Real requests to a real server, like app.routes.test.js's: Jest's default
+// 5s wasn't enough for the first one with the full suite loading the
+// machine (it timed out once, and the rest of the file then failed).
+jest.setTimeout(20000);
+
 describe("createViewPrsApp in production mode", () => {
   let server;
   let baseUrl;

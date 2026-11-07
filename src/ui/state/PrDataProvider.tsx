@@ -13,6 +13,7 @@ import { createPrViewerContextHelpers } from '../helpers/pr-viewer-context.helpe
 import { inferViewerLoginFromPage } from '../helpers/pr-viewer-login-inference.helpers.ts';
 import { createPrDataPollingOrchestrationHelpers } from '../helpers/pr-data-polling-orchestration.helpers.ts';
 import { createPrDataPollingHelpers } from '../helpers/pr-data-polling.helpers.ts';
+import { createSerialRunner } from '../helpers/pr-serial-run.helpers.ts';
 import { createEntryDerivedCache } from '../helpers/pr-entry-derived-cache.helpers.ts';
 import { createPrStoredDataLoadHelpers } from '../helpers/pr-stored-data-load.helpers.ts';
 import { createPrRepoRunContextHelpers } from '../helpers/pr-repo-run-context.helpers.ts';
@@ -273,7 +274,7 @@ export function PrDataProvider({
     [recordRenderedPayload, resolveRepoFilter, setPendingAutoRenderPayload, showPayload, updateBackfillStatusFromPayload],
   );
 
-  const pollForDataChanges = useMemo(() => {
+  const pollOnce = useMemo(() => {
     const helpers = createPrDataPollingOrchestrationHelpers({
       fetchFn: (input, init) => fetch(input, init),
       documentRef: typeof document !== 'undefined' ? document : null,
@@ -370,6 +371,15 @@ export function PrDataProvider({
     getPendingAutoRenderPayload,
     setPendingAutoRenderPayload,
   ]);
+  // One poll at a time: <PrDataPolling />'s interval and the server's
+  // data-changed events (JobEventsProvider) each call this, and two polls at
+  // once could finish out of order - an older poll's rows and data version
+  // replacing a newer one's (an Ack just made flicking back). A call while
+  // one runs gets one more poll after it. Stable across renders, so the
+  // guard holds while pollOnce is rebuilt.
+  const pollOnceRef = useRef(pollOnce);
+  pollOnceRef.current = pollOnce;
+  const [pollForDataChanges] = useState(() => createSerialRunner(() => pollOnceRef.current()));
 
   // Skipped unless a backfill is running and no backfill action is pending
   // (BackfillStatusProvider's flags).

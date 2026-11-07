@@ -7,6 +7,7 @@ import { NowContext } from '../../state/NowContext';
 import { defaultPrInsightsDisplay, PrInsightsDisplayContext } from '../../state/PrInsightsDisplayContext';
 import type { PrActivityEvent, PrData } from '../../types/pr-data.ts';
 import { DEFAULT_ACTIVITY_FILTERS, PrActivityTab, type ActivityFilters } from './PrActivityTab';
+import { buildAckEvents } from '../../helpers/pr-activity-feed.helpers.ts';
 
 const NOW = Date.parse('2026-10-24T18:00:00Z');
 
@@ -309,5 +310,26 @@ describe('PrActivityTab', () => {
     const summary = screen.getByText('Daily summary').closest('details') as HTMLDetailsElement;
     expect(summary.open).toBe(false);
     expect(within(summary).getByRole('table')).toBeInTheDocument();
+  });
+});
+
+describe('PrActivityTab: your Acks', () => {
+  test('each Ack shows when you acknowledged the PR, the current one marked, with no GitHub link', () => {
+    const ackEvents = buildAckEvents(['2026-10-20T09:00:00Z', '2026-10-22T09:00:00Z'], '2026-10-22T09:00:00Z', 'me');
+    render(
+      <NowContext.Provider value={NOW}>
+        <PrActivityTab
+          pr={basePr([event('c1', '2026-10-21T09:00:00Z', { body: 'In between' })])}
+          lastLookedAt=""
+          ackEvents={ackEvents}
+          filters={DEFAULT_ACTIVITY_FILTERS}
+          onFiltersChange={() => {}}
+          timeZone="UTC"
+        />
+      </NowContext.Provider>,
+    );
+    const lines = items().map((item) => item.querySelector('.pr-activity-line')?.textContent || '');
+    expect(lines).toEqual(['me acknowledged the PR (current Ack)', 'alice commentedView on GitHub', 'me acknowledged the PR']);
+    expect(items()[0]?.querySelector('a')).toBeNull();
   });
 });

@@ -8,26 +8,31 @@
  * @module components/PrTableApp
  */
 
-import { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from 'react';
 import { PrSection } from './PrSection';
 import { PrJsonModal } from './PrJsonModal';
 import { usePrData } from '../state/PrDataContext';
 import { useNeedsAttention } from '../state/NeedsAttentionContext';
 import { useActorIdentity } from '../state/ActorIdentityContext';
 import { usePrInsightsDisplay } from '../state/PrInsightsDisplayContext';
-import { useVisiblePrNumbers } from '../state/useVisiblePrNumbers';
+import { useVisiblePrKeys } from '../state/useVisiblePrNumbers';
 import { usePrActivityQueue } from '../state/PrActivityQueueContext';
 import { useSinglePrUpdate } from '../state/useSinglePrUpdate';
 import { useStableCallback } from '../state/useStableCallback';
+import { useHeldSectionOrder } from '../state/useHeldSectionOrder';
 import { useAckLabelActions } from '../state/useAckLabelActions';
 import { usePrTableUiState, type SelectedPr } from '../state/PrTableUiStateContext';
 import { NowProvider } from '../state/NowContext';
+import { readDefaultQuickCheckIntervalMs, RepoFreshnessProvider } from '../state/RepoFreshnessContext';
+import type { RepoRefreshFailure } from '../helpers/pr-row-freshness.helpers.ts';
 import { useNotesDirty } from '../state/NotesDirtyContext';
 import { useMediaQuery } from '../state/useMediaQuery';
 import { usePrSectionPreferences } from '../state/PrSectionPreferencesProvider';
 import { useSettingsDrawer } from '../state/SettingsDrawerContext';
-import { isPrSectionHidden, prSectionStartsOpen } from '../helpers/pr-section-preferences.helpers.ts';
+import { isPrSectionHidden, prSectionSort, prSectionStartsOpen } from '../helpers/pr-section-preferences.helpers.ts';
+import { buildPrEntryKey } from '../helpers/pr-entry-keys.helpers.ts';
 import { captureRowAnchor, restoreRowAnchor, type RowAnchor } from '../helpers/row-scroll-anchor.helpers.ts';
+import { dockedPaneRoom } from '../helpers/docked-pane-room.helpers.ts';
 import { PrDetailPane } from './pane/PrDetailPane';
 import { Button } from './ui/Button';
 import { useRowCheckboxActions } from '../state/useRowCheckboxActions';
@@ -36,6 +41,11 @@ import { normalizeRows, sortRowsByPrNumberDesc, sortRowsByDateFieldDesc } from '
 import * as prSectionConfigHelperFactory from '../helpers/pr-section-config.helpers.ts';
 import * as prSmartGroupsHelperFactory from '../helpers/pr-smart-groups.helpers.ts';
 import * as prSectionGroupingHelperFactory from '../helpers/pr-section-grouping.helpers.ts';
+import { ShowRowRepoContext } from '../state/ShowRowRepoContext';
+import { SearchTermsContext } from '../state/SearchTermsContext';
+import { PrLegendPopover } from './PrLegendPopover';
+import { groupRowsByRepo } from '../helpers/pr-repo-grouping.helpers.ts';
+import { sortSectionRows } from '../helpers/pr-section-sort.helpers.ts';
 import type { PrData, PrDataPayload, PrEntry } from '../types/pr-data.ts';
 
 type PrNumber = string | number | undefined;
@@ -87,11 +97,11 @@ export function PrTableApp() {
   // PR data payload/selectedRepo - owned by <PrDataProvider />
   // (state/PrDataProvider.tsx).
   const { payload, selectedRepo, setPayload, applyFreshTablePayload } = usePrData();
-  // Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering"): visiblePrNumbers
+  // Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering"): visiblePrKeys
   // used to come from usePrData() itself (imperatively pushed by the
   // vanilla "Apply filters" pipeline) - now reactively derived live from
   // Context instead. See useVisiblePrNumbers.tsx's own comment.
-  const visiblePrNumbers = useVisiblePrNumbers();
+  const { visiblePrKeys, searchTerms } = useVisiblePrKeys();
   const { entryNeedsAttention, entryNeedsAttentionReasons, attentionConfig } = useNeedsAttention();
   // For the viewer's own smart groups (their PRs, assigned, review requested).
   const { getEffectiveViewerLogin, normalizeActorLogin } = useActorIdentity();
@@ -115,9 +125,9 @@ export function PrTableApp() {
     setPaneTab,
     reportRenderedSections,
   } = usePrTableUiState();
-  const { dirtyPrNumbers } = useNotesDirty();
+  const { dirtyPrKeys } = useNotesDirty();
   // Settings › Appearance: which sections show, and which start open.
-  const { preferences: sectionPreferences } = usePrSectionPreferences();
+  const { preferences: sectionPreferences, isReady: areSectionPreferencesReady, groupByRepo } = usePrSectionPreferences();
   const settingsDrawer = useSettingsDrawer();
   // Below 900px the detail pane is an overlay drawer instead of docked.
   const isNarrow = useMediaQuery(NARROW_SCREEN_QUERY);
@@ -140,12 +150,50 @@ export function PrTableApp() {
   // raw { repo, prNumber } pairs from the event detail (see app.js's
   // buildActivePrKey/syncSchedulerActivePrNumbers) - composite-keyed in
   // combinedActivePrNumbers below, alongside busyPrNumbers.
-  const [activePrNumbers, setActivePrNumbers] = useState<ActivePr[]>([]);
+  //
+  // Each starts from the scheduler state the data load brought: the live
+  // connection's first frame usually comes before the table mounts (after
+  // that load), and the next may be minutes away while nothing runs.
+  const initialScheduler = (payload?.scheduler || {}) as {
+    activePrNumbers?: unknown;
+    queuedPrNumbers?: unknown;
+    refreshFailures?: unknown;
+    unreachablePrs?: unknown;
+  };
+  const initialRecord = <T,>(value: unknown): T => (value && typeof value === 'object' && !Array.isArray(value) ? (value as T) : ({} as T));
+  const [activePrNumbers, setActivePrNumbers] = useState<ActivePr[]>(() =>
+    Array.isArray(initialScheduler.activePrNumbers) ? (initialScheduler.activePrNumbers as ActivePr[]) : [],
+  );
+  // And those a scheduler run of chosen PRs is still to fetch: "queued".
+  const [schedulerQueuedPrNumbers, setSchedulerQueuedPrNumbers] = useState<ActivePr[]>(() =>
+    Array.isArray(initialScheduler.queuedPrNumbers) ? (initialScheduler.queuedPrNumbers as ActivePr[]) : [],
+  );
+  // What couldn't be refreshed, for the rows (RepoFreshnessProvider): each
+  // repo's last refresh that failed, and the PRs that couldn't be fetched.
+  const [refreshFailures, setRefreshFailures] = useState(() =>
+    initialRecord<Record<string, RepoRefreshFailure>>(initialScheduler.refreshFailures),
+  );
+  const [unreachablePrs, setUnreachablePrs] = useState(() => initialRecord<Record<string, string>>(initialScheduler.unreachablePrs));
 
   useEffect(() => {
+    // Every scheduler frame carries both lists (several a second during a
+    // run, with its progress): kept as they are when nothing in them
+    // changed, so the table doesn't render again for each frame.
+    const keysOf = (list: ActivePr[]) => list.map((entry) => buildActivePrKey(String(entry?.prNumber), entry?.repo)).join(',');
+    const keepIfSame = (next: ActivePr[]) => (previous: ActivePr[]) => (keysOf(previous) === keysOf(next) ? previous : next);
+    const keepIfEqual =
+      <T,>(next: T) =>
+      (previous: T) =>
+        JSON.stringify(previous) === JSON.stringify(next) ? previous : next;
+    const isRecord = (value: unknown): value is Record<string, never> => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
     const handleActiveProgressUpdate = (event: Event) => {
-      const { detail } = event as CustomEvent<{ activePrNumbers?: ActivePr[] } | undefined>;
-      setActivePrNumbers(detail?.activePrNumbers || []);
+      const { detail } = event as CustomEvent<
+        { activePrNumbers?: ActivePr[]; queuedPrNumbers?: ActivePr[]; refreshFailures?: unknown; unreachablePrs?: unknown } | undefined
+      >;
+      setActivePrNumbers(keepIfSame(detail?.activePrNumbers || []));
+      setSchedulerQueuedPrNumbers(keepIfSame(detail?.queuedPrNumbers || []));
+      if (isRecord(detail?.refreshFailures)) setRefreshFailures(keepIfEqual<Record<string, RepoRefreshFailure>>(detail.refreshFailures));
+      if (isRecord(detail?.unreachablePrs)) setUnreachablePrs(keepIfEqual<Record<string, string>>(detail.unreachablePrs));
     };
 
     window.addEventListener('pr-active-progress-update', handleActiveProgressUpdate);
@@ -170,7 +218,7 @@ export function PrTableApp() {
   // window-bridge-fed instance of the same factory instead. This
   // component builds its own real handlers here, a second
   // useAckLabelActions() instance alongside RunCheckSection's (for the bulk
-  // "Apply ack only"/"Apply clear only" buttons) - no shared mutable
+  // "Apply ack only"/"Undo ack" buttons) - no shared mutable
   // state in the hook, so two independent instances is harmless.
   const { runAckOnlyWorkflow, runClearOnlyWorkflow, runApplyLabelWorkflow } = useAckLabelActions();
 
@@ -311,10 +359,16 @@ export function PrTableApp() {
   // Excludes anything already in combinedActivePrNumbers - "actively
   // running" always visually wins over "queued" for a given row, in the
   // (normally brief) moment a key could be in both sets.
+  // Queued: this tab's bulk chunks waiting their turn, and the PRs a
+  // scheduler run of chosen PRs is still to fetch.
   const combinedQueuedPrNumbers = useMemo(() => {
     const activeKeySet = new Set(combinedActivePrNumbers);
-    return Array.from(queuedPrNumbers).filter((key) => !activeKeySet.has(key));
-  }, [queuedPrNumbers, combinedActivePrNumbers]);
+    const keys = new Set([
+      ...queuedPrNumbers,
+      ...schedulerQueuedPrNumbers.map((entry) => buildActivePrKey(String(entry?.prNumber), entry?.repo)),
+    ]);
+    return Array.from(keys).filter((key) => !activeKeySet.has(key));
+  }, [queuedPrNumbers, schedulerQueuedPrNumbers, combinedActivePrNumbers]);
 
   // State: PR JSON details modal target ({ entry, pr } | null)
   const [jsonModalTarget, setJsonModalTarget] = useState<{ entry: Pick<PrEntry, 'prNumber' | 'repo'>; pr: PrData } | null>(null);
@@ -390,8 +444,9 @@ export function PrTableApp() {
   const checkNeedsAttention = useMemo(() => {
     return (entry: PrEntry) => {
       // The "In Review" checkbox is a manual, user-set flag (see
-      // isInReviewEnabled/AlwaysShowInReviewCheckbox) and deliberately does
-      // NOT feed into needs-attention - it's independent of whether the PR
+      // isInReviewEnabled, and the filter bar's "Always show PRs in
+      // review") and deliberately does NOT feed into needs-attention - it's
+      // independent of whether the PR
       // actually has unreviewed activity per the attention rules.
       try {
         return entryNeedsAttention(entry, attentionConfig);
@@ -508,12 +563,13 @@ export function PrTableApp() {
     // each entry already has the { prNumber, repo, section, data } shape
     // the vanilla renderer expects.
     const allEntries = Object.values(payload.byPrNumber);
-    // null/undefined visiblePrNumbers means no local filter is active (show
+    // null/undefined visiblePrKeys means no local filter is active (show
     // every stored PR); an array (even empty) means the vanilla filter
     // pipeline has run and this is exactly what passed it - without this,
     // "Apply filters (local)" would have no visible effect on the
     // React-rendered table at all (see index.page.js's React rendering
-    // path, which computes visiblePrNumbers from that same pipeline).
+    // path, which computes visiblePrKeys from that same pipeline). Keys,
+    // not bare numbers: another repo's PR with a shown number isn't shown.
     //
     // Deliberately NOT also gated on `entry?.repo === effectiveRepo`: PR
     // data for a repo other than the currently-configured one should still
@@ -527,12 +583,11 @@ export function PrTableApp() {
     // `const repo = effectiveRepo;` alias here had become dead after an
     // earlier refactor moved every real use over to `entry.repo` directly;
     // removed along with this now-stale comment describing it as in use.
-    const visiblePrNumberSet = Array.isArray(visiblePrNumbers)
-      ? new Set(visiblePrNumbers.map(String))
-      : null;
+    const visiblePrKeySet = Array.isArray(visiblePrKeys) ? new Set(visiblePrKeys) : null;
     const entriesForRepo = allEntries.filter(
       (entry) =>
-        !visiblePrNumberSet || visiblePrNumberSet.has(String(entry?.data?.number ?? entry?.prNumber ?? "")),
+        !visiblePrKeySet ||
+        visiblePrKeySet.has(buildPrEntryKey(entry?.repo, String(entry?.data?.number ?? entry?.prNumber ?? "").trim())),
     );
 
     // Group by lifecycle status and sort - now the *actual* shared
@@ -627,7 +682,7 @@ export function PrTableApp() {
     }));
   }, [
     payload,
-    visiblePrNumbers,
+    visiblePrKeys,
     checkNeedsAttention,
     checkUserInteraction,
     buildGroupedPrSections,
@@ -639,13 +694,60 @@ export function PrTableApp() {
 
   // Settings › Appearance's choices: hidden sections are left out entirely
   // (so they're not in previous/next, Export or View in table either), and
-  // a saved "Open when the page loads" replaces the built-in default.
-  const sections = useMemo(
+  // a saved "Open when the page loads" replaces the built-in default. Each
+  // section's rows in its sort (its own choice, else its default: merged by
+  // date merged, closed by date closed, the rest by PR number). With "Group
+  // rows by repo", then in their repos' order (A-Z), keeping that sort
+  // within each - so previous/next follows the headings PrTable draws.
+  const sortedSections = useMemo(
     () =>
       builtSections
         .filter((section) => !isPrSectionHidden(sectionPreferences, section.key))
-        .map((section) => ({ ...section, defaultOpen: prSectionStartsOpen(sectionPreferences, section.key, section.defaultOpen) })),
-    [builtSections, sectionPreferences],
+        .map((section) => {
+          const sorted = sortSectionRows(section.prs, prSectionSort(sectionPreferences, section.key));
+          return {
+            ...section,
+            prs: groupByRepo ? groupRowsByRepo(sorted, true).flatMap((group) => group.rows) : sorted,
+            defaultOpen: prSectionStartsOpen(sectionPreferences, section.key, section.defaultOpen),
+          };
+        }),
+    [builtSections, sectionPreferences, groupByRepo],
+  );
+  // The sections you're working in (PrSection reports the pointer or
+  // keyboard focus in one), and those with the row open in the detail pane
+  // (not just selected: hiding the pane keeps the selection): a refresh
+  // doesn't re-sort their rows (useHeldSectionOrder) - their tables offer
+  // "Re-sort".
+  const selectedSectionKeys = useMemo(() => {
+    const keys = new Set<string>();
+    if (selectedPr && isPaneVisible) {
+      sortedSections.forEach((section) => {
+        if (section.prs.some((entry) => (entry?.repo || effectiveRepo) === selectedPr.repo && String(entry?.data?.number ?? entry?.prNumber ?? '') === selectedPr.prNumber)) {
+          keys.add(section.key);
+        }
+      });
+    }
+    return keys;
+  }, [selectedPr, isPaneVisible, sortedSections, effectiveRepo]);
+  const sectionSortKey = useCallback(
+    (section: { key: string }) => `${JSON.stringify(prSectionSort(sectionPreferences, section.key))}:${groupByRepo}`,
+    [sectionPreferences, groupByRepo],
+  );
+  const { sections: heldSections, orderChangedKeys, resortSection, setSectionInteracting } = useHeldSectionOrder(
+    sortedSections,
+    selectedSectionKeys,
+    sectionSortKey,
+    effectiveRepo,
+  );
+  const sections = useMemo(
+    () => heldSections.map((section) => (orderChangedKeys.has(section.key) ? { ...section, orderChanged: true } : section)),
+    [heldSections, orderChangedKeys],
+  );
+  // Rows say their repo once those in view (not just those filtered to)
+  // come from more than one, so filtering doesn't make it come and go.
+  const showRowRepo = useMemo(
+    () => new Set(Object.values(payload?.byPrNumber || {}).map((entry) => entry?.repo).filter(Boolean)).size > 1,
+    [payload],
   );
   // The PRs the filters let through that aren't in any section on the page
   // (all their sections are hidden), for the filter bar's count.
@@ -668,15 +770,16 @@ export function PrTableApp() {
   // each shows, so Settings › Export can export the open sections' rows. The
   // numbers are each row's `data.number`, which PrNumberCell renders.
   useEffect(() => {
+    if (!areSectionPreferencesReady) return;
     reportRenderedSections(
       sections.map((section) => ({
         key: section.key,
         defaultOpen: Boolean(section.defaultOpen),
-        prNumbers: (section.prs || []).map((entry) => String(entry?.data?.number || '')),
+        prKeys: (section.prs || []).map((entry) => buildPrEntryKey(entry?.repo, String(entry?.data?.number || ''))),
       })),
       hiddenPrCount,
     );
-  }, [sections, hiddenPrCount, reportRenderedSections]);
+  }, [sections, hiddenPrCount, reportRenderedSections, areSectionPreferencesReady]);
 
   // The selected PR's entry, looked up again in each payload; null when
   // nothing is selected or the PR is no longer in the data.
@@ -718,7 +821,7 @@ export function PrTableApp() {
   // hiding the pane) unmounts its Notes: ask first when they're unsaved
   // (UI_REDESIGN_PLAN.md, decision 3).
   const confirmLeavingPr = (): boolean => {
-    if (!selectedPr || !dirtyPrNumbers.includes(selectedPr.prNumber)) return true;
+    if (!selectedPr || !dirtyPrKeys.includes(buildPrEntryKey(selectedPr.repo, selectedPr.prNumber))) return true;
     return window.confirm(`PR #${selectedPr.prNumber} has unsaved notes. Discard them?`);
   };
   const selectPr = (next: SelectedPr | null): boolean => {
@@ -756,6 +859,54 @@ export function PrTableApp() {
     paneAnchorRef.current = null;
     restoreRowAnchor(anchor);
   }, [isPaneVisible]);
+
+  // Near the end of the list the docked pane shrinks to fit above the
+  // list's bottom, so its header (close, previous/next) stays in the window
+  // (dockedPaneRoom). Set directly in the pane's --pr-pane-room, without a
+  // re-render - on the pane, not an ancestor, so only it restyles, and
+  // only when the limit changes: mid-list there's none, so scrolling
+  // writes nothing.
+  const workspaceRef = useRef<HTMLDivElement>(null);
+  const hasWorkspace = builtSections.length > 0 && areSectionPreferencesReady;
+  const isDockedPaneShown = isPaneVisible && !isNarrow;
+  useEffect(() => {
+    const workspace = workspaceRef.current;
+    const list = workspace?.querySelector('.pr-workspace-list');
+    if (!isDockedPaneShown || !workspace || !list) return undefined;
+    let limited: { pane: HTMLElement; room: number | null } | null = null;
+    const write = (pane: HTMLElement | null, room: number | null) => {
+      if (limited?.pane === pane && limited.room === room) return;
+      if (limited && limited.pane !== pane) limited.pane.style.removeProperty('--pr-pane-room');
+      if (pane && room !== null) pane.style.setProperty('--pr-pane-room', `${room}px`);
+      else pane?.style.removeProperty('--pr-pane-room');
+      limited = pane ? { pane, room } : null;
+    };
+    const update = () => {
+      const pane = workspace.querySelector<HTMLElement>('.pr-pane[data-mode="docked"]');
+      if (!pane) return write(null, null);
+      const style = getComputedStyle(pane);
+      const stickyTop = parseFloat(style.top) || 0;
+      // Its usual height runs from where it sticks to as far above the
+      // window's bottom as it sticks below --sticky-top (pane.css).
+      const gap = stickyTop - (parseFloat(style.getPropertyValue('--sticky-top')) || 0);
+      const { top, bottom } = list.getBoundingClientRect();
+      write(
+        pane,
+        dockedPaneRoom({ listTop: top, listBottom: bottom, stickyTop, paneMaxHeight: window.innerHeight - stickyTop - gap }),
+      );
+    };
+    update();
+    window.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+    const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(update) : null;
+    observer?.observe(list);
+    return () => {
+      window.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
+      observer?.disconnect();
+      write(null, null);
+    };
+  }, [isDockedPaneShown, hasWorkspace]);
 
   // Listen for "View in table" clicks (Author Insights, Review Stats) and
   // the "Auto update paused" chips (with `focusUnsaved`), which dispatch
@@ -935,8 +1086,17 @@ export function PrTableApp() {
     if (selectPr(pr)) showPane(true, row);
   });
   const handleSelectPr = useStableCallback((prNumber: string, repo: string) => selectPr({ repo, prNumber }));
-  const handleShowDetails = useStableCallback((prNumber: PrNumber, repo: string) => {
-    if (selectPr({ repo, prNumber: String(prNumber ?? '') })) showPane(true);
+  // A summary's "See all N in Activity" asks for the Activity tab, on
+  // "Since I last looked" (the pane resets its scope when the request's
+  // count changes).
+  const [activitySinceRequest, setActivitySinceRequest] = useState(0);
+  const handleShowDetails = useStableCallback((prNumber: PrNumber, repo: string, tab?: 'activity') => {
+    if (!selectPr({ repo, prNumber: String(prNumber ?? '') })) return;
+    showPane(true);
+    if (tab === 'activity') {
+      setPaneTab('activity');
+      setActivitySinceRequest((count) => count + 1);
+    }
   });
   const handleClearSelection = useStableCallback(() => {
     selectPr(null);
@@ -975,8 +1135,9 @@ export function PrTableApp() {
   const actorsMap = useMemo(() => payload?.actorsMap || NO_ACTORS, [payload?.actorsMap]);
 
   // Loading state: Show message while data loads (no sections built yet -
-  // not every section hidden, which shows its own message below).
-  if (builtSections.length === 0) {
+  // not every section hidden, which shows its own message below), or until
+  // the section choices are known (so a hidden section doesn't flash).
+  if (builtSections.length === 0 || !areSectionPreferencesReady) {
     const hasPayload = payload && Object.keys(payload).length > 0;
     const hasPrs = payload?.byPrNumber && Object.keys(payload.byPrNumber).length > 0;
     
@@ -1012,74 +1173,93 @@ export function PrTableApp() {
   const paneAckedAt = selectedPr ? String(payload?.ackByRepo?.[selectedPr.repo]?.[selectedPr.prNumber] || '') : '';
 
   // NowProvider: one clock for the rows' relative times (Activity ages).
+  // RepoFreshnessProvider: each repo's listing state, for the rows'
+  // freshness. ShowRowRepoContext: whether rows say their repo.
+  // SearchTermsContext: the search's words, for the rows' "Matches in".
   return (
-    <NowProvider>
-      <div className="pr-workspace-toolbar">
-        <Button icon="panel" pressed={isPaneVisible} onClick={handleTogglePane}>
-          Detail pane
-        </Button>
-      </div>
-      <div className="pr-workspace" data-pane={isPaneDocked ? 'docked' : undefined}>
-        <div className="pr-workspace-list">
-          {sections.length === 0 && (
-            <div className="pr-sections-all-hidden">
-              <p>Every section is hidden.</p>
-              <Button onClick={() => settingsDrawer.open('appearance')}>Choose sections to show</Button>
+    <ShowRowRepoContext.Provider value={showRowRepo}>
+      <SearchTermsContext.Provider value={searchTerms}>
+        <NowProvider>
+          <RepoFreshnessProvider
+            liveSummary={payload?.dataMeta?.liveSummary}
+            backgroundUpdates={payload?.dataMeta?.backgroundUpdates}
+            defaultIntervalMs={readDefaultQuickCheckIntervalMs(payload?.scheduler)}
+            refreshFailures={refreshFailures}
+            unreachablePrs={unreachablePrs}
+          >
+            <div className="pr-workspace-toolbar">
+              <Button icon="panel" pressed={isPaneVisible} onClick={handleTogglePane}>
+                Detail pane
+              </Button>
+              <PrLegendPopover />
             </div>
-          )}
-          {sections.map((section) => (
-            <PrSection
-              key={section.key}
-              section={section}
-              repo={effectiveRepo}
-              actorsMap={actorsMap}
-              isOpen={isSectionOpen(section.key, Boolean(section.defaultOpen))}
-              expandedInsights={expandedInsights}
-              selectedPrKey={selectedPrKey}
-              onToggleSection={handleToggleSection}
-              onToggleInsights={handleToggleInsights}
-              onSelectRow={handleSelectRow}
-              onSelectPr={handleSelectPr}
-              onShowDetails={handleShowDetails}
-              onClearSelection={handleClearSelection}
-              onCheckboxChange={handleCheckboxChange}
-              onAckAction={handleAckActionBusy}
-              onApplyLabel={handleApplyLabelBusy}
-              onUpdatePr={handleUpdatePrBusy}
-              onViewJson={handleViewJson}
-              getPrFlags={getPrFlags}
-              getAttentionReasons={getAttentionReasons}
-              activePrNumbers={combinedActivePrNumbers}
-              queuedPrNumbers={combinedQueuedPrNumbers}
-            />
-          ))}
-        </div>
-        {isPaneVisible && (
-          <PrDetailPane
-            entry={selectedEntry}
-            repo={effectiveRepo}
-            mode={paneMode}
-            actorsMap={actorsMap}
-            isFlagged={Boolean(paneFlags?.isFlagged)}
-            isInReview={Boolean(paneFlags?.isInReview)}
-            isAcknowledged={Boolean(paneFlags?.isAcknowledged)}
-            ackedAt={paneAckedAt}
-            tab={paneTab}
-            onTabChange={setPaneTab}
-            onPrevious={previousPr ? () => handleStepPr(previousPr) : undefined}
-            onNext={nextPr ? () => handleStepPr(nextPr) : undefined}
-            onClose={handleClosePane}
-            onClearSelection={handleClearSelection}
-            onCheckboxChange={handleCheckboxChange}
-            onAckAction={handleAckActionBusy}
-            onApplyLabel={handleApplyLabelBusy}
-            onUpdatePr={handleUpdatePrBusy}
-            onViewJson={handleViewJson}
-            onDataRefresh={setPayload}
-          />
-        )}
-      </div>
-      <PrJsonModal target={jsonModalTarget} payload={payload} onClose={() => setJsonModalTarget(null)} />
-    </NowProvider>
+            <div ref={workspaceRef} className="pr-workspace" data-pane={isPaneDocked ? 'docked' : undefined}>
+              <div className="pr-workspace-list">
+                {sections.length === 0 && (
+                  <div className="pr-sections-all-hidden">
+                    <p>Every section is hidden.</p>
+                    <Button onClick={() => settingsDrawer.open('appearance')}>Choose sections to show</Button>
+                  </div>
+                )}
+                {sections.map((section) => (
+                  <PrSection
+                    key={section.key}
+                    section={section}
+                    repo={effectiveRepo}
+                    actorsMap={actorsMap}
+                    isOpen={isSectionOpen(section.key, Boolean(section.defaultOpen))}
+                    expandedInsights={expandedInsights}
+                    selectedPrKey={selectedPrKey}
+                    onToggleSection={handleToggleSection}
+                    onInteractingChange={setSectionInteracting}
+                    onResortSection={resortSection}
+                    onToggleInsights={handleToggleInsights}
+                    onSelectRow={handleSelectRow}
+                    onSelectPr={handleSelectPr}
+                    onShowDetails={handleShowDetails}
+                    onClearSelection={handleClearSelection}
+                    onCheckboxChange={handleCheckboxChange}
+                    onAckAction={handleAckActionBusy}
+                    onApplyLabel={handleApplyLabelBusy}
+                    onUpdatePr={handleUpdatePrBusy}
+                    onViewJson={handleViewJson}
+                    getPrFlags={getPrFlags}
+                    getAttentionReasons={getAttentionReasons}
+                    activePrNumbers={combinedActivePrNumbers}
+                    queuedPrNumbers={combinedQueuedPrNumbers}
+                  />
+                ))}
+              </div>
+              {isPaneVisible && (
+                <PrDetailPane
+                  entry={selectedEntry}
+                  repo={effectiveRepo}
+                  mode={paneMode}
+                  actorsMap={actorsMap}
+                  isFlagged={Boolean(paneFlags?.isFlagged)}
+                  isInReview={Boolean(paneFlags?.isInReview)}
+                  isAcknowledged={Boolean(paneFlags?.isAcknowledged)}
+                  ackedAt={paneAckedAt}
+                  tab={paneTab}
+                  onTabChange={setPaneTab}
+                  activitySinceRequest={activitySinceRequest}
+                  onPrevious={previousPr ? () => handleStepPr(previousPr) : undefined}
+                  onNext={nextPr ? () => handleStepPr(nextPr) : undefined}
+                  onClose={handleClosePane}
+                  onClearSelection={handleClearSelection}
+                  onCheckboxChange={handleCheckboxChange}
+                  onAckAction={handleAckActionBusy}
+                  onApplyLabel={handleApplyLabelBusy}
+                  onUpdatePr={handleUpdatePrBusy}
+                  onViewJson={handleViewJson}
+                  onDataRefresh={setPayload}
+                />
+              )}
+            </div>
+            <PrJsonModal target={jsonModalTarget} payload={payload} onClose={() => setJsonModalTarget(null)} />
+          </RepoFreshnessProvider>
+        </NowProvider>
+      </SearchTermsContext.Provider>
+    </ShowRowRepoContext.Provider>
   );
 }

@@ -7,7 +7,7 @@ export interface AvatarProps {
   initials: string;
   login: string;
   isViewer?: boolean;
-  size?: 'sm' | 'md';
+  size?: 'sm' | 'md' | 'lg';
 }
 
 const hueFor = (login: string) => [...login.toLowerCase()].reduce((sum, char) => sum + char.charCodeAt(0), 0) % 8;

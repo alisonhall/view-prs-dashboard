@@ -63,11 +63,79 @@
   border-radius: 10px;
   background: var(--color-surface-inset);
   padding: 10px;
-  max-height: 300px;
+  max-height: 360px;
   overflow: auto;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+/* A source's fields (ExportFieldTree.tsx): fields side by side, each group
+   across the whole width, its fields indented under it once opened. */
+.export-field-source-heading {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.export-field-tree-items {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 8px 12px;
+}
+
+.export-field-group {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 8px;
+}
+
+.export-field-group > .export-field-tree-items {
+  padding-left: 22px;
+}
+
+.export-field-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* The group's name and count, which open it. */
+.export-field-group-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 4px 1px 2px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.export-field-group-toggle > svg {
+  color: var(--color-text-muted);
+}
+
+.export-field-group-toggle:hover {
+  background: var(--color-surface-hover);
+}
+
+.export-field-group-toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.export-field-group-label {
+  font-weight: 600;
+}
+
+.export-field-group-count {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--color-text-muted);
 }
 
 .export-field-option {
@@ -94,6 +162,24 @@
   text-transform: uppercase;
   letter-spacing: 0.04em;
   margin-right: 4px;
+}
+
+.export-field-option-missing {
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+/* What's chosen and what would export; the section's gap spaces it, not
+   a <pre>'s own margins. */
+.export-summary {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  white-space: pre-wrap;
+}
+
+.export-profiles-manager .ui-saved-list {
+  margin-top: 8px;
 }
 
 .export-actions {
@@ -143,32 +229,108 @@
   font-style: italic;
 }
 
-.action-log-table {
-  width: 100%;
-  border-collapse: collapse;
+.action-log-filters {
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.action-log-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 13px;
 }
 
-.action-log-table th,
-.action-log-table td {
-  padding: 6px 10px;
-  text-align: left;
+.action-log-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+
+.action-log-entry {
   border-bottom: 1px solid var(--color-border-strong);
-  white-space: normal;
-  overflow-wrap: anywhere;
-  word-break: normal;
 }
 
-.action-log-table th {
-  background: var(--color-surface-inset);
+.action-log-entry[data-focused] {
+  background: var(--color-accent-subtle);
+}
+
+.action-log-entry summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  padding: 6px 4px;
+  cursor: pointer;
+}
+
+.action-log-when {
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.action-log-label {
   font-weight: 600;
-  color: var(--color-text);
 }
 
-.action-log-table td.action-log-detail {
-  white-space: normal;
-  max-width: 280px;
-  word-break: normal;
+.action-log-origin {
+  padding: 0 6px;
+  border-radius: 10px;
+  font-size: 12px;
+  background: var(--color-surface-inset);
+  color: var(--color-text-muted);
+}
+
+.action-log-origin[data-origin="you"] {
+  background: var(--color-accent-subtle);
+  color: var(--color-accent-text);
+}
+
+.action-log-repos,
+.action-log-duration {
+  color: var(--color-text-muted);
+}
+
+.action-log-summary {
+  flex: 1 1 200px;
+  overflow-wrap: anywhere;
+}
+
+.action-log-entry[data-outcome="failed"] .action-log-summary {
+  color: var(--color-danger);
+}
+
+.action-log-details {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px 12px;
+  margin: 0 0 8px;
+  padding: 0 4px 0 22px;
+  font-size: 12px;
+}
+
+.action-log-details > div {
+  display: contents;
+}
+
+.action-log-details dt {
+  color: var(--color-text-muted);
+}
+
+.action-log-details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.action-log-status-skipped {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--color-surface-inset);
+  color: var(--color-text-muted);
 }
 
 .action-log-status-ok {
@@ -181,7 +343,7 @@
   color: var(--color-success);
 }
 
-.action-log-status-fail {
+.action-log-status-failed {
   display: inline-block;
   padding: 1px 7px;
   border-radius: 10px;

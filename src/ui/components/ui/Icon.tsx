@@ -34,6 +34,8 @@ const ICON_SHAPES = {
     </>
   ),
   chat: <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />,
+  // chat, filled in: a conversation waiting on you.
+  chatFilled: <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" fill="currentColor" />,
   check: <path d="M20 6 9 17l-5-5" />,
   checksFail: (
     <>
@@ -219,6 +221,15 @@ const ICON_SHAPES = {
       <path d="M1 14h6" />
       <path d="M9 8h6" />
       <path d="M17 16h6" />
+    </>
+  ),
+  // Up and down arrows side by side: a section's sort (PrSectionSortMenu).
+  sort: (
+    <>
+      <path d="m3 16 4 4 4-4" />
+      <path d="M7 20V4" />
+      <path d="m21 8-4-4-4 4" />
+      <path d="M17 4v16" />
     </>
   ),
   tag: (

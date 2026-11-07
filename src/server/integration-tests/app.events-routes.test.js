@@ -10,7 +10,7 @@ const { registerViewPrsEventsRoutes } = require("../routes/view-prs-events-route
 // The real wiring (subscribeToJobEvents sharing the same emitter instance
 // emitJobEvent uses) is exercised by app.scheduler-events.test.js, which
 // spies on the real module.exports.emitJobEvent override.
-const createTestServer = ({ heartbeatIntervalMs = 25000, maxClients = 25 } = {}) => {
+const createTestServer = ({ heartbeatIntervalMs = 25000, maxClients = 25, getDataVersion, dataWatchIntervalMs } = {}) => {
   const emitter = new EventEmitter();
   const subscribeToJobEvents = (listener) => {
     emitter.on("job-event", listener);
@@ -28,6 +28,11 @@ const createTestServer = ({ heartbeatIntervalMs = 25000, maxClients = 25 } = {})
     console: { error: () => {} },
     heartbeatIntervalMs,
     maxClients,
+    getDataVersion,
+    // As app.js's emitDataChanged: a "data-changed" envelope to every
+    // subscriber.
+    emitDataChanged: (detail) => emit({ type: "data-changed", ...detail }),
+    dataWatchIntervalMs,
   });
 
   const server = app.listen(0);
@@ -120,6 +125,37 @@ describe("GET /view-prs/events", () => {
       expect(gotJobFrame).toBe(true);
       expect(text).toContain('"job":"autoRefresh"');
       await reader.cancel();
+    } finally {
+      server.close();
+    }
+  });
+
+  test("pushes data-changed when the data version moves, and stops watching once no page is connected", async () => {
+    let version = "v1";
+    const getDataVersion = jest.fn(() => version);
+    const { server, getJobEventsSubscriberCount } = createTestServer({ getDataVersion, dataWatchIntervalMs: 20 });
+    try {
+      const response = await fetch(`${baseUrl(server)}/view-prs/events`);
+      const snapshot = await readFramesUntil(
+        response,
+        (acc) => acc.includes("event: snapshot") && acc.includes("\n\n"),
+      );
+      version = "v2";
+      const decoder = new TextDecoder();
+      let { text } = snapshot;
+      for (let i = 0; i < 20 && !text.includes("event: data-changed"); i += 1) {
+        const { value, done } = await snapshot.reader.read();
+        if (done) break;
+        text += decoder.decode(value, { stream: true });
+      }
+      expect(text).toContain("event: data-changed");
+      expect(text).toContain('"dataVersion":"v2"');
+      await snapshot.reader.cancel();
+
+      expect(await waitForCondition(() => getJobEventsSubscriberCount() === 0)).toBe(true);
+      const callsAfterClose = getDataVersion.mock.calls.length;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(getDataVersion.mock.calls.length).toBe(callsAfterClose);
     } finally {
       server.close();
     }

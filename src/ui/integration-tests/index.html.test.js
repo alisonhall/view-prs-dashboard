@@ -141,7 +141,7 @@ let requestActivityTestHandle = null;
 let statusTextTestHandle = null;
 // Window-bridge elimination Phase 7.4: the real NotesDirtyProvider's value,
 // captured by NotesDirtyTestHandle below. The deferred-poll tests mark a PR's
-// notes dirty through it (they used to stub window.getDirtyNotesPrNumbers and
+// notes dirty through it (they used to stub window.getDirtyNotesPrKeys and
 // call window.recomputeDirtyPrSectionsFields, both index.page.js's).
 let notesDirtyTestHandle = null;
 const readFilterStateValues = () => filterStateTestHandle?.values;
@@ -322,7 +322,7 @@ const createFetchMock = ({
 // window.renderReactFilterSummary/window.updateReactDataMetaText (the 2
 // push bridges this used to install a standalone rtlRender tree for) are
 // both confirmed dead in production - DataViewHeader derives the same
-// summary/chips/#data-meta text live, reactively, from Context instead.
+// chips and filter bar count live, reactively, from Context instead.
 // The harness's real AppShell renders it inside the harness's
 // PrDataProvider (not as its own independent root the way this used to
 // be), since it needs a real <PrDataProvider/> ancestor.
@@ -930,6 +930,48 @@ describe("index page rendering with Testing Library", () => {
     expect(notesPanel.querySelector(".pr-notes-section")).toBeTruthy();
   });
 
+  test("a summary's \"See all N in Activity\" opens the PR's Activity tab on what's new since you last looked", async () => {
+    const comment = (id, occurredAt) => ({ sourceId: id, occurredAt, actor: "reviewer1", type: "comment", channel: "top-level", body: id });
+    initTestPage({
+      dataPayload: createMultiPrPayload({
+        prs: [
+          {
+            scenario: "open-no-change",
+            prNumber: 13,
+            overrides: {
+              data: {
+                title: "New since you looked",
+                url: "https://example.com/13",
+                baseline: "2026-03-10T12:00:00Z",
+                activityEvents: [
+                  comment("n4", "2026-03-14T10:00:00Z"),
+                  comment("n3", "2026-03-13T10:00:00Z"),
+                  comment("n2", "2026-03-12T10:00:00Z"),
+                  comment("n1", "2026-03-11T10:00:00Z"),
+                  comment("old", "2026-03-09T10:00:00Z"),
+                ],
+              },
+            },
+          },
+        ],
+      }),
+    });
+    const user = userEvent.setup();
+    await waitFor(() => {
+      expect(document.querySelector('[data-pr-section="open"]')).toBeTruthy();
+    });
+    const row = within(document.querySelector('[data-pr-section="open"]')).getByText("#13").closest("tr");
+    await user.click(within(row).getByRole("button", { name: "Show summary for PR #13" }));
+    const summaryRow = row.nextElementSibling;
+    expect(within(summaryRow).getByRole("heading", { name: /^New since your last activity on Mar 10/ })).toBeInTheDocument();
+
+    await user.click(within(summaryRow).getByRole("button", { name: "See all 4 in Activity for PR #13" }));
+    const pane = document.querySelector(".pr-pane");
+    expect(within(pane).getByRole("tab", { name: /^Activity/ })).toHaveAttribute("aria-selected", "true");
+    expect(within(pane).getByRole("button", { name: /Since I last looked/ })).toHaveAttribute("aria-pressed", "true");
+    expect(within(pane).getByRole("button", { name: /Since I last looked/ })).toHaveTextContent("4");
+  });
+
   test("given review comment markdown with github user attachments when insights render then blocked image tags are replaced with unavailable placeholders", async () => {
     initTestPage({
       dataPayload: createMultiPrPayload({
@@ -1056,7 +1098,7 @@ describe("index page rendering with Testing Library", () => {
     ).toBe("49 lines changed");
   });
 
-  test("given open and merged rows when rendering PR cells then relative last-checked indicators use each row's updated timestamp", async () => {
+  test("given open and merged rows when rendering PR cells then each row's freshness is in its Activity tooltip, from its own timestamps", async () => {
     // The Activity column only shows while the detail pane is hidden.
     hideDetailPane();
     const nowSpy = jest
@@ -1107,21 +1149,24 @@ describe("index page rendering with Testing Library", () => {
         expect(screen.getByText("#11")).toBeInTheDocument();
       });
 
-      // UI redesign phase 2: the last check is in the Activity cell's
-      // tooltip (it was the Status column's "↻ 20m ago"), and a stale one
-      // is marked on the age.
+      // The row's freshness is in the Activity cell's tooltip (README's
+      // Freshness), from its own timestamps (fetchedAt, else updatedAt -
+      // these rows have no fetchedAt and their repo no listing), and a
+      // stale open row is marked on the age.
       const openRow = screen.getByText("#11").closest("tr");
       const mergedRow = screen.getByText("#99").closest("tr");
       const openActivity = openRow?.querySelector(".pr-activity");
       const mergedActivity = mergedRow?.querySelector(".pr-activity");
 
+      const openAt = formatIsoDatetime("2026-06-16T10:10:00Z");
       expect(tooltipDescription(openActivity)).toContain(
-        `Last checked for updates at ${formatIsoDatetime("2026-06-16T10:10:00Z")}. (stale)`,
+        `Summary confirmed 20m ago (${openAt}).\nDetails fetched 20m ago (${openAt}).\nStale: not confirmed recently.`,
       );
       expect(tooltipDescription(mergedActivity)).toContain(
-        `Last checked for updates at ${formatIsoDatetime("2026-06-16T10:20:00Z")}.`,
+        `Details fetched 10m ago (${formatIsoDatetime("2026-06-16T10:20:00Z")}).`,
       );
-      expect(tooltipDescription(mergedActivity)).not.toContain("(stale)");
+      expect(tooltipDescription(mergedActivity)).not.toContain("Summary confirmed");
+      expect(tooltipDescription(mergedActivity)).not.toContain("Stale");
       expect(openActivity).toHaveAttribute("data-stale", "true");
       expect(mergedActivity).not.toHaveAttribute("data-stale");
     } finally {
@@ -1129,7 +1174,7 @@ describe("index page rendering with Testing Library", () => {
     }
   });
 
-  test("given an open PR row, when rendering, then the PR link is in the Pull request cell with no busy indicator, and the last check is in the Activity cell's tooltip", async () => {
+  test("given an open PR row, when rendering, then the PR link is in the Pull request cell with no busy indicator, and its freshness is in the Activity cell's tooltip", async () => {
     // The Activity column only shows while the detail pane is hidden.
     hideDetailPane();
     initTestPage({
@@ -1163,9 +1208,9 @@ describe("index page rendering with Testing Library", () => {
     expect(titleCell?.querySelector(".pr-link")).toHaveTextContent("#12");
     expect(titleCell?.querySelector(".pr-busy")).toBeNull();
     const row = titleCell?.closest("tr");
-    expect(tooltipDescription(row?.querySelector(".pr-activity"))).toContain(
-      `Last checked for updates at ${formatIsoDatetime("2026-06-16T10:10:00Z")}.`,
-    );
+    const description = tooltipDescription(row?.querySelector(".pr-activity"));
+    expect(description).toContain("Details fetched ");
+    expect(description).toContain(`(${formatIsoDatetime("2026-06-16T10:10:00Z")}).`);
   });
 
   test("given author thread-resolution policy modes, when PR author resolves a review thread, then warning behavior follows the selected rule", async () => {
@@ -1820,8 +1865,8 @@ describe("index page rendering with Testing Library", () => {
     });
 
     await waitFor(() => {
-      const dataMeta = document.getElementById("data-meta")?.textContent || "";
-      expect(dataMeta).toContain("Rows: 1");
+      const dataMeta = document.querySelector(".filter-bar-count")?.textContent || "";
+      expect(dataMeta).toContain("Showing 1 of");
     });
 
     // #scheduler-badges/#scheduler-details (the Status tab's old "Auto
@@ -1878,15 +1923,14 @@ describe("index page rendering with Testing Library", () => {
   // cluster 1): "Apply filters (local)" (the button) is deleted outright -
   // view-filter fields now auto-persist on their own real "change" event
   // instead of needing an explicit click (same mechanism the other,
-  // already-auto-persisting fields always used). Changing scope-mode
-  // directly is this test's new trigger.
+  // already-auto-persisting fields always used). Checking "Only PRs that
+  // need attention" directly is this test's new trigger.
   test("given a view-filter field changes, when the change event fires, then view-filter defaults are persisted", async () => {
     const user = userEvent.setup();
     fetchMock.mockClear();
 
 
-    const scopeField = document.getElementById("scope-mode");
-    await user.selectOptions(scopeField, "needs-attention");
+    await user.click(document.getElementById("only-needs-attention"));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalled();
@@ -1914,8 +1958,7 @@ describe("index page rendering with Testing Library", () => {
     // itself its own explicit trigger instead of depending on another
     // test's side effect, same pattern the "view-filter defaults are
     // persisted" test just above uses.
-    const scopeField = document.getElementById("scope-mode");
-    await user.selectOptions(scopeField, "needs-attention");
+    await user.click(document.getElementById("only-needs-attention"));
 
     await waitFor(() => {
       const putCall = fetchMock.mock.calls.find((call) => {
@@ -2739,14 +2782,14 @@ describe("index page rendering with Testing Library", () => {
     const user = userEvent.setup();
 
 
-    const scopeField = document.getElementById("scope-mode");
+    const onlyAttentionField = document.getElementById("only-needs-attention");
     const prFilterField = document.getElementById("filter-pr-numbers");
     const labelList = getMultiSelectList("label-list");
     const excludeLabelList = getMultiSelectList("exclude-label-list");
     const authorList = getMultiSelectList("author-list");
     const assignedList = getMultiSelectList("assigned-list");
 
-    expect(scopeField).toBeInTheDocument();
+    expect(onlyAttentionField).toBeInTheDocument();
     expect(prFilterField).toBeInTheDocument();
     expect(labelList).toBeInTheDocument();
     expect(excludeLabelList).toBeInTheDocument();
@@ -2768,7 +2811,7 @@ describe("index page rendering with Testing Library", () => {
     // not user.type: by the time enough of this suite has run, user.type's
     // per-keystroke events stop reliably reaching a field's onChange (see
     // renderCleanNotesSection()'s comment), while one change event does.
-    fireEvent.change(scopeField, { target: { value: "needs-attention-or-interacted" } });
+    fireEvent.click(onlyAttentionField);
     fireEvent.change(prFilterField, { target: { value: "1" } });
     await clickMultiSelectCheckbox("label-list", "frontend", user);
     await clickMultiSelectCheckbox("exclude-label-list", "bug", user);
@@ -2777,15 +2820,13 @@ describe("index page rendering with Testing Library", () => {
 
 
     await waitFor(() => {
-      const dataMetaText = document.getElementById("data-meta")?.textContent || "";
-      expect(dataMetaText).toContain("Rows: 1");
-      expect(dataMetaText).toContain("pr-numbers=1");
-      expect(dataMetaText).toContain("scope=all stored rows");
+      const dataMetaText = document.querySelector(".filter-bar-count")?.textContent || "";
+      expect(dataMetaText).toContain("Showing 1 of");
     });
 
     // Phase H.12 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
     // now that filterPrNumbers is synced into real Context above (needed
-    // for the live #data-meta summary to see it), the REAL React table -
+    // for the live filter bar count to see it), the REAL React table -
     // which reads useVisiblePrNumbers(), the same reactive Context
     // derivation - picks it up too, same as it already does in the real
     // app: the PR-number filter takes precedence over the 4 multi-select
@@ -2793,7 +2834,7 @@ describe("index page rendering with Testing Library", () => {
     // assigned=assignee-other, which alone would match PR #2, not PR #1).
     // Matches the real, fully-wired app's own precedence (also covered by
     // pr-visible-pr-numbers.helpers.test.js and Playwright e2e).
-    // The table and #data-meta update separately: wait for the table too
+    // The table and the filter bar's count update separately: wait for the table too
     // (checking it straight after the summary failed on slower CI runners).
     await waitFor(() => {
       expect(
@@ -2805,7 +2846,7 @@ describe("index page rendering with Testing Library", () => {
     });
   });
 
-  test("given needs-attention scope variants when applying locally then each scope yields the expected row set", async () => {
+  test("given \"Only PRs that need attention\" checked, then only those rows show, and unchecked, all of them", async () => {
     initTestPage({
       dataPayload: createMultiPrPayload({
         prs: [
@@ -2875,31 +2916,27 @@ describe("index page rendering with Testing Library", () => {
       }),
     });
 
-    const scopeField = document.getElementById("scope-mode");
-    expect(scopeField).toBeInTheDocument();
+    const onlyAttentionField = document.getElementById("only-needs-attention");
+    expect(onlyAttentionField).toBeInTheDocument();
 
-    // The filter bar's real scope select (one change event - see the
-    // PR-number precedence test above).
-    fireEvent.change(scopeField, { target: { value: "needs-attention" } });
+    // The filter bar's real checkbox (one click event - see the PR-number
+    // precedence test above).
+    fireEvent.click(onlyAttentionField);
 
     // PR #4 is only in-review (not CHANGED), so it no longer counts as
     // needing attention on its own - the in-review override was
     // intentionally removed (see "Further migration and removal of in
     // review attention override"). Only PR #1 (CHANGED) qualifies here.
     await waitFor(() => {
-      const dataMetaText = document.getElementById("data-meta")?.textContent || "";
-      expect(dataMetaText).toContain("Rows: 1");
-      expect(dataMetaText).toContain("scope=needs attention rows");
+      const dataMetaText = document.querySelector(".filter-bar-count")?.textContent || "";
+      expect(dataMetaText).toContain("Showing 1 of");
     });
 
-    fireEvent.change(scopeField, { target: { value: "needs-attention-or-interacted" } });
+    fireEvent.click(onlyAttentionField);
 
-    // PR #1 (needs attention) + PR #2 (interacted) = 2. PR #4's in-review
-    // flag alone no longer qualifies it for either scope.
     await waitFor(() => {
-      const dataMetaText = document.getElementById("data-meta")?.textContent || "";
-      expect(dataMetaText).toContain("Rows: 2");
-      expect(dataMetaText).toContain("scope=needs attention or interacted rows");
+      const dataMetaText = document.querySelector(".filter-bar-count")?.textContent || "";
+      expect(dataMetaText).toContain("Showing 4 of");
     });
   });
 
@@ -3353,8 +3390,8 @@ describe("index page rendering with Testing Library", () => {
     await clickMultiSelectCheckbox("author-list", "zuser", user);
 
     await waitFor(() => {
-      const dataMetaText = document.getElementById("data-meta")?.textContent || "";
-      expect(dataMetaText).toContain("Rows: 1");
+      const dataMetaText = document.querySelector(".filter-bar-count")?.textContent || "";
+      expect(dataMetaText).toContain("Showing 1 of");
       expect(screen.getByText("#12")).toBeInTheDocument();
       expect(screen.queryByText("#11")).not.toBeInTheDocument();
     });
@@ -3369,8 +3406,8 @@ describe("index page rendering with Testing Library", () => {
       const selectedAuthorValues = getSelectedMultiSelectValues("author-list");
       expect(selectedAuthorValues).toEqual(["zuser"]);
 
-      const dataMetaText = document.getElementById("data-meta")?.textContent || "";
-      expect(dataMetaText).toContain("Rows: 1");
+      const dataMetaText = document.querySelector(".filter-bar-count")?.textContent || "";
+      expect(dataMetaText).toContain("Showing 1 of");
       expect(screen.getByText("#12")).toBeInTheDocument();
       expect(screen.queryByText("#11")).not.toBeInTheDocument();
     });
@@ -4095,10 +4132,10 @@ describe("index page rendering with Testing Library", () => {
     const user = userEvent.setup();
 
 
-    const scopeSelect = document.getElementById("scope-mode");
+    const onlyAttentionField = document.getElementById("only-needs-attention");
     const authorList = getMultiSelectList("author-list");
     expect(authorList).toBeInTheDocument();
-    expect(scopeSelect).toBeInTheDocument();
+    expect(onlyAttentionField).toBeInTheDocument();
 
     await waitFor(() => {
       const authorLogins = Array.from(authorList.querySelectorAll("input[type='checkbox']")).map((cb) => cb.value);
@@ -4111,7 +4148,7 @@ describe("index page rendering with Testing Library", () => {
       expect(getSelectedMultiSelectValues("author-list")).toEqual(["zuser"]);
     });
 
-    await user.selectOptions(scopeSelect, "needs-attention-or-interacted");
+    await user.click(onlyAttentionField);
 
     await waitFor(() => {
       expect(getSelectedMultiSelectValues("author-list")).toEqual(["zuser"]);
@@ -4324,12 +4361,11 @@ describe("index page rendering with Testing Library", () => {
     await clickMultiSelectCheckbox("approver-list", "alice", user);
 
     await waitFor(() => {
-      const dataMetaText = document.getElementById("data-meta")?.textContent || "";
-      expect(dataMetaText).toContain("Rows: 1");
-      expect(dataMetaText).toContain("approver=alice");
+      const dataMetaText = document.querySelector(".filter-bar-count")?.textContent || "";
+      expect(dataMetaText).toContain("Showing 1 of");
     });
 
-    // The table and #data-meta update separately: wait for the table too
+    // The table and the filter bar's count update separately: wait for the table too
     // (checking it straight after the summary failed on slower CI runners).
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "More actions for PR #401" })).toBeInTheDocument();
@@ -4479,7 +4515,7 @@ describe("index page rendering with Testing Library", () => {
     expect(within(assigned).getByRole("img", { name: "Alison Hall" })).toBeInTheDocument();
   });
 
-  test("given approver filter applied, when scope changes and filters are reapplied, then approver selection is preserved", async () => {
+  test("given approver filter applied, when \"Only PRs that need attention\" is checked, then approver selection is preserved", async () => {
     initTestPage({
       dataPayload: createMultiPrPayload({
         prs: [
@@ -4551,9 +4587,9 @@ describe("index page rendering with Testing Library", () => {
 
 
     const approverList = getMultiSelectList("approver-list");
-    const scopeSelect = document.getElementById("scope-mode");
+    const onlyAttentionField = document.getElementById("only-needs-attention");
     expect(approverList).toBeInTheDocument();
-    expect(scopeSelect).toBeInTheDocument();
+    expect(onlyAttentionField).toBeInTheDocument();
 
     await waitFor(() => {
       const approverLogins = Array.from(approverList.querySelectorAll("input[type='checkbox']")).map((cb) => cb.value);
@@ -4566,7 +4602,7 @@ describe("index page rendering with Testing Library", () => {
       expect(getSelectedMultiSelectValues("approver-list")).toEqual(["david"]);
     });
 
-    await user.selectOptions(scopeSelect, "needs-attention-or-interacted");
+    await user.click(onlyAttentionField);
 
     await waitFor(() => {
       expect(getSelectedMultiSelectValues("approver-list")).toEqual(["david"]);
@@ -4694,11 +4730,11 @@ describe("index page rendering with Testing Library", () => {
     await clickMultiSelectCheckbox("approver-list", "reviewer-a", user);
 
     await waitFor(() => {
-      const dataMetaText = document.getElementById("data-meta")?.textContent || "";
-      expect(dataMetaText).toContain("Rows: 1");
+      const dataMetaText = document.querySelector(".filter-bar-count")?.textContent || "";
+      expect(dataMetaText).toContain("Showing 1 of");
     });
 
-    // The table and #data-meta update separately: wait for the table too
+    // The table and the filter bar's count update separately: wait for the table too
     // (checking it straight after the summary failed on slower CI runners).
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "More actions for PR #601" })).toBeInTheDocument();
@@ -4882,12 +4918,11 @@ describe("index page rendering with Testing Library", () => {
     });
 
     await waitFor(() => {
-      const dataMetaText = document.getElementById("data-meta")?.textContent || "";
-      expect(dataMetaText).toContain("approver=grace");
-      expect(dataMetaText).toContain("Rows: 1");
+      const dataMetaText = document.querySelector(".filter-bar-count")?.textContent || "";
+      expect(dataMetaText).toContain("Showing 1 of");
     });
 
-    // The table and #data-meta update separately: wait for the table too
+    // The table and the filter bar's count update separately: wait for the table too
     // (checking it straight after the summary failed on slower CI runners).
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "More actions for PR #901" })).toBeInTheDocument();
@@ -5056,62 +5091,6 @@ describe("index page rendering with Testing Library", () => {
     const backfillLog = document.getElementById("backfill-log");
     expect(String(backfillLog?.textContent || "")).toContain("Showing 2 log line(s)");
     expect(String(backfillLog?.textContent || "")).toContain("line-1");
-  });
-
-  test("given Request more is triggered, when handled, then it posts the expected merged request payload (button rendering/visibility is React-owned - see MergedRequestMoreAction.test.jsx)", async () => {
-    initTestPage({
-      dataPayload: createMultiPrPayload({
-        prs: [
-          {
-            scenario: "merged",
-            prNumber: 100,
-            overrides: {
-              data: {
-                title: "Merged PR row",
-                titleDisplay: "Merged PR row [CHK:PASS] [MRG:YES]",
-                author: "octocat",
-                url: "https://github.com/owner/repo/pull/100",
-                labels: [{ name: "bug" }],
-                mergedAt: "2026-03-10T10:00:00Z",
-                updatedAt: "2026-03-11T11:00:00Z",
-              },
-            },
-          },
-        ],
-        lastRun: { repo: "owner/repo", updatedAt: "2026-03-11T11:00:00Z" },
-        scheduler: {
-          intervalMinutes: 15,
-          manualCooldownMinutes: 15,
-          isAutoRunInProgress: false,
-        },
-      }),
-    });
-    // The shell's own button, under the table once the data has loaded
-    // (scope "all" by default).
-    const requestMore = await within(document.getElementById("merged-request-more-action")).findByRole("button", {
-      name: "Request more",
-    });
-    fetchMock.mockClear();
-    const user = userEvent.setup();
-    await user.click(requestMore);
-
-    let requestMoreCall;
-    await waitFor(() => {
-      requestMoreCall = fetchMock.mock.calls.find((call) => {
-        const [url, init] = call;
-        return (
-          String(url || "") === "/view-prs/merged/request-more" &&
-          String(init?.method || "GET").toUpperCase() === "POST"
-        );
-      });
-      expect(requestMoreCall).toBeDefined();
-    });
-
-    expect(requestMoreCall).toBeDefined();
-    const requestMorePayload = JSON.parse(String(requestMoreCall?.[1]?.body || "{}"));
-    expect(requestMorePayload.repo).toBe("owner/repo");
-    expect(requestMorePayload.count).toBe(30);
-    expect(requestMorePayload.scanLimit).toBe(100);
   });
 
   test("renders row-level in-review control for PRs returned from data fetch", async () => {
@@ -7275,7 +7254,7 @@ describe("index page rendering with Testing Library", () => {
     // REACT_MIGRATION_PLAN.md, "a real fast path for fresh-payload
     // renders"): no existing test (jest or Playwright) exercised the full
     // dirty -> queued -> clean -> flush cycle end to end - only the dirty
-    // bridge itself (window.getDirtyNotesPrNumbers) had coverage. This
+    // bridge itself (window.getDirtyNotesPrKeys) had coverage. This
     // proves the flush's applyFreshPrPayload call actually reaches the
     // real, mounted React table. Window-bridge elimination Phase 7.4: the
     // dirty state now flows NotesDirtyProvider -> AutoRenderBlockingSync ->
@@ -7315,7 +7294,7 @@ describe("index page rendering with Testing Library", () => {
       // Mark PR 101's notes dirty through the real NotesDirtyProvider, as
       // the Notes tab does on an edit.
       act(() => {
-        notesDirtyTestHandle.setNotesDirty("101", true);
+        notesDirtyTestHandle.setNotesDirty("owner/repo#101", true);
       });
 
       // The indicator only becomes visible once a poll actually has a
@@ -7383,7 +7362,7 @@ describe("index page rendering with Testing Library", () => {
       // and the Provider sees !hasDirtyPrSectionsFields &&
       // pendingAutoRenderPayload and flushes.
       act(() => {
-        notesDirtyTestHandle.setNotesDirty("101", false);
+        notesDirtyTestHandle.setNotesDirty("owner/repo#101", false);
       });
 
       await waitFor(() => {
@@ -7450,7 +7429,7 @@ describe("index page rendering with Testing Library", () => {
       // Mark PR 102's notes dirty through the real NotesDirtyProvider, as
       // the sibling test above does.
       act(() => {
-        notesDirtyTestHandle.setNotesDirty("102", true);
+        notesDirtyTestHandle.setNotesDirty("owner/repo#102", true);
       });
 
       fetchMock.mockClear();
@@ -7505,7 +7484,7 @@ describe("index page rendering with Testing Library", () => {
       // setTimeout(0)) finds document.activeElement is still our focused
       // text input and chooses "wait-for-blur" instead of applying.
       act(() => {
-        notesDirtyTestHandle.setNotesDirty("102", false);
+        notesDirtyTestHandle.setNotesDirty("owner/repo#102", false);
       });
 
       // Give the setTimeout(0) a chance to run, then confirm the payload
@@ -7978,7 +7957,6 @@ describe("index page rendering with Testing Library", () => {
       "Latest request output",
       "Backfill status details",
       "Backfill log",
-      "PR data summary",
       "Status message",
       // The filter bar above the table (its applied-filter chips are a
       // group only while a filter is applied).
@@ -8530,6 +8508,10 @@ describe("index page rendering with Testing Library", () => {
           },
           lastRun: { repo: "owner/repo", updatedAt: "2026-06-16T10:00:00Z" },
         }),
+        // A saved selection to clear: a save that changes nothing isn't
+        // written (checking and unchecking within the debounce no longer
+        // saves at all).
+        userDefaultsOverrides: { changeFilters: { ignoreReviewsFromAuthors: ["reviewer1"] } },
       });
 
       const user = userEvent.setup();
@@ -8538,11 +8520,14 @@ describe("index page rendering with Testing Library", () => {
           throw new Error("not populated yet");
         }
       });
+      await waitFor(() =>
+        expect(
+          document.querySelector('#change-filter-ignore-review-authors-list input[value="reviewer1"]')?.checked,
+        ).toBe(true),
+      );
 
-      // Saves only happen on a change (the debounce never fires on mount), so
-      // check and uncheck a reviewer: the final state has every list empty.
+      // Unchecking the only reviewer leaves every list empty.
       fetchMock.mockClear();
-      await clickMultiSelectCheckbox("change-filter-ignore-review-authors-list", "reviewer1", user);
       await clickMultiSelectCheckbox("change-filter-ignore-review-authors-list", "reviewer1", user);
 
       await waitForPersistedViewFilterOverrides((savedOverrides) => {

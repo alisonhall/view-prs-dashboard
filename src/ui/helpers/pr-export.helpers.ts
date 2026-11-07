@@ -1,6 +1,7 @@
 import type { PrDataPayload, PrEntry } from "../types/pr-data.ts";
 import type { PerPrUserState, UserStatePayload } from "./pr-per-pr-user-state.helpers.ts";
 import { asArray } from "./pr-as-array.helpers.ts";
+import { findPrEntry } from "./pr-entry-keys.helpers.ts";
 
 // Settings › Export's "Export Visible PR JSON": the field catalog (every
 // dotted leaf path in the PR data and user state), which PRs are visible,
@@ -165,21 +166,26 @@ const createPrExportHelpers = ({ getPerPrUserStateFromPayload }: PrExportDeps) =
 
   const buildExportPayload = ({
     payload = {},
-    visiblePrNumbers = [],
+    visiblePrKeys = [],
     selectedDataPaths = [],
     selectedUserStatePaths = [],
   }: {
     payload?: ExportPayloadSource;
-    visiblePrNumbers?: unknown[];
+    // The rows' repo-and-number keys ("owner/repo#123").
+    visiblePrKeys?: unknown[];
     selectedDataPaths?: unknown[];
     selectedUserStatePaths?: unknown[];
   }): ExportPayload => {
     const byPrNumber = payload?.byPrNumber || {};
-    const selectedPrNumbers = toSortedUnique(visiblePrNumbers);
-
-    const items = selectedPrNumbers
-      .map((prNumber) => {
-        const entryRaw = byPrNumber?.[prNumber] || byPrNumber?.[String(prNumber)] || {};
+    // Each visible row by its key - not every row with its number, which
+    // would take in another repo's PR with that number.
+    const items = toSortedUnique(visiblePrKeys)
+      .map((key) => {
+        const prNumber = key.split("#").pop() || "";
+        const keyRepo = key.includes("#") ? key.slice(0, key.lastIndexOf("#")) : "";
+        return { prNumber, entryRaw: byPrNumber[key] || findPrEntry(byPrNumber, keyRepo, prNumber) || {} };
+      })
+      .map(({ prNumber, entryRaw }) => {
         const entry: PrEntry = isPlainObject(entryRaw) ? entryRaw : {};
         const repo = String(entry?.repo || payload?.lastRun?.repo || "").trim();
         const data = pickByPaths(buildDataSourceEntry(entry), selectedDataPaths);
@@ -216,28 +222,28 @@ const createPrExportHelpers = ({ getPerPrUserStateFromPayload }: PrExportDeps) =
 };
 
 // One rendered table section, as Export needs it: whether it's
-// open and the PR numbers of its rows, in display order.
+// open and its rows' repo-and-number keys, in display order.
 export interface ExportSection {
   open: boolean;
-  prNumbers: string[];
+  prKeys: string[];
 }
 
-// PR numbers in the open (expanded) sections of the table, in display
+// PR keys in the open (expanded) sections of the table, in display
 // order, each once - the "visible" PRs Export exports. A PR shown
 // in a smart group and again in its lifecycle section counts once.
-const getPrNumbersInOpenSections = (sections: ExportSection[]): string[] => {
+const getPrKeysInOpenSections = (sections: ExportSection[]): string[] => {
   const result: string[] = [];
   const seen = new Set<string>();
   sections.forEach((section) => {
     if (!section.open) return;
-    section.prNumbers.forEach((value) => {
-      const prNumber = String(value || "").trim();
-      if (!prNumber || seen.has(prNumber)) return;
-      seen.add(prNumber);
-      result.push(prNumber);
+    section.prKeys.forEach((value) => {
+      const prKey = String(value || "").trim();
+      if (!prKey || seen.has(prKey)) return;
+      seen.add(prKey);
+      result.push(prKey);
     });
   });
   return result;
 };
 
-export { createPrExportHelpers, getPrNumbersInOpenSections };
+export { createPrExportHelpers, getPrKeysInOpenSections };

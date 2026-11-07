@@ -31,9 +31,9 @@
  * renderSchedulerStatus, via Context since window-bridge elimination Phase
  * 7.3), so a separate 30s fetch for it is no longer needed.
  *
- * Mounted once by react-app.tsx, as AppShell's sibling
- * inside PrDataProvider - it renders null, so it doesn't need a DOM
- * container.
+ * Mounted once by react-app.tsx, inside PrDataProvider and
+ * JobEventsProvider (whose open connection slows the data poll) - it
+ * renders null, so it doesn't need a DOM container.
  *
  * Phase H.3 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
  * also mounted in index.html.test.js's own harness now (inside
@@ -48,12 +48,16 @@
 import { useEffect } from 'react';
 import { usePrData } from '../state/PrDataContext';
 import { useRequestActivity } from '../state/RequestActivityContext';
+import { useJobEvents } from '../state/JobEventsContext';
 
 const ACTIVITY_RENDER_MS = 1000;
 // Window-bridge elimination Phase 7.3 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
 // plain constants here now; index.page.js used to publish them as
 // window.AUTO_DATA_POLL_MS/AUTO_BACKFILL_POLL_MS, and this was their only reader.
 export const AUTO_DATA_POLL_MS = 30000;
+// While the event stream is open the server pushes "data-changed" when the
+// data moves (its data watcher), so the poll is only a safety net.
+export const PUSHED_DATA_POLL_MS = 5 * 60 * 1000;
 export const AUTO_BACKFILL_POLL_MS = 5000;
 // Floor for the override below, so a typo can't make the page hammer the
 // server.
@@ -75,7 +79,12 @@ export function readDataPollMsOverride(search: string | null | undefined): numbe
   return value >= MIN_DATA_POLL_MS ? value : undefined;
 }
 
-export function PrDataPolling({ dataPollMs = AUTO_DATA_POLL_MS }: { dataPollMs?: number }) {
+// `dataPollMs` (the URL override) is used as given; without it the data poll
+// runs every AUTO_DATA_POLL_MS, or PUSHED_DATA_POLL_MS while the event
+// stream (JobEventsProvider, an ancestor in the app) is open.
+export function PrDataPolling({ dataPollMs: dataPollMsOverride }: { dataPollMs?: number }) {
+  const { connection } = useJobEvents();
+  const dataPollMs = dataPollMsOverride ?? (connection === 'open' ? PUSHED_DATA_POLL_MS : AUTO_DATA_POLL_MS);
   // Phase F/F.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
   // pollForDataChanges/pollBackfillStatus/renderRequestActivity are all
   // built by <PrDataProvider /> itself (this component's own parent - see

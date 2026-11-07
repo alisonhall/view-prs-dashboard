@@ -1,42 +1,58 @@
 /* The Authors view (AuthorInsights*). Moved from index.css (phase 10-1). */
 
-.author-insights-panel {
-  border: 1px solid var(--color-border-strong);
-  border-radius: 10px;
-  padding: 12px;
-  background: var(--color-surface-inset);
-  margin-bottom: 12px;
-}
-
-.author-insights-controls {
-  margin-bottom: 12px;
-}
-
 .author-insights-label {
-  display: grid;
-  gap: 4px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--color-text-muted);
-  max-width: 320px;
+  width: 320px;
+  max-width: 100%;
 }
 
-.author-insights-select {
-  height: 34px;
-  border: 1px solid var(--color-border-strong);
-  border-radius: 8px;
-  padding: 0 10px;
-  font-size: 14px;
-  box-sizing: border-box;
-  background: var(--color-surface);
-  color: var(--color-text);
-}
-
+/* The selected author: avatar, name and login, then their counts. */
 .author-insights-selected {
-  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.author-insights-selected-text {
+  min-width: 0;
+}
+
+.author-insights-selected-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: var(--space-2);
+  margin: 0;
+  font-size: var(--font-size-lg);
   font-weight: 600;
   color: var(--color-text);
-  margin-bottom: 12px;
+  overflow-wrap: anywhere;
+}
+
+.author-insights-selected-you {
+  font-weight: 400;
+  color: var(--color-text-muted);
+}
+
+.author-insights-selected-login {
+  font-size: var(--font-size-md);
+  font-weight: 400;
+  color: var(--color-text-muted);
+}
+
+.author-insights-selected-counts {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--font-size-md);
+  color: var(--color-text-muted);
+}
+
+.author-insights-selected-counts li + li::before {
+  content: "\00b7";
+  margin: 0 var(--space-2);
 }
 
 .author-insights-section {

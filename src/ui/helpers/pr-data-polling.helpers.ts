@@ -34,8 +34,21 @@ export interface MergeDataDeltaInput {
   nextDataMeta?: PrDataPayload["dataMeta"] | null;
   nextScheduler?: unknown;
   nextLastRun?: PrDataPayload["lastRun"] | null;
+  nextLastFullRun?: PrDataPayload["lastFullRun"] | null;
+  nextLastRunByRepo?: PrDataPayload["lastRunByRepo"] | null;
+  nextLastFullRunByRepo?: PrDataPayload["lastFullRunByRepo"] | null;
   nextManifest?: PrManifest | null;
+  // The user state's per-repo maps (the manifest's userState): replace the
+  // stored ones when given.
+  nextUserState?: PollUserState | null;
 }
+
+// The user state's per-repo maps a poll's manifest carries (the server's
+// buildDataManifestPayload).
+export type PollUserState = Pick<
+  PrDataPayload,
+  "ackByRepo" | "ackHistoryByRepo" | "reverifyByRepo" | "inReviewByRepo" | "flaggedByRepo" | "threadChecksByRepo"
+>;
 
 // Something with a tagName, like document.activeElement.
 type FocusedElement = { tagName?: string } | null | undefined;
@@ -53,23 +66,39 @@ type FocusedElement = { tagName?: string } | null | undefined;
 const computePrDataMetaFingerprint = (payload: PrDataPayload | null | undefined): string =>
   JSON.stringify({
     lastRun: payload?.lastRun || null,
+    lastFullRun: payload?.lastFullRun || null,
+    lastFullRunByRepo: payload?.lastFullRunByRepo || null,
     dataMeta: payload?.dataMeta || null,
     scheduler: payload?.scheduler || null,
+    // Not the rows', but shown in them and the pane (Ack'd, the Activity
+    // tab's Acks, flags): a poll that changes only these still renders.
+    ackByRepo: payload?.ackByRepo || null,
+    ackHistoryByRepo: payload?.ackHistoryByRepo || null,
+    reverifyByRepo: payload?.reverifyByRepo || null,
+    inReviewByRepo: payload?.inReviewByRepo || null,
+    flaggedByRepo: payload?.flaggedByRepo || null,
+    threadChecksByRepo: payload?.threadChecksByRepo || null,
   });
 
 const computePrDataManifest = (payload: PrDataPayload | null | undefined): PrManifest => {
   const byPrNumber = payload?.byPrNumber || {};
   const manifest: PrManifest = {};
+  // Keyed as the rows are (repo#number), in PR number order - as the
+  // server's buildViewPrsDataManifest.
+  const numberOf = (key: string) => Number(key.split("#").pop());
   Object.keys(byPrNumber)
-    .sort((a, b) => Number(a) - Number(b))
+    .sort((a, b) => numberOf(a) - numberOf(b) || (a < b ? -1 : a > b ? 1 : 0))
     .forEach((prNumber) => {
       const entry = byPrNumber[prNumber] || {};
       manifest[prNumber] = {
+        // As the server's computeViewPrsRowVersion (view-prs-data-helpers.js).
         rowVersion: JSON.stringify({
           prNumber,
           repo: entry?.repo || "",
           section: entry?.section || "",
           updatedAt: entry?.updatedAt || "",
+          fetchedAt: entry?.fetchedAt || "",
+          ciFetchedAt: entry?.ciFetchedAt || "",
           notes: entry?.notes || null,
           data: entry?.data || null,
         }),
@@ -125,7 +154,11 @@ const mergeDataDeltaPayload = ({
   nextDataMeta = null,
   nextScheduler = null,
   nextLastRun = null,
+  nextLastFullRun = null,
+  nextLastRunByRepo = null,
+  nextLastFullRunByRepo = null,
   nextManifest = null,
+  nextUserState = null,
 }: MergeDataDeltaInput = {}): PrDataPayload => {
   const mergedByPrNumber: Record<string, PrEntry> = {
     ...(basePayload?.byPrNumber || {}),
@@ -140,10 +173,14 @@ const mergeDataDeltaPayload = ({
 
   return {
     ...basePayload,
+    ...(nextUserState || {}),
     byPrNumber: mergedByPrNumber,
     dataMeta: nextDataMeta || basePayload?.dataMeta || null,
     scheduler: nextScheduler || basePayload?.scheduler || null,
     lastRun: nextLastRun || basePayload?.lastRun || null,
+    lastFullRun: nextLastFullRun || basePayload?.lastFullRun || null,
+    lastRunByRepo: nextLastRunByRepo || basePayload?.lastRunByRepo || {},
+    lastFullRunByRepo: nextLastFullRunByRepo || basePayload?.lastFullRunByRepo || {},
     dataManifest:
       nextManifest ||
       computePrDataManifest({ byPrNumber: mergedByPrNumber }),

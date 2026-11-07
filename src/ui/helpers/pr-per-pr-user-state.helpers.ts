@@ -2,6 +2,9 @@
 // In Review flags), for PrJsonModal's "User State Entry" view and the
 // export helpers.
 
+import type { PrEntry } from "../types/pr-data.ts";
+import { findPrEntry } from "./pr-entry-keys.helpers.ts";
+
 // repo -> PR number -> value
 type RepoPrMap = Record<string, Record<string, unknown> | null | undefined>;
 
@@ -25,8 +28,8 @@ export const getPerPrUserStateFromPayload = (
   prNumber: string | number,
   repo: string | null | undefined,
 ): PerPrUserState => {
-  const byPrNumber = payload?.byPrNumber || {};
-  const payloadEntry = byPrNumber?.[prNumber];
+  // By repo and number: two repos can each have a PR with this number.
+  const payloadEntry = findPrEntry(payload?.byPrNumber as Record<string, PrEntry | undefined> | undefined, repo, prNumber);
   const notes =
     payloadEntry?.notes ||
     entry?.notes ||

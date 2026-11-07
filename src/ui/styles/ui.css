@@ -28,10 +28,12 @@
 }
 
 /* The page's one tooltip, appended to <body>; tooltip-controller.ts sets
-   top/left from the element it's for. */
+   top/left from the element it's for. Above everything its element can be
+   in: the header popovers (1100), the Settings drawer (1200), the snackbar
+   (1300) and the PR JSON modal (2000). */
 .ui-tooltip {
   position: fixed;
-  z-index: 1000;
+  z-index: 2100;
   width: max-content;
   max-width: min(320px, calc(100vw - 16px));
   padding: 6px 9px;
@@ -75,6 +77,12 @@
   width: var(--avatar-size-sm);
   height: var(--avatar-size-sm);
   font-size: 9px;
+}
+
+.ui-avatar[data-size="lg"] {
+  width: 40px;
+  height: 40px;
+  font-size: 15px;
 }
 
 .ui-avatar[data-viewer="true"] {
@@ -223,6 +231,17 @@
 }
 
 .ui-menu-group + .ui-menu-group,
+/* A choice's check mark: kept in place, so the labels line up, and only
+   seen on the one chosen. */
+.ui-menu-item-check {
+  visibility: hidden;
+}
+
+.ui-menu-item-check.is-checked {
+  visibility: visible;
+  color: var(--color-accent);
+}
+
 .ui-menu-item + .ui-menu-group,
 .ui-menu-group + .ui-menu-item {
   margin-top: var(--space-1);
@@ -343,5 +362,248 @@
   margin: 0;
   padding: 8px;
   font-style: italic;
+  color: var(--color-text-muted);
+}
+
+/* A button that reads as a link (SavedItems.tsx). */
+.ui-link-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--font-size-sm);
+  color: var(--color-accent-text);
+  cursor: pointer;
+}
+
+.ui-link-button:hover {
+  text-decoration: underline;
+}
+
+.ui-link-button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.ui-link-button:disabled {
+  color: var(--color-text-muted);
+  text-decoration: none;
+  cursor: default;
+}
+
+/* Saved items (SavedItems.tsx): saved filter views, export profiles. */
+.ui-saved-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.ui-saved-modified {
+  font-weight: 400;
+  font-style: italic;
+}
+
+.ui-name-form {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.ui-name-form-input {
+  min-height: 28px;
+  padding: 3px 8px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  font: var(--font-size-md) var(--font-sans);
+  color: var(--color-text);
+}
+
+.ui-name-form-input[aria-invalid="true"] {
+  border-color: var(--color-danger);
+}
+
+.ui-saved-error {
+  font-size: var(--font-size-xs);
+  color: var(--color-danger);
+}
+
+.ui-saved-hint {
+  margin: 0;
+  max-width: 34em;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.ui-saved-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ui-saved-item {
+  display: grid;
+  gap: 2px;
+}
+
+.ui-saved-name {
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.ui-saved-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+/* A view's heading and what it's for (ViewHeading.tsx): Review stats and
+   Authors. */
+.ui-view-heading {
+  margin-bottom: var(--space-3);
+}
+
+.ui-view-heading h2 {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.ui-view-heading p {
+  margin: 2px 0 0;
+  max-width: 60em;
+  font-size: var(--font-size-md);
+  color: var(--color-text-muted);
+}
+
+/* A view's controls in one box, as the filter bar's (ReviewStatsControls,
+   AuthorInsightsSelector). */
+.ui-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2) var(--space-3);
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+/* A label over its select or text box, styled as the filter bar's and
+   Settings' fields. */
+.ui-field {
+  display: grid;
+  gap: 2px;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.ui-field select,
+.ui-field input {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 30px;
+  padding: 4px 8px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  font: var(--font-size-md) var(--font-sans);
+  color: var(--color-text);
+}
+
+/* ComboBox: a .ui-field whose text box narrows a list that opens in
+   place below it. */
+.ui-combobox-control {
+  position: relative;
+}
+
+.ui-field .ui-combobox-control input {
+  padding-right: 26px;
+}
+
+/* The chevron: a box's two borders, turned. */
+.ui-combobox-control::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  width: 6px;
+  height: 6px;
+  margin-top: -5px;
+  border-right: 1.5px solid var(--color-text-muted);
+  border-bottom: 1.5px solid var(--color-text-muted);
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+
+.ui-combobox-list {
+  max-height: 280px;
+  overflow-y: auto;
+  margin-top: 2px;
+  padding: var(--space-1);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.ui-combobox-list[hidden] {
+  display: none;
+}
+
+.ui-combobox-group-label {
+  padding: 6px 8px 2px;
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.ui-combobox-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-md);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.ui-combobox-option:hover {
+  background: var(--color-surface-hover);
+}
+
+.ui-combobox-option[data-active="true"] {
+  background: var(--color-surface-selected);
+  box-shadow: inset 2px 0 0 var(--color-accent);
+}
+
+.ui-combobox-option[data-picked="true"] .ui-combobox-option-label {
+  font-weight: 600;
+}
+
+.ui-combobox-option[data-picked="true"]::after {
+  content: "\2713";
+  margin-left: auto;
+  color: var(--color-accent-text);
+}
+
+.ui-combobox-option-detail {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.ui-combobox-none {
+  margin: 0;
+  padding: 6px 8px;
+  font-size: var(--font-size-md);
   color: var(--color-text-muted);
 }

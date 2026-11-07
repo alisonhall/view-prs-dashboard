@@ -25,11 +25,27 @@ interface SeededList<L extends string> {
   normalizeToken?: (value: unknown) => unknown;
 }
 
+// The picks no option matches (by normalizeToken, when given), as they
+// are.
+const unmatchedSelections = (
+  options: ReadonlyArray<{ value?: unknown }> | null | undefined,
+  selections: unknown,
+  normalizeToken?: (value: unknown) => unknown,
+): string[] => {
+  const normalize = normalizeToken ?? ((value: unknown) => value);
+  const known = new Set((options || []).map((option) => normalize(option.value)));
+  return (Array.isArray(selections) ? selections : [])
+    .map((value) => String(value ?? '').trim())
+    .filter((value) => value && !known.has(normalize(value)));
+};
+
 // Keeps these lists' selections (one selection Context) in step with their
 // options; runs when the options or pending selections change, not when the
-// selection does (it reads the selection as it rendered). With
-// `keepUnmatched`, a saved pick needn't be among the options: it's applied
-// at once and never dropped, alongside anything picked before it loaded.
+// selection does (it reads the selection as it rendered). A pick that
+// matches an option becomes that option's value (labels ignore case); one
+// that matches none is kept as it is. With `keepUnmatched` (the rules'
+// lists), a saved pick joins anything picked before it loaded rather than
+// replacing it.
 function useSeedLists<L extends string>(
   lists: ReadonlyArray<SeededList<L>>,
   selection: CheckedByListIdValue<L>,
@@ -51,16 +67,18 @@ function useSeedLists<L extends string>(
         setPendingMultiSelectSelection(pendingKey, null);
         return;
       }
-      const { items, shouldClearPending } = seedCheckedState(filterOptions[optionsKey], {
-        existingChecked: Array.from(checkedByListId[listId] || []),
+      // A restored selection replaces the current one, and applies at once.
+      const existingChecked = Array.isArray(pendingSelections) ? [] : Array.from(checkedByListId[listId] || []);
+      const { items } = seedCheckedState(filterOptions[optionsKey], {
+        existingChecked,
         pendingSelections: Array.isArray(pendingSelections) ? pendingSelections : null,
         normalizeToken,
       });
-      setChecked(
-        listId,
-        items.filter((item) => item.checked).map((item) => item.value),
-      );
-      if (shouldClearPending) setPendingMultiSelectSelection(pendingKey, null);
+      setChecked(listId, [
+        ...items.filter((item) => item.checked).map((item) => item.value),
+        ...unmatchedSelections(filterOptions[optionsKey], existingChecked.length ? existingChecked : pendingSelections, normalizeToken),
+      ]);
+      if (Array.isArray(pendingSelections)) setPendingMultiSelectSelection(pendingKey, null);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterOptions, pendingTick]);
@@ -72,14 +90,17 @@ function useSeedLists<L extends string>(
  * (RowFilterSelectionContext), and the Settings drawer's thread-resolution
  * allow/deny lists (AuthorThreadResolutionSelectionContext) and
  * change-detection author lists (ChangeFilterActorSelectionContext).
- * - A saved restore leaves a list's selection "pending" until its options
- *   load, then it's applied (and the pending entry cleared).
- * - When the options change (a data refresh), a checked value no longer
- *   among them is dropped. Unchanged selections leave their Context as it
+ * - A saved restore ("pending") is applied at once, whether or not the
+ *   options have loaded, and the pending entry cleared.
+ * - A checked value no loaded PR has (a saved view's author with no open
+ *   PRs, a label from another repo) stays checked, so the filter keeps
+ *   applying; the filter bar lists it so it can be unticked
+ *   (FilterMultiSelect). One that matches an option once it loads becomes
+ *   that option's value. Unchanged selections leave their Context as it
  *   was (useCheckedByListIdState), so a poll doesn't re-filter or re-save.
  * - The Settings drawer's lists are rules, not filters: a saved login stays
  *   picked (and saved) whether or not the loaded data has that actor - a
- *   bot often doesn't - so their picks apply at once and are never dropped.
+ *   bot often doesn't - and joins anything picked before it loaded.
  *
  * Renders nothing; mount once inside FilterOptionsProvider and the three
  * selection Providers.

@@ -236,6 +236,24 @@ const normalizePerRepoMap = (value, valueType = "string") => {
         if (typeof raw === "boolean") {
           perPrOut[prNumber] = raw;
         }
+      } else if (valueType === "stringList") {
+        // ackHistoryByRepo: the times, oldest first.
+        const items = Array.isArray(raw)
+          ? raw.map((item) => String(item || "").trim()).filter(Boolean)
+          : [];
+        if (items.length > 0) {
+          perPrOut[prNumber] = items;
+        }
+      } else if (valueType === "stringMap") {
+        // threadChecksByRepo: thread id -> signature.
+        const entries = isObject(raw)
+          ? Object.entries(raw)
+              .map(([key, item]) => [String(key).trim(), String(item || "").trim()])
+              .filter(([key, item]) => key && item)
+          : [];
+        if (entries.length > 0) {
+          perPrOut[prNumber] = Object.fromEntries(entries);
+        }
       } else {
         const normalized = String(raw || "").trim();
         if (normalized) {
@@ -260,7 +278,9 @@ const normalizeViewPrsUserState = (raw) => {
     : {};
 
   for (const [prNumber, notes] of Object.entries(rawNotesMap)) {
-    if (!/^\d+$/.test(String(prNumber))) {
+    // repo#number (see view-prs-pr-keys.js), or a bare number from before -
+    // dropping repo keys here would lose every migrated note.
+    if (!/^\d+$/.test(String(prNumber)) && !/^[\w.-]+\/[\w.-]+#\d+$/.test(String(prNumber))) {
       continue;
     }
     const normalized = normalizeNotes(notes);
@@ -272,9 +292,11 @@ const normalizeViewPrsUserState = (raw) => {
   return {
     notesByPrNumber,
     ackByRepo: normalizePerRepoMap(source.ackByRepo, "string"),
+    ackHistoryByRepo: normalizePerRepoMap(source.ackHistoryByRepo, "stringList"),
     reverifyByRepo: normalizePerRepoMap(source.reverifyByRepo, "boolean"),
     inReviewByRepo: normalizePerRepoMap(source.inReviewByRepo, "boolean"),
     flaggedByRepo: normalizePerRepoMap(source.flaggedByRepo, "boolean"),
+    threadChecksByRepo: normalizePerRepoMap(source.threadChecksByRepo, "stringMap"),
   };
 };
 
@@ -437,12 +459,17 @@ const buildGitDiffOnlyMergedEntry = (
   };
 };
 
+// The page's row freshness reads fetchedAt/ciFetchedAt, which a run of
+// chosen PRs can move without changing anything else (it keeps updatedAt).
+// Mirrored by the page's computePrDataManifest (pr-data-polling.helpers.ts).
 const computeViewPrsRowVersion = (entry = {}, prNumber = "") =>
   JSON.stringify({
     prNumber: String(prNumber || ""),
     repo: String(entry?.repo || ""),
     section: String(entry?.section || ""),
     updatedAt: String(entry?.updatedAt || ""),
+    fetchedAt: String(entry?.fetchedAt || ""),
+    ciFetchedAt: String(entry?.ciFetchedAt || ""),
     notes: entry?.notes || null,
     data: entry?.data || null,
   });
@@ -451,12 +478,15 @@ const buildViewPrsDataManifest = (data = {}) => {
   const byPrNumber = isObject(data?.byPrNumber) ? data.byPrNumber : {};
   const manifest = {};
 
+  // Keyed as the rows are (repo#number - see view-prs-pr-keys.js), in PR
+  // number order.
+  const numberOf = (key) => Number(String(key).split("#").pop());
   Object.keys(byPrNumber)
-    .sort((a, b) => Number(a) - Number(b))
-    .forEach((prNumber) => {
-      const entry = byPrNumber[prNumber] || {};
-      manifest[String(prNumber)] = {
-        rowVersion: computeViewPrsRowVersion(entry, prNumber),
+    .sort((a, b) => numberOf(a) - numberOf(b) || (a < b ? -1 : a > b ? 1 : 0))
+    .forEach((prKey) => {
+      const entry = byPrNumber[prKey] || {};
+      manifest[String(prKey)] = {
+        rowVersion: computeViewPrsRowVersion(entry, prKey),
         repo: String(entry?.repo || ""),
         section: String(entry?.section || ""),
         updatedAt: String(entry?.updatedAt || ""),

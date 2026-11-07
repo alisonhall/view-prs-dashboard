@@ -1,6 +1,6 @@
 import type { MouseEvent } from 'react';
 import type { PrData } from '../../types/pr-data.ts';
-import { useRepoLabels } from '../../state/RepoLabelsContext';
+import { useLabelsForRepo } from '../../state/RepoLabelsContext';
 import { getLabelName } from '../../helpers/pr-filter-label-extraction.helpers.ts';
 import { IconButton } from '../ui/Button';
 import { MenuButton } from '../ui/MenuButton';
@@ -45,7 +45,9 @@ export function PrActionsCell({
 }: PrActionsCellProps) {
   const prNumber = String(pr?.number || '');
   const entry = { prNumber, repo };
-  const { labels: repoLabels } = useRepoLabels();
+  // This PR's repo's labels, not the current repo's, fetched when the menu
+  // first opens.
+  const { labels: repoLabels, loaded: labelsLoaded, failed: labelsFailed, load: loadLabels } = useLabelsForRepo(repo);
   const existingLabels = new Set((Array.isArray(pr?.labels) ? pr.labels : []).map((label) => getLabelName(label)).filter(Boolean));
   const availableLabels = repoLabels
     .map((label) => String(label?.name || ''))
@@ -65,6 +67,7 @@ export function PrActionsCell({
           icon="check"
           label={`${isAcknowledged ? "Ack'd" : 'Ack'} PR #${prNumber}`}
           pressed={isAcknowledged}
+          hint={isAcknowledged ? 'Click again to undo the Ack' : undefined}
           // onAckAction's `isAcked` means "is it acked now": it acks or
           // clears from that, so passing the current state flips it.
           onClick={handle(() => onAckAction?.(pr?.number, isAcknowledged, repo))}
@@ -72,6 +75,7 @@ export function PrActionsCell({
         <MenuButton
           icon="more"
           label={`More actions for PR #${prNumber}`}
+          onOpen={loadLabels}
           entries={[
             {
               id: 'in-review',
@@ -90,12 +94,16 @@ export function PrActionsCell({
             {
               id: 'labels',
               label: 'Add label',
-              emptyText: 'No labels to add',
-              items: availableLabels.map((name) => ({
-                id: name,
-                label: name,
-                onSelect: () => onApplyLabel?.(pr?.number, name, repo),
-              })),
+              emptyText: labelsLoaded ? 'No labels to add' : 'Loading labels…',
+              // A failed request offers to try again, the menu staying open
+              // for what it brings - rather than "Loading labels…" for good.
+              items: labelsFailed
+                ? [{ id: 'retry-labels', label: "Couldn't load labels - retry", icon: 'refresh', keepOpen: true, onSelect: loadLabels }]
+                : availableLabels.map((name) => ({
+                    id: name,
+                    label: name,
+                    onSelect: () => onApplyLabel?.(pr?.number, name, repo),
+                  })),
             },
           ]}
         />

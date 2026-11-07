@@ -77,6 +77,8 @@ const isolatedEnv = {
   VIEW_PRS_BACKFILL_PID_FILE: path.join(tempDir, "backfill-missing.pid"),
   VIEW_PRS_BACKFILL_LOG_FILE: path.join(tempDir, "backfill-missing.log"),
   VIEW_PRS_DISABLE_SCHEDULER_STARTUP: "1",
+  // A quick check would otherwise list PRs with a real `gh api graphql`.
+  VIEW_PRS_DISABLE_LIVE_SUMMARY: "1",
 };
 
 module.exports = defineConfig({

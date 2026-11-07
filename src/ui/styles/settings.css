@@ -123,8 +123,11 @@
   color: var(--color-text-muted);
 }
 
+/* A text box or select; .settings-control for one outside a .settings-field
+   (Actor names' rows, Action log's filters). */
 .settings-field input,
-.settings-field select {
+.settings-field select,
+.settings-control {
   min-height: 30px;
   padding: 4px 8px;
   border: 1px solid var(--color-border-strong);
@@ -185,6 +188,72 @@
   white-space: nowrap;
 }
 
+/* Settings › Background updates: a group per repo, its fields in a row
+   that wraps. */
+.settings-repo {
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.settings-repo-name {
+  padding: 0 4px;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-text);
+  overflow-wrap: anywhere;
+}
+
+.settings-repo-note {
+  font-family: var(--font-sans);
+  font-weight: 400;
+  color: var(--color-text-muted);
+}
+
+.settings-repo-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: start;
+  gap: var(--space-2) var(--space-4);
+}
+
+/* Labels on one line, so the boxes line up across the row. */
+.settings-repo-field label {
+  white-space: nowrap;
+}
+
+.settings-input-unit {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.settings-input-unit input {
+  box-sizing: border-box;
+  width: 6em;
+}
+
+.settings-field input[aria-invalid="true"] {
+  border-color: var(--color-danger);
+}
+
+.settings-field-error,
+.settings-error {
+  color: var(--color-danger);
+}
+
+.settings-field-error,
+.settings-field-note {
+  font-size: var(--font-size-xs);
+}
+
+.settings-hint {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
 .settings-actions {
   display: flex;
   flex-wrap: wrap;
@@ -242,4 +311,60 @@
   .settings-nav .ui-tab[aria-selected="true"] {
     box-shadow: inset 0 -2px 0 var(--color-accent);
   }
+}
+
+/* Settings › Sources (SourcesSection.tsx): subscriptions and PRs added
+   one by one, a row each, and the subscribe form. */
+.sources-list {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sources-item,
+.sources-add-row,
+.sources-item-numbers {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.sources-item-name {
+  min-width: 12em;
+  font-weight: 600;
+}
+
+.sources-item-meta {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.sources-item-warning {
+  font-size: var(--font-size-sm);
+  color: var(--color-danger);
+}
+
+.sources-add {
+  display: grid;
+  gap: 4px;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.sources-section input[type="text"],
+.sources-section select {
+  min-height: 30px;
+  padding: 4px 8px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  font: var(--font-size-md) var(--font-sans);
+  color: var(--color-text);
+}
+
+.sources-item-meta[data-tone="error"] {
+  color: var(--color-danger);
 }

@@ -1,7 +1,12 @@
+import { defaultSectionSort, isSectionSort, sectionSortFields, type SectionSort } from './pr-section-sort.helpers.ts';
+
 // Settings › Appearance's section choices: which PR table sections show,
-// and which start open when the page loads. Saved in user-defaults.json
+// and which start open when the page loads - and each section's sort
+// (chosen in the section itself; pr-section-sort.helpers.ts). Saved in user-defaults.json
 // under PR_SECTIONS_OVERRIDE_KEY, keeping only what differs from the
 // built-in defaults: { "flagged": { "open": true }, "closed": { "hidden": true } }.
+// A browser copy (PR_SECTIONS_STORAGE_KEY) lets the table draw with them
+// straight away, before user-defaults.json has been read.
 
 export interface PrSectionCatalogEntry {
   key: string;
@@ -27,10 +32,12 @@ export const PR_SECTION_CATALOG: ReadonlyArray<PrSectionCatalogEntry> = [
 ];
 
 export const PR_SECTIONS_OVERRIDE_KEY = 'prSections';
+export const PR_SECTIONS_STORAGE_KEY = 'view-prs:pr-sections';
 
 export interface PrSectionPreference {
   hidden?: true;
   open?: boolean;
+  sort?: SectionSort;
 }
 export type PrSectionPreferences = Record<string, PrSectionPreference>;
 
@@ -44,16 +51,65 @@ export const normalizePrSectionPreferences = (value: unknown): PrSectionPreferen
   PR_SECTION_CATALOG.forEach(({ key, defaultOpen }) => {
     const saved = (value as Record<string, unknown>)[key];
     if (!saved || typeof saved !== 'object') return;
-    const { hidden, open } = saved as { hidden?: unknown; open?: unknown };
+    const { hidden, open, sort } = saved as { hidden?: unknown; open?: unknown; sort?: unknown };
     const preference: PrSectionPreference = {};
     if (hidden === true) preference.hidden = true;
     if (typeof open === 'boolean' && open !== defaultOpen) preference.open = open;
+    // A sort the section offers, and not its default.
+    if (isSectionSort(sort) && sectionSortFields(key).includes(sort.by)) {
+      const fallback = defaultSectionSort(key);
+      if (sort.by !== fallback.by || sort.direction !== fallback.direction) {
+        preference.sort = { by: sort.by, direction: sort.direction };
+      }
+    }
     if (Object.keys(preference).length > 0) result[key] = preference;
   });
   return result;
 };
 
-export const isPrSectionHidden = (preferences: PrSectionPreferences, key: string) => preferences[key]?.hidden === true;
+// Storage can throw (blocked site data) or be missing, and the copy can be
+// malformed; then there's no copy.
+export const readStoredPrSectionPreferences = (): PrSectionPreferences | null => {
+  try {
+    const value = window.localStorage.getItem(PR_SECTIONS_STORAGE_KEY);
+    return value === null ? null : normalizePrSectionPreferences(JSON.parse(value));
+  } catch (_error) {
+    return null;
+  }
+};
+
+export const storePrSectionPreferences = (preferences: PrSectionPreferences) => {
+  try {
+    window.localStorage.setItem(PR_SECTIONS_STORAGE_KEY, JSON.stringify(preferences));
+  } catch (_error) {
+    // Only the first draw uses the copy; user-defaults.json keeps the choices.
+  }
+};
+
+// Settings › Appearance's "Group rows by repo": each section's rows under a
+// heading per repo (PrTable). Saved like the section choices, in its own
+// key.
+export const PR_ROWS_GROUP_BY_REPO_OVERRIDE_KEY = 'prRowsGroupByRepo';
+export const PR_ROWS_GROUP_BY_REPO_STORAGE_KEY = 'view-prs:pr-rows-group-by-repo';
+
+export const readStoredGroupRowsByRepo = (): boolean | null => {
+  try {
+    const value = window.localStorage.getItem(PR_ROWS_GROUP_BY_REPO_STORAGE_KEY);
+    return value === null ? null : value === 'true';
+  } catch (_error) {
+    return null;
+  }
+};
+
+export const storeGroupRowsByRepo = (groupByRepo: boolean) => {
+  try {
+    window.localStorage.setItem(PR_ROWS_GROUP_BY_REPO_STORAGE_KEY, String(groupByRepo));
+  } catch (_error) {
+    // Only the first draw uses the copy; user-defaults.json keeps the choice.
+  }
+};
+
+export const isPrSectionHidden =(preferences: PrSectionPreferences, key: string) => preferences[key]?.hidden === true;
 
 // Whether a section starts open: the saved choice, else the built-in default.
 export const prSectionStartsOpen = (preferences: PrSectionPreferences, key: string, fallback = builtInOpen(key)) =>
@@ -62,7 +118,7 @@ export const prSectionStartsOpen = (preferences: PrSectionPreferences, key: stri
 export const withPrSectionPreference = (
   preferences: PrSectionPreferences,
   key: string,
-  change: { hidden?: boolean; open?: boolean },
+  change: { hidden?: boolean; open?: boolean; sort?: SectionSort },
 ): PrSectionPreferences => {
   const current = preferences[key] || {};
   return normalizePrSectionPreferences({
@@ -70,6 +126,11 @@ export const withPrSectionPreference = (
     [key]: {
       hidden: change.hidden ?? current.hidden,
       open: change.open ?? current.open,
+      sort: change.sort ?? current.sort,
     },
   });
 };
+
+// How a section sorts: the saved choice, else its default.
+export const prSectionSort = (preferences: PrSectionPreferences, key: string): SectionSort =>
+  preferences[key]?.sort ?? defaultSectionSort(key);

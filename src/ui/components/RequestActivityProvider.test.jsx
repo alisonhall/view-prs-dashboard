@@ -26,35 +26,36 @@ const mount = (props = {}) => {
   return { view, read: () => latest };
 };
 
-const badgeTexts = (display) => display.requestActivityBadges.map((badge) => String(badge.text));
+const activeKeys = (display) => display.activeRequests.map((request) => request.key);
 
 describe('RequestActivityProvider', () => {
   afterEach(() => {
     delete global.fetch;
   });
 
-  test('given the provider mounts, when read, then the badges already show the idle state and no recent activity', () => {
+  test('given the provider mounts, when read, then nothing is in flight and there is no recent activity', () => {
     const { read } = mount();
 
-    expect(read().display.requestActivityBadges.length).toBeGreaterThan(0);
-    expect(badgeTexts(read().display).some((text) => text.startsWith('Run script'))).toBe(false);
+    expect(read().display.activeRequests).toEqual([]);
     expect(read().display.recentRequestActivity).toEqual([]);
   });
 
-  test('given beginRequestActivity, when the returned finish function is called (twice), then the badges show the request while it runs and it lands in recent activity exactly once', () => {
+  test('given beginRequestActivity, when the returned finish function is called (twice), then the request is in flight while it runs and lands in recent activity exactly once', () => {
     const { read } = mount();
 
     let finishActivity;
     act(() => {
       finishActivity = read().actions.beginRequestActivity('runScript');
     });
-    expect(badgeTexts(read().display).some((text) => text.startsWith('Run script x1'))).toBe(true);
+    expect(read().display.activeRequests).toEqual([
+      expect.objectContaining({ key: 'runScript', label: 'Run script', count: 1, startedAtMs: expect.any(Number) }),
+    ]);
     expect(read().display.recentRequestActivity).toEqual([]);
 
     act(() => {
       finishActivity();
     });
-    expect(badgeTexts(read().display).some((text) => text.startsWith('Run script'))).toBe(false);
+    expect(read().display.activeRequests).toEqual([]);
     expect(read().display.recentRequestActivity).toHaveLength(1);
     expect(read().display.recentRequestActivity[0]).toEqual(
       expect.objectContaining({ key: 'runScript', label: 'Run script' }),
@@ -68,7 +69,7 @@ describe('RequestActivityProvider', () => {
     expect(read().display.recentRequestActivity).toHaveLength(1);
   });
 
-  test('given renderSchedulerStatus with an in-progress auto run and active PRs, when called, then the "Auto run" badge shows and the table is told which PRs are active', () => {
+  test('given renderSchedulerStatus with active PRs, when called, then the table is told which PRs are active (the auto run itself is the popover\'s job row, not a request)', () => {
     const { read } = mount();
     const events = [];
     const listener = (event) => events.push(event.detail);
@@ -82,33 +83,36 @@ describe('RequestActivityProvider', () => {
       });
     });
 
-    expect(badgeTexts(read().display).some((text) => text.startsWith('Auto run'))).toBe(true);
-    expect(events).toEqual([{ activePrNumbers: [{ repo: 'owner/repo', prNumber: '7' }] }]);
+    expect(read().display.activeRequests).toEqual([]);
+    expect(events).toEqual([{ activePrNumbers: [{ repo: 'owner/repo', prNumber: '7' }], queuedPrNumbers: [] }]);
 
     act(() => {
       read().actions.renderSchedulerStatus(null);
     });
-    expect(badgeTexts(read().display).some((text) => text.startsWith('Auto run'))).toBe(false);
-    expect(events.at(-1)).toEqual({ activePrNumbers: [] });
+    expect(events.at(-1)).toEqual({ activePrNumbers: [], queuedPrNumbers: [] });
     window.removeEventListener('pr-active-progress-update', listener);
   });
 
-  test('given loadOnMount, when mounted, then it loads the scheduler status once and renders it', async () => {
+  test('given loadOnMount, when mounted, then it loads the scheduler status once and announces its active PRs', async () => {
     global.fetch = jest.fn(async () => ({
       ok: true,
       status: 200,
       json: async () => ({
         ok: true,
-        scheduler: { isAutoRunInProgress: true, lastAutoAttemptAt: new Date().toISOString() },
+        scheduler: { isAutoRunInProgress: true, activePrNumbers: [{ repo: 'owner/repo', prNumber: '9' }] },
       }),
     }));
+    const events = [];
+    const listener = (event) => events.push(event.detail);
+    window.addEventListener('pr-active-progress-update', listener);
 
-    const { read } = mount({ loadOnMount: true });
+    mount({ loadOnMount: true });
     await act(async () => {});
+    window.removeEventListener('pr-active-progress-update', listener);
 
     expect(global.fetch).toHaveBeenCalledTimes(1);
     expect(global.fetch).toHaveBeenCalledWith('/view-prs/scheduler');
-    expect(badgeTexts(read().display).some((text) => text.startsWith('Auto run'))).toBe(true);
+    expect(events).toEqual([{ activePrNumbers: [{ repo: 'owner/repo', prNumber: '9' }], queuedPrNumbers: [] }]);
   });
 
   test('given no loadOnMount, when mounted, then it never fetches; and a failed startup load is ignored', async () => {
@@ -121,7 +125,7 @@ describe('RequestActivityProvider', () => {
     const { read } = mount({ loadOnMount: true });
     await act(async () => {});
     expect(global.fetch).toHaveBeenCalledTimes(1);
-    expect(read().display.requestActivityBadges.length).toBeGreaterThan(0);
+    expect(read().display.activeRequests).toEqual([]);
   });
 
   // Lesson 1 of the plan: many hooks (and three Providers) read these
@@ -155,5 +159,21 @@ describe('RequestActivityProvider', () => {
 
     expect(latest.actions).toBe(firstActions);
     expect(renders).toBe(rendersAfterMount);
+  });
+});
+
+describe('RequestActivityProvider request thresholds', () => {
+  test('a request warns after 2 minutes and looks stuck after 6, but a fetch of older merged PRs - several minutes when working - only after 10 and 20', () => {
+    const { read } = mount();
+    act(() => {
+      read().actions.beginRequestActivity('olderMerged');
+      read().actions.beginRequestActivity('runScript');
+      read().actions.beginRequestActivity('runScript');
+    });
+
+    const byKey = Object.fromEntries(read().display.activeRequests.map((request) => [request.key, request]));
+    expect(activeKeys(read().display)).toEqual(['runScript', 'olderMerged']);
+    expect(byKey.runScript).toEqual(expect.objectContaining({ count: 2, thresholds: { warnMs: 120000, criticalMs: 360000 } }));
+    expect(byKey.olderMerged.thresholds).toEqual({ warnMs: 600000, criticalMs: 1200000 });
   });
 });

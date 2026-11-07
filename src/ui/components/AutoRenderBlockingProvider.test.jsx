@@ -41,7 +41,7 @@ const pushBlockingState = (state) => capturedActions.setBlockingState(state);
 const DIRTY_STATE = {
   dirtyFieldCount: 0,
   unsavedNotesCount: 1,
-  blockingPrNumbers: ['42'],
+  blockingPrKeys: ['42'],
   blockingAuthorInsightsLogins: [],
   blockingPrLabel: 'Blocking PRs: #42',
 };
@@ -49,7 +49,7 @@ const DIRTY_STATE = {
 const CLEAN_STATE = {
   dirtyFieldCount: 0,
   unsavedNotesCount: 0,
-  blockingPrNumbers: [],
+  blockingPrKeys: [],
   blockingAuthorInsightsLogins: [],
   blockingPrLabel: '',
 };
@@ -326,14 +326,14 @@ describe('AutoRenderBlockingProvider', () => {
         <Probe onValue={(value) => (latest = value)} />
       </AutoRenderBlockingProvider>,
     );
-    expect(latest.blockingPrNumbers).toEqual([]);
+    expect(latest.blockingPrKeys).toEqual([]);
     expect(latest.blockingAuthorInsightsLogins).toEqual([]);
 
     act(() => {
       pushBlockingState({ ...DIRTY_STATE, blockingAuthorInsightsLogins: ['octocat'] });
     });
 
-    expect(latest.blockingPrNumbers).toEqual(['42']);
+    expect(latest.blockingPrKeys).toEqual(['42']);
     expect(latest.blockingAuthorInsightsLogins).toEqual(['octocat']);
     expect(latest.blockingPrLabel).toBe('Blocking PRs: #42');
   });

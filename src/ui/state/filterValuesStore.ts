@@ -33,7 +33,14 @@ export interface FilterValues {
   showReason?: boolean;
   quiet?: boolean;
   // Row filters
-  scopeMode?: string;
+  // "Only PRs that need attention", and Conversations' "Open conversations
+  // with me", "Waiting on me" and "Resolved for you to check". The first
+  // and last replaced the "View scope" select (its saved "scope-mode"
+  // becomes them: FilterStateProvider's restore).
+  onlyNeedsAttention?: boolean;
+  onlyOpenConversationsWithMe?: boolean;
+  onlyWaitingOnMe?: boolean;
+  onlyThreadsToCheck?: boolean;
   filterPrNumbers?: string;
   alwaysShowInReview?: boolean;
   filterCustomComments?: string;
@@ -41,6 +48,9 @@ export interface FilterValues {
   filterPrDifficulty?: string;
   filterStories?: string;
   filterAnalysisOfPr?: string;
+  // The search box: not saved (FILTER_STATE_FIELD_MAP leaves it out), as
+  // a search is for now.
+  filterSearch?: string;
   // Settings' attention, merge-commit and change-detection rules
   attentionNoActivityMode?: string;
   attentionIncludePendingComments?: boolean;

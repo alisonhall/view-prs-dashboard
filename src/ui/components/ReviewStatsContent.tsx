@@ -39,21 +39,41 @@
  * @module components/ReviewStatsContent
  */
 
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useMemo, useRef, useState, type ReactNode } from 'react';
 import { StatsVisuals } from './StatsVisuals';
 import { usePrData } from '../state/PrDataContext';
 import { useReviewStats, type ReviewStatsValue } from '../state/ReviewStatsContext';
 import { useIsTabPanelVisible } from '../state/useIsTabPanelVisible';
 import { useNavigateToPrInTable } from '../state/useNavigateToPrInTable';
+import { useActorIdentity } from '../state/ActorIdentityContext';
+import { useReviewStatsColumns } from '../state/useReviewStatsColumns';
+import { REVIEW_STATS_FILTER_MODES } from './ReviewStatsControls';
+import { Avatar } from './ui/Avatar';
+import { Button } from './ui/Button';
+import { MultiSelectDropdown } from './ui/MultiSelectDropdown';
+import { Tooltip } from './ui/Tooltip';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.ts';
+import { createPrUserInitialsHelpers } from '../helpers/pr-user-initials.helpers.ts';
+import {
+  isReviewStatsColumnShown,
+  REVIEW_STATS_COLUMN_CATALOG,
+  type ReviewStatsColumnChoices,
+} from '../helpers/review-stats-columns.helpers.ts';
+import {
+  REVIEW_STATS_CARD_EXPLANATIONS,
+  REVIEW_STATS_COLUMN_EXPLANATIONS,
+} from '../helpers/review-stats-explanations.helpers.ts';
 import type { ReviewerRow as ReviewerRowData, StatsSource } from '../helpers/pr-review-stats-aggregation.helpers.ts';
 
 const { formatIsoDatetime } = createPrFormattingHelpers();
+const { getUserInitials } = createPrUserInitialsHelpers();
 
 // The extra text after a source's PR (e.g. "3 comments").
 type SourceFormatter = (item: StatsSource) => string;
 type SourceSection = [label: string, items: StatsSource[], formatter: SourceFormatter];
-type ControlledStats = ReturnType<ReviewStatsValue['applyStatsControls']>;
+// activeReviewerCount: reviewers with any activity in the date range,
+// before Show and Minimum comments.
+type ControlledStats = ReturnType<ReviewStatsValue['applyStatsControls']> & { activeReviewerCount: number };
 
 function SourceItemRow({ item, detailText }: { item: StatsSource; detailText: string }) {
   const navigateToPrInTable = useNavigateToPrInTable();
@@ -117,18 +137,31 @@ function SourcesDetails({ items, formatter }: { items: StatsSource[] | undefined
   );
 }
 
+// A card's label or a column heading, with how it's counted on hover and
+// focus (review-stats-explanations.helpers.ts).
+function Explained({ explanation, className, children }: { explanation: string; className?: string; children: ReactNode }) {
+  return (
+    <Tooltip content={explanation} focusTarget>
+      <span className={['stats-explained', className].filter(Boolean).join(' ')}>{children}</span>
+    </Tooltip>
+  );
+}
+
 interface StatCardProps {
   label: string;
+  explanation: string;
   value: string;
   detail?: string;
   sources?: StatsSource[];
   formatter: SourceFormatter;
 }
 
-function StatCard({ label, value, detail, sources, formatter }: StatCardProps) {
+function StatCard({ label, explanation, value, detail, sources, formatter }: StatCardProps) {
   return (
     <div className="stat-card" role="group" aria-label={label}>
-      <span className="stat-card-label">{label}</span>
+      <Explained explanation={explanation} className="stat-card-label">
+        {label}
+      </Explained>
       <span className="stat-card-value">{value}</span>
       {detail && <span className="stat-card-detail">{detail}</span>}
       <SourcesDetails items={sources} formatter={formatter} />
@@ -167,44 +200,137 @@ function ReviewerSourcesContent({ sections }: { sections: SourceSection[] }) {
   );
 }
 
-const STATS_COLUMN_COUNT = 12;
+// The columns after Reviewer that show (the Columns menu's choices).
+const shownColumnKeys = (choices: ReviewStatsColumnChoices) =>
+  REVIEW_STATS_COLUMN_CATALOG.filter(({ key }) => isReviewStatsColumnShown(choices, key)).map(({ key }) => key);
 
-function ReviewerRow({ reviewer }: { reviewer: ReviewerRowData }) {
+// "Aug 6, 2026" from an <input type="date"> value.
+const formatStatsDate = (value: string) => {
+  const date = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+};
+
+// "since Aug 6, 2026", "between ... and ...", "up to ...", or '' with no dates.
+const describeStatsDateRange = ({ startDate, endDate }: { startDate?: string; endDate?: string }) => {
+  if (startDate && endDate) return `between ${formatStatsDate(startDate)} and ${formatStatsDate(endDate)}`;
+  if (startDate) return `since ${formatStatsDate(startDate)}`;
+  if (endDate) return `up to ${formatStatsDate(endDate)}`;
+  return '';
+};
+
+// The table's only row when it lists no one: why, and the way out - the
+// date range (it starts three months back), or Show and Minimum comments.
+// The button goes once pressed, so onCleared moves focus to the table
+// rather than leaving it nowhere.
+function StatsTableEmpty({
+  activeReviewerCount,
+  columnCount,
+  onCleared,
+}: {
+  activeReviewerCount: number;
+  columnCount: number;
+  onCleared: () => void;
+}) {
+  const { statsViewState, getNormalizedStatsDateRange, setStatsViewState } = useReviewStats();
+  const range = describeStatsDateRange(getNormalizedStatsDateRange());
+  const clear = (patch: Parameters<typeof setStatsViewState>[0]) => {
+    setStatsViewState(patch);
+    onCleared();
+  };
+  let message: string;
+  let action: ReactNode = null;
+  if (activeReviewerCount > 0) {
+    const who = activeReviewerCount === 1 ? '1 reviewer has' : `${activeReviewerCount} reviewers have`;
+    // Says only what's set: "No reviewers with risky approvals and at
+    // least 3 comments."
+    const minComments = Number(statsViewState?.minComments) || 0;
+    const wanted = [
+      REVIEW_STATS_FILTER_MODES.find(([value]) => value !== 'all' && value === statsViewState?.filterMode)?.[1],
+      minComments > 0 && `at least ${minComments} ${minComments === 1 ? 'comment' : 'comments'}`,
+    ].filter(Boolean);
+    message = `No reviewers with ${wanted.length ? wanted.join(' and ') : 'those settings'}. ${who} activity${range ? ` ${range}` : ''}.`;
+    action = (
+      <Button onClick={() => clear({ filterMode: 'all', minComments: 0 })}>
+        Show all reviewers
+      </Button>
+    );
+  } else if (range) {
+    message = `No reviewer activity ${range}.`;
+    action = (
+      <Button onClick={() => clear({ startDate: '', endDate: '' })}>
+        Clear dates
+      </Button>
+    );
+  } else {
+    message = "No reviewer activity yet: no one has commented on or reviewed someone else's PR.";
+  }
+  return (
+    <tr className="stats-table-empty">
+      <td colSpan={columnCount}>
+        <div className="stats-table-empty-content">
+          <span>{message}</span>
+          {action}
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+// The reviewer's avatar and name, as the PR table's Who column; the
+// login on hover when the name differs.
+function ReviewerIdentity({ reviewer }: { reviewer: ReviewerRowData }) {
+  const { getEffectiveViewerLogin } = useActorIdentity();
+  const login = String(reviewer.login || '');
+  const name = String(reviewer.name || login);
+  const viewerLogin = String(getEffectiveViewerLogin({}) || '').toLowerCase();
+  const isViewer = Boolean(viewerLogin) && login.toLowerCase() === viewerLogin;
+  return (
+    <span className="stats-reviewer" title={name !== login ? login : undefined}>
+      <Avatar initials={getUserInitials(name, login)} login={login} isViewer={isViewer} size="sm" />
+      <span>
+        {name}
+        {isViewer && <span className="stats-reviewer-you"> (you)</span>}
+      </span>
+    </span>
+  );
+}
+
+function ReviewerRow({ reviewer, columnKeys }: { reviewer: ReviewerRowData; columnKeys: string[] }) {
   const [expanded, setExpanded] = useState(false);
   const sections = getReviewerSourceSections(reviewer);
   const hasSources = sections.length > 0;
+  const showsSources = columnKeys.includes('sources');
 
   return (
     <>
       <tr>
-        <td>{reviewer.name}</td>
-        <td>{reviewer.comments}</td>
-        <td>{reviewer.threadComments}</td>
-        <td>{reviewer.reviews}</td>
-        <td>{reviewer.approvals}</td>
-        <td>{reviewer.riskyApprovals}</td>
-        <td>{reviewer.highRiskApprovals}</td>
-        <td>{reviewer.usefulnessSignals}</td>
-        <td>{reviewer.commentsFollowedByAuthorCommit}</td>
-        <td>{reviewer.resolvedThreadComments}</td>
-        <td>{reviewer.prCount}</td>
-        <td className="stats-sources-cell">
-          {hasSources ? (
-            <button
-              type="button"
-              className="stats-sources-toggle"
-              aria-expanded={expanded ? 'true' : 'false'}
-              onClick={() => setExpanded((previous) => !previous)}
-            >
-              {expanded ? 'Hide sources' : 'Show sources'}
-            </button>
+        <th scope="row">
+          <ReviewerIdentity reviewer={reviewer} />
+        </th>
+        {columnKeys.map((key) =>
+          key === 'sources' ? (
+            <td key={key} className="stats-sources-cell">
+              {hasSources ? (
+                <button
+                  type="button"
+                  className="stats-sources-toggle"
+                  aria-expanded={expanded ? 'true' : 'false'}
+                  onClick={() => setExpanded((previous) => !previous)}
+                >
+                  {expanded ? 'Hide sources' : 'Show sources'}
+                </button>
+              ) : (
+                '-'
+              )}
+            </td>
           ) : (
-            '-'
-          )}
-        </td>
+            <td key={key}>{String(reviewer[key as keyof ReviewerRowData] ?? 0)}</td>
+          ),
+        )}
       </tr>
-      <tr className="stats-sources-row" hidden={!expanded}>
-        <td colSpan={STATS_COLUMN_COUNT} className="stats-sources-row-cell">
+      <tr className="stats-sources-row" hidden={!expanded || !showsSources}>
+        <td colSpan={columnKeys.length + 1} className="stats-sources-row-cell">
           {hasSources ? <ReviewerSourcesContent sections={sections} /> : 'No sources'}
         </td>
       </tr>
@@ -220,6 +346,9 @@ export function ReviewStatsContent() {
   const actorsMap = payload?.actorsMap || {};
   const isVisible = useIsTabPanelVisible('tab-panel-review-stats');
   const lastStatsRef = useRef<ControlledStats | null>(null);
+  const tableRef = useRef<HTMLTableElement>(null);
+  const { choices: columnChoices, setColumnShown } = useReviewStatsColumns();
+  const columnKeys = shownColumnKeys(columnChoices);
 
   // Memoized on [payload, buildReviewerStats, applyStatsControls, isVisible]
   // specifically, not [rows, actorsMap] (which would be new references on
@@ -243,7 +372,7 @@ export function ReviewStatsContent() {
     }
     const currentActorsMap = payload?.actorsMap || {};
     const { summary, reviewerRows } = buildReviewerStats(currentRows, currentActorsMap);
-    const computed = applyStatsControls({ summary, reviewerRows });
+    const computed = { ...applyStatsControls({ summary, reviewerRows }), activeReviewerCount: reviewerRows.length };
     lastStatsRef.current = computed;
     return computed;
   }, [payload, buildReviewerStats, applyStatsControls, isVisible]);
@@ -263,9 +392,10 @@ export function ReviewStatsContent() {
     <>
       <div className="stats-grid">
         <StatCard
-          label="Filtered rows"
+          label="PRs"
+          explanation={REVIEW_STATS_CARD_EXPLANATIONS.prs}
           value={String(stats.summary.rows)}
-          detail="Current local filter scope"
+          detail={dateRange.startDate || dateRange.endDate ? 'With review activity in the dates' : 'Every stored PR'}
           sources={stats.summary.sources.rows}
           formatter={(item) => {
             const author = String(item?.prAuthor || '').trim();
@@ -274,6 +404,7 @@ export function ReviewStatsContent() {
         />
         <StatCard
           label="Comments on others' PRs"
+          explanation={REVIEW_STATS_CARD_EXPLANATIONS.commentsOnOthersPrs}
           value={String(stats.summary.commentsOnOthersPrs)}
           detail="Top-level and thread comments combined"
           sources={stats.summary.sources.commentsOnOthersPrs}
@@ -281,6 +412,7 @@ export function ReviewStatsContent() {
         />
         <StatCard
           label="Approvals"
+          explanation={REVIEW_STATS_CARD_EXPLANATIONS.approvals}
           value={String(stats.summary.approvals)}
           detail={`${stats.summary.riskyApprovals} risky | ${stats.summary.highRiskApprovals} high-risk`}
           sources={stats.summary.sources.approvals}
@@ -288,6 +420,7 @@ export function ReviewStatsContent() {
         />
         <StatCard
           label="Comment usefulness"
+          explanation={REVIEW_STATS_CARD_EXPLANATIONS.usefulness}
           value={String(stats.summary.usefulnessSignals)}
           detail={`${stats.summary.commentsFollowedByAuthorCommit} comments were followed by author commits`}
           sources={stats.summary.sources.usefulnessSignals}
@@ -297,37 +430,54 @@ export function ReviewStatsContent() {
 
       <StatsVisuals stats={stats} rows={rows} actorsMap={actorsMap} />
 
-      <table className="stats-table">
-        <thead>
-          <tr>
-            {[
-              'Reviewer',
-              'Comments',
-              'Thread comments',
-              'Reviews',
-              'Approvals',
-              'Risky approvals',
-              'High-risk approvals',
-              'Useful comment signals',
-              'Comments → author commit',
-              'Resolved thread comments',
-              'PRs touched',
-              'Sources',
-            ].map((label) => (
-              <th key={label}>{label}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {stats.reviewerRows.map((reviewer) => (
-            <ReviewerRow key={reviewer.name} reviewer={reviewer} />
-          ))}
-        </tbody>
-      </table>
+      <div className="stats-table-bar">
+        <MultiSelectDropdown
+          listId="review-stats-columns"
+          label="Columns"
+          idPrefix="review-stats-column"
+          className="stats-columns"
+          options={REVIEW_STATS_COLUMN_CATALOG.map(({ key, label }) => ({ value: key, label }))}
+          checked={new Set(columnKeys)}
+          onToggle={(key) => setColumnShown(key, !columnKeys.includes(key))}
+        />
+      </div>
 
-      <p className="stats-note">
-        {`Showing ${stats.reviewerRows.length} of ${stats.totalBeforeLimit} reviewers after stats filters. Stats are computed from all stored rows and use saved per-PR metrics.${dateText}`}
-      </p>
+      {/* Scrolls sideways when the columns don't fit, Reviewer staying put. */}
+      <div className="stats-table-scroll">
+        <table ref={tableRef} className="stats-table" aria-label="Reviewers" tabIndex={-1}>
+          <thead>
+            <tr>
+              <th scope="col">
+                <Explained explanation={REVIEW_STATS_COLUMN_EXPLANATIONS.reviewer}>Reviewer</Explained>
+              </th>
+              {REVIEW_STATS_COLUMN_CATALOG.filter(({ key }) => columnKeys.includes(key)).map(({ key, label, explanation }) => (
+                <th key={key} scope="col">
+                  <Explained explanation={explanation}>{label}</Explained>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {stats.reviewerRows.length === 0 ? (
+              <StatsTableEmpty
+                activeReviewerCount={stats.activeReviewerCount}
+                columnCount={columnKeys.length + 1}
+                onCleared={() => tableRef.current?.focus()}
+              />
+            ) : (
+              stats.reviewerRows.map((reviewer) => (
+                <ReviewerRow key={reviewer.login || reviewer.name} reviewer={reviewer} columnKeys={columnKeys} />
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {stats.reviewerRows.length > 0 && (
+        <p className="stats-note">
+          {`Showing ${stats.reviewerRows.length} of ${stats.totalBeforeLimit} reviewers after stats filters. Stats are computed from all stored rows and use saved per-PR metrics.${dateText}`}
+        </p>
+      )}
 
       <p className="stats-note">{trendNoteText}</p>
     </>

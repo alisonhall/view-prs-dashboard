@@ -5,6 +5,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AuthorThreadResolutionSelectionContext } from '../../state/AuthorThreadResolutionSelectionContext';
 import { ReviewConversationsUiStateProvider } from '../ReviewConversationsUiStateProvider';
+import { PrDataContext, type PrDataValue } from '../../state/PrDataContext';
 import type { PrData, ReviewThread } from '../../types/pr-data.ts';
 import { PrConversationsTab } from './PrConversationsTab';
 
@@ -251,5 +252,70 @@ describe('PrConversationsTab', () => {
   test('says so when there are no conversations at all', () => {
     render(<PrConversationsTab pr={basePr([])} />);
     expect(screen.getByText('No conversations')).toBeInTheDocument();
+  });
+});
+
+describe('PrConversationsTab: threads resolved for you', () => {
+  // You ("me") started it; bob resolved it after the author replied.
+  const resolvedForMe = thread(
+    'T1',
+    [comment('me', '2026-01-01T00:00:00Z', { id: 'C1', path: 'src/a.ts', line: 4, body: 'Handle the error' }), comment('author', '2026-01-02T00:00:00Z', { id: 'C2' })],
+    { isResolved: true, resolvedByLogin: 'bob', isOutdated: true },
+  );
+  const entry = { repo: 'o/r', prNumber: '7' };
+  const withConfirmations = (confirmations: Record<string, string>, children: ReactNode) => (
+    <PrDataContext.Provider value={{ payload: { threadChecksByRepo: { 'o/r': { '7': confirmations } } } } as unknown as PrDataValue}>
+      {children}
+    </PrDataContext.Provider>
+  );
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  test('a To check chip and count, and the thread says who resolved it and what suggests it was handled', async () => {
+    const user = userEvent.setup();
+    render(<PrConversationsTab pr={basePr([resolvedForMe])} entry={entry} />);
+    expect(document.querySelector('.pr-conv-summary')).toHaveTextContent('1 resolved for you to check');
+    await user.click(chip('To check'));
+    expect(rows()).toEqual(['T1']);
+    await user.click(screen.getByRole('button', { name: /Handle the error/ }));
+    const panel = document.querySelector('.pr-conv-check-panel') as HTMLElement;
+    expect(panel).toHaveTextContent('You started this, and bob resolved it');
+    expect(panel).toHaveTextContent('has changed since (outdated)');
+    expect(panel).toHaveTextContent("bob didn't reply in it");
+  });
+
+  test('Confirm handled saves the thread with its signature and applies the refreshed data', async () => {
+    const user = userEvent.setup();
+    const prData = { byPrNumber: {} };
+    const fetchMock = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, prData }) });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    const onDataRefresh = jest.fn();
+    render(<PrConversationsTab pr={basePr([resolvedForMe])} entry={entry} onDataRefresh={onDataRefresh} />);
+    await user.click(screen.getByRole('button', { name: /Handle the error/ }));
+    await user.click(screen.getByRole('button', { name: 'Confirm handled' }));
+    expect(fetchMock).toHaveBeenCalledWith('/view-prs/thread-checks', expect.objectContaining({ method: 'POST' }));
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ repo: 'o/r', prNumber: '7', threadId: 'T1', signature: 'bob|2|C2', confirmed: true });
+    expect(onDataRefresh).toHaveBeenCalledWith(prData);
+  });
+
+  test('once confirmed: off the To check list, marked confirmed, and it can be undone', async () => {
+    const user = userEvent.setup();
+    render(withConfirmations({ T1: 'bob|2|C2' }, <PrConversationsTab pr={basePr([resolvedForMe])} entry={entry} />));
+    expect(document.querySelector('.pr-conv-summary')).not.toHaveTextContent('to check');
+    await user.click(chip('To check'));
+    expect(screen.getByText('Nothing to check')).toBeInTheDocument();
+    await user.click(chip('All'));
+    expect(document.querySelector('.pr-conv-check')).toHaveTextContent('confirmed');
+    await user.click(screen.getByRole('button', { name: /Handle the error/ }));
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeInTheDocument();
+  });
+
+  test('resolved by the PR author is called out', async () => {
+    const user = userEvent.setup();
+    render(<PrConversationsTab pr={basePr([{ ...resolvedForMe, resolvedByLogin: 'author' }])} entry={entry} />);
+    await user.click(chip('To check'));
+    await user.click(screen.getByRole('button', { name: /Handle the error/ }));
+    expect(document.querySelector('.pr-conv-check-panel')).toHaveTextContent('someone else should resolve your threads');
   });
 });

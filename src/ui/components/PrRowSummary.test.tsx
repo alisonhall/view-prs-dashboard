@@ -12,7 +12,15 @@ const renderSummary = (pr: PrData, props: Partial<PrRowSummaryProps> = {}) => {
   const onShowDetails = props.onShowDetails ?? jest.fn();
   render(
     <NowContext.Provider value={NOW}>
-      <PrRowSummary pr={pr} attentionReasons={[]} idPrefix="summary-101" {...props} onShowDetails={onShowDetails} />
+      <PrRowSummary
+        pr={pr}
+        repo="o/r"
+        attentionReasons={[]}
+        idPrefix="summary-101"
+        onShowActivity={jest.fn()}
+        {...props}
+        onShowDetails={onShowDetails}
+      />
     </NowContext.Provider>,
   );
   return { onShowDetails };
@@ -98,6 +106,69 @@ describe('PrRowSummary', () => {
     const time = items[0]?.querySelector('time');
     expect(time).toHaveAttribute('dateTime', '2026-10-24T11:55:00Z');
     expect(time?.getAttribute('data-tip')).toBeTruthy();
+  });
+
+  describe('what is new since you last looked', () => {
+    const event = (sourceId: string, occurredAt: string, actor = 'ann', extra = {}) => ({
+      sourceId,
+      occurredAt,
+      actor,
+      type: 'comment',
+      channel: 'top-level',
+      body: sourceId,
+      ...extra,
+    });
+    const changed: PrData = {
+      number: '101',
+      status: 'CHANGED',
+      reason: 'commit|comment|unanswered-thread',
+      baseline: '2026-10-22T12:00:00Z',
+      activityEvents: [
+        event('n5', '2026-10-24T11:00:00Z'),
+        event('n4', '2026-10-24T10:00:00Z', 'bob', { type: 'commit', channel: 'commit', body: '' }),
+        event('n3', '2026-10-24T09:00:00Z'),
+        event('n2', '2026-10-23T09:00:00Z'),
+        event('n1', '2026-10-23T08:00:00Z'),
+        event('old', '2026-10-21T08:00:00Z'),
+      ],
+    };
+
+    test("the change's reasons become one counted line; the reasons the counts don't say stay", () => {
+      renderSummary(changed, { attentionReasons: ['New commits', 'New comments', 'Unanswered review threads', '1 unsubmitted pending comment'] });
+      expect(within(column("Why it's here")).getAllByRole('listitem').map((item) => item.textContent)).toEqual([
+        'Since your last activity on Oct 22: 1 commit · 4 comments',
+        'Unanswered review threads',
+        '1 unsubmitted pending comment',
+      ]);
+    });
+
+    test('the activity column shows the newest three new events, and offers the rest in Activity', async () => {
+      const user = userEvent.setup();
+      const onShowActivity = jest.fn();
+      renderSummary(changed, { onShowActivity });
+
+      const activity = column('New since your last activity on Oct 22');
+      expect(within(activity).getAllByRole('listitem').map((item) => item.textContent)).toEqual([
+        expect.stringMatching(/^ann commented: n5/),
+        expect.stringMatching(/^bob pushed a commit/),
+        expect.stringMatching(/^ann commented: n3/),
+      ]);
+      await user.click(within(activity).getByRole('button', { name: 'See all 5 in Activity for PR #101' }));
+      expect(onShowActivity).toHaveBeenCalledTimes(1);
+    });
+
+    test('with three new or fewer, only those, and no link', () => {
+      renderSummary({ ...changed, baseline: '2026-10-24T08:30:00Z' }, { attentionReasons: ['New comments'] });
+      const activity = screen.getByRole('group', { name: /^New since your last activity/ });
+      expect(within(activity).getAllByRole('listitem')).toHaveLength(3);
+      expect(within(activity).queryByRole('button')).not.toBeInTheDocument();
+    });
+
+    test('nothing new: "Latest activity" and the reasons as they were', () => {
+      renderSummary({ ...changed, baseline: '2026-10-24T11:30:00Z' }, { attentionReasons: ['New comments'] });
+      expect(within(column('Latest activity')).getAllByRole('listitem')).toHaveLength(3);
+      expect(within(column("Why it's here")).getByRole('listitem')).toHaveTextContent('New comments');
+    });
   });
 
   test('says so when there is no activity', () => {

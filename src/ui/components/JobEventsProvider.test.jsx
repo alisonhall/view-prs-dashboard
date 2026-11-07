@@ -117,70 +117,6 @@ describe('JobEventsProvider', () => {
     });
   });
 
-  // Regression tests: schedulerSummary's own default
-  // (getInitialJobEventsState) is a hardcoded placeholder, not real data -
-  // without a payload.scheduler fallback, a fresh page load would
-  // briefly show it instead of the real values PrDataProvider's payload
-  // already has from its own very first /view-prs/data fetch. Found via
-  // code review.
-  describe('schedulerSummary payload.scheduler fallback (see JobEventsProvider.tsx\'s own comment)', () => {
-    test('given a payload.scheduler and no SSE snapshot has arrived yet, when read, then schedulerSummary reflects payload.scheduler, not the hardcoded default', () => {
-      render(
-        <PrDataContext.Provider
-          value={{
-            payload: {
-              scheduler: {
-                intervalMinutes: 45,
-                lastAutoRunAt: '2026-01-01T00:05:00.000Z',
-              },
-            },
-          }}
-        >
-          <JobEventsProvider>
-            <Probe />
-          </JobEventsProvider>
-        </PrDataContext.Provider>,
-      );
-
-      expect(ProbeLastValue.schedulerSummary.intervalMinutes).toBe(45);
-      expect(ProbeLastValue.schedulerSummary.lastAutoRunAt).toBe('2026-01-01T00:05:00.000Z');
-    });
-
-    test('given no PrDataContext ancestor at all, when read, then schedulerSummary falls back to the hardcoded default without throwing', () => {
-      render(
-        <JobEventsProvider>
-          <Probe />
-        </JobEventsProvider>,
-      );
-
-      expect(ProbeLastValue.schedulerSummary.intervalMinutes).toBe(15);
-    });
-
-    test('given a payload.scheduler fallback is showing, when a real SSE snapshot arrives, then schedulerSummary switches to the live SSE value instead', () => {
-      render(
-        <PrDataContext.Provider
-          value={{ payload: { scheduler: { intervalMinutes: 45 } } }}
-        >
-          <JobEventsProvider>
-            <Probe />
-          </JobEventsProvider>
-        </PrDataContext.Provider>,
-      );
-      expect(ProbeLastValue.schedulerSummary.intervalMinutes).toBe(45);
-
-      const instance = FakeEventSource.instances[0];
-      act(() => {
-        instance.triggerOpen();
-        instance.emit('snapshot', {
-          at: '2026-01-01T00:00:00.000Z',
-          scheduler: { intervalMinutes: 30 },
-        });
-      });
-
-      expect(ProbeLastValue.schedulerSummary.intervalMinutes).toBe(30);
-    });
-  });
-
   // Window-bridge elimination Phase 7.3: renderSchedulerStatus comes from
   // RequestActivityProvider's Context now, not window.renderSchedulerStatus.
   test('a job frame updates state and calls renderSchedulerStatus with the bundled scheduler object', () => {
@@ -245,7 +181,9 @@ describe('JobEventsProvider', () => {
     expect(pollForDataChanges).toHaveBeenCalledTimes(1);
   });
 
-  test('a quickCheck finish event does not trigger pollForDataChanges', () => {
+  // A quick check writes its repo's live summary and queues changed PRs,
+  // both of which the rows show.
+  test('a quickCheck finish event triggers pollForDataChanges', () => {
     const pollForDataChanges = jest.fn();
     render(
       <PrDataContext.Provider value={{ pollForDataChanges }}>
@@ -260,7 +198,89 @@ describe('JobEventsProvider', () => {
       instance.emit('job', { type: 'job', job: 'quickCheck', phase: 'finish', seq: 1, ok: true });
     });
 
+    expect(pollForDataChanges).toHaveBeenCalledTimes(1);
+  });
+
+  test('runs one data poll at a time: requests while one runs make one more after it', async () => {
+    let finishPoll;
+    const pollForDataChanges = jest.fn(
+      () =>
+        new Promise((resolve) => {
+          finishPoll = resolve;
+        }),
+    );
+    render(
+      <PrDataContext.Provider value={{ pollForDataChanges }}>
+        <JobEventsProvider>
+          <Probe />
+        </JobEventsProvider>
+      </PrDataContext.Provider>,
+    );
+    const instance = FakeEventSource.instances[0];
+
+    act(() => {
+      instance.emit('data-changed', { type: 'data-changed', seq: 1 });
+      instance.emit('data-changed', { type: 'data-changed', seq: 2 });
+      instance.emit('data-changed', { type: 'data-changed', seq: 3 });
+    });
+    expect(pollForDataChanges).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      finishPoll();
+    });
+    expect(pollForDataChanges).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      finishPoll();
+    });
+    expect(pollForDataChanges).toHaveBeenCalledTimes(2);
+  });
+
+  test('polls on every snapshot once the data has loaded: changes before a connection opens are not pushed', async () => {
+    const pollForDataChanges = jest.fn();
+    render(
+      <PrDataContext.Provider value={{ pollForDataChanges, payload: { ok: true } }}>
+        <JobEventsProvider>
+          <Probe />
+        </JobEventsProvider>
+      </PrDataContext.Provider>,
+    );
+    const instance = FakeEventSource.instances[0];
+
+    await act(async () => {
+      instance.emit('snapshot', { scheduler: {}, at: '2026-01-01T00:00:00.000Z' });
+    });
+    expect(pollForDataChanges).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      instance.emit('snapshot', { scheduler: {}, at: '2026-01-01T00:01:00.000Z' });
+    });
+    expect(pollForDataChanges).toHaveBeenCalledTimes(2);
+  });
+
+  test("a snapshot before the page's first data load polls once that load finishes, not before", () => {
+    const pollForDataChanges = jest.fn();
+    const tree = (payload) => (
+      <PrDataContext.Provider value={{ pollForDataChanges, payload }}>
+        <JobEventsProvider>
+          <Probe />
+        </JobEventsProvider>
+      </PrDataContext.Provider>
+    );
+    const { rerender } = render(tree(null));
+    const instance = FakeEventSource.instances[0];
+
+    act(() => {
+      instance.emit('snapshot', { scheduler: {}, at: '2026-01-01T00:00:00.000Z' });
+    });
     expect(pollForDataChanges).not.toHaveBeenCalled();
+
+    rerender(tree({ ok: true }));
+    expect(pollForDataChanges).toHaveBeenCalledTimes(1);
+
+    // Only once: a later payload doesn't poll again.
+    rerender(tree({ ok: true, lastRun: {} }));
+    expect(pollForDataChanges).toHaveBeenCalledTimes(1);
   });
 
   test('onerror while CONNECTING marks the connection reconnecting without opening a new EventSource', () => {

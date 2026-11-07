@@ -14,6 +14,7 @@ import { useEffect, useRef, useState } from 'react';
 import { safeJsonStringify } from '../helpers/pr-ui-render-utils.helpers.ts';
 import { getPerPrUserStateFromPayload } from '../helpers/pr-per-pr-user-state.helpers.ts';
 import { DEFAULT_REPO as defaultRepo } from '../helpers/pr-default-repo.helpers.ts';
+import { findPrEntry } from '../helpers/pr-entry-keys.helpers.ts';
 import type { PrData, PrDataPayload, PrEntry } from '../types/pr-data.ts';
 
 type JsonRecord = Record<string, unknown>;
@@ -90,8 +91,8 @@ function buildPrJsonModalPayload({
   getPerPrUserStateFromPayload,
 }: BuildPrJsonModalPayloadInput): PrJsonDetails {
   const prNumber = String(pr?.number || entry?.prNumber || '').trim();
-  const byPrNumber = payload?.byPrNumber || {};
-  const payloadEntry = byPrNumber?.[prNumber];
+  // By repo and number: two repos can each have a PR with this number.
+  const payloadEntry = findPrEntry(payload?.byPrNumber, entry?.repo || defaultRepo, prNumber);
   const dataSourceEntry: unknown = payloadEntry || entry || {};
   // Copies, not the payload's own objects: it's the table's live data, and
   // notes and the detail-only fields are removed from these for display.

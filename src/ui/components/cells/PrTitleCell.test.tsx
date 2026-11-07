@@ -3,6 +3,8 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { PrTitleCell, type PrTitleCellProps } from './PrTitleCell';
+import { SearchTermsContext } from '../../state/SearchTermsContext';
+import { RepoFreshnessProvider } from '../../state/RepoFreshnessContext';
 
 const renderCell = (props: Partial<PrTitleCellProps> = {}) => {
   const onToggleInsights = props.onToggleInsights ?? jest.fn();
@@ -26,18 +28,49 @@ const renderCell = (props: Partial<PrTitleCellProps> = {}) => {
 };
 
 describe('PrTitleCell', () => {
+  describe('with a search', () => {
+    const entry = {
+      repo: 'owner/repo',
+      prNumber: '101',
+      data: { number: '101', title: 'Fix bug', sourceBranch: 'feature/tokenizer' },
+      notes: { comments: [{ author: 'Grace', note: 'Needs a regression test' }] },
+    };
+    const renderSearched = (terms: string[]) =>
+      render(
+        <SearchTermsContext.Provider value={terms}>
+          <table>
+            <tbody>
+              <tr>
+                <PrTitleCell pr={entry.data} entry={entry} repo="owner/repo" sectionKey="open" isExpanded={false} onToggleInsights={jest.fn()} />
+              </tr>
+            </tbody>
+          </table>
+        </SearchTermsContext.Provider>,
+      );
+
+    test("says where a word was found that the row doesn't show", () => {
+      renderSearched(['tokenizer', 'regression']);
+      expect(screen.getByText(/Matches in/)).toHaveTextContent('Matches in branch, comments');
+    });
+
+    test('says nothing when the row shows the match (its title), or without a search', () => {
+      renderSearched(['bug']);
+      expect(screen.queryByText(/Matches in/)).not.toBeInTheDocument();
+    });
+  });
+
   test('shows the title without its [CHK]/[MRG] markers, followed by the #number link', () => {
     renderCell({ pr: { number: '101', title: 'Fix bug', titleDisplay: 'Fix bug [CHK:PASS][MRG:YES]', url: 'https://github.com/o/r/pull/101' } });
 
     expect(screen.getByText(/Fix bug/)).not.toHaveTextContent('CHK');
-    const link = screen.getByRole('link', { name: '#101' });
+    const link = screen.getByRole('link', { name: '#101 opens GitHub in a new tab' });
     expect(link).toHaveAttribute('href', 'https://github.com/o/r/pull/101');
     expect(link).toHaveClass('pr-link');
   });
 
   test('builds the link from the repo when the PR has no url', () => {
     renderCell({ pr: { number: '7', title: 'No url' }, repo: 'org/repo' });
-    expect(screen.getByRole('link', { name: '#7' })).toHaveAttribute('href', 'https://github.com/org/repo/pull/7');
+    expect(screen.getByRole('link', { name: '#7 opens GitHub in a new tab' })).toHaveAttribute('href', 'https://github.com/org/repo/pull/7');
   });
 
   test('carries data-pr-number and data-repo, which "Jump to PR" looks for', () => {
@@ -70,7 +103,7 @@ describe('PrTitleCell', () => {
   test('puts the PR number first, on a line of its own above the title, so it is in the same place on every row', () => {
     renderCell({ pr: { number: '101', title: 'A long title that wraps onto more lines' } });
     const numberLine = document.querySelector('.pr-title-number-line');
-    const link = screen.getByRole('link', { name: '#101' });
+    const link = screen.getByRole('link', { name: '#101 opens GitHub in a new tab' });
     expect(numberLine?.firstElementChild).toBe(link);
     expect(numberLine?.nextElementSibling).toBe(document.querySelector('.pr-title-line'));
     expect(document.querySelector('.pr-title-line')).not.toContainElement(link);
@@ -80,7 +113,7 @@ describe('PrTitleCell', () => {
     renderCell({ pr: { number: '101', title: 'Fix', labels: ['bug'] } });
     const numberLine = document.querySelector('.pr-title-number-line');
     const titleLine = document.querySelector('.pr-title-line');
-    expect(numberLine?.firstElementChild).toBe(screen.getByRole('link', { name: '#101' }));
+    expect(numberLine?.firstElementChild).toBe(screen.getByRole('link', { name: '#101 opens GitHub in a new tab' }));
     expect(numberLine).toContainElement(screen.getByText('bug'));
     expect(titleLine).toHaveTextContent('Fix');
     expect(titleLine).not.toContainElement(screen.getByText('bug'));
@@ -131,15 +164,27 @@ describe('PrTitleCell', () => {
     expect(screen.getByText('2 pending comments')).toBeInTheDocument();
   });
 
-  test('shows "Update queued" when the server flagged a pending update', () => {
+  test('shows "Details updating" when the server queued the PR for update', () => {
     renderCell({ pr: { number: '101', title: 'Fix', updatePending: true } });
-    expect(screen.getByText('Update queued')).toBeInTheDocument();
+    expect(screen.getByText('Details updating')).toBeInTheDocument();
+  });
+
+  test('shows "Details updating" while the live summary has newer activity than the details', () => {
+    renderCell({ pr: { number: '101', title: 'Fix', live: { stillOpen: true, detailsBehind: true } } });
+    expect(screen.getByText('Details updating')).toBeInTheDocument();
+  });
+
+  test('shows "No longer open" when a complete listing no longer has the PR', () => {
+    renderCell({ pr: { number: '101', title: 'Fix', updatePending: true, live: { stillOpen: false } } });
+    expect(screen.getByText('No longer open')).toBeInTheDocument();
+    expect(screen.queryByText('Details updating')).not.toBeInTheDocument();
   });
 
   test('shows nothing extra for a plain PR', () => {
     renderCell();
     expect(screen.queryByText(/pending comment/)).not.toBeInTheDocument();
-    expect(screen.queryByText('Update queued')).not.toBeInTheDocument();
+    expect(screen.queryByText('Details updating')).not.toBeInTheDocument();
+    expect(screen.queryByText('No longer open')).not.toBeInTheDocument();
   });
 
   test('shows the PR refreshing, and active wins over queued', () => {
@@ -216,6 +261,55 @@ describe('PrTitleCell', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Copy PR title and link' }));
       await waitFor(() => expect(clipboardWriteTextMock).toHaveBeenCalledWith('Plain fallback #3'));
       expect(clipboardWriteMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("when its last refresh failed", () => {
+    const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60000).toISOString();
+    const failures = { "owner/repo": { at: minutesAgo(10), since: minutesAgo(10), error: "gh auth expired", prNumbers: null } };
+    const renderFailed = ({ fetchedAt = minutesAgo(120), isActive = false, onRetry = jest.fn() } = {}) => {
+      // Queued for an update: one the failed refresh would have fetched.
+      const entry = { repo: "owner/repo", prNumber: "101", section: "open" as const, fetchedAt, data: { number: "101", title: "Fix bug", updatePending: true } };
+      render(
+        <RepoFreshnessProvider refreshFailures={failures}>
+          <table>
+            <tbody>
+              <tr>
+                <PrTitleCell
+                  pr={entry.data}
+                  entry={entry}
+                  repo="owner/repo"
+                  sectionKey="open"
+                  isExpanded={false}
+                  isActive={isActive}
+                  onToggleInsights={jest.fn()}
+                  onRetry={onRetry}
+                />
+              </tr>
+            </tbody>
+          </table>
+        </RepoFreshnessProvider>,
+      );
+      return { onRetry };
+    };
+
+    test("says so and how old its data is - why in its tooltip - with Retry", async () => {
+      const { onRetry } = renderFailed();
+      const chip = screen.getByText(/Couldn't refresh · data from 2h ago/);
+      expect(chip.getAttribute("title")).toMatch(/^Couldn't refresh: its repo's last refresh failed 10m ago .*gh auth expired/);
+      await userEvent.setup().click(screen.getByRole("button", { name: "Retry refreshing PR #101" }));
+      expect(onRetry).toHaveBeenCalledTimes(1);
+    });
+
+    test("Retry is disabled while the row is being fetched", () => {
+      renderFailed({ isActive: true });
+      expect(screen.getByRole("button", { name: "Retry refreshing PR #101" })).toBeDisabled();
+    });
+
+    test("nothing once the row is fetched since", () => {
+      renderFailed({ fetchedAt: minutesAgo(2) });
+      expect(screen.queryByText(/Couldn't refresh/)).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /^Retry/ })).not.toBeInTheDocument();
     });
   });
 });

@@ -149,6 +149,9 @@ export function AuthorInsightsDraftsProvider({ children }: { children?: ReactNod
         return;
       }
       state.manualCommentsByAuthorLogin[normalizedLogin] = Array.isArray(comments) ? comments : [];
+      // All of them (a save answers with the author's whole list), so a
+      // failed load before it no longer stands.
+      state.manualCommentsErrorByAuthorLogin[normalizedLogin] = '';
       bump();
     },
     [state, bump, normalizeActorLoginStable],
@@ -160,6 +163,18 @@ export function AuthorInsightsDraftsProvider({ children }: { children?: ReactNod
         loading: Boolean(state.manualCommentsLoadingByAuthorLogin?.[normalizedLogin]),
         error: state.manualCommentsErrorByAuthorLogin?.[normalizedLogin] || '',
       };
+    },
+    [state, normalizeActorLoginStable],
+  );
+  const hasLoadedManualComments = useCallback<AuthorInsightsDraftsValue['hasLoadedManualComments']>(
+    (login) => {
+      const normalizedLogin = normalizeActorLoginStable(login);
+      return (
+        Boolean(normalizedLogin) &&
+        Array.isArray(state.manualCommentsByAuthorLogin[normalizedLogin]) &&
+        !state.manualCommentsLoadingByAuthorLogin?.[normalizedLogin] &&
+        !state.manualCommentsErrorByAuthorLogin?.[normalizedLogin]
+      );
     },
     [state, normalizeActorLoginStable],
   );
@@ -220,6 +235,7 @@ export function AuthorInsightsDraftsProvider({ children }: { children?: ReactNod
       getManualComments,
       setManualComments,
       getManualCommentsLoadState,
+      hasLoadedManualComments,
       loadManualComments,
       saveManualComment,
       updateManualComment,
@@ -236,6 +252,7 @@ export function AuthorInsightsDraftsProvider({ children }: { children?: ReactNod
       getManualComments,
       setManualComments,
       getManualCommentsLoadState,
+      hasLoadedManualComments,
       loadManualComments,
       saveManualComment,
       updateManualComment,
