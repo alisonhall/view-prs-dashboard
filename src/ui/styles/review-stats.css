@@ -255,6 +255,23 @@
   font-size: 12px;
 }
 
+/* The table's only row when it lists no one (StatsTableEmpty): why, and a
+   button that clears what hides them. */
+.stats-table .stats-table-empty td {
+  padding: var(--space-4) var(--space-3);
+  text-align: center;
+  font-size: var(--font-size-md);
+  color: var(--color-text-muted);
+}
+
+.stats-table-empty-content {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2) var(--space-3);
+}
+
 .stats-note {
   margin: 10px 0 0;
   font-size: 12px;

@@ -1239,6 +1239,7 @@ Additional notes:
   - **Activity over time per author**: Sparkline bars showing daily review/comment activity trends for the top 6 reviewers across the last 31 days (helps identify contributor patterns and periods of high engagement)
   - **Top reviewers by comments/approvals/signals**: Stacked bar composition charts with click-to-sort interactivity
   - Source rows in the statistics view include a `View in table` button that switches to the Pull requests view, scrolls to the matching PR, and shows it in the detail pane.
+  - `Start date` begins three months back. When the table lists no one, its one row says why: no reviewer activity in the dates (`No reviewer activity since Aug 6, 2026.`, with `Clear dates`), or `Filter` and `Min comments` hiding the reviewers who have some (with `Show all reviewers`).
 - The `Authors` view shows per-PR review notes grouped by author. The author filter dropdown and metadata cards use resolved real names from `actorsMap`. PR cards in the Authors view include a `View in table` button with the same navigation behavior.
 - The page-level and per-PR insights now show usefulness and approval-risk signals (for example, comments followed by author commits and high-risk approvals).
 

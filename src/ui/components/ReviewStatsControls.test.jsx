@@ -151,4 +151,22 @@ describe('ReviewStatsControls', () => {
 
     expect(setStatsViewState).toHaveBeenCalledWith({ startDate: '2026-02-15' });
   });
+
+  test("a change made elsewhere (the table's Clear dates) shows in the controls; a number being typed keeps its text", async () => {
+    const user = userEvent.setup();
+    const { rerender } = renderControls();
+    await user.clear(screen.getByLabelText('Min comments'));
+    await user.type(screen.getByLabelText('Min comments'), '7');
+
+    rerender(
+      <ReviewStatsContext.Provider
+        value={{ ...defaultReviewStats, statsViewState: { ...DEFAULT_STATE, startDate: '' }, setStatsViewState: () => {} }}
+      >
+        <ReviewStatsControls />
+      </ReviewStatsContext.Provider>,
+    );
+
+    expect(screen.getByLabelText('Start date')).toHaveValue('');
+    expect(screen.getByLabelText('Min comments')).toHaveValue(7);
+  });
 });

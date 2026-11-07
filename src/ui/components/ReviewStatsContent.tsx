@@ -39,12 +39,13 @@
  * @module components/ReviewStatsContent
  */
 
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useMemo, useRef, useState, type ReactNode } from 'react';
 import { StatsVisuals } from './StatsVisuals';
 import { usePrData } from '../state/PrDataContext';
 import { useReviewStats, type ReviewStatsValue } from '../state/ReviewStatsContext';
 import { useIsTabPanelVisible } from '../state/useIsTabPanelVisible';
 import { useNavigateToPrInTable } from '../state/useNavigateToPrInTable';
+import { Button } from './ui/Button';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.ts';
 import type { ReviewerRow as ReviewerRowData, StatsSource } from '../helpers/pr-review-stats-aggregation.helpers.ts';
 
@@ -53,7 +54,9 @@ const { formatIsoDatetime } = createPrFormattingHelpers();
 // The extra text after a source's PR (e.g. "3 comments").
 type SourceFormatter = (item: StatsSource) => string;
 type SourceSection = [label: string, items: StatsSource[], formatter: SourceFormatter];
-type ControlledStats = ReturnType<ReviewStatsValue['applyStatsControls']>;
+// activeReviewerCount: reviewers with any activity in the date range,
+// before Filter and Min comments.
+type ControlledStats = ReturnType<ReviewStatsValue['applyStatsControls']> & { activeReviewerCount: number };
 
 function SourceItemRow({ item, detailText }: { item: StatsSource; detailText: string }) {
   const navigateToPrInTable = useNavigateToPrInTable();
@@ -169,6 +172,69 @@ function ReviewerSourcesContent({ sections }: { sections: SourceSection[] }) {
 
 const STATS_COLUMN_COUNT = 12;
 
+// "Aug 6, 2026" from an <input type="date"> value.
+const formatStatsDate = (value: string) => {
+  const date = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+};
+
+// "since Aug 6, 2026", "between ... and ...", "up to ...", or '' with no dates.
+const describeStatsDateRange = ({ startDate, endDate }: { startDate?: string; endDate?: string }) => {
+  if (startDate && endDate) return `between ${formatStatsDate(startDate)} and ${formatStatsDate(endDate)}`;
+  if (startDate) return `since ${formatStatsDate(startDate)}`;
+  if (endDate) return `up to ${formatStatsDate(endDate)}`;
+  return '';
+};
+
+// The table's only row when it lists no one: why, and the way out - the
+// date range (it starts three months back), or Filter and Min comments.
+// The button goes once pressed, so onCleared moves focus to the table
+// rather than leaving it nowhere.
+function StatsTableEmpty({ activeReviewerCount, onCleared }: { activeReviewerCount: number; onCleared: () => void }) {
+  const { statsViewState, getNormalizedStatsDateRange, setStatsViewState } = useReviewStats();
+  const range = describeStatsDateRange(getNormalizedStatsDateRange());
+  const clear = (patch: Parameters<typeof setStatsViewState>[0]) => {
+    setStatsViewState(patch);
+    onCleared();
+  };
+  let message: string;
+  let action: ReactNode = null;
+  if (activeReviewerCount > 0) {
+    const who = activeReviewerCount === 1 ? '1 reviewer has' : `${activeReviewerCount} reviewers have`;
+    // Names only the controls that are set.
+    const hiding = [
+      String(statsViewState?.filterMode || 'all') !== 'all' && 'Filter',
+      Number(statsViewState?.minComments) > 0 && 'Min comments',
+    ].filter(Boolean);
+    message = `No reviewers match ${hiding.length ? hiding.join(' and ') : 'the stats filters'}. ${who} activity${range ? ` ${range}` : ''}.`;
+    action = (
+      <Button onClick={() => clear({ filterMode: 'all', minComments: 0 })}>
+        Show all reviewers
+      </Button>
+    );
+  } else if (range) {
+    message = `No reviewer activity ${range}.`;
+    action = (
+      <Button onClick={() => clear({ startDate: '', endDate: '' })}>
+        Clear dates
+      </Button>
+    );
+  } else {
+    message = "No reviewer activity yet: no one has commented on or reviewed someone else's PR.";
+  }
+  return (
+    <tr className="stats-table-empty">
+      <td colSpan={STATS_COLUMN_COUNT}>
+        <div className="stats-table-empty-content">
+          <span>{message}</span>
+          {action}
+        </div>
+      </td>
+    </tr>
+  );
+}
+
 function ReviewerRow({ reviewer }: { reviewer: ReviewerRowData }) {
   const [expanded, setExpanded] = useState(false);
   const sections = getReviewerSourceSections(reviewer);
@@ -220,6 +286,7 @@ export function ReviewStatsContent() {
   const actorsMap = payload?.actorsMap || {};
   const isVisible = useIsTabPanelVisible('tab-panel-review-stats');
   const lastStatsRef = useRef<ControlledStats | null>(null);
+  const tableRef = useRef<HTMLTableElement>(null);
 
   // Memoized on [payload, buildReviewerStats, applyStatsControls, isVisible]
   // specifically, not [rows, actorsMap] (which would be new references on
@@ -243,7 +310,7 @@ export function ReviewStatsContent() {
     }
     const currentActorsMap = payload?.actorsMap || {};
     const { summary, reviewerRows } = buildReviewerStats(currentRows, currentActorsMap);
-    const computed = applyStatsControls({ summary, reviewerRows });
+    const computed = { ...applyStatsControls({ summary, reviewerRows }), activeReviewerCount: reviewerRows.length };
     lastStatsRef.current = computed;
     return computed;
   }, [payload, buildReviewerStats, applyStatsControls, isVisible]);
@@ -297,7 +364,7 @@ export function ReviewStatsContent() {
 
       <StatsVisuals stats={stats} rows={rows} actorsMap={actorsMap} />
 
-      <table className="stats-table">
+      <table ref={tableRef} className="stats-table" aria-label="Reviewers" tabIndex={-1}>
         <thead>
           <tr>
             {[
@@ -319,15 +386,19 @@ export function ReviewStatsContent() {
           </tr>
         </thead>
         <tbody>
-          {stats.reviewerRows.map((reviewer) => (
-            <ReviewerRow key={reviewer.name} reviewer={reviewer} />
-          ))}
+          {stats.reviewerRows.length === 0 ? (
+            <StatsTableEmpty activeReviewerCount={stats.activeReviewerCount} onCleared={() => tableRef.current?.focus()} />
+          ) : (
+            stats.reviewerRows.map((reviewer) => <ReviewerRow key={reviewer.name} reviewer={reviewer} />)
+          )}
         </tbody>
       </table>
 
-      <p className="stats-note">
-        {`Showing ${stats.reviewerRows.length} of ${stats.totalBeforeLimit} reviewers after stats filters. Stats are computed from all stored rows and use saved per-PR metrics.${dateText}`}
-      </p>
+      {stats.reviewerRows.length > 0 && (
+        <p className="stats-note">
+          {`Showing ${stats.reviewerRows.length} of ${stats.totalBeforeLimit} reviewers after stats filters. Stats are computed from all stored rows and use saved per-PR metrics.${dateText}`}
+        </p>
+      )}
 
       <p className="stats-note">{trendNoteText}</p>
     </>

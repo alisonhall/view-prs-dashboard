@@ -3088,6 +3088,25 @@ test("React-owned Review Stats content renders cards/table and \"View in table\"
   await expect(detailPane(page).getByRole("tablist", { name: /^PR #\d+ details$/ })).toBeVisible();
 });
 
+test("Review stats: an empty table says why in its one row, and Clear dates clears the start date", async ({ page }) => {
+  // The fixture's PRs are from Jan 2026, before the default start date
+  // (three months back), and have no reviewer activity anyway.
+  await page.goto("/");
+  await waitForPrTable(page);
+  await page.getByRole("tab", { name: "Review stats" }).click();
+
+  const table = page.getByRole("region", { name: "Review statistics", exact: true }).getByRole("table");
+  await expect(table.getByRole("row")).toHaveCount(2); // the headings and the empty row
+  await expect(table).toContainText(/No reviewer activity since [A-Z][a-z]{2} \d{1,2}, \d{4}\./);
+
+  await table.getByRole("button", { name: "Clear dates", exact: true }).click();
+  await expect(page.getByLabel("Start date", { exact: true })).toHaveValue("");
+  // The button is gone; focus is on the table, not lost.
+  await expect(table).toBeFocused();
+  await expect(table).toContainText("No reviewer activity yet: no one has commented on or reviewed someone else's PR.");
+  await expect(table.getByRole("button")).toHaveCount(0);
+});
+
 test("React-owned Author Insights selector renders options, changes the selected author, and survives an unrelated re-render", async ({ page }) => {
   // Phase 3 (see REACT_MIGRATION_PLAN.md), then Track C: the Author
   // Insights tab's "Author" selector converted to React, then (Track C)

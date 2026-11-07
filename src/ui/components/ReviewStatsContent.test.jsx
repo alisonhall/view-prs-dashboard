@@ -1,7 +1,7 @@
 /** @jest-environment jsdom */
 
 const React = require('react');
-const { render, screen } = require('@testing-library/react');
+const { render, screen, within } = require('@testing-library/react');
 const userEvent = require('@testing-library/user-event').default;
 require('@testing-library/jest-dom');
 const { ReviewStatsContent } = require('./ReviewStatsContent');
@@ -12,6 +12,8 @@ const { createPrDataProbe } = require('../test-fixtures/pr-data-probe');
 const prDataProbe = createPrDataProbe();
 const { ReviewStatsContext, defaultReviewStats } = require('../state/ReviewStatsContext');
 const { TabStateContext } = require('../state/TabStateContext');
+const { ReviewStatsProvider } = require('./ReviewStatsProvider');
+const { ReviewStatsControls } = require('./ReviewStatsControls');
 
 const buildStats = (overrides = {}) => ({
   summary: {
@@ -289,6 +291,125 @@ describe('ReviewStatsContent', () => {
 
       expect(buildReviewerStatsSpy).toHaveBeenCalledTimes(1);
       expect(screen.getByText(/Showing 2 of 2 reviewers/)).toBeInTheDocument();
+    });
+  });
+
+  describe('when the table lists no one, its one row says why and offers a way out', () => {
+    const emptyStats = (activeReviewers = []) => ({
+      ...buildReviewStatsOverrides(buildStats({ reviewerRows: activeReviewers })),
+      applyStatsControls: ({ summary }) => ({ summary, reviewerRows: [], totalBeforeLimit: 0 }),
+    });
+    const emptyRow = () => document.querySelector('.stats-table tbody tr.stats-table-empty');
+
+    test('with a start date: no activity since then, and Clear dates clears both dates', async () => {
+      const user = userEvent.setup();
+      const setStatsViewState = jest.fn();
+      renderContent(null, {
+        reviewStatsOverrides: {
+          ...emptyStats(),
+          getNormalizedStatsDateRange: () => ({ startDate: '2026-08-06', endDate: '' }),
+          setStatsViewState,
+        },
+      });
+
+      expect(document.querySelectorAll('.stats-table tbody tr')).toHaveLength(1);
+      expect(emptyRow()).toHaveTextContent('No reviewer activity since Aug 6, 2026.');
+      expect(emptyRow().querySelector('td')).toHaveAttribute('colspan', '12');
+      // The headings stay; the "Showing 0 of 0" note goes.
+      expect(screen.getByRole('columnheader', { name: 'Reviewer' })).toBeInTheDocument();
+      expect(screen.queryByText(/Showing 0 of 0/)).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: 'Clear dates' }));
+      expect(setStatsViewState).toHaveBeenCalledWith({ startDate: '', endDate: '' });
+      // The button goes once the dates clear; focus lands on the table, not nowhere.
+      expect(screen.getByRole('table', { name: 'Reviewers' })).toHaveFocus();
+    });
+
+    test('with both dates, or only an end date, it names the range', () => {
+      const { unmount } = renderContent(null, {
+        reviewStatsOverrides: {
+          ...emptyStats(),
+          getNormalizedStatsDateRange: () => ({ startDate: '2026-07-01', endDate: '2026-07-10' }),
+        },
+      });
+      expect(emptyRow()).toHaveTextContent('No reviewer activity between Jul 1, 2026 and Jul 10, 2026.');
+      unmount();
+
+      renderContent(null, {
+        reviewStatsOverrides: { ...emptyStats(), getNormalizedStatsDateRange: () => ({ startDate: '', endDate: '2026-07-10' }) },
+      });
+      expect(emptyRow()).toHaveTextContent('No reviewer activity up to Jul 10, 2026.');
+    });
+
+    test('with no dates, it says no one has reviewed yet, with no button', () => {
+      renderContent(null, { reviewStatsOverrides: emptyStats() });
+
+      expect(emptyRow()).toHaveTextContent("No reviewer activity yet: no one has commented on or reviewed someone else's PR.");
+      expect(within(emptyRow()).queryByRole('button')).not.toBeInTheDocument();
+    });
+
+    test('when Filter or Min comments hide active reviewers: says how many, and Show all reviewers resets both', async () => {
+      const user = userEvent.setup();
+      const setStatsViewState = jest.fn();
+      const active = buildStats().reviewerRows;
+      renderContent(null, {
+        reviewStatsOverrides: {
+          ...emptyStats(active),
+          statsViewState: { filterMode: 'risky-only', minComments: 3 },
+          getNormalizedStatsDateRange: () => ({ startDate: '2026-08-06', endDate: '' }),
+          setStatsViewState,
+        },
+      });
+
+      expect(emptyRow()).toHaveTextContent('No reviewers match Filter and Min comments. 2 reviewers have activity since Aug 6, 2026.');
+      expect(within(emptyRow()).queryByRole('button', { name: 'Clear dates' })).not.toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Show all reviewers' }));
+      expect(setStatsViewState).toHaveBeenCalledWith({ filterMode: 'all', minComments: 0 });
+      expect(screen.getByRole('table', { name: 'Reviewers' })).toHaveFocus();
+    });
+
+    test('names only the control that hides them', () => {
+      renderContent(null, {
+        reviewStatsOverrides: { ...emptyStats(buildStats().reviewerRows.slice(0, 1)), statsViewState: { filterMode: 'all', minComments: 5 } },
+      });
+      expect(emptyRow()).toHaveTextContent('No reviewers match Min comments. 1 reviewer has activity.');
+    });
+
+    test('with the real Provider: Clear dates empties the Start date control and brings the reviewer back', async () => {
+      const user = userEvent.setup();
+      const payload = {
+        byPrNumber: {
+          7: {
+            prNumber: '7',
+            data: {
+              number: '7',
+              title: 'Old PR',
+              authorLogin: 'author',
+              reviews: [{ authorLogin: 'reviewer', state: 'APPROVED', submittedAt: '2020-01-02T00:00:00Z' }],
+            },
+          },
+        },
+      };
+      render(
+        <TabStateContext.Provider value={{ activeDataTab: 'review-stats', setActiveDataTab: () => {} }}>
+          <PrDataProvider
+            initialPayload={payload}
+            initialStatsViewState={{ sortBy: 'reviews', filterMode: 'all', topN: 12, minComments: 0, startDate: '2026-08-06', endDate: '' }}
+          >
+            <ReviewStatsProvider>
+              <ReviewStatsControls />
+              <ReviewStatsContent />
+            </ReviewStatsProvider>
+          </PrDataProvider>
+        </TabStateContext.Provider>,
+      );
+
+      expect(emptyRow()).toHaveTextContent('No reviewer activity since Aug 6, 2026.');
+      await user.click(screen.getByRole('button', { name: 'Clear dates' }));
+
+      expect(screen.getByLabelText('Start date')).toHaveValue('');
+      expect(emptyRow()).toBeNull();
+      expect(screen.getByText(/Showing 1 of 1 reviewers/)).toBeInTheDocument();
     });
   });
 });

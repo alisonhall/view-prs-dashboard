@@ -21,7 +21,7 @@
  * @module components/ReviewStatsControls
  */
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useReviewStats } from '../state/ReviewStatsContext';
 import type { ReviewStatsViewState } from '../state/PrDataContext';
 import { NON_CREDENTIAL_INPUT_PROPS } from '../helpers/form-parsing.helpers.ts';
@@ -52,6 +52,21 @@ const NON_CREDENTIAL_DATE_ATTRS = NON_CREDENTIAL_INPUT_PROPS;
 export function ReviewStatsControls() {
   const { statsViewState, setStatsViewState } = useReviewStats();
   const [state, setState] = useState(statsViewState);
+
+  // A change made elsewhere (the table's Clear dates or Show all
+  // reviewers) shows here too: only the keys that changed, so a number
+  // being typed but not yet committed keeps its text.
+  const previousViewStateRef = useRef(statsViewState);
+  useEffect(() => {
+    const previous = previousViewStateRef.current;
+    previousViewStateRef.current = statsViewState;
+    if (previous === statsViewState) return;
+    const changed = (Object.keys(statsViewState) as (keyof ReviewStatsViewState)[]).filter(
+      (key) => statsViewState[key] !== previous[key],
+    );
+    if (changed.length === 0) return;
+    setState((current) => ({ ...current, ...Object.fromEntries(changed.map((key) => [key, statsViewState[key]])) }));
+  }, [statsViewState]);
 
   // Commits a change to Context (setStatsViewState) - expensive enough
   // (triggers a full stats recompute) that it must only happen once per

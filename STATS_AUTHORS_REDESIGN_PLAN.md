@@ -104,6 +104,12 @@ matters (layout, focus), and before/after screenshots in light and dark.
   in a toolbar box with the shared field style (`.ui-toolbar`,
   `.ui-field` in `ui.css`), each control its own width. Their labels
   are unchanged until phase 3.
+- **Phase 2 done (2026-11-06):** when the table lists no one, its one
+  row says why: no activity in the dates ("No reviewer activity since
+  Aug 6, 2026.", `Clear dates`), none at all, or Filter and Min
+  comments hiding the active reviewers (`Show all reviewers`). The
+  "Showing 0 of 0" note goes; the controls follow a change made from
+  the table.
 
 ## Decided
 
