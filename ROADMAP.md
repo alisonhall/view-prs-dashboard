@@ -38,7 +38,7 @@
 - [ ] All comments in code match surrounding code
 - [x] ~~Define options for what a merge commit looks like within the user-defaults.json (and configured within the 'Advanced visibility and attention rules' on the UI)~~ - done (2026-10-24), as decided (2026-10-22): a `mergeCommitRules` setting with headline patterns (default `^Merge\b`) and logins (e.g. bots) whose commits always count as merges, edited one pattern per line. The two duplicated `isMergeCommitHeadline` copies (pr-author-cell, pr-needs-attention helpers) share one function. Also decided (2026-10-24): it is the single definition - it replaced the script's "Use built-in merge commit filter" checkbox, so check-open-pr-updates.sh, the attention rule and the Author column all use it; a commit counts when every author is in the logins list.
 - ~~Allow overriding the PR author and allowing multiple users to be considered the author. Maybe base this off of who adds commits (other than merges)?~~ - decided not to do (2026-10-22): the Author cell already lists everyone with non-merge commits, which covers the need; filters, insights and stats keep using GitHub's PR author.
-- [ ] For possible long dropdown lists (ie. all authors), add a UI enhancement so that it has the search/filter functionality in the dropdown. Also consider "recently active" sorting (actors from recent PRs at the top) - the Authors view's `Author` picker done (2026-11-07): a text box narrowing its list, authors with a PR updated in the last 30 days first (`ui/ComboBox.tsx`); the filter bar's lists still to do
+- [x] ~~For possible long dropdown lists (ie. all authors), add a UI enhancement so that it has the search/filter functionality in the dropdown. Also consider "recently active" sorting (actors from recent PRs at the top)~~ - done (2026-11-07): the Authors view's `Author` picker is a text box narrowing its list, authors with a PR updated in the last 30 days first (`ui/ComboBox.tsx`); every checkbox dropdown (the filter bar's and Settings' lists, `ui/MultiSelectDropdown.tsx`) of more than 8 options opens on a `Search` box, and the filter bar's `Authors` list puts the same recent authors first under "Recent PRs"
 - [x] ~~Deduplicate author name dropdown fields~~ - done (checked 2026-11-06): the filter bar's Author list has each person once, keyed by their preferred login with aliases merged; names that still split are the Actors rework's (below)
 - [x] ~~Add a small copy button beside the source branch name~~ - already done: the "Source branch" row in More insights has a copy button
 - [x] ~~Update Notes' UI so that existing notes are shown as static fields with an edit button to transform them into editable fields~~ - done (2026-10-25, UI_REDESIGN_PLAN.md phase 7): each field has its own Edit (Add when empty), Save and Cancel; saving one field leaves another's unsaved edit as it is
@@ -116,7 +116,7 @@ Improvements noted once PRs could come from several repos and sources (subscript
 
 #### Other views
 
-- [ ] Convert the "Review stats" and "Authors" views to the new design (UI_REDESIGN_PLAN.md).
+- [x] ~~Convert the "Review stats" and "Authors" views to the new design (UI_REDESIGN_PLAN.md).~~ - done (2026-11-07, [`STATS_AUTHORS_REDESIGN_PLAN.md`](STATS_AUTHORS_REDESIGN_PLAN.md), six phases): one panel each with a heading and a toolbar; Review stats says why its table is empty, scrolls sideways with Reviewer fixed, has a saved `Columns` menu and explains every number; Authors has a searchable picker, a header with counts, two-line PR rows with the table's signals and a labelled comment box; and `View in table` from either offers `Back` to it.
 
 ### Styling
 
@@ -149,7 +149,7 @@ For progress and steps, see [`AI_MODERNIZATION_PLAN.md`](AI_MODERNIZATION_PLAN.m
 
 ### UI Modernization
 
-Done: the redesign chosen on 2026-10-24 (sections with icon rows, a docked detail pane, a settings drawer), in the spirit of GitKraken's LaunchPad, is complete - see [`UI_REDESIGN_PLAN.md`](UI_REDESIGN_PLAN.md). It superseded the earlier [`UI_MODERNIZATION_PROPOSAL.md`](UI_MODERNIZATION_PROPOSAL.md). What's left of it is the Review stats and Authors views (Other views, above).
+Done: the redesign chosen on 2026-10-24 (sections with icon rows, a docked detail pane, a settings drawer), in the spirit of GitKraken's LaunchPad, is complete - see [`UI_REDESIGN_PLAN.md`](UI_REDESIGN_PLAN.md). It superseded the earlier [`UI_MODERNIZATION_PROPOSAL.md`](UI_MODERNIZATION_PROPOSAL.md). The Review stats and Authors views, which it left out, followed in [`STATS_AUTHORS_REDESIGN_PLAN.md`](STATS_AUTHORS_REDESIGN_PLAN.md) (done 2026-11-07).
 
 ### Future Performance Opportunities
 

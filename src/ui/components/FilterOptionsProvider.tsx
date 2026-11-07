@@ -9,6 +9,7 @@ import { asArray } from '../helpers/pr-as-array.helpers.ts';
 import { extractRowLabelNames, normalizeFilterToken } from '../helpers/pr-filter-label-extraction.helpers.ts';
 import { createEntryDerivedCache, type EntryDerivedCache } from '../helpers/pr-entry-derived-cache.helpers.ts';
 import type { ActorsMap } from '../helpers/pr-actor-identity.helpers.ts';
+import { getPrLastActivityTime, groupAuthorOptionsByActivity } from '../helpers/author-picker.helpers.ts';
 
 const { formatIsoDatetime } = createPrFormattingHelpers();
 
@@ -36,6 +37,10 @@ const toOptions = (entries: OptionEntry[]): FilterOption[] => entries.map(([valu
  * Checked state (which options are ticked) is NOT computed here - it is
  * seeded by ListSelectionSeeding (state/useListSelectionSeeding.ts) via
  * pr-multi-select-checked-state.helpers.ts's seedCheckedState.
+ *
+ * Authors are listed as the Authors view's picker lists them: those with a
+ * PR updated in the last RECENTLY_ACTIVE_DAYS first, newest first, under
+ * "Recent PRs", then "Everyone else" by name (author-picker.helpers.ts).
  *
  * The 4 actor-map-based lists (thread-resolution allow/deny, change-filter
  * ignore-comment/review-authors) are the same derivation (every actor in
@@ -97,13 +102,25 @@ export function FilterOptionsProvider({ children }: { children?: ReactNode }) {
       .sort((a, b) => a.label.toLowerCase().localeCompare(b.label.toLowerCase()));
 
     const authors = new Map<string, string>();
+    const lastActiveByLogin = new Map<string, { lastActiveAt: number }>();
     scopedEntries.forEach((entry) => {
       const row = entry?.data || {};
       const login = getOrCompute(entry, 'preferredAuthorKey', () => getPreferredActorKey(row.authorLogin, row.author));
-      if (!login || authors.has(login)) return;
+      if (!login) return;
+      const lastActiveAt = Math.max(lastActiveByLogin.get(login)?.lastActiveAt ?? Number.NEGATIVE_INFINITY, getPrLastActivityTime(entry));
+      lastActiveByLogin.set(login, { lastActiveAt });
+      if (authors.has(login)) return;
       authors.set(login, resolveActorDisplayName(login, actorsMap, String(row.author || '').trim()));
     });
-    const authorOptions = toOptions(sortByDisplayName(Array.from(authors.entries())));
+    const { recent, others } = groupAuthorOptionsByActivity(
+      sortByDisplayName(Array.from(authors.entries())).map(([login, label]) => ({ login, label })),
+      lastActiveByLogin,
+      Date.now(),
+    );
+    const authorOptions: FilterOption[] = [
+      ...recent.map(({ login, label }) => ({ value: login, label, group: 'Recent PRs' })),
+      ...others.map(({ login, label }) => ({ value: login, label, group: 'Everyone else' })),
+    ];
 
     const assignees = new Map<string, string>();
     scopedEntries.forEach((entry) => {

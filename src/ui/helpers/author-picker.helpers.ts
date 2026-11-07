@@ -3,7 +3,7 @@ import type { GetPreferredActorKey } from "./pr-actor-identity.helpers.ts";
 import type { AuthorOption } from "./pr-author-insights-display.helpers.ts";
 import { parseSortableTime } from "./pr-sortable-time.helpers.ts";
 
-// The Authors view's picker and header: when each author's PRs were last
+// The Authors view's picker and header (and the filter bar's Authors list): when each author's PRs were last
 // updated (by anyone: GitHub's updatedAt, or a merge or close), how many
 // are open and merged, and the picker's order - authors with a recently
 // updated PR first, newest first, then everyone else as
@@ -63,13 +63,13 @@ export const summarizeAuthorActivity = (
 
 // The options split in two: those with a PR updated in the last RECENTLY_ACTIVE_DAYS,
 // newest first, and the rest in the order given.
-export const groupAuthorOptionsByActivity = (
-  options: ReadonlyArray<AuthorOption>,
-  activityByLogin: ReadonlyMap<string, AuthorActivity>,
+export const groupAuthorOptionsByActivity = <T extends Pick<AuthorOption, "login">>(
+  options: ReadonlyArray<T>,
+  activityByLogin: ReadonlyMap<string, Pick<AuthorActivity, "lastActiveAt">>,
   now: number,
-): { recent: AuthorOption[]; others: AuthorOption[] } => {
+): { recent: T[]; others: T[] } => {
   const since = now - RECENTLY_ACTIVE_DAYS * 24 * 60 * 60 * 1000;
-  const lastActiveAt = (option: AuthorOption) =>
+  const lastActiveAt = (option: T) =>
     activityByLogin.get(option.login)?.lastActiveAt ?? Number.NEGATIVE_INFINITY;
   const recent = options
     .filter((option) => lastActiveAt(option) >= since)

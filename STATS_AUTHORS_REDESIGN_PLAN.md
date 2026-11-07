@@ -1,5 +1,7 @@
 # Review stats and Authors redesign plan
 
+**Done (2026-11-07):** all six phases (Progress, below).
+
 `UI_REDESIGN_PLAN.md` left these two views out ("their redesign is separate
 work"): they only moved under the header's tabs. Their components are
 TypeScript already (`AI_MODERNIZATION_PLAN.md` 12D-1 and 12D-2), and they

@@ -3,6 +3,8 @@ import { createContext, useContext } from 'react';
 export interface FilterOption {
   value: string;
   label: string;
+  // Its group in the list, if the list has groups (MultiSelectDropdown).
+  group?: string;
 }
 
 export interface FilterOptionsValue {

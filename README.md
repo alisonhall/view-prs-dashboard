@@ -466,7 +466,8 @@ UI filter behavior:
 - `Legend`, above the table beside `Detail pane`, explains what each column's icons and cues mean.
 - `PRs` takes PR numbers (`912`: that PR in any repo), PRs by repo (`acme/api#921`) or by URL (any page of it; a GitHub Enterprise one too), and repos (`acme/web`, or its URL), comma- or space-separated; repo names match whatever their case. The PRs it names show whatever the checkboxes and the other filters say; a repo filters like the rest, and with a number picks that repo's PR (`acme/api 12`).
 - `Labels` and `Excluded labels` are checkbox dropdowns populated from labels found on currently loaded stored PR rows for the active repo view.
-- The `Authors` dropdown displays resolved real names (from `actorsMap`) instead of raw GitHub logins.
+- The `Authors` dropdown displays resolved real names (from `actorsMap`) instead of raw GitHub logins. As in the Authors view's picker, people with a PR updated in the last 30 days (by anyone) come first, newest first, under "Recent PRs", then "Everyone else" by name.
+- A dropdown of more than 8 options (here or in Settings) opens on a `Search` box: typing narrows it to options whose name (or login) has the text, ignoring case, keeping what's ticked. `Escape` clears it, then closes the dropdown; closing it clears it too.
 - `data/actor-login-aliases.json` can map a current or replacement login to a canonical login when the same person appears under multiple GitHub identities. Example: `{"7c7240971101674017d4597caddf24_uhg": "mthom486_uhg"}`.
 - When an actor login alias exists, author filters, assigned-user filters, approver filters, author insights, reviewer statistics, and manual author comments treat the aliased login and canonical login as the same person.
 - The `Assigned to` dropdown filters rows to PRs assigned to any selected user.

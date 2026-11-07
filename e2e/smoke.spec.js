@@ -2121,6 +2121,69 @@ test("checking a row-filtering multi-select (label) filters the rendered table l
   await expect(prTables(page)).toContainText("Fix flaky test");
 });
 
+test("a long filter list opens on its search box, which narrows it and stays in sight as it scrolls", async ({ page }) => {
+  // Twelve more labels on PR #1 (the stored data has one per PR).
+  await page.route("**/view-prs/data", async (route) => {
+    const response = await route.fetch();
+    const json = await response.json();
+    Object.values(json.byPrNumber || {}).forEach((entry) => {
+      if (String(entry.data.number) !== "1") return;
+      entry.data.labels = [...entry.data.labels, ...Array.from({ length: 12 }, (_, index) => `area-${index + 1}`)];
+    });
+    await route.fulfill({ response, json });
+  });
+  await page.goto("/");
+  await waitForPrTable(page);
+  await openFilterBar(page);
+  const labelList = filterBarList(page, "Labels");
+  await filterDropdownSummary(labelList).click();
+
+  const search = labelList.getByRole("searchbox", { name: "Search Labels", exact: true });
+  await expect(search).toBeFocused();
+
+  // It stays at the top of the list as the list scrolls.
+  await labelList.evaluate((list) => (list.scrollTop = list.scrollHeight));
+  const listTop = (await labelList.boundingBox()).y;
+  expect(Math.abs((await search.boundingBox()).y - listTop)).toBeLessThan(12);
+
+  await page.keyboard.type("BUG");
+  await expect(labelList.getByRole("checkbox")).toHaveCount(1);
+  await expect(labelList.getByRole("checkbox", { name: "bug", exact: true })).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  await expect(search).toHaveValue("");
+  await expect(labelList.getByRole("checkbox")).toHaveCount(15);
+  await page.keyboard.press("Escape");
+  await expect(labelList).toBeHidden();
+  await expect(filterDropdownSummary(labelList)).toBeFocused();
+});
+
+test("Escape in a Settings list's search box clears and closes the list, leaving the drawer open", async ({ page }) => {
+  // Twelve more people (the stored data has a few).
+  await page.route("**/view-prs/data", async (route) => {
+    const response = await route.fetch();
+    const json = await response.json();
+    json.actorsMap = { ...json.actorsMap };
+    Array.from({ length: 12 }, (_, index) => `person-${index + 1}`).forEach((login) => (json.actorsMap[login] = login));
+    await route.fulfill({ response, json });
+  });
+  await page.goto("/");
+  await waitForPrTable(page);
+  const drawer = await openSettings(page, "Change detection");
+  const list = drawer.getByRole("group", { name: "Ignore comments from these authors (GitHub logins)", exact: true, includeHidden: true });
+  await filterDropdownSummary(list).click();
+  const search = list.getByRole("searchbox", { name: "Search Ignore comments from these authors (GitHub logins)", exact: true });
+  await expect(search).toBeFocused();
+  await page.keyboard.type("person-1");
+
+  await page.keyboard.press("Escape");
+  await expect(search).toHaveValue("");
+  await page.keyboard.press("Escape");
+  await expect(list).toBeHidden();
+  await expect(drawer).toBeVisible();
+  await closeSettings(page);
+});
+
 test("the filter bar's count and chips update live - the old \"Applied filters\" text above it is gone", async ({ page }) => {
   // The chips say which filters apply, and "Showing N of M PRs" how many
   // rows they leave: the summary text that repeated them is gone.
