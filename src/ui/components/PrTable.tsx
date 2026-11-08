@@ -30,7 +30,7 @@ import { buildActivePrKey, buildExpandedInsightsKey } from './pr-row-keys';
 import { useTooltipController } from './ui/Tooltip';
 import { usePrSectionPreferences } from '../state/PrSectionPreferencesProvider';
 import { groupRowsByRepo } from '../helpers/pr-repo-grouping.helpers.ts';
-import { ShowRowRepoContext } from '../state/ShowRowRepoContext';
+import { RowRepoNamesContext } from '../state/RowRepoNamesContext';
 import { PrSectionSortMenu } from './PrSectionSortMenu';
 
 import type { ActorsMap } from '../helpers/pr-actor-identity.helpers.ts';
@@ -267,7 +267,7 @@ export function PrTable({
       {groups.map(({ repo: groupRepo, rows }) =>
         groupRepo ? (
           // A body per repo, headed by it - so its rows don't each say it.
-          <ShowRowRepoContext.Provider key={`group:${groupRepo}`} value={false}>
+          <RowRepoNamesContext.Provider key={`group:${groupRepo}`} value={null}>
             <tbody className="pr-repo-group">
               <tr className="pr-repo-group-row">
                 <th scope="rowgroup" colSpan={columns.length}>
@@ -279,7 +279,7 @@ export function PrTable({
               </tr>
               {rows.map((entry) => renderRow(entry))}
             </tbody>
-          </ShowRowRepoContext.Provider>
+          </RowRepoNamesContext.Provider>
         ) : (
           <tbody key="rows">{rows.map((entry) => renderRow(entry))}</tbody>
         ),

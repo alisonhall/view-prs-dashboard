@@ -41,10 +41,10 @@ import { normalizeRows, sortRowsByPrNumberDesc, sortRowsByDateFieldDesc } from '
 import * as prSectionConfigHelperFactory from '../helpers/pr-section-config.helpers.ts';
 import * as prSmartGroupsHelperFactory from '../helpers/pr-smart-groups.helpers.ts';
 import * as prSectionGroupingHelperFactory from '../helpers/pr-section-grouping.helpers.ts';
-import { ShowRowRepoContext } from '../state/ShowRowRepoContext';
+import { RowRepoNamesContext } from '../state/RowRepoNamesContext';
 import { SearchTermsContext } from '../state/SearchTermsContext';
 import { PrLegendPopover } from './PrLegendPopover';
-import { groupRowsByRepo } from '../helpers/pr-repo-grouping.helpers.ts';
+import { groupRowsByRepo, rowRepoNamesFor } from '../helpers/pr-repo-grouping.helpers.ts';
 import { sortSectionRows } from '../helpers/pr-section-sort.helpers.ts';
 import type { PrData, PrDataPayload, PrEntry } from '../types/pr-data.ts';
 
@@ -744,11 +744,9 @@ export function PrTableApp() {
     [heldSections, orderChangedKeys],
   );
   // Rows say their repo once those in view (not just those filtered to)
-  // come from more than one, so filtering doesn't make it come and go.
-  const showRowRepo = useMemo(
-    () => new Set(Object.values(payload?.byPrNumber || {}).map((entry) => entry?.repo).filter(Boolean)).size > 1,
-    [payload],
-  );
+  // come from more than one, so filtering doesn't make it come and go - or
+  // change what each is called.
+  const rowRepoNames = useMemo(() => rowRepoNamesFor(Object.values(payload?.byPrNumber || {}), effectiveRepo), [payload, effectiveRepo]);
   // The PRs the filters let through that aren't in any section on the page
   // (all their sections are hidden), for the filter bar's count.
   const hiddenPrCount = useMemo(() => {
@@ -1174,10 +1172,10 @@ export function PrTableApp() {
 
   // NowProvider: one clock for the rows' relative times (Activity ages).
   // RepoFreshnessProvider: each repo's listing state, for the rows'
-  // freshness. ShowRowRepoContext: whether rows say their repo.
+  // freshness. RowRepoNamesContext: what rows call their repo, if they say it.
   // SearchTermsContext: the search's words, for the rows' "Matches in".
   return (
-    <ShowRowRepoContext.Provider value={showRowRepo}>
+    <RowRepoNamesContext.Provider value={rowRepoNames}>
       <SearchTermsContext.Provider value={searchTerms}>
         <NowProvider>
           <RepoFreshnessProvider
@@ -1260,6 +1258,6 @@ export function PrTableApp() {
           </RepoFreshnessProvider>
         </NowProvider>
       </SearchTermsContext.Provider>
-    </ShowRowRepoContext.Provider>
+    </RowRepoNamesContext.Provider>
   );
 }

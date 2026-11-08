@@ -6,7 +6,7 @@ import { createPrStatusDisplayHelpers } from '../../helpers/pr-status-display.he
 import { createPrFormattingHelpers } from '../../helpers/pr-formatting.helpers.ts';
 import { countPendingThreadComments } from '../../helpers/pr-thread-comments.helpers.ts';
 import { getLabelName } from '../../helpers/pr-filter-label-extraction.helpers.ts';
-import { useShowRowRepo } from '../../state/ShowRowRepoContext';
+import { useRowRepoName } from '../../state/RowRepoNamesContext';
 import { useSearchTerms } from '../../state/SearchTermsContext';
 import { matchRowSearch, SEARCH_FIELD_LABELS } from '../../helpers/pr-row-search.helpers.ts';
 import { describeRowRefreshProblem } from '../../helpers/pr-row-freshness.helpers.ts';
@@ -31,7 +31,8 @@ const labelHue = (label: string) => [...label].reduce((sum, char) => sum + char.
 /**
  * The Pull request column. The title wraps rather than being cut off, and
  * is followed by:
- * - the repo, when rows from more than one are in view (ShowRowRepoContext)
+ * - the repo's name, when rows from more than one are in view
+ *   (RowRepoNamesContext), in full on hover
  * - the #number link, opening GitHub in a new tab (its icon says so)
  * - a busy indicator while the PR is refreshing or queued
  * - a copy button (on row hover/focus)
@@ -115,7 +116,7 @@ export function PrTitleCell({
   const prNumber = String(pr?.number || '');
   // With rows from several repos in view, the number alone doesn't say
   // which PR this is.
-  const showRepo = useShowRowRepo() && Boolean(repo);
+  const repoName = useRowRepoName(repo);
   const title = formatTitleWithIcons(pr?.titleDisplay, pr?.title);
   const plainTitle = String(pr?.title || '').trim();
   const url = pr?.url || `https://github.com/${repo || ''}/pull/${prNumber}`;
@@ -153,15 +154,20 @@ export function PrTitleCell({
         </button>
         <div className="pr-title-body">
           <div className="pr-title-number-line">
-            {showRepo && (
-              <span className="pr-title-repo" title={`In ${repo}`}>
-                {repo}
-              </span>
-            )}
-            <a className="pr-link" href={url} target="_blank" rel="noopener noreferrer">
-              #{prNumber}
-              <Icon name="externalLink" size={11} label="opens GitHub in a new tab" />
-            </a>
+            {/* The repo and number together: a long repo name is cut short
+                rather than pushing the number onto a line of its own. */}
+            <span className="pr-title-ref">
+              {repoName && (
+                <span className="pr-title-repo" title={`In ${repo}`}>
+                  <span aria-hidden="true">{repoName}</span>
+                  <span className="ui-visually-hidden">{repo}</span>
+                </span>
+              )}
+              <a className="pr-link" href={url} target="_blank" rel="noopener noreferrer">
+                #{prNumber}
+                <Icon name="externalLink" size={11} label="opens GitHub in a new tab" />
+              </a>
+            </span>
             {lifecycle && <Signal icon={lifecycle.icon} tone={lifecycle.tone} label={lifecycle.label} />}
             {isActive ? (
               <span className="pr-busy" data-busy="active">

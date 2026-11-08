@@ -1,4 +1,38 @@
-const { groupRowsByRepo } = require('./pr-repo-grouping.helpers.ts');
+const { groupRowsByRepo, rowRepoNamesFor, shortRepoNames } = require('./pr-repo-grouping.helpers.ts');
+
+describe('rowRepoNamesFor', () => {
+  test('null with rows from one repo: rows do not say it', () => {
+    expect(rowRepoNamesFor([{ repo: 'acme/web' }, { repo: 'acme/web' }], 'acme/web')).toBeNull();
+  });
+
+  test("a row without a repo is the default repo's, named like any other", () => {
+    expect(Object.fromEntries(rowRepoNamesFor([{ repo: 'acme/web' }, { repo: '' }, null], 'acme/api'))).toEqual({
+      'acme/web': 'web',
+      'acme/api': 'api',
+    });
+    // Only there: rows all from the default repo, some saying so, are one repo.
+    expect(rowRepoNamesFor([{ repo: 'acme/api' }, {}], 'acme/api')).toBeNull();
+  });
+});
+
+describe('shortRepoNames', () => {
+  test('each repo by its name alone, once per repo, ignoring blanks', () => {
+    expect([...shortRepoNames(['acme/web', 'acme/api', 'acme/web', '', 'solo'])]).toEqual([
+      ['acme/web', 'web'],
+      ['acme/api', 'api'],
+      ['solo', 'solo'],
+    ]);
+  });
+
+  test('a name repos from more than one owner share stays in full, for each of them', () => {
+    expect(Object.fromEntries(shortRepoNames(['acme/web', 'other/web', 'acme/api']))).toEqual({
+      'acme/web': 'acme/web',
+      'other/web': 'other/web',
+      'acme/api': 'api',
+    });
+    expect(Object.fromEntries(shortRepoNames(['acme/Web', 'other/web']))).toEqual({ 'acme/Web': 'acme/Web', 'other/web': 'other/web' });
+  });
+});
 
 describe('groupRowsByRepo', () => {
   const rows = [

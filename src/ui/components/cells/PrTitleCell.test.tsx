@@ -104,7 +104,7 @@ describe('PrTitleCell', () => {
     renderCell({ pr: { number: '101', title: 'A long title that wraps onto more lines' } });
     const numberLine = document.querySelector('.pr-title-number-line');
     const link = screen.getByRole('link', { name: '#101 opens GitHub in a new tab' });
-    expect(numberLine?.firstElementChild).toBe(link);
+    expect(numberLine?.firstElementChild?.firstElementChild).toBe(link);
     expect(numberLine?.nextElementSibling).toBe(document.querySelector('.pr-title-line'));
     expect(document.querySelector('.pr-title-line')).not.toContainElement(link);
   });
@@ -113,7 +113,7 @@ describe('PrTitleCell', () => {
     renderCell({ pr: { number: '101', title: 'Fix', labels: ['bug'] } });
     const numberLine = document.querySelector('.pr-title-number-line');
     const titleLine = document.querySelector('.pr-title-line');
-    expect(numberLine?.firstElementChild).toBe(screen.getByRole('link', { name: '#101 opens GitHub in a new tab' }));
+    expect(numberLine?.firstElementChild?.firstElementChild).toBe(screen.getByRole('link', { name: '#101 opens GitHub in a new tab' }));
     expect(numberLine).toContainElement(screen.getByText('bug'));
     expect(titleLine).toHaveTextContent('Fix');
     expect(titleLine).not.toContainElement(screen.getByText('bug'));

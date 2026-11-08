@@ -359,12 +359,26 @@
   opacity: 0.7;
 }
 
-/* The PR's repo, before its number, when rows from more than one repo are
-   in view (ShowRowRepoContext). A long one is cut short at the column's
-   edge (its tooltip has it in full) rather than running into Author. */
-.pr-title-repo {
+/* The repo and number, kept on one line: the number never shrinks, the
+   repo gives way. */
+.pr-title-ref {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   min-width: 0;
   max-width: 100%;
+}
+
+.pr-title-ref .pr-link {
+  flex: none;
+}
+
+/* The PR's repo name, before its number, when rows from more than one
+   repo are in view (RowRepoNamesContext). A long one is cut short at the
+   column's edge (its tooltip has it in full) rather than running into
+   Author or pushing the number down. */
+.pr-title-repo {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   font-size: var(--font-size-sm);

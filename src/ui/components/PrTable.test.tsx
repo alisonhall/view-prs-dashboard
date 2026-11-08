@@ -5,7 +5,8 @@ import userEvent from '@testing-library/user-event';
 import type { PrEntry } from '../types/pr-data.ts';
 import { PrTable, type PrTableProps } from './PrTable';
 import { PrSectionPreferencesContext } from '../state/PrSectionPreferencesProvider';
-import { ShowRowRepoContext } from '../state/ShowRowRepoContext';
+import { RowRepoNamesContext } from '../state/RowRepoNamesContext';
+import { shortRepoNames } from '../helpers/pr-repo-grouping.helpers.ts';
 
 const entry = (number: string, extra: Partial<PrEntry['data']> = {}): PrEntry => ({
   prNumber: number,
@@ -235,16 +236,23 @@ describe('PrTable with rows from several repos', () => {
   const renderRows = (groupByRepo: boolean, showRepo: boolean) =>
     render(
       <PrSectionPreferencesContext.Provider value={preferences(groupByRepo)}>
-        <ShowRowRepoContext.Provider value={showRepo}>
+        <RowRepoNamesContext.Provider value={showRepo ? shortRepoNames(rows.map((row) => row.repo || '')) : null}>
           <PrTable prs={rows} repo="acme/api" sectionKey="open" label="Open PRs" expandedInsights={{}} onToggleInsights={jest.fn()} />
-        </ShowRowRepoContext.Provider>
+        </RowRepoNamesContext.Provider>
       </PrSectionPreferencesContext.Provider>,
     );
 
-  test('each row says its repo when rows from more than one are in view', () => {
+  test('each row says its repo by name when rows from more than one are in view, in full on hover, beside its number', () => {
     renderRows(false, true);
     const firstRow = document.querySelector('tr.pr-row') as HTMLElement;
-    expect(within(firstRow).getByText('acme/web')).toHaveAttribute('title', 'In acme/web');
+    const repo = within(firstRow).getByText('web').closest('.pr-title-repo') as HTMLElement;
+    expect(repo).toHaveAttribute('title', 'In acme/web');
+    // Screen readers hear it in full.
+    expect(within(repo).getByText('acme/web')).toHaveClass('ui-visually-hidden');
+    expect(within(repo).getByText('web')).toHaveAttribute('aria-hidden', 'true');
+    // One unit with the number, which a long name can't push onto a line
+    // of its own (pr-table.css).
+    expect(repo.closest('.pr-title-ref')).toContainElement(within(firstRow).getByRole('link', { name: /^#3/ }));
   });
 
   test("doesn't say the repo with rows from one", () => {
