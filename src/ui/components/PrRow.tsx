@@ -153,6 +153,7 @@ export const PrRow = memo(function PrRow({
           isFlagged={isFlagged}
           isInReview={isInReview}
           isAcknowledged={isAcknowledged}
+          isSelected={isSelected}
           onCheckboxChange={onCheckboxChange}
           onAckAction={onAckAction}
           onApplyLabel={onApplyLabel}

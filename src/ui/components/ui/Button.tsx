@@ -41,8 +41,9 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
  * also shows as a tooltip on hover/focus (not repeated as a description).
  * `hint` adds a line under it in the tooltip, and is the button's
  * description for screen readers (e.g. "click again to undo it").
- * `tone="danger"` colours the pressed state red (Flagged). The ref is the
- * <button>.
+ * `tone="danger"` colours the pressed state red (Flagged). `shortcut`
+ * is a key that does the same (Ack's "a"): shown after the label in the
+ * tooltip, and its aria-keyshortcuts. The ref is the <button>.
  */
 export interface IconButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'type' | 'aria-label' | 'children'> {
   icon: IconName;
@@ -51,17 +52,19 @@ export interface IconButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonEle
   tone?: 'default' | 'danger';
   tooltipPlacement?: TooltipPlacement;
   hint?: string;
+  shortcut?: string;
 }
 
 export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconButton(
-  { icon, label, pressed, tone = 'default', tooltipPlacement = 'top', hint, className, ...rest },
+  { icon, label, pressed, tone = 'default', tooltipPlacement = 'top', hint, shortcut, className, ...rest },
   ref,
 ) {
   const hintId = useId();
+  const title = shortcut ? `${label} (${shortcut.toUpperCase()})` : label;
   return (
     <>
-      <Tooltip content={hint ? `${label}
-${hint}` : label} describe={false} placement={tooltipPlacement}>
+      <Tooltip content={hint ? `${title}
+${hint}` : title} describe={false} placement={tooltipPlacement}>
         <button
           {...rest}
           ref={ref}
@@ -70,6 +73,7 @@ ${hint}` : label} describe={false} placement={tooltipPlacement}>
           aria-label={label}
           aria-describedby={hint ? hintId : rest['aria-describedby']}
           aria-pressed={pressed}
+          aria-keyshortcuts={shortcut}
           data-tone={tone === 'default' ? undefined : tone}
         >
           <Icon name={icon} />

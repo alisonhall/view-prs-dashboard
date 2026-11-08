@@ -1813,6 +1813,39 @@ test("'View in table' for a flagged PR shows and focuses it in an open section, 
   await expect(detailPane(page).getByRole("tablist", { name: "PR #2 details", exact: true })).toBeVisible();
 });
 
+test("in the PR table, a Acks the selected PR and j/k move the selection", async ({ page }) => {
+  // The Ack is caught here, so the shared server's state doesn't change.
+  const acks = [];
+  await page.route("**/view-prs/ack", async (route) => {
+    acks.push(route.request().postData() || "");
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) });
+  });
+  await page.goto("/");
+  await waitForPrTable(page);
+  const openSection = prSection(page, "Open PRs");
+  if (!(await openSection.evaluate((el) => el.open))) {
+    await openSection.getByText("Open PRs", { exact: true }).click();
+  }
+  await summaryToggleFor(openSection, 2).click();
+  await openSection.getByRole("button", { name: "Show details for PR #2", exact: true }).click();
+  const row = (prNumber) => openSection.locator(`tr.pr-row[data-pr-number="${prNumber}"]`).first();
+  await expect(row(2)).toHaveAttribute("aria-current", "true");
+
+  await row(2).getByRole("link", { name: "#2 opens GitHub in a new tab", exact: true }).focus();
+  await page.keyboard.press("a");
+  await expect.poll(() => acks.length).toBe(1);
+  expect(acks[0]).toContain("2");
+
+  // j to the next row, k back.
+  const rowNumbers = await openSection.locator("tr.pr-row").evaluateAll((rows) => rows.map((element) => element.dataset.prNumber));
+  const next = rowNumbers[rowNumbers.indexOf("2") + 1];
+  test.skip(!next, "PR #2 is the last open row");
+  await page.keyboard.press("j");
+  await expect(row(next)).toHaveAttribute("aria-current", "true");
+  await page.keyboard.press("k");
+  await expect(row(2)).toHaveAttribute("aria-current", "true");
+});
+
 test("after View in table from Authors, Back to Authors returns to the author, scrolled and focused as left", async ({ page }) => {
   await page.goto("/");
   await waitForPrTable(page);

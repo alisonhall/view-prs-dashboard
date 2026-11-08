@@ -122,12 +122,29 @@ export function PrTable({
       onClearSelection?.();
       return;
     }
-    const delta = event.key === 'ArrowDown' ? 1 : event.key === 'ArrowUp' ? -1 : 0;
-    const focusedRow = (event.target as Element).closest('tr.pr-row');
+    // Letters only on their own (Ctrl+A and the like keep their meaning),
+    // whatever the case: Caps Lock or Shift give "A".
+    const plainKey = event.ctrlKey || event.metaKey || event.altKey ? '' : event.key.length === 1 ? event.key.toLowerCase() : '';
+    const focusedRow = (event.target as Element).closest<HTMLTableRowElement>('tr.pr-row');
+    const keyOf = (row: HTMLTableRowElement) => buildActivePrKey(row.dataset.prNumber ?? '', row.dataset.repo);
+    // a: Ack the selected PR (or undo it), as its row's Ack button does -
+    // only from its own row, so a stray key can't ack a PR you're not on.
+    if (plainKey === 'a') {
+      if (!focusedRow || !selectedPrKey || keyOf(focusedRow) !== selectedPrKey) return;
+      event.preventDefault();
+      // Held down, it would Ack and undo over and over.
+      if (event.repeat) return;
+      const prNumber = focusedRow.dataset.prNumber ?? '';
+      const rowRepo = focusedRow.dataset.repo || repo;
+      const { isAcknowledged } = getPrFlags ? getPrFlags(prNumber, rowRepo) : NO_FLAGS;
+      handlers.onAckAction?.(prNumber, isAcknowledged, rowRepo);
+      return;
+    }
+    // j/k as ↓/↑.
+    const delta = event.key === 'ArrowDown' || plainKey === 'j' ? 1 : event.key === 'ArrowUp' || plainKey === 'k' ? -1 : 0;
     if (!delta || !focusedRow || !tableRef.current) return;
     event.preventDefault();
     const rows = Array.from(tableRef.current.querySelectorAll<HTMLTableRowElement>('tbody > tr.pr-row'));
-    const keyOf = (row: HTMLTableRowElement) => buildActivePrKey(row.dataset.prNumber ?? '', row.dataset.repo);
     const focusedIndex = rows.indexOf(focusedRow as HTMLTableRowElement);
     const fromSelected = keyOf(focusedRow as HTMLTableRowElement) === selectedPrKey;
     const target = fromSelected ? rows[Math.min(Math.max(focusedIndex + delta, 0), rows.length - 1)] : focusedRow as HTMLTableRowElement;

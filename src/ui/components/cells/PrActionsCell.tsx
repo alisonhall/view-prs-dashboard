@@ -24,6 +24,8 @@ export interface PrActionsCellProps {
   isFlagged: boolean;
   isInReview: boolean;
   isAcknowledged: boolean;
+  // The row is the selected one, whose Ack the a key does (PrTable).
+  isSelected?: boolean;
   onCheckboxChange?: (prNumber: PrNumber, type: 'inReview' | 'flagged', checked: boolean, repo: string) => void;
   onAckAction?: (prNumber: PrNumber, isAcked: boolean, repo: string) => void;
   onApplyLabel?: (prNumber: PrNumber, label: string, repo: string) => void;
@@ -37,6 +39,7 @@ export function PrActionsCell({
   isFlagged,
   isInReview,
   isAcknowledged,
+  isSelected = false,
   onCheckboxChange,
   onAckAction,
   onApplyLabel,
@@ -68,6 +71,7 @@ export function PrActionsCell({
           label={`${isAcknowledged ? "Ack'd" : 'Ack'} PR #${prNumber}`}
           pressed={isAcknowledged}
           hint={isAcknowledged ? 'Click again to undo the Ack' : undefined}
+          shortcut={isSelected ? 'a' : undefined}
           // onAckAction's `isAcked` means "is it acked now": it acks or
           // clears from that, so passing the current state flips it.
           onClick={handle(() => onAckAction?.(pr?.number, isAcknowledged, repo))}

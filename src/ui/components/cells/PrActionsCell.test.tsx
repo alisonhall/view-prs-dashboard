@@ -88,6 +88,20 @@ describe('PrActionsCell', () => {
     expect(screen.getByRole('button', { name: "Ack'd PR #101", pressed: true })).toHaveAccessibleDescription('Click again to undo the Ack');
   });
 
+  test('on the selected row, Ack names its key, a, in its tooltip and for screen readers', () => {
+    renderCell({ isAcknowledged: false, isSelected: true });
+    const ack = screen.getByRole('button', { name: 'Ack PR #101' });
+    expect(ack).toHaveAttribute('aria-keyshortcuts', 'a');
+    expect(ack.closest('[data-tip]')).toHaveAttribute('data-tip', 'Ack PR #101 (A)');
+  });
+
+  test("on other rows, where the key doesn't work, Ack doesn't name it", () => {
+    renderCell({ isAcknowledged: false });
+    const ack = screen.getByRole('button', { name: 'Ack PR #101' });
+    expect(ack).not.toHaveAttribute('aria-keyshortcuts');
+    expect(ack.closest('[data-tip]')).toHaveAttribute('data-tip', 'Ack PR #101');
+  });
+
   test('Ack has nothing to undo before it\'s acknowledged', () => {
     renderCell({ isAcknowledged: false });
     expect(screen.getByRole('button', { name: 'Ack PR #101', pressed: false })).not.toHaveAccessibleDescription();

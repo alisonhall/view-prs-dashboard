@@ -148,6 +148,59 @@ describe('PrTable', () => {
       fireEvent.keyDown(prLink('2'), { key: 'Escape' });
       expect(onClearSelection).toHaveBeenCalledTimes(1);
     });
+
+    test('j/k move as ↓/↑; with Ctrl or another modifier they do nothing', () => {
+      const onSelectPr = jest.fn(() => true);
+      renderTable({ prs: [entry('3'), entry('2'), entry('1')], selectedPrKey: 'owner/repo::2', onSelectPr });
+      fireEvent.keyDown(prLink('2'), { key: 'j' });
+      expect(onSelectPr).toHaveBeenLastCalledWith('1', 'owner/repo');
+      fireEvent.keyDown(prLink('2'), { key: 'k' });
+      expect(onSelectPr).toHaveBeenLastCalledWith('3', 'owner/repo');
+
+      onSelectPr.mockClear();
+      fireEvent.keyDown(prLink('2'), { key: 'j', ctrlKey: true });
+      fireEvent.keyDown(prLink('2'), { key: 'k', metaKey: true });
+      expect(onSelectPr).not.toHaveBeenCalled();
+    });
+
+    test('a Acks the selected PR from its row, or undoes the Ack, as its button does', () => {
+      const onAckAction = jest.fn();
+      const { unmount } = renderTable({ selectedPrKey: 'owner/repo::2', onAckAction });
+      fireEvent.keyDown(prLink('2'), { key: 'a' });
+      expect(onAckAction).toHaveBeenCalledWith('2', false, 'owner/repo');
+      unmount();
+
+      renderTable({
+        selectedPrKey: 'owner/repo::2',
+        onAckAction,
+        getPrFlags: () => ({ isFlagged: false, isInReview: false, isAcknowledged: true }),
+      });
+      fireEvent.keyDown(prLink('2'), { key: 'a' });
+      expect(onAckAction).toHaveBeenLastCalledWith('2', true, 'owner/repo');
+    });
+
+    test('Caps Lock or Shift (A, J) work the same; a held-down a Acks once', () => {
+      const onAckAction = jest.fn();
+      const onSelectPr = jest.fn(() => true);
+      renderTable({ selectedPrKey: 'owner/repo::2', onAckAction, onSelectPr });
+      fireEvent.keyDown(prLink('2'), { key: 'A' });
+      fireEvent.keyDown(prLink('2'), { key: 'a', repeat: true });
+      fireEvent.keyDown(prLink('2'), { key: 'a', repeat: true });
+      expect(onAckAction).toHaveBeenCalledTimes(1);
+      fireEvent.keyDown(prLink('2'), { key: 'J' });
+      expect(onSelectPr).toHaveBeenLastCalledWith('1', 'owner/repo');
+    });
+
+    test('a does nothing outside the selected row, with nothing selected, with Ctrl (select all), or while typing', () => {
+      const onAckAction = jest.fn();
+      const { unmount } = renderTable({ selectedPrKey: 'owner/repo::2', onAckAction });
+      fireEvent.keyDown(prLink('1'), { key: 'a' });
+      fireEvent.keyDown(prLink('2'), { key: 'a', ctrlKey: true });
+      unmount();
+      renderTable({ onAckAction });
+      fireEvent.keyDown(prLink('2'), { key: 'a' });
+      expect(onAckAction).not.toHaveBeenCalled();
+    });
   });
 
   test('marks only the busy row\'s repo-specific key as active', () => {
