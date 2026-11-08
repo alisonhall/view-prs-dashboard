@@ -164,6 +164,20 @@ describe('PrRowSummary', () => {
       expect(within(activity).queryByRole('button')).not.toBeInTheDocument();
     });
 
+    test('a commit not in your last review, dated before you last looked, is tagged so', () => {
+      renderSummary({
+        ...changed,
+        baseline: '2026-10-24T09:30:00Z',
+        commitsAfterReview: ['old'],
+        activityEvents: [event('n5', '2026-10-24T11:00:00Z'), event('old', '2026-10-21T08:00:00Z', 'bob', { type: 'commit', channel: 'commit', body: '' })],
+      });
+      const items = within(screen.getByRole('group', { name: /^New since your last activity/ })).getAllByRole('listitem');
+      expect(items.map((item) => item.querySelector('.pr-activity-tag')?.textContent ?? '')).toEqual([
+        '',
+        expect.stringMatching(/^Not in your last review: Dated before you last looked/),
+      ]);
+    });
+
     test('nothing new: "Latest activity" and the reasons as they were', () => {
       renderSummary({ ...changed, baseline: '2026-10-24T11:30:00Z' }, { attentionReasons: ['New comments'] });
       expect(within(column('Latest activity')).getAllByRole('listitem')).toHaveLength(3);

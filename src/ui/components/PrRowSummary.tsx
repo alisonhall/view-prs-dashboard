@@ -3,6 +3,7 @@ import type { PrActivityEvent, PrData } from '../types/pr-data.ts';
 import type { ActorsMap } from '../helpers/pr-actor-identity.helpers.ts';
 import { ActorIdentity } from './ActorIdentity';
 import { ActivityEventDescription } from './insights/ActivityEventDescription';
+import { NotInReviewTag } from './NotInReviewTag';
 import { Button } from './ui/Button';
 import { usePrInsightsDisplay } from '../state/PrInsightsDisplayContext';
 import { useNow } from '../state/NowContext';
@@ -11,6 +12,7 @@ import { useSinceLastLooked } from '../state/useSinceLastLooked';
 import { summarizeChange, withCountedChange } from '../helpers/pr-change-summary.helpers.ts';
 import { describeStatusLine, getSummaryThreads, toPlainLine } from '../helpers/pr-row-summary.helpers.ts';
 import { formatShortAge } from '../helpers/pr-row-signals.helpers.ts';
+import { isNotInReview } from '../helpers/pr-activity-feed.helpers.ts';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.ts';
 
 const { formatIsoDatetime } = createPrFormattingHelpers();
@@ -147,6 +149,7 @@ export function PrRowSummary({
               <li key={`${event.sourceId || ''}-${index}`} className="pr-summary-item">
                 <span className="pr-summary-text">
                   <ActivityEventDescription event={event} row={pr} actorsMap={actorsMap} />
+                  {newEvents.length > 0 && isNotInReview(event, sinceState?.lastLookedAt || '') && <NotInReviewTag />}
                   <Snippet text={eventSnippet(event)} prefix=": " />
                 </span>
                 <Age value={String(event.occurredAt || '')} now={now} />

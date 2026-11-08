@@ -1080,6 +1080,10 @@ test("the detail pane's Activity tab groups events by day, filters by type and c
   await expect(dayHeadings.nth(0)).toHaveText(/Jan 5/);
   await expect(dayHeadings.nth(1)).toHaveText(/Jan 2/);
   await expect(pane.getByText("Second comment on the fix")).toBeVisible();
+  // Its lines wrap in a narrow pane: the table's Activity cell, whose lines
+  // share the class, keeps its own on one line.
+  await expect(pane.locator(".pr-activity-line").first()).toHaveCSS("white-space", "normal");
+  await expect(openSection.locator(".pr-cell-activity .pr-activity-line").first()).toHaveCSS("white-space", "nowrap");
 
   const types = pane.getByRole("group", { name: "Event types", exact: true });
   const comments = types.getByRole("button", { name: /^Comments/ });

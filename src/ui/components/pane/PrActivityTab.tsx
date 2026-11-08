@@ -2,6 +2,7 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { PrActivityEvent, PrData } from '../../types/pr-data.ts';
 import type { ActorsMap } from '../../helpers/pr-actor-identity.helpers.ts';
 import { ActorIdentity } from '../ActorIdentity';
+import { NotInReviewTag } from '../NotInReviewTag';
 import { ActivityEventDescription } from '../insights/ActivityEventDescription';
 import { ActivityTimelineSummary } from '../insights/ActivityTimelineSummary';
 import { Button } from '../ui/Button';
@@ -36,6 +37,8 @@ const { formatIsoDatetime } = createPrFormattingHelpers();
  *   long ones fold. One person's run of commits is one line that expands.
  * - In "All", a divider where the events you've already seen begin; in
  *   "Since I last looked", a button to show those earlier events.
+ * - Commits after the one your latest review was on but dated before you
+ *   last looked stay by their date, tagged "Not in your last review".
  * - The daily summary table, collapsed, below.
  *
  * The filters stay as picked for the next PR (the pane holds them).
@@ -151,7 +154,19 @@ function Body({ text, markdown }: { text: string; markdown: boolean }) {
   );
 }
 
-function EventItem({ event, pr, actorsMap, timeZone }: { event: PrActivityEvent; pr: PrData; actorsMap?: ActorsMap; timeZone?: string }) {
+function EventItem({
+  event,
+  pr,
+  actorsMap,
+  timeZone,
+  notInReview,
+}: {
+  event: PrActivityEvent;
+  pr: PrData;
+  actorsMap?: ActorsMap;
+  timeZone?: string;
+  notInReview?: boolean;
+}) {
   const { normalizePrRootUrl } = usePrInsightsDisplay();
   const { icon, tone } = iconFor(event);
   const isCommit = activityKindOf(event) === 'commit';
@@ -176,6 +191,7 @@ function EventItem({ event, pr, actorsMap, timeZone }: { event: PrActivityEvent;
       <div className="pr-activity-main">
         <p className="pr-activity-line">
           <ActivityEventDescription event={event} row={pr} actorsMap={actorsMap} />
+          {notInReview && <NotInReviewTag />}
           {linkUrl && (
             <a className="pr-activity-link" href={linkUrl} target="_blank" rel="noopener noreferrer">
               View<span className="ui-visually-hidden"> on GitHub</span>
@@ -194,7 +210,21 @@ function EventItem({ event, pr, actorsMap, timeZone }: { event: PrActivityEvent;
   );
 }
 
-function CommitsItem({ actor, events, pr, actorsMap, timeZone }: { actor: string; events: PrActivityEvent[]; pr: PrData; actorsMap?: ActorsMap; timeZone?: string }) {
+function CommitsItem({
+  actor,
+  events,
+  pr,
+  actorsMap,
+  timeZone,
+  notInReview,
+}: {
+  actor: string;
+  events: PrActivityEvent[];
+  pr: PrData;
+  actorsMap?: ActorsMap;
+  timeZone?: string;
+  notInReview?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   return (
     <li className="pr-activity-item" data-kind="commit">
@@ -206,6 +236,7 @@ function CommitsItem({ actor, events, pr, actorsMap, timeZone }: { actor: string
           <Icon name={open ? 'chevronDown' : 'chevronRight'} size={12} />
           <ActorIdentity row={pr} login={actor} actorsMap={actorsMap} /> pushed {events.length} commits
         </button>
+        {notInReview && <NotInReviewTag />}
         {open && (
           <ul className="pr-activity-commits">
             {events.map((event, index) => (
@@ -249,9 +280,18 @@ function Item({ item, pr, actorsMap, timeZone }: { item: FeedItem; pr: PrData; a
     );
   }
   if (item.kind === 'commits') {
-    return <CommitsItem actor={item.actor} events={item.events} pr={pr} actorsMap={actorsMap} timeZone={timeZone} />;
+    return (
+      <CommitsItem
+        actor={item.actor}
+        events={item.events}
+        pr={pr}
+        actorsMap={actorsMap}
+        timeZone={timeZone}
+        notInReview={item.notInReview}
+      />
+    );
   }
-  return <EventItem event={item.event} pr={pr} actorsMap={actorsMap} timeZone={timeZone} />;
+  return <EventItem event={item.event} pr={pr} actorsMap={actorsMap} timeZone={timeZone} notInReview={item.notInReview} />;
 }
 
 export function PrActivityTab({ pr, actorsMap, lastLookedAt, ackEvents, filters, onFiltersChange, timeZone }: PrActivityTabProps) {

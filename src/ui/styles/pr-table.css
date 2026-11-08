@@ -616,8 +616,9 @@
   opacity: 0.6;
 }
 
-/* "Author 2d", and under it "You 5d" */
-.pr-activity-line {
+/* "Author 2d", and under it "You 5d" - in the table only: the detail
+   pane's Activity tab has lines of this class too, which wrap */
+.pr-cell-activity .pr-activity-line {
   display: block;
   white-space: nowrap;
 }

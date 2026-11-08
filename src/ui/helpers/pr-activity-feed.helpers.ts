@@ -83,6 +83,13 @@ const isNewSince = (lastLookedAt: string, newCommitOids: readonly string[] = [])
     (parseTime(event?.occurredAt) > lastLooked || (activityKindOf(event) === "commit" && oids.has(String(event?.sourceId || ""))));
 };
 
+// Of the events new since the viewer last looked: a commit new though
+// dated before then - one of newCommitOids, after the commit their latest
+// review was on. Shown by its date, so it's tagged to say why it's new
+// ("Not in your last review").
+export const isNotInReview = (event: PrActivityEvent, lastLookedAt: string): boolean =>
+  activityKindOf(event) === "commit" && !(parseTime(event?.occurredAt) > parseTime(lastLookedAt));
+
 // What's new since the viewer last looked, for the row's change tooltip
 // and summary: the new events, newest first, and how many of each kind. A
 // commit with several authors is one event per author in the feed, but one
@@ -212,12 +219,15 @@ export const withAckEvents = (events: readonly PrActivityEvent[], ackEvents: rea
     ? [...events, ...ackEvents].sort((a, b) => String(b?.occurredAt || "").localeCompare(String(a?.occurredAt || "")))
     : events.slice();
 
+// `notInReview`: new commits dated before the viewer last looked
+// (isNotInReview).
 export type FeedItem =
-  | { kind: "event"; event: PrActivityEvent }
-  // Two or more commits in a row (newest first) by one person on one day.
-  | { kind: "commits"; actor: string; events: PrActivityEvent[] }
+  | { kind: "event"; event: PrActivityEvent; notInReview?: boolean }
+  // Two or more commits in a row (newest first) by one person on one day,
+  // all tagged notInReview or none.
+  | { kind: "commits"; actor: string; events: PrActivityEvent[]; notInReview?: boolean }
   // In the "All" scope: everything after this is from before the viewer
-  // last looked.
+  // last looked, but for commits tagged notInReview.
   | { kind: "marker"; at: string };
 
 export interface FeedDay {
@@ -305,17 +315,19 @@ export const buildActivityFeed = (events: readonly PrActivityEvent[], options: A
 
     const previous = day.items[day.items.length - 1];
     const actor = String(event?.actor || "");
-    if (activityKindOf(event) === "commit" && previous) {
+    const notInReview = isSince(event) && isNotInReview(event, options.lastLookedAt);
+    const tag = notInReview ? { notInReview } : {};
+    if (activityKindOf(event) === "commit" && previous && previous.kind !== "marker" && Boolean(previous.notInReview) === notInReview) {
       if (previous.kind === "commits" && previous.actor === actor) {
         previous.events.push(event);
         return;
       }
       if (previous.kind === "event" && activityKindOf(previous.event) === "commit" && String(previous.event?.actor || "") === actor) {
-        day.items[day.items.length - 1] = { kind: "commits", actor, events: [previous.event, event] };
+        day.items[day.items.length - 1] = { kind: "commits", actor, events: [previous.event, event], ...tag };
         return;
       }
     }
-    day.items.push({ kind: "event", event });
+    day.items.push({ kind: "event", event, ...tag });
   });
 
   return {

@@ -509,7 +509,12 @@
 
 .pr-conv-check-error { color: var(--color-danger); }
 
-.pr-conv-badge {
+.pr-activity-tag {
+  white-space: nowrap;
+}
+
+.pr-conv-badge,
+.pr-activity-tag {
   margin-left: 4px;
   padding: 0 6px;
   border-radius: var(--radius-pill);

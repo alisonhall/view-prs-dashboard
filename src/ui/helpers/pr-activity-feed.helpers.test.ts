@@ -13,6 +13,7 @@ import {
   formatWhenShort,
   getLastAckedAt,
   getLastLookedAt,
+  isNotInReview,
   newCommitOidsFor,
   summarizeSinceLastLooked,
   withAckEvents,
@@ -54,7 +55,7 @@ describe('activityKindOf', () => {
   });
 });
 
-describe('commits pushed after the review last looked at', () => {
+describe('commits after the one the review last looked at was on', () => {
   // Reviewed at 11:00; c2 was committed at 10:00 and pushed after.
   const events = [commit('c2', '2026-03-01T10:00:00Z'), commit('c1', '2026-03-01T09:00:00Z')];
   const since: ActivityFeedOptions = { ...ALL, scope: 'since', lastLookedAt: '2026-03-01T11:00:00Z' };
@@ -72,6 +73,48 @@ describe('commits pushed after the review last looked at', () => {
   test('only commits: another event with that id stays by its date', () => {
     const feed = buildActivityFeed([event('c2', '2026-03-01T10:00:00Z')], { ...since, newCommitOids: ['c2'] });
     expect(feed.sinceCount).toBe(0);
+  });
+
+  // The items tagged notInReview, as outline labels them.
+  const tagged = (feed: ReturnType<typeof buildActivityFeed>) =>
+    feed.days.flatMap((day) =>
+      day.items.flatMap((item) =>
+        item.kind === 'event' && item.notInReview
+          ? [item.event.sourceId]
+          : item.kind === 'commits' && item.notInReview
+            ? [`commits:${item.events.map((e) => e.sourceId).join(',')}`]
+            : [],
+      ),
+    );
+
+  test('are tagged notInReview where their date puts them; one new by its date is not', () => {
+    // Bob's c3, after 11:00, is new by its date; alice's c2 isn't.
+    const feed = buildActivityFeed([commit('c3', '2026-03-01T12:00:00Z', 'bob'), ...events], {
+      ...since,
+      scope: 'all',
+      newCommitOids: ['c3', 'c2'],
+    });
+    expect(outline(feed)).toEqual([{ day: '2026-03-01', items: ['c3', 'c2', 'marker', 'c1'] }]);
+    expect(tagged(feed)).toEqual(['c2']);
+    expect(tagged(buildActivityFeed(events, { ...since, newCommitOids: ['c2'] }))).toEqual(['c2']);
+  });
+
+  test("a run of one person's commits is all tagged or all not", () => {
+    const run = [commit('c4', '2026-03-01T12:00:00Z'), commit('c3', '2026-03-01T10:30:00Z'), ...events];
+    const feed = buildActivityFeed(run, { ...since, newCommitOids: ['c4', 'c3', 'c2'] });
+    expect(outline(feed)).toEqual([{ day: '2026-03-01', items: ['c4', 'commits:c3,c2'] }]);
+    expect(tagged(feed)).toEqual(['commits:c3,c2']);
+  });
+
+  test('isNotInReview: a commit dated at or before then, of the events new since then', () => {
+    expect(isNotInReview(commit('c2', '2026-03-01T10:00:00Z'), since.lastLookedAt)).toBe(true);
+    expect(isNotInReview(commit('c2', '2026-03-01T11:00:00Z'), since.lastLookedAt)).toBe(true);
+    expect(isNotInReview(commit('c3', '2026-03-01T11:00:01Z'), since.lastLookedAt)).toBe(false);
+    expect(isNotInReview(event('x', '2026-03-01T10:00:00Z'), since.lastLookedAt)).toBe(false);
+  });
+
+  test('nothing is tagged without the list', () => {
+    expect(tagged(buildActivityFeed(events, { ...since, scope: 'all' }))).toEqual([]);
   });
 });
 
