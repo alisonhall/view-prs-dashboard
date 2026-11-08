@@ -5,7 +5,9 @@ const VIEWPORT_MARGIN_PX = 8;
 
 export interface HeaderPopover {
   isOpen: boolean;
-  open: () => void;
+  // returnFocusTo: where Esc puts the focus back, if not the button (the
+  // shortcuts list opened by its key, from wherever you were).
+  open: (returnFocusTo?: HTMLElement | null) => void;
   close: (returnFocus: boolean) => void;
   toggle: () => void;
   buttonRef: RefObject<HTMLButtonElement>;
@@ -19,7 +21,8 @@ export interface HeaderPopover {
  * dialog under the button (fixed, kept in the window like the row menu,
  * following it on resize). Esc, a click or focus moving outside it, or the
  * page scrolling (the header isn't sticky, so it would carry the popover
- * off the top) closes it; Esc returns focus to the button. Once placed,
+ * off the top) closes it; Esc returns focus to the button (or where open()
+ * was told). Once placed,
  * focuses getFocusTarget()'s element - the panel itself by default.
  */
 export function useHeaderPopover(getFocusTarget?: () => HTMLElement | null): HeaderPopover {
@@ -27,14 +30,22 @@ export function useHeaderPopover(getFocusTarget?: () => HTMLElement | null): Hea
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const returnFocusToRef = useRef<HTMLElement | null>(null);
   const getFocusTargetRef = useRef(getFocusTarget);
   getFocusTargetRef.current = getFocusTarget;
 
   const close = useCallback((returnFocus: boolean) => {
     setIsOpen(false);
-    if (returnFocus) buttonRef.current?.focus();
+    const returnFocusTo = returnFocusToRef.current;
+    returnFocusToRef.current = null;
+    if (!returnFocus) return;
+    if (returnFocusTo?.isConnected) returnFocusTo.focus();
+    else buttonRef.current?.focus();
   }, []);
-  const open = useCallback(() => setIsOpen(true), []);
+  const open = useCallback((returnFocusTo: HTMLElement | null = null) => {
+    returnFocusToRef.current = returnFocusTo;
+    setIsOpen(true);
+  }, []);
   const toggle = useCallback(() => setIsOpen((previous) => !previous), []);
 
   const place = useCallback(() => {

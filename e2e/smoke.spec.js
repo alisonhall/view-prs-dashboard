@@ -1813,6 +1813,40 @@ test("'View in table' for a flagged PR shows and focuses it in an open section, 
   await expect(detailPane(page).getByRole("tablist", { name: "PR #2 details", exact: true })).toBeVisible();
 });
 
+test("? shows the keyboard shortcuts from anywhere but a field, and Esc goes back where you were", async ({ page }) => {
+  await page.goto("/");
+  await waitForPrTable(page);
+  const dialog = page.getByRole("dialog", { name: "Keyboard shortcuts", exact: true });
+  const reviewStatsTab = page.getByRole("tab", { name: "Review stats", exact: true });
+  await reviewStatsTab.focus();
+
+  await page.keyboard.press("?");
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("region", { name: "The PR table, with focus in it", exact: true })).toContainText("j / k");
+  // In the window, under the header.
+  expect(await dialog.evaluate((element) => element.getBoundingClientRect().right <= window.innerWidth)).toBe(true);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(reviewStatsTab).toBeFocused();
+
+  await openFilterBar(page);
+  const search = filterBar(page).getByRole("searchbox", { name: /Search PRs/ });
+  await search.fill("");
+  await search.pressSequentially("?");
+  await expect(search).toHaveValue("?");
+  await expect(dialog).toHaveCount(0);
+  await search.fill("");
+
+  // Not over Settings, which would cover it.
+  await openSettings(page);
+  await page.keyboard.press("?");
+  await expect(dialog).toHaveCount(0);
+  await closeSettings(page);
+
+  await page.getByRole("banner").getByRole("button", { name: "Shortcuts", exact: true }).click();
+  await expect(dialog).toBeVisible();
+});
+
 test("in the PR table, a Acks the selected PR and j/k move the selection", async ({ page }) => {
   // The Ack is caught here, so the shared server's state doesn't change.
   const acks = [];

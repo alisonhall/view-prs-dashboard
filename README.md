@@ -743,6 +743,25 @@ Insights behavior notes:
 - `Open conversations with me` counts unresolved conversations where you participated (started or commented).
   - If viewer identity cannot be determined, it safely falls back to total open conversations and omits `with me` wording.
 
+**Keyboard shortcuts.** The header's `Shortcuts`, or `?` from anywhere but a field or a modal (Settings, a dialog), lists them; opened with `?`, Esc puts the focus back where you were.
+
+- Anywhere:
+  - `?`: Show or hide this list (not while typing in a field, or with Settings or another dialog open).
+  - `Esc`: Close the open popover, drawer or dialog.
+- Tabs, with focus on them (the views, the detail pane's, Settings' sections):
+  - `← / →`: Show the tab before or after (↑ / ↓ for Settings' sections down the left).
+  - `Home / End`: Show the first or last tab.
+- The PR table, with focus in it:
+  - `↑ / ↓` or `j / k`: Select the PR above or below.
+  - `a`: Ack the selected PR, or undo its Ack, with focus in its row.
+  - `Esc`: Clear the selection.
+- Search boxes (Search PRs, a long list's Search):
+  - `Esc`: Clear what's typed; in a list with nothing typed, close the list.
+- Pickers and menus (Author, More actions):
+  - `↑ / ↓`: Move through the options.
+  - `Enter`: Choose the option.
+  - `Esc`: Close without choosing.
+
 ### Custom insights hook
 
 The detail pane can show a `Custom insights` tab populated by your own script, for whatever your team wants surfaced there that isn't already part of the dashboard (a link to an internal tracker, a policy check, org-specific metadata, etc.). It's off by default and never shipped with the repo, since what's worth surfacing here is inherently specific to your org.

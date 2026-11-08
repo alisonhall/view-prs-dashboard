@@ -13,6 +13,7 @@ import { readDefaultQuickCheckIntervalMs } from '../../state/RepoFreshnessContex
 import type { PrDataMeta } from '../../types/pr-data.ts';
 import { ActivityPopover } from './ActivityPopover';
 import { AddPrPopover } from './AddPrPopover';
+import { KeyboardShortcutsPopover } from './KeyboardShortcutsPopover';
 import { QuickCheckAllButton, type QuickCheckAllButtonProps } from './QuickCheckAllButton';
 
 // The views, as tabs over AppShell's panels (#tab-panel-*, which AppShell
@@ -146,6 +147,7 @@ export function AppHeader({ onQuickCheckAll }: AppHeaderProps) {
           <a className="app-header-link" href="/">
             Home
           </a>
+          <KeyboardShortcutsPopover />
           <a className="app-header-link" href="./README.md">
             README
           </a>

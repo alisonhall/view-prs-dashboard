@@ -83,6 +83,44 @@
   color: var(--color-accent-text);
 }
 
+/* Shortcuts: a button that reads as the links beside it. */
+.app-header-link-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.app-header-link-button:hover {
+  text-decoration: underline;
+}
+
+/* The shortcuts list's keys (KeyboardShortcutsPopover). */
+.shortcuts-keys {
+  flex-wrap: wrap;
+  gap: 2px;
+}
+
+.shortcuts-keys kbd {
+  display: inline-block;
+  min-width: 1.5em;
+  padding: 0 5px;
+  border: 1px solid var(--color-border-strong);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-muted);
+  font: var(--font-size-xs) var(--font-sans);
+  color: var(--color-text);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.shortcuts-or {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
 /* Auto update paused: new data held back while something is unsaved.
    Stuck to the top of the window while you scroll (it's what you'd be
    editing far down the table), above the docked pane, below the drawer
