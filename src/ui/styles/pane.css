@@ -349,6 +349,14 @@
   margin: var(--space-3) 0;
 }
 
+/* More commits than GitHub returns */
+.pr-activity-limit {
+  margin: var(--space-3) 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
 /* Conversations tab (PrConversationsTab) */
 .pr-conv-summary {
   display: flex;

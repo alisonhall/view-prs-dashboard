@@ -729,6 +729,7 @@ Insights behavior notes:
   - `Since I last looked` shows only what happened after your last activity on the PR or your last Ack (current or since cleared by a change), whichever is later, with a button to show the earlier events; `All` shows everything, with a divider where the events you'd already seen begin. Without either time, only `All` applies.
   - A commit dated before you last looked but after the one your latest review was on is new too (see below), but its date puts it among the older events, below the divider: it stays by its date, tagged `Not in your last review`, which says why on hover. A run of one person's commits is all tagged or none. The row's summary under the table tags it the same way among its new events.
   - Chips filter by event type (Commits, Reviews, Comments, PR events), each showing its count. The scope and types stay as picked for the next PR.
+  - GitHub returns a PR's newest 250 commits at most. For a PR with more, the row keeps how many it has (`commitTotalCount`, from the same query), and `All` ends with `This PR has 389 commits, but GitHub returns only the newest 250: the older ones aren't shown.`
   - The daily summary table (below) is a collapsed group at the end.
 - The Activity tab suppresses duplicate `review (COMMENTED)` items when the same event content is already represented by a thread or top-level comment item.
 - The detail pane's Conversations tab lists the PR's review threads, grouped by file (in line order, threads not on a file last). Each group collapses.

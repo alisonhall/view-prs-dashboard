@@ -835,6 +835,9 @@ const computePrRow = (input) => {
   const detailCommits = each(field(detail, "commits"));
   const reviewedIndex = reviewedOid === "" ? -1 : detailCommits.findIndex((commit) => commit?.oid === reviewedOid);
   const commitsAfterReview = reviewedIndex === -1 ? [] : detailCommits.slice(reviewedIndex + 1).map((commit) => alt(commit?.oid, "")).filter((oid) => oid !== "");
+  // How many commits the PR has, when that's more than its details hold:
+  // GitHub returns the newest 250 at most.
+  const commitTotalCount = Number(field(detail, "commitTotalCount")) || 0;
   const externalCommitCount = countExternalCommits(detail, {
     viewerLogin,
     since,
@@ -1027,6 +1030,7 @@ const computePrRow = (input) => {
     activityTimeline,
     baseline: effectiveLast,
     commitsAfterReview,
+    ...(commitTotalCount > detailCommits.length ? { commitTotalCount } : {}),
     reason,
   };
   return { row, clearAck };

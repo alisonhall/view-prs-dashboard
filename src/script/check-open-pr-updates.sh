@@ -1205,15 +1205,17 @@ get_pr_detail_json() {
 # Every commit of a PR, in gh pr view's shape: gh gives the first 100 only,
 # so a longer PR's newer commits - the ones that matter for what changed -
 # were missing. Pages of 100 through GraphQL, into a file (a page can be past
-# Windows' 32 KB command line). GitHub's API stops at 250 commits a PR,
-# newest included. Status 1 when a page can't be fetched.
+# Windows' 32 KB command line). GitHub's API stops at 250 commits a PR -
+# the newest 250, leaving out the oldest (checked on nodejs/node#1159: 389)
+# - so it's {commits, totalCount}: how many the PR really has. Status 1
+# when a page can't be fetched.
 fetch_all_pr_commits_json() {
   local number="$1"
   local pages_file response cursor='' has_next
   pages_file=$(mktemp)
   while true; do
     if ! response=$(gh_with_retry gh api graphql \
-      -f query='query($owner: String!, $name: String!, $number: Int!, $after: String) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { commits(first: 100, after: $after) { nodes { commit { oid authoredDate committedDate messageHeadline messageBody authors(first: 100) { nodes { email name user { id login } } } } } pageInfo { hasNextPage endCursor } } } } }' \
+      -f query='query($owner: String!, $name: String!, $number: Int!, $after: String) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { commits(first: 100, after: $after) { totalCount nodes { commit { oid authoredDate committedDate messageHeadline messageBody authors(first: 100) { nodes { email name user { id login } } } } } pageInfo { hasNextPage endCursor } } } } }' \
       -f owner="$REPO_OWNER" \
       -f name="$REPO_NAME" \
       -F number="$number" \
@@ -1228,17 +1230,19 @@ fetch_all_pr_commits_json() {
     [[ "$has_next" == 'true' && -n "$cursor" ]] || break
   done
   jq -cs '
-    [
-      .[].data.repository.pullRequest.commits.nodes[].commit
-      | {
-          authoredDate,
-          authors: [.authors.nodes[] | {email: (.email // ""), id: (.user.id // ""), login: (.user.login // ""), name: (.name // "")}],
-          committedDate,
-          messageBody,
-          messageHeadline,
-          oid
-        }
-    ]
+    . as $pages
+    | [
+        $pages[].data.repository.pullRequest.commits.nodes[].commit
+        | {
+            authoredDate,
+            authors: [.authors.nodes[] | {email: (.email // ""), id: (.user.id // ""), login: (.user.login // ""), name: (.name // "")}],
+            committedDate,
+            messageBody,
+            messageHeadline,
+            oid
+          }
+      ]
+    | {commits: ., totalCount: ([length, ($pages[-1].data.repository.pullRequest.commits.totalCount // 0)] | max)}
   ' "$pages_file"
   local status=$?
   rm -f "$pages_file"
@@ -1246,7 +1250,8 @@ fetch_all_pr_commits_json() {
 }
 
 # A PR's details with all its commits: gh's 100 replaced by the full list
-# when there may be more (exactly 100). Through files, not --argjson.
+# when there may be more (exactly 100), and commitTotalCount: how many it
+# has, past the 250 GitHub returns. Through files, not --argjson.
 complete_pr_detail_commits() {
   local detail_json="$1"
   local number="$2"
@@ -1262,7 +1267,7 @@ complete_pr_detail_commits() {
   fi
   detail_file=$(mktemp)
   printf '%s' "$detail_json" >"$detail_file"
-  jq -c --slurpfile commits "$commits_file" '.commits = $commits[0]' "$detail_file"
+  jq -c --slurpfile commits "$commits_file" '.commits = $commits[0].commits | .commitTotalCount = $commits[0].totalCount' "$detail_file"
   local status=$?
   rm -f "$detail_file" "$commits_file"
   return "$status"

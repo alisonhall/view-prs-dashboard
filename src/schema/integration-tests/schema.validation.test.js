@@ -57,6 +57,8 @@ describe("data schema", () => {
           { oid: "a1", committedDate: "2026-03-01T09:00:00Z", messageHeadline: "feat: one", authors: [{ login: "alice" }] },
           { oid: "a2", committedDate: "2026-03-01T10:00:00Z", messageHeadline: "fix: two", authors: [{ login: "alice" }] },
         ],
+        // More than the details hold (GitHub returns 250 at most).
+        commitTotalCount: 260,
       },
       viewedFilesStats: { changedFiles: 3, viewedFiles: 1 },
     });
@@ -78,6 +80,7 @@ describe("data schema", () => {
     };
 
     expect(row.commitsAfterReview).toEqual(["a2"]);
+    expect(row.commitTotalCount).toBe(260);
     expect(validate(payload) ? [] : validate.errors).toEqual([]);
   });
 });

@@ -74,12 +74,14 @@ describe("fetches too big for a command line", () => {
         authors: { nodes: [{ email: "a@x", name: "Alice", user: { id: "U1", login: "alice" } }, { email: "g@x", name: "Ghost", user: null }] },
       },
     });
-    // 250 commits: pages of 100, 100 and 50.
+    // 250 commits, all GitHub returns of the PR's 389: pages of 100, 100
+    // and 50.
     const pages = [0, 1, 2].map((p) => ({
       data: {
         repository: {
           pullRequest: {
             commits: {
+              totalCount: 389,
               nodes: Array.from({ length: p < 2 ? 100 : 50 }, (_, i) => gqlCommit(p * 100 + i)),
               pageInfo: { hasNextPage: p < 2, endCursor: String(p + 2) },
             },
@@ -89,10 +91,14 @@ describe("fetches too big for a command line", () => {
     }));
     const detailWith = (count) => JSON.stringify({ comments: [], commits: Array.from({ length: count }, (_, i) => ({ oid: `c${i}` })) });
 
-    test("are all fetched, in gh pr view's shape", () => {
-      const output = withFakePages(pages, `complete_pr_detail_commits '${detailWith(100)}' 5 | jq -c '{n: (.commits | length), last: .commits[-1].oid, first: .commits[0]}'`);
+    test("are all fetched, in gh pr view's shape, with how many the PR has", () => {
+      const output = withFakePages(
+        pages,
+        `complete_pr_detail_commits '${detailWith(100)}' 5 | jq -c '{n: (.commits | length), total: .commitTotalCount, last: .commits[-1].oid, first: .commits[0]}'`,
+      );
       expect(JSON.parse(output)).toEqual({
         n: 250,
+        total: 389,
         last: "c249",
         first: {
           authoredDate: "2026-03-01T00:00:00Z",
@@ -109,7 +115,15 @@ describe("fetches too big for a command line", () => {
     });
 
     test("under 100, the details are kept as they are, with no fetch", () => {
-      expect(withFakePages([], `complete_pr_detail_commits '${detailWith(99)}' 5 | jq -c '.commits | length'`)).toBe("99");
+      expect(withFakePages([], `complete_pr_detail_commits '${detailWith(99)}' 5 | jq -c '[(.commits | length), .commitTotalCount]'`)).toBe("[99,null]");
+    });
+
+    test("without a totalCount, the total is what was fetched", () => {
+      const untotalled = pages.map((page) => {
+        const { totalCount, ...commits } = page.data.repository.pullRequest.commits;
+        return { data: { repository: { pullRequest: { commits } } } };
+      });
+      expect(withFakePages(untotalled, `complete_pr_detail_commits '${detailWith(100)}' 5 | jq -c '.commitTotalCount'`)).toBe("250");
     });
 
     test("a page that can't be fetched: no details, so the stored row stays", () => {
@@ -267,6 +281,12 @@ describe("check-open-pr-updates shell helper behavior", () => {
       const row = lateCommitRow({ input: { ackAt: "2026-03-01T13:00:00Z" } });
       expect(row.status).toBe("NO_CHANGE");
       expect(row.commitsAfterReview).toEqual([]);
+    });
+
+    test("a PR with more commits than its details hold says how many (GitHub returns 250 at most); one without, doesn't", () => {
+      expect(lateCommitRow({ detail: { commitTotalCount: 389 } }).commitTotalCount).toBe(389);
+      expect(lateCommitRow({ detail: { commitTotalCount: 2 } })).not.toHaveProperty("commitTotalCount");
+      expect(lateCommitRow()).not.toHaveProperty("commitTotalCount");
     });
 
     test("go by date when the reviewed commit is gone (a force-push)", () => {

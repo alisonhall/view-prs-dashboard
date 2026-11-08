@@ -204,6 +204,9 @@ export interface PrData {
   // that review though dated before it (a commit's date is when it was
   // made, not pushed). Empty when an ack is the baseline.
   commitsAfterReview?: string[];
+  // How many commits the PR has, only when that's more than `commits`
+  // holds: GitHub returns the newest 250 at most.
+  commitTotalCount?: number;
   url?: string;
   author?: string;
   authorLogin?: string;

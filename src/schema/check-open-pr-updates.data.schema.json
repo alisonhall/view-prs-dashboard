@@ -334,6 +334,10 @@
             "type": "string"
           }
         },
+        "commitTotalCount": {
+          "type": "integer",
+          "minimum": 0
+        },
         "reason": {
           "type": "string"
         }

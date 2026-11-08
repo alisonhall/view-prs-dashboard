@@ -37,6 +37,8 @@ const { formatIsoDatetime } = createPrFormattingHelpers();
  *   long ones fold. One person's run of commits is one line that expands.
  * - In "All", a divider where the events you've already seen begin; in
  *   "Since I last looked", a button to show those earlier events.
+ * - In "All", under the oldest events, a note when the PR has more commits
+ *   than GitHub returns (250).
  * - Commits after the one your latest review was on but dated before you
  *   last looked stay by their date, tagged "Not in your last review".
  * - The daily summary table, collapsed, below.
@@ -311,6 +313,11 @@ export function PrActivityTab({ pr, actorsMap, lastLookedAt, ackEvents, filters,
     [events, scope, lastLookedAt, filters.kinds, timeZone, newCommitOids],
   );
   const prNumber = String(pr?.number ?? '');
+  // GitHub returns a PR's newest 250 commits at most; commitTotalCount is
+  // how many it has, only when that's more. The rest, the oldest, would
+  // come last in "All". (Not counted from `commits`, which leaves out
+  // merges of main.)
+  const commitTotalCount = Number(pr?.commitTotalCount) || 0;
   // A closed PR's timeline stops at its close date (mergedAt wins, else
   // closedAt), not today.
   const isOpen = !String(pr.mergedAt || pr.closedAt || '').trim();
@@ -375,6 +382,12 @@ export function PrActivityTab({ pr, actorsMap, lastLookedAt, ackEvents, filters,
             </div>
           );
         })
+      )}
+
+      {scope === 'all' && filters.kinds.includes('commit') && commitTotalCount > 0 && (
+        <p className="pr-activity-limit">
+          This PR has {commitTotalCount} commits, but GitHub returns only the newest 250: the older ones aren't shown.
+        </p>
       )}
 
       {feed.earlierCount > 0 && (

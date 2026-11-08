@@ -177,6 +177,25 @@ describe('PrActivityTab', () => {
     expect(tag('old2222')).toBeNull();
   });
 
+  test('with more commits than GitHub returns, "All" says how many it shows, under the oldest events', async () => {
+    const user = userEvent.setup();
+    // 243 held: the row's commits leave out merges of main, so the note
+    // doesn't count them.
+    const commits = Array.from({ length: 243 }, (_, i) => ({ oid: `c${i}` }));
+    render(<Harness pr={basePr(events, { commits, commitTotalCount: 389 })} lastLookedAt="2026-10-22T00:00:00Z" />);
+    const note = "This PR has 389 commits, but GitHub returns only the newest 250: the older ones aren't shown.";
+    // "Since I last looked": the missing commits are the oldest.
+    expect(screen.queryByText(note)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /^All/ }));
+    expect(screen.getByText(note)).toBeInTheDocument();
+    expect(dayGroups().at(-1)?.compareDocumentPosition(screen.getByText(note))).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+
+    const types = screen.getByRole('group', { name: 'Event types' });
+    await user.click(within(types).getByRole('button', { name: /Commits/ }));
+    expect(screen.queryByText(note)).not.toBeInTheDocument();
+  });
+
   test('a comment shows in full, rendered as markdown; a long one folds until "Show more"', async () => {
     const user = userEvent.setup();
     const long = `**Bold** start\n\n${'word '.repeat(120)}`;
