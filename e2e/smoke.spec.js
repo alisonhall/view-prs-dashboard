@@ -1513,6 +1513,20 @@ test("Settings › Sources offers fetching older merged PRs beside a repo follow
   await expect(panel.getByRole("button", { name: "Fetch older merged PRs" }).first()).toBeVisible();
 });
 
+test("Settings › Sources' Timing… opens Background updates at the repo, which says it's from your sources", async ({ page }) => {
+  await page.goto("/");
+  await waitForPrTable(page);
+  const drawer = await openSettings(page, "Sources");
+  const timing = drawer.getByRole("tabpanel", { name: "Sources" }).getByRole("button", { name: /^Timing for / }).first();
+  const repo = (await timing.getAttribute("aria-label")).replace(/^Timing for /, "");
+  await timing.click();
+
+  await expect(drawer.getByRole("tab", { name: "Background updates", exact: true })).toHaveAttribute("aria-selected", "true");
+  const group = drawer.getByRole("group", { name: repo, exact: true });
+  await expect(group.getByRole("textbox", { name: "Priority boost", exact: true })).toBeFocused();
+  await expect(group).toHaveAccessibleDescription(/^From your sources: /);
+});
+
 test("scheduler-driven active-PR progress indicator reaches the React-rendered row", async ({ page }) => {
   // Regression test: applyActivePrProgressIndicators (fired from the
   // scheduler-status poll loop, independent of the main data render) used

@@ -6,6 +6,7 @@ import type { PrSources, PrSubscription } from '../../types/pr-data.ts';
 import { Button } from '../ui/Button';
 import { KnownReposDatalist } from './KnownReposDatalist';
 import { useRequestActivity } from '../../state/RequestActivityContext';
+import { useSettingsDrawer } from '../../state/SettingsDrawerContext';
 
 // What the sources routes return.
 interface SourcesResult {
@@ -94,6 +95,24 @@ function FetchOlderMergedButton({ repo }: { repo: string }) {
 }
 
 /**
+ * A repo's "Timing…": opens Settings › Background updates at the repo,
+ * where how often its background checks run, and their priority, are set
+ * - one schedule per repo, shared by every PR followed from it.
+ */
+function TimingButton({ repo }: { repo: string }) {
+  const { openBackgroundUpdatesAt } = useSettingsDrawer();
+  return (
+    <Button
+      aria-label={`Timing for ${repo}`}
+      title={`How often the background checks run for ${repo}, and their priority (Background updates) - one schedule for the repo, shared by every PR followed from it.`}
+      onClick={() => openBackgroundUpdatesAt(repo)}
+    >
+      Timing…
+    </Button>
+  );
+}
+
+/**
  * The Settings drawer's "Sources": which repos and PRs are in view (the
  * server's sources file).
  * - Subscriptions: a repo's recent PRs, or only the PR numbers listed.
@@ -103,6 +122,7 @@ function FetchOlderMergedButton({ repo }: { repo: string }) {
  *   repo not subscribed): each can be removed, which hides its row unless
  *   its repo is subscribed. One its last run couldn't fetch (deleted, or no
  *   longer visible) says so.
+ * Each repo, and each PR added one by one, has "Timing…" (TimingButton).
  * Shows the data's sources (dataMeta.sources), or a change's own answer
  * until the data catches up.
  */
@@ -197,6 +217,7 @@ export function SourcesSection() {
                 <span className="sources-item-name">{repo}</span>
                 <span className="sources-item-meta">Its recent PRs - set by VIEW_PRS_AUTO_REPOS, so it can&apos;t be unsubscribed here</span>
                 <FetchOlderMergedButton repo={repo} />
+                <TimingButton repo={repo} />
               </li>
             ))}
             {editableSubscriptions.map((subscription) => {
@@ -253,6 +274,7 @@ export function SourcesSection() {
                     </span>
                   )}
                   {subscription.mode === 'recent' && !isDraftingNumbers && <FetchOlderMergedButton repo={subscription.repo} />}
+                  <TimingButton repo={subscription.repo} />
                   <Button
                     disabled={busy}
                     title="Hides its rows (kept, with their notes) and stops its background updates. PRs added from it stay."
@@ -321,6 +343,7 @@ export function SourcesSection() {
                       Couldn&apos;t fetch
                     </span>
                   )}
+                  <TimingButton repo={pr.repo} />
                   <Button
                     disabled={busy}
                     title="Stops its updates, and hides its row unless its repo is subscribed."

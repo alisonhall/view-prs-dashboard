@@ -5,6 +5,8 @@
 // (view-prs-dispatcher-helpers.js) reads it on every tick: an interval
 // replaces that check's default; `priority` is added to every check's
 // default priority.
+import type { PrSources } from '../types/pr-data.ts';
+
 export const SCHEDULER_REPO_CONFIG_KEY = 'schedulerRepoConfig';
 
 export type TaskType = 'quickCheck' | 'autoRefresh' | 'mergedDrain';
@@ -98,3 +100,44 @@ export const withoutRepo = (config: SchedulerRepoConfig, repo: string): Schedule
 // The priorities a boost gives each check, for the form to show.
 export const boostedPriorities = (defaults: DispatcherSettingsDefaults['taskTypes'], boost: number) =>
   defaults.map(({ taskType, priority }) => ({ taskType, priority: priority + boost }));
+
+// A repo in Settings › Sources, and how it's followed there ("its recent
+// PRs", "2 PRs added one by one"...).
+export interface SourceRepo {
+  repo: string;
+  followed: string;
+}
+
+const countOf = (count: number, noun: string) => `${count} ${noun}${count === 1 ? '' : 's'}`;
+
+// Every repo in the sources, in Sources' order - VIEW_PRS_AUTO_REPOS's,
+// each subscription, then the repos of PRs added one by one - each once,
+// saying every way it's followed. None before the sources file exists.
+export const listSourceRepos = (sources: PrSources | null | undefined): SourceRepo[] => {
+  if (!sources) return [];
+  const ways = new Map<string, string[]>();
+  const add = (repoRaw: unknown, way: string) => {
+    const repo = String(repoRaw ?? '').trim();
+    if (!repo) return;
+    const list = ways.get(repo) ?? [];
+    if (!list.includes(way)) list.push(way);
+    ways.set(repo, list);
+  };
+  const envRepos = Array.isArray(sources.envRepos) ? sources.envRepos : [];
+  envRepos.forEach((repo) => add(repo, 'its recent PRs (set by VIEW_PRS_AUTO_REPOS)'));
+  (Array.isArray(sources.subscriptions) ? sources.subscriptions : []).forEach((subscription) => {
+    // VIEW_PRS_AUTO_REPOS's repo is listed as that, as Sources lists it.
+    if (envRepos.includes(subscription.repo)) return;
+    add(
+      subscription.repo,
+      subscription.mode === 'numbers' ? countOf((subscription.numbers || []).length, 'listed PR') : 'its recent PRs',
+    );
+  });
+  const trackedByRepo = new Map<string, number>();
+  (Array.isArray(sources.trackedPrs) ? sources.trackedPrs : []).forEach((tracked) => {
+    const repo = String(tracked?.repo ?? '').trim();
+    if (repo) trackedByRepo.set(repo, (trackedByRepo.get(repo) ?? 0) + 1);
+  });
+  trackedByRepo.forEach((count, repo) => add(repo, `${countOf(count, 'PR')} added one by one`));
+  return Array.from(ways, ([repo, list]) => ({ repo, followed: list.join(', ') }));
+};

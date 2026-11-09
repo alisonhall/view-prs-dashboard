@@ -211,7 +211,7 @@ describe('ActivityPopover', () => {
   test("each Just finished item's Log opens the Action log at its entry; Action log at the top", async () => {
     const user = userEvent.setup();
     const finishedAt = new Date(Date.now() - 60_000).toISOString();
-    const drawer = { isOpen: false, section: 'run' as const, open: jest.fn(), close: jest.fn(), setSection: jest.fn(), actionLogFocus: null, openActionLogAt: jest.fn() };
+    const drawer = { isOpen: false, section: 'run' as const, open: jest.fn(), close: jest.fn(), setSection: jest.fn(), actionLogFocus: null, openActionLogAt: jest.fn(), backgroundUpdatesFocus: null, openBackgroundUpdatesAt: jest.fn() };
     render(
       <SettingsDrawerContext.Provider value={drawer}>
         <JobEventsContext.Provider value={jobEvents({ recentFinished: [{ job: 'autoRefresh', at: finishedAt, ok: true, detail: { kind: 'changedPrs' } }] })}>

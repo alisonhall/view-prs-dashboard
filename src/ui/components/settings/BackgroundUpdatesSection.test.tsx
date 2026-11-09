@@ -2,6 +2,10 @@
 
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { ReactNode } from 'react';
+import { PrDataContext, type PrDataValue } from '../../state/PrDataContext';
+import { SettingsDrawerContext, type SettingsDrawerValue } from '../../state/SettingsDrawerContext';
+import type { PrSources } from '../../types/pr-data.ts';
 import { BackgroundUpdatesSection, SAVE_DELAY_MS } from './BackgroundUpdatesSection';
 
 // Stand-ins for the server: GET /view-prs/dispatcher/settings answers
@@ -11,10 +15,26 @@ let saved: Record<string, unknown>;
 let savedOk: boolean;
 let settings: unknown;
 let settingsOk: boolean;
+// While set, GET /view-prs/dispatcher/settings waits for it before
+// answering - with `settings` as it was when asked, as a server would.
+// `settingsGates`, when not empty, gives each request the next one instead.
+let settingsGate: Promise<void> | null = null;
+let settingsGates: Array<Promise<void>> = [];
+const gate = () => {
+  let open = () => {};
+  const promise = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  return { promise, open };
+};
 const puts: Array<Record<string, unknown>> = [];
 const fetchMock = jest.fn(async (input: string, init?: RequestInit) => {
   if (input.includes('/dispatcher/settings')) {
-    return { ok: settingsOk, status: settingsOk ? 200 : 500, json: async () => (settingsOk ? settings : { ok: false, error: 'Boom' }) };
+    const answer = settingsOk ? settings : { ok: false, error: 'Boom' };
+    const ok = settingsOk;
+    const wait = settingsGates.shift() ?? settingsGate;
+    if (wait) await wait;
+    return { ok, status: ok ? 200 : 500, json: async () => answer };
   }
   if (init?.method === 'PUT') {
     saved = JSON.parse(String(init.body));
@@ -36,6 +56,14 @@ const DEFAULTS = {
   ],
 };
 
+// The section with the data's sources (Settings › Sources) and, when
+// given, a drawer asking for a repo (Sources' "Timing…").
+const withSources = (sources: PrSources | null, drawer?: Partial<SettingsDrawerValue>, children: ReactNode = <BackgroundUpdatesSection />) => {
+  const tree = <PrDataContext.Provider value={{ payload: { ok: true, byPrNumber: {}, dataMeta: { sources } } } as unknown as PrDataValue}>{children}</PrDataContext.Provider>;
+  return drawer ? <SettingsDrawerContext.Provider value={drawer as SettingsDrawerValue}>{tree}</SettingsDrawerContext.Provider> : tree;
+};
+const settingsCalls = () => fetchMock.mock.calls.filter(([input]) => String(input).includes('/dispatcher/settings')).length;
+
 const repoGroup = (repo: string) => screen.getByRole('group', { name: new RegExp(`^${repo}`) });
 const field = (repo: string, name: string) => within(repoGroup(repo)).getByRole('textbox', { name });
 
@@ -45,6 +73,8 @@ describe('Settings › Background updates', () => {
     savedOk = true;
     settings = DEFAULTS;
     settingsOk = true;
+    settingsGate = null;
+    settingsGates = [];
     puts.length = 0;
     (global as unknown as { fetch: unknown }).fetch = fetchMock;
   });
@@ -78,7 +108,7 @@ describe('Settings › Background updates', () => {
     await waitFor(() => expect(field('acme/web', 'Priority boost')).toHaveValue('2'));
     expect(field('acme/web', 'Quick check every')).toHaveValue('1.5');
     expect(within(repoGroup('acme/web')).getByText(/Priorities with the boost: Quick check 7, Full refresh 5, Merged\/closed drain 3/)).toBeInTheDocument();
-    expect(repoGroup('acme/old')).toHaveTextContent('not checked now');
+    expect(repoGroup('acme/old')).toHaveAccessibleDescription('Not checked now; its saved settings wait.');
     expect(field('acme/old', 'Full refresh every')).toHaveValue('10');
   });
 
@@ -209,6 +239,120 @@ describe('Settings › Background updates', () => {
     savedOk = false;
     render(<BackgroundUpdatesSection />);
     expect(await screen.findByRole('alert')).toHaveTextContent("the saved settings couldn't be read");
+  });
+
+  test("lists every repo in the sources first, saying how it's followed, and why one isn't checked", async () => {
+    settings = { ...DEFAULTS, repos: ['acme/api', 'other/lib', 'acme/fallback'] };
+    saved = { schedulerRepoConfig: { 'acme/old': { priority: 1 } } };
+    render(
+      withSources({
+        subscriptions: [{ repo: 'acme/api', mode: 'recent' }],
+        trackedPrs: [
+          { repo: 'other/lib', number: '4' },
+          { repo: 'acme/done', number: '9' },
+        ],
+      }),
+    );
+    await screen.findByRole('group', { name: /^acme\/api/ });
+    expect(screen.getAllByRole('group').map((group) => group.querySelector('legend')?.textContent)).toEqual([
+      'acme/api',
+      'other/lib',
+      'acme/done',
+      'acme/fallback',
+      'acme/old',
+    ]);
+    expect(repoGroup('acme/api')).toHaveAccessibleDescription('From your sources: its recent PRs.');
+    expect(repoGroup('other/lib')).toHaveAccessibleDescription('From your sources: 1 PR added one by one.');
+    // In the sources, but the server doesn't check it.
+    expect(repoGroup('acme/done')).toHaveAccessibleDescription(
+      'From your sources: 1 PR added one by one. Not checked now: the PRs it follows by number were all merged or closed over 30 days ago.',
+    );
+    expect(field('acme/done', 'Priority boost')).toBeEnabled();
+    expect(repoGroup('acme/fallback')).not.toHaveAccessibleDescription(/./);
+    expect(repoGroup('acme/old')).toHaveAccessibleDescription('Not in your sources, so not checked; its saved settings wait.');
+  });
+
+  test('asks the server again which repos it checks when the sources change, not otherwise', async () => {
+    const before: PrSources = { subscriptions: [{ repo: 'acme/api', mode: 'recent' }], trackedPrs: [] };
+    const { rerender } = render(withSources(before));
+    await screen.findByRole('group', { name: /^acme\/api/ });
+    expect(settingsCalls()).toBe(1);
+
+    rerender(withSources({ ...before }));
+    expect(settingsCalls()).toBe(1);
+
+    settings = { ...DEFAULTS, repos: ['acme/api', 'acme/new'] };
+    rerender(withSources({ ...before, subscriptions: [...before.subscriptions, { repo: 'acme/new', mode: 'recent' }] }));
+    await waitFor(() => expect(settingsCalls()).toBe(2));
+    await waitFor(() => expect(repoGroup('acme/new')).toHaveAccessibleDescription('From your sources: its recent PRs.'));
+  });
+
+  test("says nothing about which repos are checked until the server's answer is about the sources shown", async () => {
+    const before: PrSources = { subscriptions: [{ repo: 'acme/api', mode: 'recent' }], trackedPrs: [] };
+    const { rerender } = render(withSources(before));
+    await screen.findByRole('group', { name: /^acme\/api/ });
+
+    let open = () => {};
+    settingsGate = new Promise((resolve) => {
+      open = resolve;
+    });
+    settings = { ...DEFAULTS, repos: ['acme/api', 'acme/new'] };
+    rerender(withSources({ ...before, subscriptions: [...before.subscriptions, { repo: 'acme/new', mode: 'recent' }] }));
+    // Listed at once, from the sources - not yet called unchecked.
+    expect(repoGroup('acme/new')).toHaveAccessibleDescription('From your sources: its recent PRs.');
+    await act(async () => open());
+    expect(repoGroup('acme/new')).toHaveAccessibleDescription('From your sources: its recent PRs.');
+  });
+
+  test('a change of sources while the first answer is on its way: the later question\'s answer is the one kept, whichever comes last', async () => {
+    const first = gate();
+    const second = gate();
+    settingsGates = [first.promise, second.promise];
+    const before: PrSources = { subscriptions: [{ repo: 'acme/api', mode: 'recent' }], trackedPrs: [{ repo: 'acme/done', number: '1' }] };
+    // The first question is asked before acme/new is subscribed to...
+    settings = { ...DEFAULTS, repos: ['acme/api'] };
+    const { rerender } = render(withSources(before));
+    // ...the second after.
+    settings = { ...DEFAULTS, repos: ['acme/api', 'acme/new'] };
+    rerender(withSources({ ...before, subscriptions: [...before.subscriptions, { repo: 'acme/new', mode: 'recent' }] }));
+    // The second answer arrives first; the first, out of date, after it.
+    await act(async () => second.open());
+    await act(async () => first.open());
+    await screen.findByRole('group', { name: /^acme\/new/ });
+    expect(repoGroup('acme/new')).toHaveAccessibleDescription('From your sources: its recent PRs.');
+    expect(repoGroup('acme/done')).toHaveAccessibleDescription(/Not checked now/);
+  });
+
+  describe("opened at a repo (Sources' Timing…)", () => {
+    const original = Element.prototype.scrollIntoView;
+    let scrollIntoView: jest.Mock;
+    beforeEach(() => {
+      scrollIntoView = jest.fn();
+      Element.prototype.scrollIntoView = scrollIntoView;
+    });
+    afterEach(() => {
+      Element.prototype.scrollIntoView = original;
+    });
+
+    test("it scrolls to the repo and focuses its first field, once", async () => {
+      const focus = { backgroundUpdatesFocus: { repo: 'acme/web', requestedAt: 1 } };
+      const { rerender } = render(withSources(null, focus));
+      await waitFor(() => expect(field('acme/web', 'Priority boost')).toHaveFocus());
+      expect(scrollIntoView).toHaveBeenCalledTimes(1);
+      rerender(withSources(null, { ...focus }));
+      expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    });
+
+    test('a repo just added to the sources is focused once the data lists it', async () => {
+      const before: PrSources = { subscriptions: [{ repo: 'acme/api', mode: 'recent' }], trackedPrs: [] };
+      const focus = { backgroundUpdatesFocus: { repo: 'acme/new', requestedAt: 1 } };
+      const { rerender } = render(withSources(before, focus));
+      await screen.findByRole('group', { name: /^acme\/api/ });
+      expect(scrollIntoView).not.toHaveBeenCalled();
+
+      rerender(withSources({ ...before, subscriptions: [...before.subscriptions, { repo: 'acme/new', mode: 'recent' }] }, focus));
+      await waitFor(() => expect(field('acme/new', 'Priority boost')).toHaveFocus());
+    });
   });
 
   test('says so when no repo is checked in the background', async () => {

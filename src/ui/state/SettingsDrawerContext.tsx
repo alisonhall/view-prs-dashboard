@@ -40,6 +40,13 @@ export interface ActionLogFocus {
   requestedAt: number;
 }
 
+// A repo for Background updates to show (Sources' "Timing…"), told apart
+// by `requestedAt` as ActionLogFocus is.
+export interface BackgroundUpdatesFocus {
+  repo: string;
+  requestedAt: number;
+}
+
 export interface SettingsDrawerValue {
   isOpen: boolean;
   section: SettingsSectionId;
@@ -51,6 +58,9 @@ export interface SettingsDrawerValue {
   actionLogFocus: ActionLogFocus | null;
   // Opens the Action log at that entry.
   openActionLogAt: (focus: { kind: string; atMs: number }) => void;
+  backgroundUpdatesFocus: BackgroundUpdatesFocus | null;
+  // Opens Background updates at that repo's settings.
+  openBackgroundUpdatesAt: (repo: string) => void;
 }
 
 const noop = () => {};
@@ -63,6 +73,8 @@ export const SettingsDrawerContext = createContext<SettingsDrawerValue>({
   setSection: noop,
   actionLogFocus: null,
   openActionLogAt: noop,
+  backgroundUpdatesFocus: null,
+  openBackgroundUpdatesAt: noop,
 });
 
 export function useSettingsDrawer(): SettingsDrawerValue {
@@ -110,9 +122,27 @@ export function SettingsDrawerProvider({
     },
     [open],
   );
+  const [backgroundUpdatesFocus, setBackgroundUpdatesFocus] = useState<BackgroundUpdatesFocus | null>(null);
+  const openBackgroundUpdatesAt = useCallback(
+    (repo: string) => {
+      setBackgroundUpdatesFocus({ repo, requestedAt: Date.now() });
+      open('background-updates');
+    },
+    [open],
+  );
   const value = useMemo(
-    () => ({ isOpen, section, open, close, setSection, actionLogFocus, openActionLogAt }),
-    [isOpen, section, open, close, setSection, actionLogFocus, openActionLogAt],
+    () => ({
+      isOpen,
+      section,
+      open,
+      close,
+      setSection,
+      actionLogFocus,
+      openActionLogAt,
+      backgroundUpdatesFocus,
+      openBackgroundUpdatesAt,
+    }),
+    [isOpen, section, open, close, setSection, actionLogFocus, openActionLogAt, backgroundUpdatesFocus, openBackgroundUpdatesAt],
   );
   return <SettingsDrawerContext.Provider value={value}>{children}</SettingsDrawerContext.Provider>;
 }

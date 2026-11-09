@@ -1,6 +1,7 @@
 import {
   boostedPriorities,
   formatMinutes,
+  listSourceRepos,
   normalizeSchedulerRepoConfig,
   parseMinutes,
   parsePriorityBoost,
@@ -66,5 +67,37 @@ describe('background updates settings', () => {
       { taskType: 'mergedDrain' as const, intervalMs: 1, priority: 1 },
     ];
     expect(boostedPriorities(defaults, -2).map(({ priority }) => priority)).toEqual([3, 1, -1]);
+  });
+});
+
+describe('listSourceRepos', () => {
+  test('none before the sources file exists', () => {
+    expect(listSourceRepos(null)).toEqual([]);
+    expect(listSourceRepos(undefined)).toEqual([]);
+  });
+
+  test("every repo once, in Sources' order, saying each way it's followed", () => {
+    expect(
+      listSourceRepos({
+        envRepos: ['acme/env'],
+        subscriptions: [
+          { repo: 'acme/env', mode: 'recent' },
+          { repo: 'acme/api', mode: 'recent' },
+          { repo: 'acme/web', mode: 'numbers', numbers: ['1', '2'] },
+          { repo: 'acme/one', mode: 'numbers', numbers: ['9'] },
+        ],
+        trackedPrs: [
+          { repo: 'other/lib', number: '4' },
+          { repo: 'acme/api', number: '7' },
+          { repo: 'other/lib', number: '5' },
+        ],
+      }),
+    ).toEqual([
+      { repo: 'acme/env', followed: 'its recent PRs (set by VIEW_PRS_AUTO_REPOS)' },
+      { repo: 'acme/api', followed: 'its recent PRs, 1 PR added one by one' },
+      { repo: 'acme/web', followed: '2 listed PRs' },
+      { repo: 'acme/one', followed: '1 listed PR' },
+      { repo: 'other/lib', followed: '2 PRs added one by one' },
+    ]);
   });
 });

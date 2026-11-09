@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { createPrUiOptionPersistenceHelpers } from '../../helpers/pr-ui-option-persistence.helpers.ts';
 import {
   boostedPriorities,
   formatMinutes,
   intervalKey,
+  listSourceRepos,
   normalizeSchedulerRepoConfig,
   parseMinutes,
   parsePriorityBoost,
@@ -16,6 +17,8 @@ import {
   type SchedulerRepoConfig,
 } from '../../helpers/background-updates.helpers.ts';
 import { Button } from '../ui/Button';
+import { useOptionalPrData } from '../../state/PrDataContext';
+import { useSettingsDrawer } from '../../state/SettingsDrawerContext';
 
 const { readUiSessionOverridesOrNull, updateUiSessionOverride } = createPrUiOptionPersistenceHelpers({
   fetch: (input, init) => fetch(input, init),
@@ -38,40 +41,103 @@ export const SAVE_DELAY_MS = 800;
  * saved once typing pauses, or the field is left; the server picks it up
  * on its next tick (about 5 seconds), without a restart. Lazy-loaded the
  * first time it's opened.
+ *
+ * Lists every repo in Sources (listSourceRepos), saying how it's
+ * followed, then any other repo the server checks, then any with saved
+ * settings but no checks now. Which repos the server checks it asks again
+ * whenever the sources change. Sources' "Timing…" opens it at a repo
+ * (backgroundUpdatesFocus): that repo's first field is focused.
  */
 export function BackgroundUpdatesSection() {
-  const [status, setStatus] = useState<Status>({ kind: 'loading' });
+  // The saved settings (user-defaults.json), read once.
+  const [saved, setSaved] = useState<{ kind: 'loading' } | { kind: 'ready' } | { kind: 'error'; message: string }>({ kind: 'loading' });
+  // The server's defaults and the repos it checks, as of the sources
+  // `forKey` names (sourceReposKey when asked).
+  const [server, setServer] = useState<
+    { kind: 'loading' } | { kind: 'ready'; defaults: DispatcherSettingsDefaults; forKey: string } | { kind: 'error'; message: string }
+  >({ kind: 'loading' });
   const [config, setConfig] = useState<SchedulerRepoConfig>({});
   // What's typed in each field, until it's left valid (then the saved value shows).
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const idPrefix = useId();
+  const sources = useOptionalPrData()?.payload?.dataMeta?.sources ?? null;
+  const sourceRepos = useMemo(() => listSourceRepos(sources), [sources]);
+  const sourceReposKey = sourceRepos.map(({ repo }) => repo).join(' ');
+  const { backgroundUpdatesFocus } = useSettingsDrawer();
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const [response, overrides] = await Promise.all([fetch('/view-prs/dispatcher/settings'), readUiSessionOverridesOrNull()]);
-        const payload = await response.json();
-        if (!response.ok || payload?.ok === false) throw new Error(payload?.error || `HTTP ${response.status}`);
+        const overrides = await readUiSessionOverridesOrNull();
         // Not the defaults: the saved settings would show as cleared.
         if (!overrides) throw new Error("the saved settings couldn't be read");
         if (cancelled) return;
         setConfig(normalizeSchedulerRepoConfig(overrides[SCHEDULER_REPO_CONFIG_KEY]));
-        setStatus({
-          kind: 'ready',
-          defaults: {
-            repos: Array.isArray(payload.repos) ? payload.repos : [],
-            taskTypes: Array.isArray(payload.taskTypes) ? payload.taskTypes : [],
-          },
-        });
+        setSaved({ kind: 'ready' });
       } catch (error) {
-        if (!cancelled) setStatus({ kind: 'error', message: (error as Error).message || String(error) });
+        if (!cancelled) setSaved({ kind: 'error', message: (error as Error).message || String(error) });
       }
     })();
     return () => {
       cancelled = true;
     };
   }, []);
+
+  // Which repos the server checks follows the sources: asked when the
+  // section mounts, and again whenever a source's repo is added or
+  // removed. Only the latest question's answer is kept. After the first
+  // answer, a failed one keeps the last (its sources are named, so notes
+  // that depend on them wait).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await fetch('/view-prs/dispatcher/settings');
+        const payload = await response.json();
+        if (!response.ok || payload?.ok === false) throw new Error(payload?.error || `HTTP ${response.status}`);
+        if (cancelled) return;
+        setServer({
+          kind: 'ready',
+          forKey: sourceReposKey,
+          defaults: {
+            repos: Array.isArray(payload.repos) ? payload.repos : [],
+            taskTypes: Array.isArray(payload.taskTypes) ? payload.taskTypes : [],
+          },
+        });
+      } catch (error) {
+        if (cancelled) return;
+        setServer((previous) => (previous.kind === 'ready' ? previous : { kind: 'error', message: (error as Error).message || String(error) }));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sourceReposKey]);
+
+  let status: Status;
+  if (saved.kind === 'error') status = saved;
+  else if (server.kind === 'error') status = server;
+  else if (saved.kind === 'ready' && server.kind === 'ready') status = { kind: 'ready', defaults: server.defaults };
+  else status = { kind: 'loading' };
+  // Whether the server's answer is about the sources shown: until it is,
+  // nothing is said about which repos it checks.
+  const isServerCurrent = server.kind === 'ready' && server.forKey === sourceReposKey;
+
+  // Sources' "Timing…": once the repo is listed, scroll to it and focus
+  // its first field - once per request. A repo just added to the sources
+  // may be listed a moment later, when the data catches up.
+  const repoRefs = useRef(new Map<string, HTMLFieldSetElement>());
+  const handledFocusRef = useRef(0);
+  const isReady = status.kind === 'ready';
+  useEffect(() => {
+    if (!backgroundUpdatesFocus || !isReady || handledFocusRef.current === backgroundUpdatesFocus.requestedAt) return;
+    const fieldset = repoRefs.current.get(backgroundUpdatesFocus.repo);
+    if (!fieldset) return;
+    handledFocusRef.current = backgroundUpdatesFocus.requestedAt;
+    fieldset.scrollIntoView?.({ block: 'start' });
+    fieldset.querySelector('input')?.focus();
+  }, [backgroundUpdatesFocus, isReady, sourceReposKey]);
 
   // Changes build on the latest config, and saves go one at a time in
   // order (each reads user-defaults.json and writes it back), so quick
@@ -145,7 +211,23 @@ export function BackgroundUpdatesSection() {
 
   const { defaults } = status;
   const scheduled = new Set(defaults.repos);
-  const repos = [...defaults.repos, ...Object.keys(config).filter((repo) => !scheduled.has(repo)).sort()];
+  const followedByRepo = new Map(sourceRepos.map(({ repo, followed }) => [repo, followed]));
+  const listed = [...followedByRepo.keys(), ...defaults.repos.filter((repo) => !followedByRepo.has(repo))];
+  const listedSet = new Set(listed);
+  const repos = [...listed, ...Object.keys(config).filter((repo) => !listedSet.has(repo)).sort()];
+  // What's said under a repo's name: how Sources follows it, and why it
+  // isn't checked when it isn't.
+  const describeRepo = (repo: string) => {
+    const followed = followedByRepo.get(repo);
+    if (!followed) {
+      if (scheduled.has(repo)) return '';
+      return sources ? 'Not in your sources, so not checked; its saved settings wait.' : 'Not checked now; its saved settings wait.';
+    }
+    const fromSources = `From your sources: ${followed}.`;
+    return scheduled.has(repo) || !isServerCurrent
+      ? fromSources
+      : `${fromSources} Not checked now: the PRs it follows by number were all merged or closed over 30 days ago.`;
+  };
   const defaultPriorities = defaults.taskTypes.map(({ taskType, priority }) => `${labelOf(taskType)} ${priority}`).join(', ');
 
   return (
@@ -192,11 +274,21 @@ export function BackgroundUpdatesSection() {
           boost.parsed.kind === 'value' ? boost.parsed.value : typeof settings.priority === 'number' ? settings.priority : 0;
 
         return (
-          <fieldset key={repo} className="settings-group settings-fieldset settings-repo">
-            <legend className="settings-repo-name">
-              {repo}
-              {!scheduled.has(repo) && <span className="settings-repo-note"> (not checked now; its saved settings wait)</span>}
-            </legend>
+          <fieldset
+            key={repo}
+            ref={(node) => {
+              if (node) repoRefs.current.set(repo, node);
+              else repoRefs.current.delete(repo);
+            }}
+            className="settings-group settings-fieldset settings-repo"
+            aria-describedby={describeRepo(repo) ? fieldId('about') : undefined}
+          >
+            <legend className="settings-repo-name">{repo}</legend>
+            {describeRepo(repo) && (
+              <p className="settings-hint" id={fieldId('about')}>
+                {describeRepo(repo)}
+              </p>
+            )}
             <div className="settings-repo-fields">
               <Field
                 id={fieldId('priority')}

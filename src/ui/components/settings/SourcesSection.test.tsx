@@ -4,6 +4,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { PrDataContext, type PrDataValue } from '../../state/PrDataContext';
 import { RequestActivityContext } from '../../state/RequestActivityContext';
+import { SettingsDrawerContext, type SettingsDrawerValue } from '../../state/SettingsDrawerContext';
 import type { PrDataPayload, PrSources } from '../../types/pr-data.ts';
 import { SourcesSection } from './SourcesSection';
 
@@ -48,6 +49,31 @@ describe('SourcesSection', () => {
     expect(screen.getByRole('link', { name: 'other/lib#9' })).toHaveAttribute('href', 'https://github.com/other/lib/pull/9');
     expect(within(item('corp/tool#3')).getByText("Couldn't fetch")).toBeInTheDocument();
     expect(within(item('other/lib#9')).queryByText("Couldn't fetch")).not.toBeInTheDocument();
+  });
+
+  test("each repo, and each PR added one by one, has Timing…, opening Background updates at its repo", async () => {
+    const user = userEvent.setup();
+    const openBackgroundUpdatesAt = jest.fn();
+    const payload = { ok: true, byPrNumber: {}, dataMeta: { sources: { ...SOURCES, envRepos: ['acme/env'] } } } as unknown as PrDataPayload;
+    render(
+      <SettingsDrawerContext.Provider value={{ openBackgroundUpdatesAt } as unknown as SettingsDrawerValue}>
+        <PrDataContext.Provider value={{ payload } as unknown as PrDataValue}>
+          <SourcesSection />
+        </PrDataContext.Provider>
+      </SettingsDrawerContext.Provider>,
+    );
+
+    expect(screen.getAllByRole('button', { name: /^Timing for / }).map((button) => button.getAttribute('aria-label'))).toEqual([
+      'Timing for acme/env',
+      'Timing for acme/api',
+      'Timing for acme/web',
+      'Timing for other/lib',
+      'Timing for corp/tool',
+    ]);
+    const timing = within(item('other/lib#9')).getByRole('button', { name: 'Timing for other/lib' });
+    expect(timing).toHaveTextContent('Timing…');
+    await user.click(timing);
+    expect(openBackgroundUpdatesAt).toHaveBeenCalledWith('other/lib');
   });
 
   test('unsubscribing a repo shows the sources the server answers with', async () => {
