@@ -1,6 +1,4 @@
-const {
-  createViewPrsActorCacheHelpers,
-} = require("../helpers/view-prs-actor-cache-helpers");
+const { validateActorsInput } = require("../helpers/view-prs-actors-storage");
 const {
   createViewPrsDataDeltaHelpers,
 } = require("../helpers/view-prs-data-delta-helpers");
@@ -25,19 +23,17 @@ const {
 
 const registerViewPrsDataRoutes = ({
   app,
-  fs,
   isObject,
   readUserDefaults,
   writeUserDefaults,
-  readJsonFileIfExists,
   getViewPrsBackfillPublicState,
   readViewPrsData,
   enqueuePrDiffRefreshForData,
   getViewPrsDataMeta,
   getViewPrsDataManifest,
   getViewPrsSchedulerPublicState,
-  viewPrsActorNameCacheFile,
-  viewPrsActorLoginAliasesFile,
+  // The people (createViewPrsActorsStorage): readActors / writeActors.
+  actorsStorage,
   viewPrsBackfillLogFile,
   viewPrsBackfillPidFile,
   // Activity drawer feature (see REACT_MIGRATION_PLAN.md's dispatcher
@@ -65,19 +61,6 @@ const registerViewPrsDataRoutes = ({
   // no-ops if absent (e.g. in tests that don't wire it).
   emitSchedulerStateChanged,
 }) => {
-  const {
-    normalizeActorNameCacheEntries,
-    normalizeActorLoginAliasEntries,
-    readActorNameCacheEntries,
-    writeActorNameCacheEntries,
-    readActorLoginAliasEntries,
-    writeActorLoginAliasEntries,
-  } = createViewPrsActorCacheHelpers({
-    fs,
-    readJsonFileIfExists,
-    viewPrsActorNameCacheFile,
-    viewPrsActorLoginAliasesFile,
-  });
   const { parseRequestedPrNumbers, buildDataDeltaPayload } = createViewPrsDataDeltaHelpers({
     isObject,
   });
@@ -99,7 +82,6 @@ const registerViewPrsDataRoutes = ({
     runSafelyAsync,
     sendSuccessPayload,
     sendOk,
-    sendEntries,
     sendInternalError,
     sendErrorStatus,
   } = createViewPrsRouteResponseHelpers();
@@ -116,7 +98,7 @@ const registerViewPrsDataRoutes = ({
     typeof resetAutoCircuitBreaker === "function" ? resetAutoCircuitBreaker : () => {};
   const emitSchedulerStateChangedSafe =
     typeof emitSchedulerStateChanged === "function" ? emitSchedulerStateChanged : () => {};
-  const { validateJsonObjectBody, validateNonEmptyMappings, validateDataDeltaRequest } =
+  const { validateJsonObjectBody, validateDataDeltaRequest } =
     createViewPrsDataRouteValidationHelpers({ isObject, sendErrorStatus });
   const { readDataWithDiffRefreshEnqueued } = createViewPrsDataReadHelpers({
     readViewPrsData,
@@ -154,76 +136,40 @@ const registerViewPrsDataRoutes = ({
     }),
   );
 
+  // The people: GET lists them; PUT replaces them all (Settings › People),
+  // refusing a person with no login, a login in two people, or no one at
+  // all (a slip that would lose every name set). Logins seen in the data
+  // later are added back as people of their own.
   app.get(
-    ["/actor-name-cache", "/view-prs/actor-name-cache"],
+    ["/actors", "/view-prs/actors"],
     createSyncHandler({
       handler: (_req, res) => {
-      const entries = readActorNameCacheEntries();
-      sendEntries({ res, entries });
+        // `unreadable`: the file is there but isn't JSON - no one is listed,
+        // and a save keeps a copy of it first.
+        const { actors, unreadable } = actorsStorage.readState();
+        sendSuccessPayload({ res, payload: { ok: true, actors, unreadable } });
       },
     }),
   );
 
   app.put(
-    ["/actor-name-cache", "/view-prs/actor-name-cache"],
+    ["/actors", "/view-prs/actors"],
     createSyncHandler({
       handler: (req, res) => {
-      const body = validateJsonObjectBody({ body: req.body, res });
-      if (!body) {
-        return;
-      }
-
-      const entries = normalizeActorNameCacheEntries(body);
-      if (
-        !validateNonEmptyMappings({
-          entries,
-          res,
-          errorMessage:
-            "At least one actor name mapping is required. Clearing all mappings is blocked.",
-        })
-      ) {
-        return;
-      }
-
-      writeActorNameCacheEntries(entries);
-      sendEntries({ res, entries });
-      },
-    }),
-  );
-
-  app.get(
-    ["/actor-login-aliases", "/view-prs/actor-login-aliases"],
-    createSyncHandler({
-      handler: (_req, res) => {
-      const entries = readActorLoginAliasEntries();
-      sendEntries({ res, entries });
-      },
-    }),
-  );
-
-  app.put(
-    ["/actor-login-aliases", "/view-prs/actor-login-aliases"],
-    createSyncHandler({
-      handler: (req, res) => {
-      const body = validateJsonObjectBody({ body: req.body, res });
-      if (!body) {
-        return;
-      }
-
-      const entries = normalizeActorLoginAliasEntries(body);
-      if (
-        !validateNonEmptyMappings({
-          entries,
-          res,
-          errorMessage:
-            "At least one actor login alias mapping is required. Clearing all mappings is blocked.",
-        })
-      ) {
-        return;
-      }
-
-      writeActorLoginAliasEntries(entries);
-      sendEntries({ res, entries });
+        const body = validateJsonObjectBody({ body: req.body, res });
+        if (!body) {
+          return;
+        }
+        const { actors, error } = validateActorsInput(body);
+        if (error) {
+          sendErrorStatus({ res, statusCode: 400, error });
+          return;
+        }
+        if (actors.length === 0) {
+          sendErrorStatus({ res, statusCode: 400, error: "At least one person is required. Clearing everyone is blocked." });
+          return;
+        }
+        sendSuccessPayload({ res, payload: { ok: true, actors: actorsStorage.writeActors(actors) } });
       },
     }),
   );

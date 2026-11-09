@@ -172,14 +172,14 @@ export interface SettingsList<L extends string = string> {
 // (deny-only) resolve. AuthorThreadResolutionSelectionContext.
 export const THREAD_RESOLUTION_ALLOW_LIST: SettingsList<'attention-author-thread-resolution-allow-list'> = {
   listId: 'attention-author-thread-resolution-allow-list',
-  label: 'Allow PR authors to resolve threads started by (Actor Names)',
+  label: 'Allow PR authors to resolve threads started by',
   idPrefix: 'attention-author-thread-resolution-allow',
   optionsKey: 'authorThreadResolutionAllowOptions',
   pendingKey: 'pendingAuthorThreadResolutionAllowSelections',
 };
 export const THREAD_RESOLUTION_DENY_LIST: SettingsList<'attention-author-thread-resolution-deny-list'> = {
   listId: 'attention-author-thread-resolution-deny-list',
-  label: 'Do not allow PR authors to resolve threads started by (Actor Names)',
+  label: 'Do not allow PR authors to resolve threads started by',
   idPrefix: 'attention-author-thread-resolution-deny',
   optionsKey: 'authorThreadResolutionDenyOptions',
   pendingKey: 'pendingAuthorThreadResolutionDenySelections',

@@ -54,6 +54,12 @@ const createViewPrsDataResponseHelpers = ({
           userState: Object.fromEntries(
             USER_STATE_MAP_KEYS.map((key) => [key, data[key] || {}]),
           ),
+          // The people's names and logins (data/actors.json): a save in
+          // Settings › People changes no row, so they come this way.
+          actorMaps: {
+            actorsMap: data.actorsMap || {},
+            actorLoginAliases: data.actorLoginAliases || {},
+          },
         }
       : {}),
   });

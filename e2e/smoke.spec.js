@@ -3021,7 +3021,7 @@ test("React-owned exclude-label/author/assigned/approver multi-selects render fr
   await openDropdown(authorList);
   await expect(authorList.getByRole("checkbox", { includeHidden: true })).toHaveCount(3);
   // Display names come from resolveActorDisplayName, which resolves via a
-  // server-side actor-name-cache learned from *any* occurrence of a login
+  // server's people (data/actors.json), learned from *any* occurrence of a login
   // (assignee/approver/author alike) - since this fixture also lists
   // "octocat" as an assignee named "The Octocat" and "hubot" as an
   // approver named "Hubot", the author list shows those learned display
@@ -3106,8 +3106,8 @@ test("React-owned thread-resolution allow/deny and change-filter ignore-author m
 
   // Only the list the policy uses shows (see the dedicated test for that
   // below) - switch policies to reveal each list in turn.
-  const allowList = page.getByRole("group", { name: "Allow PR authors to resolve threads started by (Actor Names)", exact: true, includeHidden: true });
-  const denyList = page.getByRole("group", { name: "Do not allow PR authors to resolve threads started by (Actor Names)", exact: true, includeHidden: true });
+  const allowList = page.getByRole("group", { name: "Allow PR authors to resolve threads started by", exact: true, includeHidden: true });
+  const denyList = page.getByRole("group", { name: "Do not allow PR authors to resolve threads started by", exact: true, includeHidden: true });
   const ignoreCommentAuthorsList = page.getByRole("group", { name: "Ignore comments from these authors (GitHub logins)", exact: true, includeHidden: true });
   const ignoreReviewAuthorsList = page.getByRole("group", { name: "Ignore reviews from these authors (GitHub logins)", exact: true, includeHidden: true });
   const openDropdown = (list) => filterDropdownSummary(list).click();
@@ -3266,8 +3266,8 @@ test("PR author thread resolution policy select shows/hides its dependent allow/
 
   await openSettings(page, "Attention rules");
 
-  const allowOptions = filterDropdownSummary(page.getByRole("group", { name: "Allow PR authors to resolve threads started by (Actor Names)", exact: true, includeHidden: true }));
-  const denyOptions = filterDropdownSummary(page.getByRole("group", { name: "Do not allow PR authors to resolve threads started by (Actor Names)", exact: true, includeHidden: true }));
+  const allowOptions = filterDropdownSummary(page.getByRole("group", { name: "Allow PR authors to resolve threads started by", exact: true, includeHidden: true }));
+  const denyOptions = filterDropdownSummary(page.getByRole("group", { name: "Do not allow PR authors to resolve threads started by", exact: true, includeHidden: true }));
   await expect(allowOptions).toBeHidden();
   await expect(denyOptions).toBeHidden();
 
@@ -4157,23 +4157,36 @@ test("no React-portaled status/log panel shows its old static placeholder text s
 
 });
 
-test("Settings › Actor names loads its mappings on its very first opening, not just on a second one", async ({ page }) => {
+test("Settings › People loads everyone on its very first opening, a row each with their logins; a save is sent as one list", async ({ page }) => {
   // Same class of bug, and same reasoning for asserting on the network
-  // request rather than rendered text, as the Action Log test above - for
-  // ActorNamesSection's old window.triggerActorNameCacheLoad bridge.
+  // request, as the Action Log test above (the old Actor names section's
+  // window.triggerActorNameCacheLoad bridge). The save is answered here, so
+  // the shared server's people stay as they are.
   await page.goto("/");
+  await waitForPrTable(page);
 
-  const [cacheResponse, aliasResponse] = await Promise.all([
-    page.waitForResponse(
-      (res) => res.url().includes("/view-prs/actor-name-cache") && res.request().method() === "GET",
-    ),
-    page.waitForResponse(
-      (res) => res.url().includes("/view-prs/actor-login-aliases") && res.request().method() === "GET",
-    ),
-    openSettings(page, "Actor names"),
+  const [listed] = await Promise.all([
+    page.waitForResponse((res) => res.url().includes("/view-prs/actors") && res.request().method() === "GET"),
+    openSettings(page, "People"),
   ]);
-  expect(cacheResponse.ok()).toBe(true);
-  expect(aliasResponse.ok()).toBe(true);
+  expect(listed.ok()).toBe(true);
+  const people = (await listed.json()).actors;
+  expect(people.length).toBeGreaterThan(0);
+  const panel = page.getByRole("tabpanel", { name: "People", exact: true });
+  await expect(panel.getByRole("list", { name: "People", exact: true }).getByRole("listitem")).toHaveCount(people.length);
+
+  const first = people[0];
+  const label = first.name || first.logins[0];
+  await panel.getByRole("textbox", { name: `Name for ${label}`, exact: true }).fill("Renamed Person");
+  let sent = null;
+  await page.route("**/view-prs/actors", async (route) => {
+    if (route.request().method() !== "PUT") return route.fallback();
+    sent = route.request().postDataJSON();
+    await route.fulfill({ json: { ok: true, actors: sent.actors } });
+  });
+  await panel.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(panel.getByRole("status")).toHaveText(`Saved ${people.length} ${people.length === 1 ? "person" : "people"}.`);
+  expect(sent.actors[0]).toEqual({ id: first.id, name: "Renamed Person", logins: first.logins });
 });
 
 test("Tools › Export's field catalog and Preview JSON produce a real export payload from real page data", async ({ page }) => {

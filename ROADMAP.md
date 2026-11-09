@@ -107,7 +107,9 @@ Improvements noted once PRs could come from several repos and sources (subscript
 
 #### Actors
 
-- [ ] Rework how actor names are matched: an internal actor id, with an editable display name and any number of login aliases attached to it - in place of today's login-to-name cache plus `actor-login-aliases.json`.
+- [ ] Rework how actor names are matched: an internal actor id, with an editable display name and any number of login aliases attached to it - in place of today's login-to-name cache plus `actor-login-aliases.json`. Decided (2026-11-09): ids everywhere, in two phases.
+  - [x] ~~Phase 1: the people file and its editor.~~ - done (2026-11-09): `data/actors.json`, a record per person (an `actor:` id made from their first login and kept, a name, their logins), moved over from the two old files the first time it's read; logins seen in the data are added as people of their own, and a person already there is never changed. `GET`/`PUT /view-prs/actors` replaced the two old routes; Settings › `People` (was `Actor names`) is a row per person, saved as one list. The page still groups people by each person's main login, worked out from the file.
+  - [ ] Phase 2: the page groups people by id - filters, Review stats, Authors, thread-resolution lists and saved picks store ids (saved logins read as their person's id), the viewer's own id for "you" checks, and the server's author comments kept by id. Links, avatars and @-mentions keep using logins.
 
 #### Export
 

@@ -153,7 +153,7 @@
 }
 
 /* A text box or select; .settings-control for one outside a .settings-field
-   (Actor names' rows, Action log's filters). */
+   (People's rows, Action log's filters). */
 .settings-field input,
 .settings-field select,
 .settings-control {

@@ -24,7 +24,7 @@ jest.mock('./ChangeDetectionSection', () => ({ ChangeDetectionSection: () => <p>
 jest.mock('./BackfillSection', () => ({ BackfillSection: () => <p>Backfill content</p> }));
 jest.mock('./BackgroundUpdatesSection', () => ({ BackgroundUpdatesSection: () => <p>Background updates content</p> }));
 jest.mock('./ActionLogSection', () => ({ ActionLogSection: () => <p>Action log content</p> }));
-jest.mock('./ActorNamesSection', () => ({ ActorNamesSection: () => <p>Actor names content</p> }));
+jest.mock('./PeopleSection', () => ({ PeopleSection: () => <p>People content</p> }));
 jest.mock('./ExportSection', () => ({ ExportSection: () => <p>Export content</p> }));
 
 let drawer: ReturnType<typeof useSettingsDrawer>;
@@ -82,7 +82,7 @@ describe('SettingsDrawer and ToolsDrawer', () => {
       'Attention rules',
       'Change detection',
       'Merge commits',
-      'Actor names',
+      'People',
       'Appearance',
     ]);
     expect(within(settingsDialog()).getByRole('tab', { name: 'Sources' })).toHaveAttribute('aria-selected', 'true');
@@ -189,12 +189,12 @@ describe('SettingsDrawer and ToolsDrawer', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  test('Backfill is mounted from the start; Background updates, Action log, Actor names and Export once first opened, then they stay', async () => {
+  test('Backfill is mounted from the start; Background updates, Action log, People and Export once first opened, then they stay', async () => {
     renderDrawers(false);
     expect(screen.getByText('Backfill content')).toBeInTheDocument();
     expect(screen.queryByText('Background updates content')).not.toBeInTheDocument();
     expect(screen.queryByText('Action log content')).not.toBeInTheDocument();
-    expect(screen.queryByText('Actor names content')).not.toBeInTheDocument();
+    expect(screen.queryByText('People content')).not.toBeInTheDocument();
     expect(screen.queryByText('Export content')).not.toBeInTheDocument();
 
     // Chosen while closed isn't opened.
@@ -211,6 +211,6 @@ describe('SettingsDrawer and ToolsDrawer', () => {
     expect(screen.getByText('Background updates content')).toBeInTheDocument();
     expect(screen.getByText('Action log content')).toBeInTheDocument();
     expect(screen.getByText('Export content')).toBeInTheDocument();
-    expect(screen.queryByText('Actor names content')).not.toBeInTheDocument();
+    expect(screen.queryByText('People content')).not.toBeInTheDocument();
   });
 });

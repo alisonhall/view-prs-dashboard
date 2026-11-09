@@ -79,6 +79,7 @@ const {
 const {
   createViewPrsActorHelpers,
 } = require("./helpers/view-prs-actor-helpers");
+const { createViewPrsActorsStorage, deriveActorMaps } = require("./helpers/view-prs-actors-storage");
 const { createAppConfig } = require("./config/app-config");
 const { createFileIoHelpers } = require("./helpers/file-io-helpers");
 const { createCommandExecutionHelpers, describeFailure } = require("./helpers/command-execution-helpers");
@@ -120,6 +121,7 @@ const {
   viewPrsUserDefaultsFile,
   viewPrsActorNameCacheFile,
   viewPrsActorLoginAliasesFile,
+  viewPrsActorsFile,
   viewPrsActionLogFile,
   viewPrsAutoIntervalMs,
   viewPrsManualCooldownMs,
@@ -770,7 +772,6 @@ const {
   addActorName,
   normalizeDisplayName,
   normalizeActorLoginAliases,
-  normalizeActorNameCacheEntries,
   resolveCanonicalActorLogin,
 } = createViewPrsActorHelpers({
   toTrimmedString,
@@ -786,10 +787,18 @@ const writeJsonFileBestEffort = (filePath, value) => {
 };
 
 
-const readViewPrsActorLoginAliases = () =>
-  normalizeActorLoginAliases(
-    readJsonFileIfExists(viewPrsActorLoginAliasesFile, {}),
-  );
+// The people (data/actors.json, view-prs-actors-storage.js): one record
+// each, with their name and every login that's them.
+const actorsStorage = createViewPrsActorsStorage({
+  fs,
+  readJsonFileIfExists,
+  actorsFile: viewPrsActorsFile,
+  legacyNameCacheFile: viewPrsActorNameCacheFile,
+  legacyAliasesFile: viewPrsActorLoginAliasesFile,
+});
+
+// Each extra login's main login, as the page groups people by today.
+const readViewPrsActorLoginAliases = () => deriveActorMaps(actorsStorage.readActors()).actorLoginAliases;
 
 const resolveActorNameFromGitHub = (login) => {
   const normalizedLogin = toTrimmedString(login);
@@ -821,32 +830,31 @@ const resolveActorNameFromGitHub = (login) => {
   return resolved;
 };
 
-const buildViewPrsActorsMap = (byPrNumberRaw = {}) => {
-  const actorNameCacheEntries = normalizeActorNameCacheEntries(
-    readJsonFileIfExists(viewPrsActorNameCacheFile, {}),
-  );
-  const actorsMap = {
-    ...actorNameCacheEntries,
-  };
-  const unresolvedLogins = new Set();
+// The page's two maps (each login's name, each extra login's main login),
+// from the people - adding a person for each login in the data no one has
+// yet: named as the data names them, else as GitHub does (gh api
+// users/<login>), else not named. A person already there is never changed
+// (their name may have been set in Settings). While the people file is
+// unreadable, no one is added (nor asked of GitHub, which every read
+// would do again).
+const buildViewPrsActorMaps = (byPrNumberRaw = {}) => {
+  const { actors: knownActors, unreadable } = actorsStorage.readState();
+  const known = new Set(knownActors.flatMap((actor) => actor.logins.map((login) => login.toLowerCase())));
   const observedLogins = new Set();
-  const fallbackNamesByLogin = {};
-
+  const dataNameByLogin = new Map();
   const addActorNameOrTrack = (login, name) => {
     const normalizedLogin = toTrimmedString(login);
-    const normalizedName = normalizeDisplayName(name);
-    if (!normalizedLogin) {
+    if (!normalizedLogin || normalizedLogin === "unknown") {
       return;
     }
-
     observedLogins.add(normalizedLogin);
-    fallbackNamesByLogin[normalizedLogin] =
-      normalizedName || fallbackNamesByLogin[normalizedLogin] || normalizedLogin;
-
-    addActorName(actorsMap, normalizedLogin, normalizedName);
-    if (!actorsMap[normalizedLogin]) {
-      unresolvedLogins.add(normalizedLogin);
+    if (unreadable || known.has(normalizedLogin.toLowerCase())) {
+      return;
     }
+    // The first real name the data gives (not just the login again).
+    if (dataNameByLogin.get(normalizedLogin)) return;
+    const normalizedName = normalizeDisplayName(name);
+    dataNameByLogin.set(normalizedLogin, normalizedName && normalizedName !== normalizedLogin ? normalizedName : "");
   };
 
   Object.values(byPrNumberRaw).forEach((entry) => {
@@ -910,71 +918,16 @@ const buildViewPrsActorsMap = (byPrNumberRaw = {}) => {
     );
   });
 
-  let cacheUpdated = false;
-  for (const login of unresolvedLogins) {
-    if (actorsMap[login]) {
-      continue;
-    }
-    const resolvedName = resolveActorNameFromGitHub(login);
-    if (resolvedName) {
-      actorsMap[login] = resolvedName;
-      cacheUpdated = true;
-    }
-  }
-
-  for (const login of observedLogins) {
-    if (login === "unknown") {
-      continue;
-    }
-
-    const resolvedOrFallbackName =
-      toTrimmedString(actorsMap[login]) ||
-      toTrimmedString(fallbackNamesByLogin[login]) ||
-      login;
-
-    if (!actorsMap[login]) {
-      actorsMap[login] = resolvedOrFallbackName;
-    }
-
-    if (!toTrimmedString(actorNameCacheEntries[login])) {
-      actorNameCacheEntries[login] = resolvedOrFallbackName;
-      cacheUpdated = true;
-    }
-  }
-
-  if (cacheUpdated) {
-    const latestActorNameCacheEntries = normalizeActorNameCacheEntries(
-      readJsonFileIfExists(viewPrsActorNameCacheFile, {}),
-    );
-    const mergedActorNameCacheEntries = {
-      ...latestActorNameCacheEntries,
-    };
-    let mergedHasUpdates = false;
-
-    Object.entries(actorNameCacheEntries).forEach(([login, displayName]) => {
-      const normalizedLogin = toTrimmedString(login);
-      const normalizedName = normalizeDisplayName(displayName);
-      if (!normalizedLogin || !normalizedName) {
-        return;
-      }
-      if (toTrimmedString(mergedActorNameCacheEntries[normalizedLogin])) {
-        return;
-      }
-
-      mergedActorNameCacheEntries[normalizedLogin] = normalizedName;
-      mergedHasUpdates = true;
-    });
-
-    if (mergedHasUpdates) {
-      writeJsonFileBestEffort(
-        viewPrsActorNameCacheFile,
-        mergedActorNameCacheEntries,
-      );
-    }
-  }
-
-  return actorsMap;
+  const added = Array.from(dataNameByLogin, ([login, name]) => ({
+    login,
+    name: name || resolveActorNameFromGitHub(login),
+  }));
+  const actors = added.length > 0 ? actorsStorage.addObservedLogins(added) : knownActors;
+  return deriveActorMaps(actors, [...observedLogins]);
 };
+
+// Each login's name, for the page (buildViewPrsActorMaps).
+const buildViewPrsActorsMap = (byPrNumberRaw = {}) => buildViewPrsActorMaps(byPrNumberRaw).actorsMap;
 
 const readViewPrsDataRef = (...args) => readViewPrsData(...args);
 const callReadViewPrsData = (...args) =>
@@ -1751,6 +1704,7 @@ const readViewPrsData = () => {
         byPrNumber[key] = buildNotesOnlyMergedEntry(prNumber, notes, repo);
       },
     );
+    const actorMaps = buildViewPrsActorMaps(byPrNumber);
     return {
       byPrNumber,
       lastRun: parsed.lastRun || null,
@@ -1765,8 +1719,8 @@ const readViewPrsData = () => {
         Object.values(byPrNumber)
           .map((entry) => toTrimmedString(entry?.data?.viewerLogin))
           .find(Boolean) || getViewPrsViewerLogin(),
-      actorsMap: buildViewPrsActorsMap(byPrNumber),
-      actorLoginAliases: readViewPrsActorLoginAliases(),
+      actorsMap: actorMaps.actorsMap,
+      actorLoginAliases: actorMaps.actorLoginAliases,
       ackByRepo: mergedUserState.ackByRepo,
       ackHistoryByRepo: mergedUserState.ackHistoryByRepo,
       reverifyByRepo: mergedUserState.reverifyByRepo,
@@ -1829,8 +1783,12 @@ const readViewPrsDataVersion = () => {
   const unreachableVersion = unreachableKeys
     ? crypto.createHash("sha1").update(unreachableKeys).digest("hex").slice(0, 12)
     : "none";
+  // And the people: a save in Settings › People, or someone new added, moves
+  // the names and logins the page shows (the manifest carries them).
+  const actorsStats = fs.existsSync(viewPrsActorsFile) ? fs.statSync(viewPrsActorsFile) : null;
+  const actorsVersion = actorsStats ? `${Math.trunc(actorsStats.mtimeMs) || 0}-${actorsStats.size}` : "none";
   return {
-    dataVersion: `${mtimeMs}:${stats.size}:${getLiveSummaryVersion()}:${pendingVersion}:${userStateVersion}:${sourcesVersion}:${unreachableVersion}`,
+    dataVersion: `${mtimeMs}:${stats.size}:${getLiveSummaryVersion()}:${pendingVersion}:${userStateVersion}:${sourcesVersion}:${unreachableVersion}:${actorsVersion}`,
     mtimeMs,
     sizeBytes: Number.isFinite(stats.size) ? stats.size : 0,
   };
@@ -3949,11 +3907,9 @@ const createViewPrsApp = ({ production = isProductionEnv } = {}) => {
 
   registerViewPrsDataRoutes({
     app,
-    fs,
     isObject,
     readUserDefaults,
     writeUserDefaults,
-    readJsonFileIfExists,
     getViewPrsBackfillPublicState,
     // Without hidden repos' rows (filterToVisibleRows).
     readViewPrsData: readVisibleViewPrsData,
@@ -3961,8 +3917,7 @@ const createViewPrsApp = ({ production = isProductionEnv } = {}) => {
     getViewPrsDataMeta,
     getViewPrsDataManifest,
     getViewPrsSchedulerPublicState,
-    viewPrsActorNameCacheFile,
-    viewPrsActorLoginAliasesFile,
+    actorsStorage,
     viewPrsBackfillLogFile,
     viewPrsBackfillPidFile,
     bumpDispatcherEntry,
@@ -4097,6 +4052,7 @@ module.exports = {
   viewPrsBackupRetention,
   viewPrsActorNameCacheFile,
   viewPrsActorLoginAliasesFile,
+  viewPrsActorsFile,
   viewPrsBackfillManagerScript,
   viewPrsActionLogFile,
   viewPrsBackfillPidFile,

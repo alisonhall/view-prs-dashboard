@@ -4,6 +4,7 @@ import type {
   DataPollRenderInput,
   ManifestDelta,
   MergeDataDeltaInput,
+  PollActorMaps,
   PollUserState,
 } from "./pr-data-polling.helpers.ts";
 
@@ -33,6 +34,7 @@ interface ManifestResult {
   manifest?: PrManifest;
   dataMeta?: PrDataPayload["dataMeta"];
   userState?: PollUserState;
+  actorMaps?: PollActorMaps;
 }
 
 interface DeltaResult {
@@ -246,6 +248,7 @@ const createPrDataPollingOrchestrationHelpers = ({
                 nextDataMeta: manifestResult?.dataMeta || null,
                 nextManifest,
                 nextUserState: manifestResult?.userState || null,
+                nextActorMaps: manifestResult?.actorMaps || null,
               });
               setLatestPrManifestSafe(nextManifest);
             } else {
@@ -268,6 +271,7 @@ const createPrDataPollingOrchestrationHelpers = ({
                   nextLastFullRunByRepo: deltaResult?.lastFullRunByRepo || null,
                   nextManifest,
                   nextUserState: manifestResult?.userState || null,
+                  nextActorMaps: manifestResult?.actorMaps || null,
                 });
                 setLatestPrManifestSafe(nextManifest);
               }

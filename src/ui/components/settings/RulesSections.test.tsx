@@ -92,8 +92,8 @@ describe('AttentionRulesSection', () => {
     const user = userEvent.setup();
     renderWith(<AttentionRulesSection />);
     const policy = screen.getByRole('combobox', { name: 'PR author thread resolution policy' });
-    const allowName = 'Allow PR authors to resolve threads started by (Actor Names)';
-    const denyName = 'Do not allow PR authors to resolve threads started by (Actor Names)';
+    const allowName = 'Allow PR authors to resolve threads started by';
+    const denyName = 'Do not allow PR authors to resolve threads started by';
     expect(screen.queryByRole('group', { name: allowName })).not.toBeInTheDocument();
     expect(screen.queryByRole('group', { name: denyName })).not.toBeInTheDocument();
 

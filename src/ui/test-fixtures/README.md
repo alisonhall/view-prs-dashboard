@@ -40,7 +40,7 @@ const {
   createOkJsonResponse,
   createErrorJsonResponse,
   createBackfillStatusResponse,
-  createActorNameCacheResponse,
+  createActorsResponse,
   createDiffResponse,
 } = require('./api-response.fixtures.ts');
 

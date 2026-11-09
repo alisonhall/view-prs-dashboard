@@ -19,7 +19,7 @@ export type SettingsSectionId =
   | 'attention'
   | 'change-detection'
   | 'merge-commits'
-  | 'actor-names'
+  | 'people'
   | 'appearance';
 
 export type DrawerKind = 'settings' | 'tools';
@@ -156,7 +156,7 @@ export function useIsSettingsSectionVisible(section: SettingsSectionId): boolean
 /**
  * Whether this section has ever been on screen - true from its first
  * showing on, so a section whose content loads only when first opened
- * (Action log, Actor names, Export: lazy chunks) then stays mounted and
+ * (Action log, People, Export: lazy chunks) then stays mounted and
  * keeps its state.
  */
 export function useHasSettingsSectionBeenVisible(section: SettingsSectionId): boolean {

@@ -61,6 +61,10 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
   const viewPrsActorLoginAliasesFile =
     env.VIEW_PRS_ACTOR_LOGIN_ALIASES_FILE || _defaultActorLoginAliasesFile;
   const viewPrsActionLogFile = env.VIEW_PRS_ACTION_LOG_FILE || _defaultActionLogFile;
+  // The people (view-prs-actors-storage.js), beside the old name cache it
+  // replaces - so tests' temp cache path brings a temp one.
+  const viewPrsActorsFile =
+    env.VIEW_PRS_ACTORS_FILE || path.join(path.dirname(viewPrsActorNameCacheFile), "actors.json");
 
   const viewPrsPrDetailDir =
     env.VIEW_PRS_PR_DETAIL_DIR || path.join(path.dirname(viewPrsDataFile), "pr-details");
@@ -375,6 +379,7 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
     viewPrsLegacySchedulerFile,
     viewPrsActorNameCacheFile,
     viewPrsActorLoginAliasesFile,
+    viewPrsActorsFile,
     viewPrsUserDefaultsFile,
     viewPrsBackfillPidFile,
     viewPrsBackfillLogFile,

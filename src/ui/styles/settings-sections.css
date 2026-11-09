@@ -1,6 +1,6 @@
 /*
  * The Settings drawer sections' own content (components/settings/): Run &
- * check's #status and #output, Export, Action log and Actor names, and the
+ * check's #status and #output, Export, Action log and People, and the
  * shared copy and card styles. settings.css styles the drawer itself.
  * Moved from index.css (phase 10-1).
  */
@@ -353,45 +353,49 @@
   color: var(--color-danger);
 }
 
-.actor-name-cache-controls {
-  margin-bottom: 10px;
-}
-
-.actor-name-cache-status {
-  margin: 0 0 10px 0;
+/* Settings › People (PeopleSection.tsx): a row per person - name,
+   logins, Remove. */
+.people-status {
+  margin: 0;
   font-size: 13px;
-}
-
-.actor-name-cache-status-info {
   color: var(--color-text-muted);
 }
 
-.actor-name-cache-status-success {
+.people-status[data-tone="success"] {
   color: var(--color-success);
 }
 
-.actor-name-cache-status-error {
+.people-status[data-tone="error"] {
   color: var(--color-danger);
 }
 
-.actor-name-cache-rows {
+.people-list {
   display: grid;
   gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
-.actor-name-cache-row,
-.actor-login-alias-row {
+.people-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto;
   gap: 8px;
   align-items: center;
 }
 
-.actor-name-cache-row input,
-.actor-login-alias-row input {
+.people-row input {
   min-width: 0;
 }
 
-.actor-name-cache-remove {
-  white-space: nowrap;
+/* Narrow: the name and Remove on a line, the logins under them. */
+@media (max-width: 640px) {
+  .people-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .people-row input:nth-of-type(2) {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
 }

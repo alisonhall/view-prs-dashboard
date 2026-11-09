@@ -121,6 +121,22 @@ describe("view-prs data response helpers", () => {
     });
   });
 
+  test("the data-manifest payload carries the people's names and logins, so a poll picks up a save in Settings › People", () => {
+    const helpers = createViewPrsDataResponseHelpers({
+      getViewPrsDataMeta: () => ({ rows: 3 }),
+      getViewPrsSchedulerPublicState: () => ({ running: false }),
+      viewPrsBackfillLogFile: "/tmp/backfill.log",
+      viewPrsBackfillPidFile: "/tmp/backfill.pid",
+    });
+    const data = { byPrNumber: {}, actorsMap: { ann: "Ann", "ann-2": "Ann" }, actorLoginAliases: { "ann-2": "ann" } };
+
+    expect(helpers.buildDataManifestPayload({ manifest: {}, data }).actorMaps).toEqual({
+      actorsMap: data.actorsMap,
+      actorLoginAliases: data.actorLoginAliases,
+    });
+    expect(helpers.buildDataManifestPayload({ manifest: {} })).not.toHaveProperty("actorMaps");
+  });
+
   test("given scheduler state, when building the scheduler payload, then the route contract includes ok and scheduler fields", () => {
     const helpers = createViewPrsDataResponseHelpers({
       getViewPrsDataMeta: () => ({ rows: 3 }),

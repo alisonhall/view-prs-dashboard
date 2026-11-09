@@ -253,6 +253,21 @@ describe("pr data polling helpers", () => {
     expect(computePrDataMetaFingerprint(merged)).not.toBe(computePrDataMetaFingerprint(basePayload));
   });
 
+  test("mergeDataDeltaPayload takes the manifest's names and logins (a save in Settings › People), or keeps the stored ones, and the poll renders them", () => {
+    const basePayload = {
+      byPrNumber: {},
+      actorsMap: { ann: "Ann" },
+      actorLoginAliases: {},
+    };
+    const nextActorMaps = { actorsMap: { ann: "Ann Lee", "ann-2": "Ann Lee" }, actorLoginAliases: { "ann-2": "ann" } };
+
+    const merged = mergeDataDeltaPayload({ basePayload, nextActorMaps });
+    expect(merged.actorsMap).toEqual(nextActorMaps.actorsMap);
+    expect(merged.actorLoginAliases).toEqual(nextActorMaps.actorLoginAliases);
+    expect(mergeDataDeltaPayload({ basePayload }).actorsMap).toEqual(basePayload.actorsMap);
+    expect(computePrDataMetaFingerprint(merged)).not.toBe(computePrDataMetaFingerprint(basePayload));
+  });
+
   test("computePrDataFingerprint returns an empty string for empty payloads", () => {
     expect(computePrDataFingerprint(null)).toBe("");
     expect(computePrDataFingerprint({ byPrNumber: {} })).toBe("");

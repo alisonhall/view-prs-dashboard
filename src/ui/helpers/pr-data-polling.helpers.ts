@@ -41,7 +41,13 @@ export interface MergeDataDeltaInput {
   // The user state's per-repo maps (the manifest's userState): replace the
   // stored ones when given.
   nextUserState?: PollUserState | null;
+  // The people's names and logins (the manifest's actorMaps): replace the
+  // stored ones when given.
+  nextActorMaps?: PollActorMaps | null;
 }
+
+// The people's names and logins a poll's manifest carries.
+export type PollActorMaps = Pick<PrDataPayload, "actorsMap" | "actorLoginAliases">;
 
 // The user state's per-repo maps a poll's manifest carries (the server's
 // buildDataManifestPayload).
@@ -78,6 +84,9 @@ const computePrDataMetaFingerprint = (payload: PrDataPayload | null | undefined)
     inReviewByRepo: payload?.inReviewByRepo || null,
     flaggedByRepo: payload?.flaggedByRepo || null,
     threadChecksByRepo: payload?.threadChecksByRepo || null,
+    // Names and logins shown in rows, lists and the pane (Settings › People).
+    actorsMap: payload?.actorsMap || null,
+    actorLoginAliases: payload?.actorLoginAliases || null,
   });
 
 const computePrDataManifest = (payload: PrDataPayload | null | undefined): PrManifest => {
@@ -159,6 +168,7 @@ const mergeDataDeltaPayload = ({
   nextLastFullRunByRepo = null,
   nextManifest = null,
   nextUserState = null,
+  nextActorMaps = null,
 }: MergeDataDeltaInput = {}): PrDataPayload => {
   const mergedByPrNumber: Record<string, PrEntry> = {
     ...(basePayload?.byPrNumber || {}),
@@ -174,6 +184,7 @@ const mergeDataDeltaPayload = ({
   return {
     ...basePayload,
     ...(nextUserState || {}),
+    ...(nextActorMaps || {}),
     byPrNumber: mergedByPrNumber,
     dataMeta: nextDataMeta || basePayload?.dataMeta || null,
     scheduler: nextScheduler || basePayload?.scheduler || null,

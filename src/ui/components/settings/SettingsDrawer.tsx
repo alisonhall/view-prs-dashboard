@@ -12,7 +12,7 @@ export { SETTINGS_NAV_ROW_QUERY } from './Drawer';
 const BackgroundUpdatesSection = lazy(() =>
   import('./BackgroundUpdatesSection').then((m) => ({ default: m.BackgroundUpdatesSection })),
 );
-const ActorNamesSection = lazy(() => import('./ActorNamesSection').then((m) => ({ default: m.ActorNamesSection })));
+const PeopleSection = lazy(() => import('./PeopleSection').then((m) => ({ default: m.PeopleSection })));
 
 // The sections, in the nav's order, under what they're for: which PRs are
 // followed and how often, how a PR's activity is judged, and how the page
@@ -33,12 +33,12 @@ const SECTIONS: ReadonlyArray<DrawerSection> = [
   { id: 'change-detection', label: 'Change detection', group: 'Rules', render: () => <ChangeDetectionSection /> },
   { id: 'merge-commits', label: 'Merge commits', group: 'Rules', render: () => <MergeCommitsSection /> },
   {
-    id: 'actor-names',
-    label: 'Actor names',
+    id: 'people',
+    label: 'People',
     group: 'Rules',
     render: () => (
-      <OnceOpened section="actor-names">
-        <ActorNamesSection />
+      <OnceOpened section="people">
+        <PeopleSection />
       </OnceOpened>
     ),
   },
@@ -50,7 +50,7 @@ const SECTIONS: ReadonlyArray<DrawerSection> = [
  * they're changed - which PRs are followed (Sources, Background updates),
  * the rules a PR's activity is judged by, and how the page looks. Things
  * to do are in the Tools drawer (ToolsDrawer). Background updates and
- * Actor names mount the first time they're opened.
+ * People mount the first time they're opened.
  */
 export function SettingsDrawer() {
   return <Drawer kind="settings" title="Settings" sections={SECTIONS} />;

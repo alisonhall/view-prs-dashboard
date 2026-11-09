@@ -121,8 +121,8 @@ const createOkJsonResponse = (payload) => ({
 
 let latestDataPayload = { ok: true, byPrNumber: {}, lastRun: null };
 let actionLogEntries = [];
-let actorNameCacheEntries = {};
-let actorLoginAliasEntries = {};
+// Settings › People's people (GET/PUT /view-prs/actors).
+let actorsEntries = [];
 let fetchMock;
 // Window-bridge elimination Phase 5b (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
 // the real FilterStateProvider's Context value, captured by
@@ -204,38 +204,13 @@ const createFetchMock = ({
       return createOkJsonResponse({ ok: true, entries: actionLogEntries });
     }
 
-    if (normalizedUrl === "/view-prs/actor-name-cache" && method === "GET") {
-      return createOkJsonResponse({
-        ok: true,
-        entries: actorNameCacheEntries,
-        count: Object.keys(actorNameCacheEntries).length,
-      });
+    if (normalizedUrl === "/view-prs/actors" && method === "GET") {
+      return createOkJsonResponse({ ok: true, actors: actorsEntries });
     }
 
-    if (normalizedUrl === "/view-prs/actor-name-cache" && method === "PUT") {
-      actorNameCacheEntries = JSON.parse(String(init?.body || "{}"));
-      return createOkJsonResponse({
-        ok: true,
-        entries: actorNameCacheEntries,
-        count: Object.keys(actorNameCacheEntries).length,
-      });
-    }
-
-    if (normalizedUrl === "/view-prs/actor-login-aliases" && method === "GET") {
-      return createOkJsonResponse({
-        ok: true,
-        entries: actorLoginAliasEntries,
-        count: Object.keys(actorLoginAliasEntries).length,
-      });
-    }
-
-    if (normalizedUrl === "/view-prs/actor-login-aliases" && method === "PUT") {
-      actorLoginAliasEntries = JSON.parse(String(init?.body || "{}"));
-      return createOkJsonResponse({
-        ok: true,
-        entries: actorLoginAliasEntries,
-        count: Object.keys(actorLoginAliasEntries).length,
-      });
+    if (normalizedUrl === "/view-prs/actors" && method === "PUT") {
+      actorsEntries = JSON.parse(String(init?.body || "{}")).actors || [];
+      return createOkJsonResponse({ ok: true, actors: actorsEntries });
     }
 
     if (normalizedUrl === "/view-prs/ack" && method === "POST") {
@@ -532,8 +507,6 @@ const installReactTestGlobals = () => {
 const initTestPage = ({
   dataPayload,
   actionEntries,
-  actorNameEntries,
-  actorLoginAliasEntries: aliasEntries,
   userDefaultsOverrides,
   backfillStatusResponse,
   authorCommentsGetHandler,
@@ -557,12 +530,7 @@ const initTestPage = ({
   delete window.viewPrsPendingMultiSelectSelectionsListeners;
   latestDataPayload = dataPayload || { ok: true, byPrNumber: {}, lastRun: null };
   actionLogEntries = Array.isArray(actionEntries) ? actionEntries : [];
-  actorNameCacheEntries = actorNameEntries && typeof actorNameEntries === "object"
-    ? actorNameEntries
-    : {};
-  actorLoginAliasEntries = aliasEntries && typeof aliasEntries === "object"
-    ? aliasEntries
-    : {};
+  actorsEntries = [];
   document.body.innerHTML = extractBodyHtml(indexHtml);
   installReactTestGlobals();
 
@@ -4429,7 +4397,7 @@ describe("index page rendering with Testing Library", () => {
     });
   });
 
-  test("given assigned users with login and fallback names, when assigned filter options are rendered, then actor-name-cache labels override fallback name formatting", async () => {
+  test("given assigned users with login and fallback names, when assigned filter options are rendered, then the people's names override fallback name formatting", async () => {
     initTestPage({
       dataPayload: createMultiPrPayload({
         prs: [
@@ -4477,7 +4445,7 @@ describe("index page rendering with Testing Library", () => {
     });
   });
 
-  test("given approved-cell assigned users with login and fallback names, when row is rendered, then badge title uses actor-name-cache mapped name", async () => {
+  test("given approved-cell assigned users with login and fallback names, when row is rendered, then badge title uses the person's name", async () => {
     initTestPage({
       dataPayload: createMultiPrPayload({
         prs: [
@@ -7973,8 +7941,8 @@ describe("index page rendering with Testing Library", () => {
       "Authors",
       "Assigned to",
       "Approved by",
-      "Allow PR authors to resolve threads started by (Actor Names)",
-      "Do not allow PR authors to resolve threads started by (Actor Names)",
+      "Allow PR authors to resolve threads started by",
+      "Do not allow PR authors to resolve threads started by",
       "Ignore comments from these authors (GitHub logins)",
       "Ignore reviews from these authors (GitHub logins)",
     ];
