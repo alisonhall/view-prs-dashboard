@@ -4190,7 +4190,7 @@ describe("index page rendering with Testing Library", () => {
     });
   });
 
-  test("given author login aliases map two logins to one person, when author filter options are rendered, then one canonical option is shown", async () => {
+  test("given a person with two logins, when author filter options are rendered, then one option is shown, by their id", async () => {
     initTestPage({
       dataPayload: createMultiPrPayload({
         prs: [
@@ -4225,13 +4225,8 @@ describe("index page rendering with Testing Library", () => {
             },
           },
         ],
-        actorsMap: {
-          "7c7240971101674017d4597caddf24_uhg": "Martin Thomas",
-          "mthom486_uhg": "Martin Thomas",
-        },
-        actorLoginAliases: {
-          "7c7240971101674017d4597caddf24_uhg": "mthom486_uhg",
-        },
+        actorsMap: { "actor:mthom486_uhg": "Martin Thomas" },
+        actors: [{ id: "actor:mthom486_uhg", name: "Martin Thomas", logins: ["mthom486_uhg", "7c7240971101674017d4597caddf24_uhg"] }],
         lastRun: { repo: "owner/repo", updatedAt: "2026-06-16T10:00:00Z" },
       }),
     });
@@ -4240,7 +4235,8 @@ describe("index page rendering with Testing Library", () => {
     const authorList = getMultiSelectList("author-list");
     await waitFor(() => {
       const values = Array.from(authorList.querySelectorAll("input[type='checkbox']")).map((cb) => cb.value);
-      expect(values).toEqual(["mthom486_uhg"]);
+      // One person, by their id.
+      expect(values).toEqual(["actor:mthom486_uhg"]);
 
       const labels = Array.from(authorList.querySelectorAll("label")).map((label) => String(label.textContent || "").trim());
       expect(labels).toEqual(["Martin Thomas"]);

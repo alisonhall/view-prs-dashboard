@@ -138,7 +138,8 @@ export function PeopleSection() {
         <p className="settings-hint">
           Everyone the app knows: the name shown for them in the table, the filters, Review stats and Authors, and every GitHub
           login that&apos;s them. Someone new is added as soon as they appear in a PR, named as GitHub names them. To make two
-          logins one person, put both in one row (the first is their main login) and remove the other row.
+          logins one person, put both in one row (the first is their main login) and remove the other row - what was picked
+          or noted for the removed one (filters, rules, Authors comments) becomes the other&apos;s.
         </p>
         <div className="settings-actions">
           <label className="ui-visually-hidden" htmlFor={`${idPrefix}-find`}>

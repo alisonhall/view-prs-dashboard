@@ -32,7 +32,7 @@ const registerViewPrsDataRoutes = ({
   getViewPrsDataMeta,
   getViewPrsDataManifest,
   getViewPrsSchedulerPublicState,
-  // The people (createViewPrsActorsStorage): readActors / writeActors.
+  // The people (createViewPrsActorsStorage): readState / replaceActors.
   actorsStorage,
   viewPrsBackfillLogFile,
   viewPrsBackfillPidFile,
@@ -169,7 +169,7 @@ const registerViewPrsDataRoutes = ({
           sendErrorStatus({ res, statusCode: 400, error: "At least one person is required. Clearing everyone is blocked." });
           return;
         }
-        sendSuccessPayload({ res, payload: { ok: true, actors: actorsStorage.writeActors(actors) } });
+        sendSuccessPayload({ res, payload: { ok: true, actors: actorsStorage.replaceActors(actors) } });
       },
     }),
   );

@@ -7,7 +7,7 @@
  * superseded it - see REACT_MIGRATION_PLAN.md's 2026-09-20 entry).
  *
  * The viewer-login resolution and class/title *logic* come from
- * useActorIdentity() (state/ActorIdentityContext.tsx) - `getEffectiveViewerLogin`
+ * useActorIdentity() (state/ActorIdentityContext.tsx) - `getEffectiveViewerKey`
  * (helpers/pr-actor-identity-render.helpers.ts) and
  * `buildActorIdentityClassName`/`buildActorIdentityTitle`
  * (helpers/pr-actor-identity-style.helpers.ts) - so behavior can't drift.
@@ -36,22 +36,23 @@ export interface ActorIdentityProps {
 export function ActorIdentity({ row, login, actorsMap = {}, fallbackName = '', className = '', as: Tag = 'span' }: ActorIdentityProps) {
   const {
     normalizeActorLogin,
-    getEffectiveViewerLogin,
+    getEffectiveViewerKey,
     resolveActorDisplayName,
     buildActorIdentityClassName,
     buildActorIdentityTitle,
   } = useActorIdentity();
 
+  // People's keys (their ids): any of a person's logins is them.
   const normalizedLogin = normalizeActorLogin(login).toLowerCase();
   if (!normalizedLogin) {
     return <Tag className={buildActorIdentityClassName({ identityState: {}, className })}>-</Tag>;
   }
 
-  const viewerLogin = getEffectiveViewerLogin(row || {});
+  const viewerKey = getEffectiveViewerKey(row || {});
   const authorLogin = normalizeActorLogin(row?.authorLogin || row?.author || '').toLowerCase();
   const identityState = {
     normalizedLogin,
-    isViewer: Boolean(viewerLogin) && normalizedLogin === viewerLogin,
+    isViewer: Boolean(viewerKey) && normalizedLogin === viewerKey,
     isPrAuthor: Boolean(authorLogin) && normalizedLogin === authorLogin,
   };
 

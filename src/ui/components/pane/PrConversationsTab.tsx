@@ -229,11 +229,13 @@ function ThreadItem({
 
 export function PrConversationsTab({ pr, actorsMap = {}, entry, onDataRefresh }: PrConversationsTabProps) {
   const policy = useAuthorThreadResolutionPolicy();
-  const { getPreferredActorKey, getEffectiveViewerLogin, resolveActorDisplayName } = useActorIdentity();
+  const { getEffectiveViewerLogin, resolveActorDisplayName } = useActorIdentity();
   const { getReviewConversationsUiState, setReviewConversationsUiState } = useReviewConversationsUiState();
   const payload = useOptionalPrData()?.payload;
   const { beginRequestActivity } = useRequestActivity();
-  const prAuthorLogin = getPreferredActorKey(pr?.authorLogin, pr?.author).trim().toLowerCase();
+  // Logins as GitHub gives them: the threads' comments are compared with
+  // them (the resolution rule's lists hold every login of each person picked).
+  const prAuthorLogin = String(pr?.authorLogin || pr?.author || '').trim().toLowerCase();
   const viewerLogin = String(getEffectiveViewerLogin(pr) || '').trim().toLowerCase();
   const repo = String(entry?.repo || '').trim();
   const prNumber = String(entry?.prNumber ?? pr?.number ?? '').trim();

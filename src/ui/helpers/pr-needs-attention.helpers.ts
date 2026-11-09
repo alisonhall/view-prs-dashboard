@@ -26,6 +26,9 @@ export interface PrNeedsAttentionDeps {
   asArray?: (value: unknown) => unknown[];
   isChangedStatus?: (status: unknown) => boolean;
   getEffectiveViewerLogin?: (row: PrData) => string;
+  // A login's person's key (ActorIdentityContext's normalizeActorLogin):
+  // the viewer and the people on a PR compare by it.
+  normalizeActorLogin?: (login: unknown) => string;
   collectAssignedUsers?: (row: PrData) => LoginRecord[];
   collectRequestedReviewers?: (row: PrData) => LoginRecord[];
   countPendingThreadComments?: (row: PrData) => number;
@@ -108,6 +111,7 @@ const createPrNeedsAttentionHelpers = ({
   asArray = (value: unknown) => (Array.isArray(value) ? value : []),
   isChangedStatus = (status: unknown) => String(status || "").startsWith("CHANGED"),
   getEffectiveViewerLogin = () => "",
+  normalizeActorLogin = (login: unknown) => String(login || "").trim(),
   collectAssignedUsers = () => [],
   collectRequestedReviewers = () => [],
   countPendingThreadComments = () => 0,
@@ -135,23 +139,12 @@ const createPrNeedsAttentionHelpers = ({
     if (mode === "none") return false;
     if (mode === "all") return true;
 
-    const viewerLogin = getEffectiveViewerLogin(row);
-    if (!viewerLogin) return false;
+    const personKey = (login: unknown) => String(normalizeActorLogin(login) || "").trim().toLowerCase();
+    const viewerKey = personKey(getEffectiveViewerLogin(row));
+    if (!viewerKey) return false;
 
-    const isAssignedToMe = () =>
-      collectAssignedUsers(row).some(
-        (person) =>
-          String(person?.login || "")
-            .trim()
-            .toLowerCase() === viewerLogin,
-      );
-    const isReviewerMe = () =>
-      collectRequestedReviewers(row).some(
-        (person) =>
-          String(person?.login || "")
-            .trim()
-            .toLowerCase() === viewerLogin,
-      );
+    const isAssignedToMe = () => collectAssignedUsers(row).some((person) => personKey(person?.login) === viewerKey);
+    const isReviewerMe = () => collectRequestedReviewers(row).some((person) => personKey(person?.login) === viewerKey);
 
     if (mode === "assigned-only") return isAssignedToMe();
     if (mode === "reviewer-only") return isReviewerMe();

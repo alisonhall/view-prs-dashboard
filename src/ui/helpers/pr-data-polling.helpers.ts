@@ -47,7 +47,7 @@ export interface MergeDataDeltaInput {
 }
 
 // The people's names and logins a poll's manifest carries.
-export type PollActorMaps = Pick<PrDataPayload, "actorsMap" | "actorLoginAliases">;
+export type PollActorMaps = Pick<PrDataPayload, "actorsMap" | "actors" | "actorIdMoves">;
 
 // The user state's per-repo maps a poll's manifest carries (the server's
 // buildDataManifestPayload).
@@ -86,7 +86,8 @@ const computePrDataMetaFingerprint = (payload: PrDataPayload | null | undefined)
     threadChecksByRepo: payload?.threadChecksByRepo || null,
     // Names and logins shown in rows, lists and the pane (Settings › People).
     actorsMap: payload?.actorsMap || null,
-    actorLoginAliases: payload?.actorLoginAliases || null,
+    actors: payload?.actors || null,
+    actorIdMoves: payload?.actorIdMoves || null,
   });
 
 const computePrDataManifest = (payload: PrDataPayload | null | undefined): PrManifest => {

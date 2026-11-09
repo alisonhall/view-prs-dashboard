@@ -132,7 +132,8 @@ export function useFilteredPrRows(): VisiblePrNumbersResult {
           countThreadsToCheck(
             pr,
             String(getEffectiveViewerLogin(pr) || ''),
-            getPreferredActorKey(pr?.authorLogin, pr?.author),
+            // A login as GitHub gives it: the threads' comments compare with it.
+            String(pr?.authorLogin || pr?.author || ''),
             threadConfirmationsFor(threadChecksByRepo, entry?.repo, entry?.prNumber),
           ) > 0
         );

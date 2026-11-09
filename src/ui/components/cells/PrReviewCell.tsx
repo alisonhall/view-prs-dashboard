@@ -43,7 +43,8 @@ export interface PrReviewCellProps {
 
 export function PrReviewCell({ entry, pr, actorsMap = {} }: PrReviewCellProps) {
   useTooltipController();
-  const { getEffectiveViewerLogin, resolveActorDisplayName, getPreferredActorKey } = useActorIdentity();
+  const { getEffectiveViewerLogin, getEffectiveViewerKey, resolveActorDisplayName, normalizeActorLogin, loginOfActorKey } =
+    useActorIdentity();
   const payload = useOptionalPrData()?.payload;
   const { collectAssignedUsers, collectPendingReviewRequests, getUserInitials, getOpenConversationCountWithMe } =
     usePrInsightsDisplay();
@@ -73,35 +74,40 @@ export function PrReviewCell({ entry, pr, actorsMap = {} }: PrReviewCellProps) {
   const viewedFiles = describeViewedFiles(pr);
   const notes = describeNotes(entry, pr);
 
+  // Conversations compare logins as GitHub gives them; people compare by
+  // their key (any of a person's logins is them).
   const viewerLogin = String(getEffectiveViewerLogin(pr) || '').trim().toLowerCase();
+  const viewerKey = getEffectiveViewerKey(pr);
   const assignees = collectAssignedUsers(pr);
   // Outstanding requests only: the fallback to whoever has reviewed would
   // label them "review requested" too.
   const reviewers = collectPendingReviewRequests(pr);
   const loginOf = (person: { login?: unknown }) => String(person?.login || '').trim();
-  const assigneeLogins = new Set(assignees.map((person) => loginOf(person).toLowerCase()).filter(Boolean));
-  const reviewerLogins = new Set(reviewers.map((person) => loginOf(person).toLowerCase()).filter(Boolean));
+  const keyOf = (person: { login?: unknown }) => normalizeActorLogin(loginOf(person)).toLowerCase();
+  const assigneeKeys = new Set(assignees.map(keyOf).filter(Boolean));
+  const reviewerKeys = new Set(reviewers.map(keyOf).filter(Boolean));
   const viewerReviewerOnly =
-    viewerLogin && reviewerLogins.has(viewerLogin) && !assigneeLogins.has(viewerLogin)
-      ? reviewers.find((person) => loginOf(person).toLowerCase() === viewerLogin)
+    viewerKey && reviewerKeys.has(viewerKey) && !assigneeKeys.has(viewerKey)
+      ? reviewers.find((person) => keyOf(person) === viewerKey)
       : undefined;
   const toPerson = (person: { login?: unknown; name?: string }): Person => {
-    const login = loginOf(person);
-    const key = login.toLowerCase();
-    const displayName = resolveActorDisplayName(login, actorsMap, person.name) || login;
-    const roles = [key === viewerLogin ? 'you' : '', reviewerLogins.has(key) ? 'review requested' : ''].filter(Boolean);
+    const key = keyOf(person);
+    const login = loginOfActorKey(loginOf(person));
+    const displayName = resolveActorDisplayName(loginOf(person), actorsMap, person.name) || login;
+    const roles = [key === viewerKey ? 'you' : '', reviewerKeys.has(key) ? 'review requested' : ''].filter(Boolean);
     return {
       login,
       displayName,
-      isViewer: Boolean(viewerLogin) && key === viewerLogin,
+      isViewer: Boolean(viewerKey) && key === viewerKey,
       label: roles.length ? `${displayName} (${roles.join(', ')})` : displayName,
     };
   };
   const assigned = assignees.map(toPerson).filter((person) => person.login);
+  // Logins as GitHub gives them: the threads' comments are compared with them.
   const toCheck = countThreadsToCheck(
     pr,
     viewerLogin,
-    getPreferredActorKey(pr?.authorLogin, pr?.author),
+    String(pr?.authorLogin || pr?.author || ''),
     threadConfirmationsFor(payload?.threadChecksByRepo, entry?.repo, entry?.prNumber),
   );
   const toCheckLabel = `${toCheck} conversation${toCheck === 1 ? '' : 's'} you started resolved by someone else, to check`;

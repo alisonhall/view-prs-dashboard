@@ -156,6 +156,7 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
       VIEW_PRS_BACKFILL_PID_FILE: viewPrsBackfillPidFile,
       VIEW_PRS_BACKFILL_LOG_FILE: viewPrsBackfillLogFile,
       VIEW_PRS_USER_DEFAULTS_FILE: viewPrsUserDefaultsFile,
+      VIEW_PRS_ACTORS_FILE: viewPrsActorsFile,
     })
       .filter(([, filePath]) => isInsideRealDataDir(filePath))
       .map(([envName]) => envName);

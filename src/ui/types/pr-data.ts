@@ -284,6 +284,15 @@ export interface LastRun {
 // flaggedByRepo/inReviewByRepo).
 export type PrFlagsByRepo = Record<string, Record<string, string | boolean | undefined> | undefined>;
 
+// A person (data/actors.json): an id that's never a login ("actor:alice"),
+// the name to show (empty for none), and every login that's them - the
+// first their main one.
+export interface PrPerson {
+  id: string;
+  name: string;
+  logins: string[];
+}
+
 // The /view-prs/data response: the data file plus the server's additions.
 // Only the fields converted code reads are listed.
 export interface PrDataPayload {
@@ -300,11 +309,17 @@ export interface PrDataPayload {
   lastFullRunByRepo?: Record<string, LastRun | undefined>;
   dataMeta?: PrDataMeta | null;
   scheduler?: unknown;
-  // Login -> display name for every actor seen (ActorsMap).
+  // Each person's id -> their name, or the id itself when they have none
+  // (ActorsMap).
   actorsMap?: Record<string, string | undefined>;
-  // The configured viewer login and login aliases (see deriveViewerContext).
+  // The people (Settings › People): each one's id and logins.
+  actors?: PrPerson[];
+  // A person removed while another kept one of their logins (merged in
+  // Settings › People): their old id -> the other's, so picks under it
+  // still mean them.
+  actorIdMoves?: Record<string, string>;
+  // The configured viewer login (see deriveViewerContext).
   viewerLogin?: string;
-  actorLoginAliases?: unknown;
   // Per-PR row versions, for polling deltas (see PrManifest).
   dataManifest?: PrManifest;
   // The user state's per-repo maps, repo -> PR number -> value: ack

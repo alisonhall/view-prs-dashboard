@@ -64,8 +64,8 @@ const registerViewPrsPrRoutes = ({
   writeViewPrsAuthorComments,
   appendActionLogEntry,
   readViewPrsData,
-  readViewPrsActorLoginAliases,
-  resolveCanonicalActorLogin,
+  // A login's person's id (ignoring case), an id as it is (actors.json).
+  resolveActorKey,
   isRepoSlug,
   syncPrDiffForEntry,
   runInsightsHookScript,
@@ -90,11 +90,9 @@ const registerViewPrsPrRoutes = ({
     resolveDiffRequestResult,
   } = createViewPrsPrRouteHelpers({ isRepoSlug });
 
-  const getCanonicalAuthorLogin = (authorLogin) =>
-    resolveCanonicalActorLogin(
-      authorLogin,
-      readViewPrsActorLoginAliases(),
-    );
+  // The key an author's comments are kept under: their person's id, so
+  // each of their logins - and comments kept under a login before - meet.
+  const getCanonicalAuthorLogin = (authorLogin) => resolveActorKey(authorLogin);
 
   const normalizeAuthorCommentsStateAliases = (state = {}) => {
     const normalizedState = normalizeViewPrsAuthorComments(state);

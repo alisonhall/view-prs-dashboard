@@ -1,8 +1,22 @@
 import { SavedItemsBar, SavedItemsManager } from '../ui/SavedItems';
+import { useActorIdentity } from '../../state/ActorIdentityContext';
+import { useOptionalPrData } from '../../state/PrDataContext';
 import type { SavedFilterViewsValue } from '../../state/useSavedFilterViews';
-import { describeViewFilters, hasAnyFilter, isSameFilters, type SavedFilterView } from '../../helpers/saved-filter-views.helpers.ts';
+import {
+  describeViewFilters,
+  hasAnyFilter,
+  isSameFilters,
+  withPeopleAsKeys,
+  type SavedFilterView,
+} from '../../helpers/saved-filter-views.helpers.ts';
 
-const describeView = (view: SavedFilterView) => describeViewFilters(view.filters).join(' · ') || 'No filters';
+// A view's filters, its people by name.
+const useDescribeView = () => {
+  const { resolveActorDisplayName } = useActorIdentity();
+  const actorsMap = useOptionalPrData()?.payload?.actorsMap;
+  return (view: SavedFilterView) =>
+    describeViewFilters(view.filters, (value) => resolveActorDisplayName(value, actorsMap || {})).join(' · ') || 'No filters';
+};
 
 /**
  * The saved views, under the filter bar's header (SavedItemsBar): one chip
@@ -13,6 +27,7 @@ const describeView = (view: SavedFilterView) => describeViewFilters(view.filters
  */
 export function SavedFilterViewsBar({ value }: { value: SavedFilterViewsValue }) {
   const { views, current, activeId, modifiedId, saveFailed, apply, clear, saveCurrent, update } = value;
+  const describeView = useDescribeView();
   return (
     <SavedItemsBar
       className="filter-bar-views"
@@ -38,8 +53,13 @@ export function SavedFilterViewsBar({ value }: { value: SavedFilterViewsValue })
  */
 export function SavedFilterViewsManager({ value, headingId }: { value: SavedFilterViewsValue; headingId: string }) {
   const { views, current, rename, update, remove, restore } = value;
+  const describeView = useDescribeView();
+  // By person: a view saved with logins (before ids) is up to date when its
+  // people are the ones picked.
+  const { normalizeActorLogin } = useActorIdentity();
   if (!views) return null;
   const canUpdate = hasAnyFilter(current);
+  const currentByPerson = withPeopleAsKeys(current, normalizeActorLogin);
 
   return (
     <div className="filter-bar-group filter-views-group" role="group" aria-labelledby={headingId}>
@@ -52,7 +72,7 @@ export function SavedFilterViewsManager({ value, headingId }: { value: SavedFilt
         describe={describeView}
         updateLabel="Update to applied filters"
         updateAriaLabel={(view) => `Update ${view.name} to the applied filters`}
-        canUpdate={(view) => canUpdate && !isSameFilters(view.filters, current)}
+        canUpdate={(view) => canUpdate && !isSameFilters(withPeopleAsKeys(view.filters, normalizeActorLogin), currentByPerson)}
         emptyHint="None yet. Apply some filters, then use Save as view above."
         onRename={rename}
         onUpdate={update}

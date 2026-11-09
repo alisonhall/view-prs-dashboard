@@ -77,9 +77,25 @@ export const isSameFilters = (left: ViewFilters, right: ViewFilters): boolean =>
 
 export const hasAnyFilter = (filters: ViewFilters): boolean => describeViewFilters(filters).length > 0;
 
+// The lists of people (the rest are labels).
+const PEOPLE_LIST_IDS: readonly ViewListId[] = ["author-list", "assigned-list", "approver-list"];
+
+// The filters with each person picked as their key (keyOf: their id, for a
+// login saved before ids too), each once - so a view compares, and
+// applies, by person.
+export const withPeopleAsKeys = (filters: ViewFilters, keyOf: (value: string) => string): ViewFilters => ({
+  ...filters,
+  lists: {
+    ...filters.lists,
+    ...Object.fromEntries(
+      PEOPLE_LIST_IDS.map((id) => [id, Array.from(new Set(filters.lists[id].map((value) => keyOf(value) || value)))]),
+    ),
+  } as ViewFilters["lists"],
+});
+
 // What a view filters on, as the filter chips say it ("Waiting on me",
-// "Author: ann").
-export const describeViewFilters = (filters: ViewFilters): string[] =>
+// "Author: Ann Lee" - nameOfPerson naming the people picked).
+export const describeViewFilters = (filters: ViewFilters, nameOfPerson?: (value: string) => string): string[] =>
   buildTableFilterChipsViewModel({
     ...filters.fields,
     includeLabels: filters.lists["label-list"],
@@ -87,6 +103,7 @@ export const describeViewFilters = (filters: ViewFilters): string[] =>
     authorLogins: filters.lists["author-list"],
     assignedLogins: filters.lists["assigned-list"],
     approverLogins: filters.lists["approver-list"],
+    nameOfPerson,
   }).map((chip) => chip.label);
 
 const withFields = (fields: Partial<ViewFilters["fields"]>): ViewFilters => toViewFilters(fields, {});

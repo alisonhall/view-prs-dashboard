@@ -58,7 +58,8 @@ const createViewPrsDataResponseHelpers = ({
           // Settings › People changes no row, so they come this way.
           actorMaps: {
             actorsMap: data.actorsMap || {},
-            actorLoginAliases: data.actorLoginAliases || {},
+            actors: Array.isArray(data.actors) ? data.actors : [],
+            actorIdMoves: data.actorIdMoves || {},
           },
         }
       : {}),

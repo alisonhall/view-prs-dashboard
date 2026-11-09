@@ -1,5 +1,7 @@
 import { useContext, useMemo } from 'react';
 import { FilterStateContext } from './FilterStateContext';
+import { useActorIdentity } from './ActorIdentityContext';
+import { useOptionalPrData } from './PrDataContext';
 import { useRowFilterSelection } from './RowFilterSelectionContext';
 import { useDebouncedValue } from './useDebouncedValue';
 import { FILTER_PR_NUMBERS_DEBOUNCE_MS, FILTER_SEARCH_DEBOUNCE_MS } from './useVisiblePrNumbers';
@@ -59,6 +61,9 @@ export function useTableFilterChips(): { chips: TableFilterChip[] } {
   const debouncedFilterPrNumbers = useDebouncedValue(values.filterPrNumbers, FILTER_PR_NUMBERS_DEBOUNCE_MS);
   // Debounced like the table, as filterPrNumbers is.
   const debouncedSearch = useDebouncedValue(values.filterSearch, FILTER_SEARCH_DEBOUNCE_MS);
+  // The people picked, by name.
+  const { resolveActorDisplayName } = useActorIdentity();
+  const actorsMap = useOptionalPrData()?.payload?.actorsMap;
 
   return useMemo(() => {
     const descriptors = buildTableFilterChipsViewModel({
@@ -79,6 +84,7 @@ export function useTableFilterChips(): { chips: TableFilterChip[] } {
       filterPrDifficulty: values.filterPrDifficulty,
       filterStories: values.filterStories,
       filterAnalysisOfPr: values.filterAnalysisOfPr,
+      nameOfPerson: (value) => resolveActorDisplayName(value, actorsMap || {}),
     });
 
     const chips = descriptors.map((descriptor): TableFilterChip => ({
@@ -94,5 +100,5 @@ export function useTableFilterChips(): { chips: TableFilterChip[] } {
     }));
 
     return { chips };
-  }, [values, debouncedFilterPrNumbers, debouncedSearch, checkedByListId, setValue, toggle]);
+  }, [values, debouncedFilterPrNumbers, debouncedSearch, checkedByListId, setValue, toggle, resolveActorDisplayName, actorsMap]);
 }

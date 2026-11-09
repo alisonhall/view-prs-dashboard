@@ -64,7 +64,6 @@ describe("exported API surface", () => {
     "readViewPrsAuthorComments",
     "mergeMissingPerRepoMap",
     "migrateLegacyViewPrsUserState",
-    "addActorName",
     "writeJsonFileBestEffort",
     "normalizeDisplayName",
     "resolveActorNameFromGitHub",

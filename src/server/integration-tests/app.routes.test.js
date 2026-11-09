@@ -322,14 +322,15 @@ describe("route behavior", () => {
 
     expect(createResult.response.status).toBe(200);
     expect(createResult.payload.ok).toBe(true);
-    expect(createResult.payload.authorLogin).toBe("mthom486_uhg");
+    // Kept under the person's id, whichever login it came with.
+    expect(createResult.payload.authorLogin).toBe("actor:mthom486_uhg");
 
     const readCanonical = await requestJson(
       server,
       "/author-comments?authorLogin=mthom486_uhg",
     );
     expect(readCanonical.response.status).toBe(200);
-    expect(readCanonical.payload.authorLogin).toBe("mthom486_uhg");
+    expect(readCanonical.payload.authorLogin).toBe("actor:mthom486_uhg");
     expect(readCanonical.payload.comments.some((comment) => comment.note === "Merged alias author comment")).toBe(true);
 
     const readAlias = await requestJson(
@@ -337,8 +338,62 @@ describe("route behavior", () => {
       "/author-comments?authorLogin=7c7240971101674017d4597caddf24_uhg",
     );
     expect(readAlias.response.status).toBe(200);
-    expect(readAlias.payload.authorLogin).toBe("mthom486_uhg");
+    expect(readAlias.payload.authorLogin).toBe("actor:mthom486_uhg");
     expect(readAlias.payload.comments.some((comment) => comment.note === "Merged alias author comment")).toBe(true);
+
+    // The page asks by the person's id.
+    const readById = await requestJson(server, "/author-comments?authorLogin=actor%3Amthom486_uhg");
+    expect(readById.payload.comments.some((comment) => comment.note === "Merged alias author comment")).toBe(true);
+  });
+
+  test("given two people merged in Settings › People, when the removed one's id is asked for, then it's the other's: their comments and the payload say so", async () => {
+    const address = server.address();
+    const put = (actors) =>
+      fetch(`http://127.0.0.1:${address.port}/actors`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ actors }),
+      });
+    await put([
+      { id: "actor:merge_main", name: "Main", logins: ["merge_main"] },
+      { id: "actor:merge_alt", name: "", logins: ["merge_alt"] },
+    ]);
+    await postJson(server, "/author-comments", { authorLogin: "actor:merge_alt", note: "Under the alt person", sentiment: "neutral" });
+
+    // Merge: the alt login joins the main person, whose row stays; the alt row goes.
+    await put([{ id: "actor:merge_main", name: "Main", logins: ["merge_main", "merge_alt"] }]);
+
+    const { payload } = await requestJson(server, "/author-comments?authorLogin=actor%3Amerge_main");
+    expect(payload.comments.map((comment) => comment.note)).toContain("Under the alt person");
+    const { payload: byOldId } = await requestJson(server, "/author-comments?authorLogin=actor%3Amerge_alt");
+    expect(byOldId.authorLogin).toBe("actor:merge_main");
+    await withDataFile({ 10007: { data: { number: 10007, repo: "owner/repo", authorLogin: "merge_main" } } }, async () => {
+      const { payload: manifest } = await requestJson(server, "/data-manifest");
+      expect(manifest.actorMaps.actorIdMoves).toMatchObject({ "actor:merge_alt": "actor:merge_main" });
+    });
+  });
+
+  test("given comments kept under a login before ids, when the person's id is asked for, then they're theirs", async () => {
+    fs.writeFileSync(
+      actorsFilePath,
+      JSON.stringify({ version: 1, actors: [{ id: "actor:old_keyed", name: "", logins: ["old_keyed", "old_keyed_alt"] }] }),
+      "utf8",
+    );
+    fs.writeFileSync(
+      authorCommentsFilePath,
+      JSON.stringify({
+        byAuthorLogin: {
+          old_keyed: { comments: [{ id: "c-old-1", note: "Kept under the main login", sentiment: "neutral", createdAt: "2026-01-01T00:00:00Z" }] },
+          old_keyed_alt: { comments: [{ id: "c-old-2", note: "Kept under another login", sentiment: "neutral", createdAt: "2026-01-02T00:00:00Z" }] },
+        },
+      }),
+      "utf8",
+    );
+
+    const { response, payload } = await requestJson(server, "/author-comments?authorLogin=actor%3Aold_keyed");
+
+    expect(response.status).toBe(200);
+    expect(payload.comments.map((comment) => comment.note)).toEqual(["Kept under the main login", "Kept under another login"]);
   });
 
   test("updates saved author comments via PUT /author-comments", async () => {
@@ -1060,7 +1115,8 @@ describe("route behavior", () => {
         const { response, payload } = await requestJson(server, "/data");
         expect(response.status).toBe(200);
         expect(savedActors()).toContainEqual({ id: "actor:new_author_login", name: "New Author", logins: ["new_author_login"] });
-        expect(payload.actorsMap.new_author_login).toBe("New Author");
+        expect(payload.actorsMap["actor:new_author_login"]).toBe("New Author");
+        expect(payload.actors).toContainEqual({ id: "actor:new_author_login", name: "New Author", logins: ["new_author_login"] });
       },
     );
   });
@@ -1092,13 +1148,8 @@ describe("route behavior", () => {
       async () => {
         const { payload } = await requestJson(server, "/data");
         expect(savedActors()).toEqual([{ id: "actor:keep", name: "Preserved Name", logins: ["preserved_login", "preserved_alt"] }]);
-        expect(payload.actorsMap).toMatchObject({
-          preserved_login: "Preserved Name",
-          preserved_alt: "Preserved Name",
-          // As the data spells it: the page matches logins exactly.
-          PRESERVED_ALT: "Preserved Name",
-        });
-        expect(payload.actorLoginAliases).toMatchObject({ preserved_alt: "preserved_login", PRESERVED_ALT: "preserved_login" });
+        expect(payload.actorsMap).toEqual({ "actor:keep": "Preserved Name" });
+        expect(payload.actors).toEqual([{ id: "actor:keep", name: "Preserved Name", logins: ["preserved_login", "preserved_alt"] }]);
       },
     );
   });
@@ -1150,8 +1201,8 @@ describe("route behavior", () => {
 
       expect((await requestJson(server, "/data-meta")).payload.dataVersion).not.toBe(before);
       const { payload } = await requestJson(server, "/data-manifest");
-      expect(payload.actorMaps.actorsMap).toMatchObject({ ann: "Ann Lee-Smith", "ann-2": "Ann Lee-Smith" });
-      expect(payload.actorMaps.actorLoginAliases).toEqual({ "ann-2": "ann" });
+      expect(payload.actorMaps.actorsMap).toMatchObject({ "actor:ann": "Ann Lee-Smith" });
+      expect(payload.actorMaps.actors).toEqual([{ id: "actor:ann", name: "Ann Lee-Smith", logins: ["ann", "ann-2"] }]);
     });
   });
 

@@ -79,7 +79,7 @@ const {
 const {
   createViewPrsActorHelpers,
 } = require("./helpers/view-prs-actor-helpers");
-const { createViewPrsActorsStorage, deriveActorMaps } = require("./helpers/view-prs-actors-storage");
+const { buildActorIndex, createViewPrsActorsStorage } = require("./helpers/view-prs-actors-storage");
 const { createAppConfig } = require("./config/app-config");
 const { createFileIoHelpers } = require("./helpers/file-io-helpers");
 const { createCommandExecutionHelpers, describeFailure } = require("./helpers/command-execution-helpers");
@@ -769,10 +769,7 @@ const readViewPrsAuthorComments = () =>
   );
 
 const {
-  addActorName,
   normalizeDisplayName,
-  normalizeActorLoginAliases,
-  resolveCanonicalActorLogin,
 } = createViewPrsActorHelpers({
   toTrimmedString,
 });
@@ -797,8 +794,12 @@ const actorsStorage = createViewPrsActorsStorage({
   legacyAliasesFile: viewPrsActorLoginAliasesFile,
 });
 
-// Each extra login's main login, as the page groups people by today.
-const readViewPrsActorLoginAliases = () => deriveActorMaps(actorsStorage.readActors()).actorLoginAliases;
+// A login's person's id (ignoring case), an id as it is, else the value:
+// the key a person's things are kept under (the Authors view's comments).
+const resolveViewPrsActorKey = (value) => {
+  const { actors, movedIds } = actorsStorage.readState();
+  return buildActorIndex(actors, movedIds).keyOf(value);
+};
 
 const resolveActorNameFromGitHub = (login) => {
   const normalizedLogin = toTrimmedString(login);
@@ -830,24 +831,22 @@ const resolveActorNameFromGitHub = (login) => {
   return resolved;
 };
 
-// The page's two maps (each login's name, each extra login's main login),
-// from the people - adding a person for each login in the data no one has
+// The people, for the page - `actors`, and `actorsMap` (each id's name,
+// buildActorIndex) - adding a person for each login in the data no one has
 // yet: named as the data names them, else as GitHub does (gh api
 // users/<login>), else not named. A person already there is never changed
 // (their name may have been set in Settings). While the people file is
 // unreadable, no one is added (nor asked of GitHub, which every read
 // would do again).
 const buildViewPrsActorMaps = (byPrNumberRaw = {}) => {
-  const { actors: knownActors, unreadable } = actorsStorage.readState();
+  const { actors: knownActors, movedIds, unreadable } = actorsStorage.readState();
   const known = new Set(knownActors.flatMap((actor) => actor.logins.map((login) => login.toLowerCase())));
-  const observedLogins = new Set();
   const dataNameByLogin = new Map();
   const addActorNameOrTrack = (login, name) => {
     const normalizedLogin = toTrimmedString(login);
     if (!normalizedLogin || normalizedLogin === "unknown") {
       return;
     }
-    observedLogins.add(normalizedLogin);
     if (unreadable || known.has(normalizedLogin.toLowerCase())) {
       return;
     }
@@ -923,10 +922,10 @@ const buildViewPrsActorMaps = (byPrNumberRaw = {}) => {
     name: name || resolveActorNameFromGitHub(login),
   }));
   const actors = added.length > 0 ? actorsStorage.addObservedLogins(added) : knownActors;
-  return deriveActorMaps(actors, [...observedLogins]);
+  return { actors, actorIdMoves: movedIds, actorsMap: buildActorIndex(actors, movedIds).actorsMap };
 };
 
-// Each login's name, for the page (buildViewPrsActorMaps).
+// Each person's name, by id, for the page (buildViewPrsActorMaps).
 const buildViewPrsActorsMap = (byPrNumberRaw = {}) => buildViewPrsActorMaps(byPrNumberRaw).actorsMap;
 
 const readViewPrsDataRef = (...args) => readViewPrsData(...args);
@@ -1627,7 +1626,7 @@ const readViewPrsData = () => {
       lastFullRunByRepo: {},
       viewerLogin: getViewPrsViewerLogin(),
       actorsMap: {},
-      actorLoginAliases: readViewPrsActorLoginAliases(),
+      actors: [],
       ackByRepo: normalizedUserState.ackByRepo,
       ackHistoryByRepo: normalizedUserState.ackHistoryByRepo,
       reverifyByRepo: normalizedUserState.reverifyByRepo,
@@ -1720,7 +1719,8 @@ const readViewPrsData = () => {
           .map((entry) => toTrimmedString(entry?.data?.viewerLogin))
           .find(Boolean) || getViewPrsViewerLogin(),
       actorsMap: actorMaps.actorsMap,
-      actorLoginAliases: actorMaps.actorLoginAliases,
+      actors: actorMaps.actors,
+      actorIdMoves: actorMaps.actorIdMoves,
       ackByRepo: mergedUserState.ackByRepo,
       ackHistoryByRepo: mergedUserState.ackHistoryByRepo,
       reverifyByRepo: mergedUserState.reverifyByRepo,
@@ -1737,7 +1737,7 @@ const readViewPrsData = () => {
       lastFullRunByRepo: {},
       viewerLogin: getViewPrsViewerLogin(),
       actorsMap: {},
-      actorLoginAliases: readViewPrsActorLoginAliases(),
+      actors: [],
       ackByRepo: normalizedUserState.ackByRepo,
       ackHistoryByRepo: normalizedUserState.ackHistoryByRepo,
       reverifyByRepo: normalizedUserState.reverifyByRepo,
@@ -3898,8 +3898,7 @@ const createViewPrsApp = ({ production = isProductionEnv } = {}) => {
     appendActionLogEntry,
     // Without hidden repos' rows (filterToVisibleRows).
     readViewPrsData: readVisibleViewPrsData,
-    readViewPrsActorLoginAliases,
-    resolveCanonicalActorLogin,
+    resolveActorKey: resolveViewPrsActorKey,
     isRepoSlug,
     syncPrDiffForEntry,
     runInsightsHookScript: callRunInsightsHookScript,
@@ -4102,12 +4101,9 @@ module.exports = {
   readViewPrsAuthorComments,
   mergeMissingPerRepoMap,
   migrateLegacyViewPrsUserState,
-  addActorName,
   writeJsonFileBestEffort,
   normalizeDisplayName,
-  normalizeActorLoginAliases,
-  readViewPrsActorLoginAliases,
-  resolveCanonicalActorLogin,
+  resolveViewPrsActorKey,
   resolveActorNameFromGitHub,
   buildViewPrsActorsMap,
   getManualCooldownSkipReason,

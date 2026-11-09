@@ -503,30 +503,26 @@ export function PrDataProvider({
     ],
   );
 
-  // The viewer's login aliases and login, derived from the payload; the
-  // actor identity functions below are built from them.
+  // The people (indexed) and the viewer's login, derived from the payload;
+  // the actor identity functions below are built from them.
   const viewerContext = useMemo(() => {
-    const { normalizeActorLoginAliases, normalizeActorLogin } = createPrActorIdentityHelpers();
-    const { deriveViewerContext } = createPrViewerContextHelpers({
-      normalizeActorLoginAliases,
-      normalizeActorLogin,
-      inferViewerLoginFromPage,
-    });
+    const { deriveViewerContext } = createPrViewerContextHelpers({ inferViewerLoginFromPage });
     const allEntries = Object.values(state.payload?.byPrNumber || {});
     return deriveViewerContext({ payload: state.payload, allEntries });
   }, [state.payload]);
 
   const actorIdentity = useMemo<ActorIdentityValue>(() => {
     const identityHelpers = createPrActorIdentityHelpers({
-      getActorLoginAliases: () => viewerContext.currentActorLoginAliases,
+      getActorIndex: () => viewerContext.currentActorIndex,
     });
-    const { getEffectiveViewerLogin } = createPrActorIdentityRenderHelpers({
+    const { getEffectiveViewerLogin, getEffectiveViewerKey } = createPrActorIdentityRenderHelpers({
       normalizeActorLogin: identityHelpers.normalizeActorLogin,
       getCurrentViewerLogin: () => viewerContext.currentViewerLogin,
     });
     return {
       ...identityHelpers,
       getEffectiveViewerLogin,
+      getEffectiveViewerKey,
       ...createPrActorIdentityStyleHelpers(),
     };
   }, [viewerContext]);

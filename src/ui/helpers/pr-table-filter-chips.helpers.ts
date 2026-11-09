@@ -31,6 +31,9 @@ export interface TableFilterChipsInput {
   filterStories?: string;
   filterAnalysisOfPr?: string;
   filterSearch?: string;
+  // A picked person's name (their id, or a login saved before ids), for the
+  // Author/Assigned/Approver chips; the value itself without one.
+  nameOfPerson?: (value: string) => string;
 }
 
 const WITH_WITHOUT_LABELS: Record<string, string> = { with: "with", without: "without" };
@@ -49,10 +52,15 @@ const createPrTableFilterChipsHelpers = () => {
     clear: { kind: "field", key, value: defaultValue },
   });
 
-  const listChips = (prefix: string, listId: string, values: string[] | null | undefined): FilterChip[] =>
+  const listChips = (
+    prefix: string,
+    listId: string,
+    values: string[] | null | undefined,
+    labelOf: (value: string) => string = (value) => value,
+  ): FilterChip[] =>
     asArray(values).map((value) => ({
       id: `${listId}:${value}`,
-      label: `${prefix}: ${value}`,
+      label: `${prefix}: ${labelOf(value)}`,
       clear: { kind: "list", listId, value },
     }));
 
@@ -74,6 +82,7 @@ const createPrTableFilterChipsHelpers = () => {
     filterStories,
     filterAnalysisOfPr,
     filterSearch,
+    nameOfPerson,
   }: TableFilterChipsInput = {}): FilterChip[] => {
     const chips: FilterChip[] = [];
 
@@ -106,9 +115,9 @@ const createPrTableFilterChipsHelpers = () => {
 
     chips.push(...listChips("Label", "label-list", includeLabels));
     chips.push(...listChips("Exclude label", "exclude-label-list", excludeLabels));
-    chips.push(...listChips("Author", "author-list", authorLogins));
-    chips.push(...listChips("Assigned", "assigned-list", assignedLogins));
-    chips.push(...listChips("Approver", "approver-list", approverLogins));
+    chips.push(...listChips("Author", "author-list", authorLogins, nameOfPerson));
+    chips.push(...listChips("Assigned", "assigned-list", assignedLogins, nameOfPerson));
+    chips.push(...listChips("Approver", "approver-list", approverLogins, nameOfPerson));
 
     if (alwaysShowInReview) {
       chips.push(

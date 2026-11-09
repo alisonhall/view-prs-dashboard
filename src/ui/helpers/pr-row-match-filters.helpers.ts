@@ -98,23 +98,26 @@ const createPrRowMatchFiltersHelpers = ({
       return false;
     }
 
+    // People compare by person: a pick (their id, or a login saved before
+    // ids) and the row's logins as their keys.
+    const keyOf = (login: string) => getPreferredActorKeySafe(login) || login;
     if (
       filters.authorLogins.length > 0 &&
-      !filters.authorLogins.includes(authorLogin)
+      !filters.authorLogins.some((login) => keyOf(login) === authorLogin)
     ) {
       return false;
     }
 
     if (
       filters.assignedLogins.length > 0 &&
-      !filters.assignedLogins.some((login) => assignedLogins.includes(login))
+      !filters.assignedLogins.some((login) => assignedLogins.includes(keyOf(login)))
     ) {
       return false;
     }
 
     if (
       filters.approverLogins.length > 0 &&
-      !filters.approverLogins.some((login) => approverLogins.includes(login))
+      !filters.approverLogins.some((login) => approverLogins.includes(keyOf(login)))
     ) {
       return false;
     }

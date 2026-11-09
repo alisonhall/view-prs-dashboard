@@ -128,11 +128,17 @@ describe("view-prs data response helpers", () => {
       viewPrsBackfillLogFile: "/tmp/backfill.log",
       viewPrsBackfillPidFile: "/tmp/backfill.pid",
     });
-    const data = { byPrNumber: {}, actorsMap: { ann: "Ann", "ann-2": "Ann" }, actorLoginAliases: { "ann-2": "ann" } };
+    const data = {
+      byPrNumber: {},
+      actorsMap: { "actor:ann": "Ann" },
+      actors: [{ id: "actor:ann", name: "Ann", logins: ["ann", "ann-2"] }],
+      actorIdMoves: { "actor:ann-old": "actor:ann" },
+    };
 
     expect(helpers.buildDataManifestPayload({ manifest: {}, data }).actorMaps).toEqual({
       actorsMap: data.actorsMap,
-      actorLoginAliases: data.actorLoginAliases,
+      actors: data.actors,
+      actorIdMoves: data.actorIdMoves,
     });
     expect(helpers.buildDataManifestPayload({ manifest: {} })).not.toHaveProperty("actorMaps");
   });

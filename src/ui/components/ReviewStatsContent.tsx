@@ -289,11 +289,13 @@ function StatsTableEmpty({
 // The reviewer's avatar and name, as the PR table's Who column; the
 // login on hover when the name differs.
 function ReviewerIdentity({ reviewer }: { reviewer: ReviewerRowData }) {
-  const { getEffectiveViewerLogin } = useActorIdentity();
-  const login = String(reviewer.login || '');
+  const { getEffectiveViewerKey, normalizeActorLogin, loginOfActorKey } = useActorIdentity();
+  // A reviewer's `login` is their person's key; their main login is shown.
+  const key = String(reviewer.login || '');
+  const login = loginOfActorKey(key);
   const name = String(reviewer.name || login);
-  const viewerLogin = String(getEffectiveViewerLogin({}) || '').toLowerCase();
-  const isViewer = Boolean(viewerLogin) && login.toLowerCase() === viewerLogin;
+  const viewerKey = getEffectiveViewerKey({});
+  const isViewer = Boolean(viewerKey) && normalizeActorLogin(key).toLowerCase() === viewerKey;
   return (
     <span className="stats-reviewer" title={name !== login ? login : undefined}>
       <Avatar initials={getUserInitials(name, login)} login={login} isViewer={isViewer} size="sm" />

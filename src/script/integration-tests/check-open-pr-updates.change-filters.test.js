@@ -32,6 +32,44 @@ describe("change filter configuration loading", () => {
     expect(result).toContain("patterns=^docs:|^test:");
   });
 
+  describe("people saved by id (Settings › People)", () => {
+    const loadWith = ({ actors }) => {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "view-prs-change-filters-"));
+      fs.writeFileSync(
+        path.join(tempDir, "user-defaults.json"),
+        JSON.stringify({
+          changeFilters: {
+            ignoreCommentsFromAuthors: ["actor:bots", "plain-login", "actor:gone"],
+            ignoreReviewsFromAuthors: ["actor:bots"],
+          },
+        }),
+      );
+      if (actors !== undefined) fs.writeFileSync(path.join(tempDir, "actors.json"), actors);
+      return runShell(
+        `unset VIEW_PRS_ACTORS_FILE; source "${scriptPath}"; DATA_DIR="${tempDir.replace(/\\/g, "/")}"; load_change_filter_config; echo "comments=$CHANGE_FILTER_IGNORE_COMMENT_AUTHORS|reviews=$CHANGE_FILTER_IGNORE_REVIEW_AUTHORS"`,
+      );
+    };
+
+    test("an id becomes every login actors.json lists for that person; a login stays; an id no one has is left out", () => {
+      const actors = JSON.stringify({ version: 1, actors: [{ id: "actor:bots", name: "Bots", logins: ["bot-a", "bot-b[bot]"] }] });
+      expect(loadWith({ actors })).toBe("comments=bot-a,bot-b[bot],plain-login|reviews=bot-a,bot-b[bot]");
+    });
+
+    test("an id merged into another person (movedIds) becomes that person's logins", () => {
+      const actors = JSON.stringify({
+        version: 1,
+        actors: [{ id: "actor:all-bots", name: "Bots", logins: ["bot-a", "bot-c"] }],
+        movedIds: { "actor:bots": "actor:all-bots" },
+      });
+      expect(loadWith({ actors })).toBe("comments=bot-a,bot-c,plain-login|reviews=bot-a,bot-c");
+    });
+
+    test("without actors.json, or with one that isn't JSON, ids are left out and logins kept", () => {
+      expect(loadWith({})).toBe("comments=plain-login|reviews=");
+      expect(loadWith({ actors: "{ not json" })).toBe("comments=plain-login|reviews=");
+    });
+  });
+
   test("given user-defaults.json without changeFilters, when load_change_filter_config is called, then filter variables are empty", () => {
     const tempDir = runShell("mktemp -d");
     const userDefaultsPath = `${tempDir}/user-defaults.json`;

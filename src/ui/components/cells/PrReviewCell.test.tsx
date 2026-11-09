@@ -103,7 +103,7 @@ describe('PrReviewCell', () => {
       renderCell(
         {},
         {
-          identity: { getEffectiveViewerLogin: () => 'octocat' },
+          identity: { getEffectiveViewerLogin: () => 'octocat', getEffectiveViewerKey: () => 'octocat' },
           display: { collectAssignedUsers: () => [{ login: 'octocat', name: 'The Octocat' }, { login: 'hubot', name: 'Hubot' }] } as never,
         },
       );
@@ -131,7 +131,7 @@ describe('PrReviewCell', () => {
       renderCell(
         {},
         {
-          identity: { getEffectiveViewerLogin: () => 'octocat' },
+          identity: { getEffectiveViewerLogin: () => 'octocat', getEffectiveViewerKey: () => 'octocat' },
           display: {
             collectAssignedUsers: () => [],
             collectPendingReviewRequests: () => [
@@ -152,7 +152,7 @@ describe('PrReviewCell', () => {
       renderCell(
         {},
         {
-          identity: { getEffectiveViewerLogin: () => 'octocat' },
+          identity: { getEffectiveViewerLogin: () => 'octocat', getEffectiveViewerKey: () => 'octocat' },
           display: {
             collectAssignedUsers: () => [{ login: 'hubot', name: 'Hubot' }],
             collectPendingReviewRequests: () => [{ login: 'octocat', name: 'The Octocat' }],
@@ -174,7 +174,7 @@ describe('PrReviewCell', () => {
     test('does not show "Reviewer" for a PR you have already reviewed, with no request left', () => {
       renderCell(
         { reviews: [{ authorLogin: 'octocat', state: 'APPROVED' }], requestedReviewers: [] },
-        { identity: { getEffectiveViewerLogin: () => 'octocat' } },
+        { identity: { getEffectiveViewerLogin: () => 'octocat', getEffectiveViewerKey: () => 'octocat' } },
       );
       expect(screen.queryByRole('group', { name: 'Reviewer' })).not.toBeInTheDocument();
     });
@@ -190,6 +190,7 @@ describe('PrReviewCell', () => {
 describe('PrReviewCell: conversations resolved for you', () => {
   const identity = {
     getEffectiveViewerLogin: () => 'me',
+    getEffectiveViewerKey: () => 'me',
     getPreferredActorKey: (login: unknown) => String(login || ''),
   } as unknown as Partial<ActorIdentityValue>;
   const resolvedForMe = (id: string) => ({

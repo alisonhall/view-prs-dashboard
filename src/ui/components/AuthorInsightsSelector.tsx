@@ -28,7 +28,7 @@ const { getUserInitials } = createPrUserInitialsHelpers();
 
 export function AuthorInsightsSelector() {
   const { selectedAuthorLogin, setSelectedAuthorLogin } = usePrData();
-  const { getEffectiveViewerLogin } = useActorIdentity();
+  const { getEffectiveViewerKey, normalizeActorLogin, loginOfActorKey } = useActorIdentity();
   const { rowCount, recent, others, options } = useAuthorPickerOptions();
 
   useEffect(() => {
@@ -45,18 +45,20 @@ export function AuthorInsightsSelector() {
     return <p className="stats-empty">No authors found in the current local data scope.</p>;
   }
 
-  const viewerLogin = String(getEffectiveViewerLogin({}) || '').toLowerCase();
+  // Each option is a person's key; their main login shown beside the name.
+  const viewerKey = getEffectiveViewerKey({});
   const toOption = ({ login, name }: AuthorOption): ComboBoxOption => {
-    const label = name || login;
+    const mainLogin = loginOfActorKey(login);
+    const label = name || mainLogin;
     return {
       value: login,
       label,
-      detail: label !== login ? login : undefined,
+      detail: label !== mainLogin ? mainLogin : undefined,
       leading: (
         <Avatar
-          initials={getUserInitials(label, login)}
-          login={login}
-          isViewer={Boolean(viewerLogin) && login.toLowerCase() === viewerLogin}
+          initials={getUserInitials(label, mainLogin)}
+          login={mainLogin}
+          isViewer={Boolean(viewerKey) && normalizeActorLogin(login).toLowerCase() === viewerKey}
           size="sm"
         />
       ),

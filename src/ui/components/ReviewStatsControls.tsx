@@ -23,6 +23,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useReviewStats } from '../state/ReviewStatsContext';
+import { useActorIdentity } from '../state/ActorIdentityContext';
 import { usePrData } from '../state/PrDataContext';
 import { useIsTabPanelVisible } from '../state/useIsTabPanelVisible';
 import { MultiSelectDropdown } from './ui/MultiSelectDropdown';
@@ -78,14 +79,19 @@ export function ReviewStatsControls() {
     return lastReviewersRef.current;
   }, [isVisible, listReviewers, payload]);
   const pickedReviewers = useMemo(() => (Array.isArray(state.reviewers) ? state.reviewers : []), [state.reviewers]);
+  // Reviewers are people's keys: one with no activity in the dates is shown
+  // by their main login.
+  const { loginOfActorKey } = useActorIdentity();
   const reviewerOptions = useMemo(() => {
     const known = new Set(everyReviewer.map(({ login }) => login));
     return [
       ...everyReviewer.map(({ login, name }) => ({ value: login, label: name })),
-      ...pickedReviewers.filter((login) => !known.has(login)).map((login) => ({ value: login, label: `${login} · no activity in the dates` })),
+      ...pickedReviewers
+        .filter((login) => !known.has(login))
+        .map((login) => ({ value: login, label: `${loginOfActorKey(login)} · no activity in the dates` })),
     ];
-  }, [everyReviewer, pickedReviewers]);
-  const nameOf = (login: string) => everyReviewer.find((reviewer) => reviewer.login === login)?.name || login;
+  }, [everyReviewer, pickedReviewers, loginOfActorKey]);
+  const nameOf = (login: string) => everyReviewer.find((reviewer) => reviewer.login === login)?.name || loginOfActorKey(login);
   const toggleReviewer = (login: string) =>
     commit({
       reviewers: pickedReviewers.includes(login) ? pickedReviewers.filter((picked) => picked !== login) : [...pickedReviewers, login],

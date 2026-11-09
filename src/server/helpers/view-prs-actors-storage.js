@@ -11,8 +11,13 @@ const path = require("path");
 // An id is made once, from the person's first login, and kept however
 // their logins change; "actor:" keeps it from ever being a login (GitHub's
 // have no ":"). A login belongs to one person at most, ignoring case. The
-// first login is the person's main one: the old alias map's canonical
-// login, which the page groups people by.
+// first login is the person's main one, shown when they have no name. The
+// page groups people by id (buildActorIndex).
+//
+// `movedIds` ({ "actor:old": "actor:new" }) records a person removed while
+// another kept one of their logins - two people merged in Settings ›
+// People - so what was picked or kept under the old id (a filter, a rule,
+// the Authors view's comments) stays theirs.
 
 const ACTORS_FILE_VERSION = 1;
 const ID_PREFIX = "actor:";
@@ -123,35 +128,62 @@ const migrateLegacyActors = (nameCache = {}, aliases = {}) => {
   );
 };
 
-// What the page reads today, worked out from the people: every login - the
-// page lists people from it (the thread-resolution and change-detection
-// lists, Authors) - with its person's name, else the login itself (which
-// the page reads as no name, falling back to the data's), and each extra
-// login's main login. The page matches logins exactly, so each of
-// `observedLogins` (as the data spells them) that's a person's login in
-// another case is added too, as that person's.
-const deriveActorMaps = (actors = [], observedLogins = []) => {
+// The id moves as saved: id to id, neither empty nor the same.
+const normalizeMovedIds = (value) => {
+  const moves = {};
+  if (!value || typeof value !== "object" || Array.isArray(value)) return moves;
+  Object.entries(value).forEach(([from, to]) => {
+    const source = trim(from);
+    const target = trim(to);
+    if (isActorId(source) && isActorId(target) && source !== target) moves[source] = target;
+  });
+  return moves;
+};
+
+// An id after its moves (a few at most; a loop - only a hand edit makes one
+// - stops where it is).
+const followMoves = (id, movedIds = {}) => {
+  let current = id;
+  for (let step = 0; step < 10 && movedIds[current]; step += 1) current = movedIds[current];
+  return current;
+};
+
+// The moves after a save of `next` over `previous`: each person removed whose
+// logins someone now has moves to them; an id that's someone's again moves
+// no longer.
+const findMovedIds = (previous = [], next = [], movedIds = {}) => {
+  const liveIds = new Set(next.map((actor) => actor.id));
+  const ownerByLoginKey = new Map();
+  next.forEach((actor) => actor.logins.forEach((login) => ownerByLoginKey.set(loginKey(login), actor.id)));
+  const moves = Object.fromEntries(Object.entries(movedIds).filter(([from]) => !liveIds.has(from)));
+  previous.forEach((actor) => {
+    if (liveIds.has(actor.id)) return;
+    const owner = actor.logins.map((login) => ownerByLoginKey.get(loginKey(login))).find(Boolean);
+    if (owner) moves[actor.id] = owner;
+  });
+  return moves;
+};
+
+// The people, for looking them up: `actorsMap` - each person's id to their
+// name, else the id itself (the page reads a name equal to the key as no
+// name, and falls back to the data's, then the main login; the page lists
+// people from it - the thread-resolution and change-detection lists,
+// Authors) - and `keyOf`, a login's person (ignoring case) or an id after
+// its moves; any other value is its own key.
+const buildActorIndex = (actors = [], movedIds = {}) => {
   const actorsMap = {};
-  const actorLoginAliases = {};
-  const byLoginKey = new Map();
+  const idByLoginKey = new Map();
   actors.forEach((actor) => {
-    const [main, ...others] = actor.logins;
-    actor.logins.forEach((login) => {
-      actorsMap[login] = actor.name || login;
-      byLoginKey.set(loginKey(login), actor);
-    });
-    others.forEach((login) => {
-      actorLoginAliases[login] = main;
-    });
+    actorsMap[actor.id] = actor.name || actor.id;
+    actor.logins.forEach((login) => idByLoginKey.set(loginKey(login), actor.id));
   });
-  observedLogins.forEach((raw) => {
-    const login = trim(raw);
-    const actor = byLoginKey.get(loginKey(login));
-    if (!login || !actor || login in actorsMap) return;
-    actorsMap[login] = actor.name || login;
-    actorLoginAliases[login] = actor.logins[0];
-  });
-  return { actorsMap, actorLoginAliases };
+  const keyOf = (value) => {
+    const normalized = trim(value);
+    if (!normalized) return normalized;
+    if (isActorId(normalized)) return followMoves(normalized, movedIds);
+    return idByLoginKey.get(loginKey(normalized)) || normalized;
+  };
+  return { actorsMap, keyOf };
 };
 
 const createViewPrsActorsStorage = ({
@@ -178,22 +210,36 @@ const createViewPrsActorsStorage = ({
   // isn't JSON (a bad hand edit) - its people are unknown, not none.
   const readFile = () => {
     const target = filePath();
-    if (!fsSafe.existsSync(target)) return { exists: false, unreadable: false, actors: [] };
+    if (!fsSafe.existsSync(target)) return { exists: false, unreadable: false, actors: [], movedIds: {} };
     const raw = readJson(target, UNREADABLE);
     return raw === UNREADABLE
-      ? { exists: true, unreadable: true, actors: [] }
-      : { exists: true, unreadable: false, actors: normalizeActors(raw) };
+      ? { exists: true, unreadable: true, actors: [], movedIds: {} }
+      : { exists: true, unreadable: false, actors: normalizeActors(raw), movedIds: normalizeMovedIds(raw?.movedIds) };
   };
 
-  // Saves the people. An unreadable file is kept beside it first
-  // (actors.json.unreadable-<time>), so a save can't lose what was in it.
-  const writeActors = (actors) => {
+  // Saves the people, with the id moves given (else the file's). An
+  // unreadable file is kept beside it first (actors.json.unreadable-<time>),
+  // so a save can't lose what was in it.
+  const writeActors = (actors, movedIds) => {
     const normalized = normalizeActors(actors);
     const target = filePath();
     fsSafe.mkdirSync(path.dirname(target), { recursive: true });
-    if (readFile().unreadable) fsSafe.copyFileSync(target, `${target}.unreadable-${Date.now()}`);
-    fsSafe.writeFileSync(target, `${JSON.stringify({ version: ACTORS_FILE_VERSION, actors: normalized }, null, 2)}\n`, "utf8");
+    const file = readFile();
+    if (file.unreadable) fsSafe.copyFileSync(target, `${target}.unreadable-${Date.now()}`);
+    const moves = normalizeMovedIds(movedIds === undefined ? file.movedIds : movedIds);
+    const body = Object.keys(moves).length > 0
+      ? { version: ACTORS_FILE_VERSION, actors: normalized, movedIds: moves }
+      : { version: ACTORS_FILE_VERSION, actors: normalized };
+    fsSafe.writeFileSync(target, `${JSON.stringify(body, null, 2)}\n`, "utf8");
     return normalized;
+  };
+
+  // Settings › People's save: everyone, replacing who's there, recording
+  // where each person removed went if someone kept one of their logins.
+  const replaceActors = (actors) => {
+    const file = readFile();
+    const next = normalizeActors(actors);
+    return writeActors(next, findMovedIds(file.actors, next, file.movedIds));
   };
 
   // A save that mustn't fail what asked for it (a data read): the people
@@ -240,23 +286,26 @@ const createViewPrsActorsStorage = ({
     return added.length > 0 ? writeActorsBestEffort([...actors, ...added]) : actors;
   };
 
-  // The people and whether the file is there but unreadable (Settings ›
-  // People says so), from one read.
+  // The people, their id moves, and whether the file is there but
+  // unreadable (Settings › People says so), from one read.
   const readState = () => {
     const file = readFile();
-    return file.exists ? { actors: file.actors, unreadable: file.unreadable } : { actors: readActors(), unreadable: false };
+    return file.exists
+      ? { actors: file.actors, movedIds: file.movedIds, unreadable: file.unreadable }
+      : { actors: readActors(), movedIds: {}, unreadable: false };
   };
 
   // Whether the file is there but unreadable.
   const isUnreadable = () => readFile().unreadable;
 
-  return { readActors, readState, writeActors, addObservedLogins, isUnreadable };
+  return { readActors, readState, writeActors, replaceActors, addObservedLogins, isUnreadable };
 };
 
 module.exports = {
   ACTOR_ID_PREFIX: ID_PREFIX,
   createViewPrsActorsStorage,
-  deriveActorMaps,
+  buildActorIndex,
+  findMovedIds,
   isActorId,
   migrateLegacyActors,
   normalizeActors,

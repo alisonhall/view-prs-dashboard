@@ -19,7 +19,7 @@ export interface PrWhoCellProps {
 }
 
 export function PrWhoCell({ pr, actorsMap = {} }: PrWhoCellProps) {
-  const { getPreferredActorKey, resolveActorDisplayName, getEffectiveViewerLogin } = useActorIdentity();
+  const { getPreferredActorKey, resolveActorDisplayName, getEffectiveViewerKey, loginOfActorKey } = useActorIdentity();
   const { getUserInitials } = usePrInsightsDisplay();
   const { mergeCommitRules } = useNeedsAttention().attentionConfig;
   // The real, alias-resolving getPreferredActorKey, so a co-author who's
@@ -42,8 +42,10 @@ export function PrWhoCell({ pr, actorsMap = {} }: PrWhoCellProps) {
     );
   }
 
-  const viewerLogin = String(getEffectiveViewerLogin(pr) || '').toLowerCase();
-  const isViewer = (login: string) => Boolean(viewerLogin) && login.toLowerCase() === viewerLogin;
+  // Authors' keys are their people's (getPreferredActorKey): compared with
+  // the viewer's, so any of the viewer's logins is them.
+  const viewerKey = getEffectiveViewerKey(pr);
+  const isViewer = (key: string) => Boolean(viewerKey) && key.toLowerCase() === viewerKey;
   const name = `Author: ${primary.displayName}${isViewer(primary.key) ? ' (you)' : ''}`;
   const label = others.length
     ? `${name}\nAlso committed: ${others.map((other) => other.displayName).join(', ')}`
@@ -53,7 +55,11 @@ export function PrWhoCell({ pr, actorsMap = {} }: PrWhoCellProps) {
     <td className="pr-cell pr-cell-who">
       <Tooltip content={label} focusTarget>
         <span className="pr-who" role="img" aria-label={name}>
-          <Avatar initials={getUserInitials(primary.displayName, primary.key)} login={primary.key} isViewer={isViewer(primary.key)} />
+          <Avatar
+            initials={getUserInitials(primary.displayName, loginOfActorKey(primary.key))}
+            login={loginOfActorKey(primary.key)}
+            isViewer={isViewer(primary.key)}
+          />
           {/* The name itself (up to two lines), so the author doesn't have to
               be guessed from initials; the tooltip has it all. */}
           <span className="pr-who-name" aria-hidden="true">

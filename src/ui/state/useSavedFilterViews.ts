@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
+import { useActorIdentity } from './ActorIdentityContext';
 import { useFilterState } from './FilterStateContext';
 import { useRowFilterSelection } from './RowFilterSelectionContext';
 import { useSavedItemsStore } from './useSavedItemsStore';
@@ -11,6 +12,7 @@ import {
   readSavedFilterViews,
   toSavedFilterViewsValue,
   toViewFilters,
+  withPeopleAsKeys,
   type SavedFilterView,
   type ViewFilters,
 } from '../helpers/saved-filter-views.helpers.ts';
@@ -66,20 +68,25 @@ export function useSavedFilterViews(): SavedFilterViewsValue {
   const { items: views, add, edit, remove: removeView } = store;
   const [appliedId, setAppliedId] = useState('');
 
+  // People compare and apply by person: a view saved with logins (before
+  // ids) is the one applied when its people are.
+  const { normalizeActorLogin } = useActorIdentity();
   const current = useMemo(() => toViewFilters(values, checkedByListId), [values, checkedByListId]);
+  const currentByPerson = useMemo(() => withPeopleAsKeys(current, normalizeActorLogin), [current, normalizeActorLogin]);
   const { activeId, modifiedId } = getActiveAndModifiedIds(
     views,
     appliedId,
-    (view) => isSameFilters(view.filters, current),
+    (view) => isSameFilters(withPeopleAsKeys(view.filters, normalizeActorLogin), currentByPerson),
     hasAnyFilter(current),
   );
 
   const setFilters = useCallback(
     (filters: ViewFilters) => {
-      VIEW_FIELD_KEYS.forEach((key) => setValue(key, filters.fields[key]));
-      VIEW_LIST_IDS.forEach((id) => setChecked(id, filters.lists[id]));
+      const byPerson = withPeopleAsKeys(filters, normalizeActorLogin);
+      VIEW_FIELD_KEYS.forEach((key) => setValue(key, byPerson.fields[key]));
+      VIEW_LIST_IDS.forEach((id) => setChecked(id, byPerson.lists[id]));
     },
-    [setValue, setChecked],
+    [setValue, setChecked, normalizeActorLogin],
   );
 
   const apply = useCallback(

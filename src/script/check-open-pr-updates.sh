@@ -747,13 +747,38 @@ ensure_pr_state_store() {
   replace_state_file "$tmp" "$PR_STATE_FILE" 'pr-data'
 }
 
+# A change filter's authors (a user-defaults list, given as a jq path) as
+# comma-separated logins. The page saves a person as their id
+# ("actor:alice", Settings › People): it becomes every login actors.json
+# lists for them - after its movedIds (a person merged into another is
+# them). A login is kept as it is. Without a readable actors.json an id is
+# left out, as it's no login.
+read_change_filter_authors() {
+  local list_path="$1"
+  local actors_file="${VIEW_PRS_ACTORS_FILE:-$DATA_DIR/actors.json}"
+  local authors=''
+  if [[ -f "$actors_file" ]] && authors=$(jq -r --slurpfile people "$actors_file" "
+      (\$people[0].movedIds // {}) as \$moves
+      | [ ($list_path // [])[] | tostring
+        | (reduce range(0; 10) as \$step (.; \$moves[.] // .)) as \$pick
+        | if (\$pick | startswith(\"actor:\"))
+          then ((\$people[0].actors // [])[] | select(.id == \$pick) | .logins[])
+          else \$pick
+          end ]
+      | join(\",\")" "$USER_DEFAULTS_FILE" 2>/dev/null); then
+    printf '%s' "$authors"
+    return 0
+  fi
+  jq -r "[ ($list_path // [])[] | tostring | select(startswith(\"actor:\") | not) ] | join(\",\")" "$USER_DEFAULTS_FILE" 2>/dev/null || echo ''
+}
+
 load_change_filter_config() {
   USER_DEFAULTS_FILE="$DATA_DIR/user-defaults.json"
-  
+
   [[ -f "$USER_DEFAULTS_FILE" ]] || return 0
-  
-  CHANGE_FILTER_IGNORE_COMMENT_AUTHORS=$(jq -r '.changeFilters.ignoreCommentsFromAuthors // [] | join(",")' "$USER_DEFAULTS_FILE" 2>/dev/null || echo '')
-  CHANGE_FILTER_IGNORE_REVIEW_AUTHORS=$(jq -r '.changeFilters.ignoreReviewsFromAuthors // [] | join(",")' "$USER_DEFAULTS_FILE" 2>/dev/null || echo '')
+
+  CHANGE_FILTER_IGNORE_COMMENT_AUTHORS=$(read_change_filter_authors '.changeFilters.ignoreCommentsFromAuthors')
+  CHANGE_FILTER_IGNORE_REVIEW_AUTHORS=$(read_change_filter_authors '.changeFilters.ignoreReviewsFromAuthors')
   CHANGE_FILTER_IGNORE_COMMIT_PATTERNS=$(jq -r '.changeFilters.ignoreCommitPatterns // [] | join("|")' "$USER_DEFAULTS_FILE" 2>/dev/null || echo '')
   # mergeCommitRules' two lists, the same way the UI reads them
   # (FilterStateProvider's asMergeCommitRules): a list as saved, a single

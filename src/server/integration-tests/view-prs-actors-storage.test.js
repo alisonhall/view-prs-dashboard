@@ -3,7 +3,8 @@ const os = require("os");
 const path = require("path");
 const {
   createViewPrsActorsStorage,
-  deriveActorMaps,
+  buildActorIndex,
+  findMovedIds,
   isActorId,
   migrateLegacyActors,
   normalizeActors,
@@ -202,27 +203,57 @@ describe("view-prs actors storage", () => {
     expect(() => storage.writeActors([{ name: "Ann", logins: ["ann"] }])).toThrow("EACCES");
   });
 
-  test("the page's maps: every login to its person's name (else itself, as the old cache had it), each extra login to the main one", () => {
-    expect(
-      deriveActorMaps([
-        { id: "actor:ann", name: "Ann", logins: ["ann", "ann-work"] },
-        { id: "actor:bob", name: "", logins: ["bob", "bobby"] },
-      ]),
-    ).toEqual({
-      actorsMap: { ann: "Ann", "ann-work": "Ann", bob: "bob", bobby: "bobby" },
-      actorLoginAliases: { "ann-work": "ann", bobby: "bob" },
+  describe("merging two people (Settings › People)", () => {
+    test("a person removed while another kept one of their logins moves to them; one removed with their logins gone moves nowhere", () => {
+      const previous = [
+        { id: "actor:bob", name: "Bob", logins: ["bob"] },
+        { id: "actor:bob-alt", name: "", logins: ["bob-alt"] },
+        { id: "actor:cy", name: "", logins: ["cy"] },
+      ];
+      const next = [{ id: "actor:bob", name: "Bob", logins: ["bob", "BOB-ALT"] }];
+      expect(findMovedIds(previous, next)).toEqual({ "actor:bob-alt": "actor:bob" });
+    });
+
+    test("earlier moves are kept, and one whose id is someone's again is dropped", () => {
+      expect(
+        findMovedIds([], [{ id: "actor:old", name: "", logins: ["old"] }], { "actor:old": "actor:x", "actor:y": "actor:x" }),
+      ).toEqual({ "actor:y": "actor:x" });
+    });
+
+    test("a save records the moves, keeps them through later saves and additions, and the index follows them", () => {
+      const { files, storage } = makeStorage();
+      storage.writeActors([
+        { id: "actor:bob", name: "Bob", logins: ["bob"] },
+        { id: "actor:bob-alt", name: "", logins: ["bob-alt"] },
+      ]);
+      storage.replaceActors([{ id: "actor:bob", name: "Bob", logins: ["bob", "bob-alt"] }]);
+      storage.addObservedLogins([{ login: "newcomer", name: "" }]);
+      storage.writeActors([...storage.readActors()]);
+
+      const { actors, movedIds } = storage.readState();
+      expect(movedIds).toEqual({ "actor:bob-alt": "actor:bob" });
+      expect(readJson(files.actorsFile).movedIds).toEqual({ "actor:bob-alt": "actor:bob" });
+      expect(buildActorIndex(actors, movedIds).keyOf("actor:bob-alt")).toBe("actor:bob");
+    });
+
+    test("moves are followed to the end, stopping on a loop", () => {
+      const { keyOf } = buildActorIndex([], { "actor:a": "actor:b", "actor:b": "actor:c", "actor:x": "actor:y", "actor:y": "actor:x" });
+      expect(keyOf("actor:a")).toBe("actor:c");
+      expect(["actor:x", "actor:y"]).toContain(keyOf("actor:x"));
     });
   });
 
-  test("a login the data spells in another case than a person's is that person's too (the page matches exactly)", () => {
-    expect(
-      deriveActorMaps(
-        [{ id: "actor:ann", name: "Ann", logins: ["ann", "Ann-Work"] }],
-        ["ANN", "ann-work", "ann", "stranger"],
-      ),
-    ).toEqual({
-      actorsMap: { ann: "Ann", "Ann-Work": "Ann", ANN: "Ann", "ann-work": "Ann" },
-      actorLoginAliases: { "Ann-Work": "ann", ANN: "ann", "ann-work": "ann" },
-    });
+  test("the index: each person's id to their name (else the id itself), and any login's person ignoring case", () => {
+    const { actorsMap, keyOf } = buildActorIndex([
+      { id: "actor:ann", name: "Ann", logins: ["ann", "Ann-Work"] },
+      { id: "actor:bob", name: "", logins: ["bob"] },
+    ]);
+    expect(actorsMap).toEqual({ "actor:ann": "Ann", "actor:bob": "actor:bob" });
+    expect(keyOf("ANN-work")).toBe("actor:ann");
+    expect(keyOf(" bob ")).toBe("actor:bob");
+    // An id as it is, whether or not someone has it; any other value itself.
+    expect(keyOf("actor:gone")).toBe("actor:gone");
+    expect(keyOf("stranger")).toBe("stranger");
+    expect(keyOf("")).toBe("");
   });
 });

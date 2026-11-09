@@ -23,7 +23,7 @@ const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : 
 
 export function AuthorInsightsHeader() {
   const { payload, selectedAuthorLogin } = usePrData();
-  const { resolveActorDisplayName, getEffectiveViewerLogin } = useActorIdentity();
+  const { resolveActorDisplayName, getEffectiveViewerKey, normalizeActorLogin, loginOfActorKey } = useActorIdentity();
   const { activityByLogin } = useAuthorPickerOptions();
   const drafts = useAuthorInsightsDrafts();
   // Re-renders when the comments load or one is saved.
@@ -33,10 +33,12 @@ export function AuthorInsightsHeader() {
     return null;
   }
 
+  // The picked author's key (their person's id); their main login shown.
   const login = selectedAuthorLogin;
-  const name = resolveActorDisplayName(login, payload?.actorsMap || {}, login) || login;
-  const viewerLogin = String(getEffectiveViewerLogin({}) || '').toLowerCase();
-  const isViewer = Boolean(viewerLogin) && login.toLowerCase() === viewerLogin;
+  const mainLogin = loginOfActorKey(login);
+  const name = resolveActorDisplayName(login, payload?.actorsMap || {}) || mainLogin;
+  const viewerKey = getEffectiveViewerKey({});
+  const isViewer = Boolean(viewerKey) && normalizeActorLogin(login).toLowerCase() === viewerKey;
   const activity = activityByLogin.get(login);
   const counts = [
     count(activity?.open ?? 0, 'open PR', 'open PRs'),
@@ -48,12 +50,12 @@ export function AuthorInsightsHeader() {
 
   return (
     <div className="author-insights-selected">
-      <Avatar initials={getUserInitials(name, login)} login={login} isViewer={isViewer} size="lg" />
+      <Avatar initials={getUserInitials(name, mainLogin)} login={mainLogin} isViewer={isViewer} size="lg" />
       <div className="author-insights-selected-text">
         <p className="author-insights-selected-name">
           {name}
           {isViewer && <span className="author-insights-selected-you"> (you)</span>}
-          {name !== login && <span className="author-insights-selected-login">{login}</span>}
+          {name !== mainLogin && <span className="author-insights-selected-login">{mainLogin}</span>}
         </p>
         <ul className="author-insights-selected-counts" aria-label="Counts">
           {counts.map((text) => (

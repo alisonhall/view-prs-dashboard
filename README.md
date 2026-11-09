@@ -618,7 +618,7 @@ Needs Attention configuration:
   - whether closed/merged rows should be eligible for attention
   - draft-specific toggles for CHANGED and NO_ACTIVITY attention
   - PR-author thread-resolution policy (`allow-all`, `allow-only`, `deny-only`)
-  - actor-based allow/deny lists for thread starters (from Settings › `People`); a saved login stays picked even when the loaded data has no such actor, listed by its login
+  - allow/deny lists of people who start threads (Settings › `People`): each pick is a person, saved as their id, and covers every login of theirs; a saved login stays picked even when the loaded data has no such person, listed by its login (an id whose person was removed from People says so)
 
 Default values:
 
@@ -653,7 +653,7 @@ Merge commits:
 Change Detection Filters:
 
 - The Settings drawer's `Change detection` section configures what activity should NOT trigger CHANGED status.
-- These filters are saved to `view-prs/data/user-defaults.json` under `changeFilters`.
+- These filters are saved to `view-prs/data/user-defaults.json` under `changeFilters`. The two author lists hold people (Settings › `People`): each saved as their id (`actor:dependabot`), which check-open-pr-updates.sh turns into every login `actors.json` lists for them (`VIEW_PRS_ACTORS_FILE`, else `$DATA_DIR/actors.json`) - an id it can't find is left out, and a login saved before ids is used as it is.
 - Supported filter types:
   - **Ignore comments from these authors**: Filters out general discussion comments (conversation messages, bot notifications, questions, updates) from specified GitHub logins. Use this to ignore informational messages that don't require action.
   - **Ignore reviews from these authors**: Filters out formal code review submissions (created via "Review changes" button with approval/change request states) from specified GitHub logins. Use this to ignore optional reviewers whose approval isn't required.
@@ -831,12 +831,14 @@ The UI includes:
 - Settings › `People`: everyone the app knows, a row each - the name to show, and every GitHub login that's them (the first is their main one). Replaced `Actor names` (2026-11-09), whose two lists - display names and login aliases - are moved over the first time the people are read: each alias joins the login it pointed to, and every other login is a person of its own (a name that was just the login again isn't kept). The old files are left as they were.
   - stored in `view-prs/data/actors.json` (`VIEW_PRS_ACTORS_FILE`; beside the old name cache by default): `{ "version": 1, "actors": [{ "id": "actor:alice", "name": "Alice Smith", "logins": ["alice", "alice-work"] }] }`. A person's id is made once, from their first login, and kept however their logins change; it can never be a login (GitHub's have no `:`)
   - when `/view-prs/data` sees a login no one has, a person is added for it, named as the data names them, else as GitHub does (`gh api users/<login>`). A person already there is never changed, so a name set in Settings stays
+  - merging two people (one row given the other's login, the other row removed) records the removed one's id as moved to the one kept (`movedIds` in `actors.json`, `actorIdMoves` in `/view-prs/data`), so what was picked or kept under it - filters, saved views, rules, the change-detection lists check-open-pr-updates.sh reads, the Authors view's comments - becomes theirs; an id that's someone's again moves no longer
   - `GET /view-prs/actors` lists them and `PUT /view-prs/actors` (`{ actors: [...] }`) replaces them all. A save is refused when a login is in two people (ignoring case), when a person has no login, or when it would leave no one
   - edits stay on the page until `Save`; `Undo changes` puts back what's saved, and `Find` narrows the rows by name or login
   - while `actors.json` isn't valid JSON (a bad hand edit), no one is listed or added - the data still loads - and Settings › People says so; a save there keeps a copy of the old file beside it (`actors.json.unreadable-<time>`) before starting it again. A write that fails while adding people seen in the data doesn't fail the data read
   - a login the data spells in another case than a person's (`AHall` for `ahall`) counts as that person's
   - a save here, or someone new added, reaches open pages with their next poll: `actors.json` counts toward the data version, and `/view-prs/data-manifest` carries the names and logins (`actorMaps`) - before, they only changed with a reload
-  - the page still groups people by each person's main login (`actorsMap` and `actorLoginAliases` in `/view-prs/data` are worked out from the people)
+  - the page groups people by id (2026-11-09; until then by each person's main login): the author, assignee and approver filters, Review stats, the Authors view, the thread-resolution and change-detection lists, and saved views all pick a person by id, so renaming a person or changing their logins keeps what's picked. A login saved before ids is read as its person's id once the people load, and saved that way from then on; a saved view saved with logins is the one applied when its people are. `/view-prs/data` sends `actors` (each id and its logins) and `actorsMap` (each id's name, or the id when there's none - the page then shows the PR data's name, else the main login). Avatars, @-mentions and the conversations' checks (who started a thread, whether it waits on you) still compare GitHub's logins, the conversations with the login you're signed in as; elsewhere "you" is any of your logins
+  - the Authors view's comments are kept under the person's id (`check-open-pr-updates.author-comments.json`); comments kept under any of their logins before are theirs, and move to the id the next time any comment is saved
 - a row's Actions: `Ack` as a button, and in its More menu `Mark in review` / `Remove from in review`, `Flag` / `Remove flag` and `Update PR` (saved at once); whether a PR is in review or flagged shows as an icon in its Signals column
 - per-row Notes editor saved to `check-open-pr-updates.user-state.json` via `POST /view-prs/notes`
   - note `createdAt`/`updatedAt` values are normalized to UTC second precision (`YYYY-MM-DDTHH:mm:ssZ`) so persisted user-state remains schema-valid

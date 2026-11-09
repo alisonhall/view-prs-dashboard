@@ -1,38 +1,26 @@
 import type { PrEntry } from "../types/pr-data.ts";
-import type { ActorLoginAliases, NormalizeActorLogin } from "./pr-actor-identity.helpers.ts";
+import { buildActorIndex, type ActorIndex } from "./pr-actor-identity.helpers.ts";
 
-// The viewer's normalized login and the login-alias map for a data
-// payload (PrDataProvider). The login comes from the payload, else any
-// row's viewerLogin, else the page text.
+// For a data payload (PrDataProvider): the people, indexed (from its
+// `actors`), and the viewer's login - lower-cased, as GitHub's logins are
+// compared - from the payload, else any row's viewerLogin, else the page
+// text. The login stays a login: the viewer's key (their person's id) is
+// worked out from it where it's wanted (getEffectiveViewerKey).
 export interface PrViewerContextDeps {
-  normalizeActorLoginAliases?: (value: unknown) => ActorLoginAliases;
-  normalizeActorLogin?: NormalizeActorLogin;
   inferViewerLoginFromPage?: () => string;
 }
 
 export interface ViewerContextInput {
-  payload?: { actorLoginAliases?: unknown; viewerLogin?: string } | null;
+  payload?: { actors?: unknown; actorIdMoves?: unknown; viewerLogin?: string } | null;
   allEntries?: PrEntry[] | null;
 }
 
 export interface ViewerContext {
-  currentActorLoginAliases: ActorLoginAliases;
+  currentActorIndex: ActorIndex;
   currentViewerLogin: string;
 }
 
-const createPrViewerContextHelpers = ({
-  normalizeActorLoginAliases,
-  normalizeActorLogin,
-  inferViewerLoginFromPage,
-}: PrViewerContextDeps = {}) => {
-  const normalizeActorLoginAliasesSafe =
-    typeof normalizeActorLoginAliases === "function"
-      ? normalizeActorLoginAliases
-      : (value: unknown): ActorLoginAliases => (value && typeof value === "object" ? (value as ActorLoginAliases) : {});
-  const normalizeActorLoginSafe =
-    typeof normalizeActorLogin === "function"
-      ? normalizeActorLogin
-      : (value: unknown) => String(value || "").trim().toLowerCase();
+const createPrViewerContextHelpers = ({ inferViewerLoginFromPage }: PrViewerContextDeps = {}) => {
   const inferViewerLoginFromPageSafe =
     typeof inferViewerLoginFromPage === "function"
       ? inferViewerLoginFromPage
@@ -44,19 +32,11 @@ const createPrViewerContextHelpers = ({
       (entry) => entry?.data?.viewerLogin,
     )?.data?.viewerLogin;
 
-    const currentActorLoginAliases = normalizeActorLoginAliasesSafe(
-      payload?.actorLoginAliases || {},
-    );
-    const currentViewerLogin = normalizeActorLoginSafe(
-      payload?.viewerLogin ||
-        viewerLoginFromRows ||
-        inferViewerLoginFromPageSafe() ||
-        "",
-    );
-
     return {
-      currentActorLoginAliases,
-      currentViewerLogin,
+      currentActorIndex: buildActorIndex(payload?.actors, payload?.actorIdMoves),
+      currentViewerLogin: String(payload?.viewerLogin || viewerLoginFromRows || inferViewerLoginFromPageSafe() || "")
+        .trim()
+        .toLowerCase(),
     };
   };
 

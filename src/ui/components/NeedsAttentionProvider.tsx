@@ -64,6 +64,7 @@ export function NeedsAttentionProvider({ children }: { children?: ReactNode }) {
       asArray,
       isChangedStatus,
       getEffectiveViewerLogin,
+      normalizeActorLogin,
       collectAssignedUsers,
       collectRequestedReviewers,
       countPendingThreadComments,

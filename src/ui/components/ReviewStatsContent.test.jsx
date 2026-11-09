@@ -622,7 +622,7 @@ describe('ReviewStatsContent', () => {
         <TabStateContext.Provider value={{ activeDataTab: 'review-stats', setActiveDataTab: () => {} }}>
           <PrDataProvider initialPayload={{ byPrNumber: { 1: {} } }}>
             {/* Inside PrDataProvider, which provides its own. */}
-            <ActorIdentityContext.Provider value={{ ...defaultActorIdentity, getEffectiveViewerLogin: () => 'me' }}>
+            <ActorIdentityContext.Provider value={{ ...defaultActorIdentity, getEffectiveViewerLogin: () => 'me', getEffectiveViewerKey: () => 'me' }}>
               <ReviewStatsContext.Provider value={{ ...defaultReviewStats, ...buildReviewStatsOverrides(stats) }}>
                 <ReviewStatsContent />
               </ReviewStatsContext.Provider>
