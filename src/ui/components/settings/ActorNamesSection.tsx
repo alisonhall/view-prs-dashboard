@@ -71,9 +71,13 @@ export function ActorNamesSection() {
 
   return (
     <div className="settings-section">
-      <p className="subtle-copy">Manage display names and canonical login aliases used in UI rendering, filtering, insights, and stats.</p>
+      <p className="settings-hint">
+        The names shown for people, and the logins that are the same person - used in the table, the filters, Review stats and
+        Authors.
+      </p>
       <MappingRowsEditor
         heading="Display Name Mappings"
+        description="A GitHub login (or user ID), and the name to show for it instead."
         rows={nameCacheRows}
         setRows={setNameCacheRows}
         status={nameCacheStatus}
@@ -98,7 +102,7 @@ export function ActorNamesSection() {
 
       <MappingRowsEditor
         heading="Login Alias Mappings"
-        description="Use alias login to canonical login mappings when the same person appears under multiple GitHub identities."
+        description="For someone with more than one GitHub login: another of their logins, and the one to count it as, so their activity counts together."
         rows={aliasRows}
         setRows={setAliasRows}
         status={aliasStatus}

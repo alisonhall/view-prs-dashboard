@@ -1,4 +1,4 @@
-// The Settings drawer's fields bound to FilterStateContext keys
+// The drawers' fields bound to FilterStateContext keys
 // (UI_REDESIGN_PLAN.md, phase 9b). The script reads them when "Run script"
 // is clicked (useFormBody); FilterStateProvider saves them.
 
@@ -10,6 +10,8 @@ export interface SettingsTextField {
   type: 'text' | 'number';
   placeholder: string;
   defaultValue: string;
+  // What it does, under it (its description).
+  hint?: string;
 }
 
 export interface SettingsCheckboxField {
@@ -18,6 +20,8 @@ export interface SettingsCheckboxField {
   key: string;
   label: string;
   defaultValue: boolean;
+  // What it does, under it (its description).
+  hint?: string;
 }
 
 // Run & check: the PR numbers to run on. PrSelectionCell's row checkboxes
@@ -32,18 +36,76 @@ export const PR_NUMBERS_FIELD: SettingsTextField = {
   defaultValue: '',
 };
 
-// Script options: rarely changed.
+// Run & check's options for Run script: rarely changed.
 export const SCRIPT_TEXT_FIELDS: readonly SettingsTextField[] = [
-  { id: 'repo', name: 'repo', key: 'repo', label: 'Repo (owner/name)', type: 'text', placeholder: 'owner/repo', defaultValue: '' },
-  { id: 'limit', name: 'limit', key: 'limit', label: 'Open PR limit', type: 'number', placeholder: '200', defaultValue: '' },
-  { id: 'merged-limit', name: 'mergedLimit', key: 'mergedLimit', label: 'Merged PR limit', type: 'number', placeholder: '15', defaultValue: '' },
-  { id: 'jobs', name: 'jobs', key: 'jobs', label: 'Parallel jobs', type: 'number', placeholder: '6', defaultValue: '' },
+  {
+    id: 'repo',
+    name: 'repo',
+    key: 'repo',
+    label: 'Repo (owner/name)',
+    type: 'text',
+    placeholder: 'owner/repo',
+    defaultValue: '',
+    hint: "The repo Run script fetches PRs from. Empty: the server's VIEW_PRS_REPO.",
+  },
+  {
+    id: 'limit',
+    name: 'limit',
+    key: 'limit',
+    label: 'Open PR limit',
+    type: 'number',
+    placeholder: '200',
+    defaultValue: '',
+    hint: 'The most open PRs one run fetches. Empty: 200.',
+  },
+  {
+    id: 'merged-limit',
+    name: 'mergedLimit',
+    key: 'mergedLimit',
+    label: 'Merged PR limit',
+    type: 'number',
+    // Not a number: empty isn't a count, but the latest 7 days with any.
+    placeholder: 'Last 7 days',
+    defaultValue: '',
+    hint: 'How many of the latest merged PRs a run fetches, and how many closed ones. Empty: those merged (or closed) on the 7 most recent days that had any.',
+  },
+  {
+    id: 'jobs',
+    name: 'jobs',
+    key: 'jobs',
+    label: 'Parallel jobs',
+    type: 'number',
+    placeholder: '6',
+    defaultValue: '',
+    hint: "How many PRs' details are fetched at once. Empty: 6. More is faster, but more likely to meet GitHub's limit on requests at once.",
+  },
 ];
 
 export const SCRIPT_CHECKBOX_FIELDS: readonly SettingsCheckboxField[] = [
-  { id: 'ack-changed', name: 'ackChanged', key: 'ackChanged', label: 'Ack all CHANGED non-draft PRs from this run', defaultValue: false },
-  { id: 'show-reason', name: 'showReason', key: 'showReason', label: 'Show CHANGED reason in status', defaultValue: true },
-  { id: 'quiet', name: 'quiet', key: 'quiet', label: 'Quiet mode (hide run metadata header)', defaultValue: false },
+  {
+    id: 'ack-changed',
+    name: 'ackChanged',
+    key: 'ackChanged',
+    label: 'Ack all CHANGED non-draft PRs from this run',
+    defaultValue: false,
+    hint: 'After the run, acks each open, non-draft PR it found CHANGED, as its Ack button would: it goes back to NO_CHANGE until there is new activity.',
+  },
+  {
+    id: 'show-reason',
+    name: 'showReason',
+    key: 'showReason',
+    label: 'Show CHANGED reason in status',
+    defaultValue: true,
+    hint: "In the run's output (Latest request output), what changed is shown beside each CHANGED status, as in CHANGED(commit).",
+  },
+  {
+    id: 'quiet',
+    name: 'quiet',
+    key: 'quiet',
+    label: 'Quiet mode (hide run metadata header)',
+    defaultValue: false,
+    hint: "Leaves the summary of the run's options (repo, limits, open mode) out of the top of its output.",
+  },
 ];
 
 // Attention rules: which PRs count as needing attention.
@@ -54,6 +116,7 @@ export const ATTENTION_CHECKBOX_FIELDS: readonly SettingsCheckboxField[] = [
     key: 'attentionIncludePendingComments',
     label: 'Mark PRs with my pending (unsubmitted) comments',
     defaultValue: true,
+    hint: "A PR where you've started a review and left comments you haven't submitted yet.",
   },
   {
     id: 'attention-ignore-merge-only-commits',
@@ -61,6 +124,7 @@ export const ATTENTION_CHECKBOX_FIELDS: readonly SettingsCheckboxField[] = [
     key: 'attentionIgnoreMergeOnlyCommits',
     label: 'Exclude merge-only commit activity from CHANGED attention',
     defaultValue: false,
+    hint: "A PR CHANGED only by commits, every one of them a merge commit (Settings › Merge commits), doesn't need attention.",
   },
   {
     id: 'attention-include-closed-merged',
@@ -68,6 +132,7 @@ export const ATTENTION_CHECKBOX_FIELDS: readonly SettingsCheckboxField[] = [
     key: 'attentionIncludeClosedMerged',
     label: 'Include closed/merged sections in attention logic',
     defaultValue: true,
+    hint: 'Merged and closed PRs can need attention too, when CHANGED or NO_ACTIVITY, by the same rules as open ones.',
   },
   {
     id: 'attention-include-draft-changed',
@@ -75,6 +140,7 @@ export const ATTENTION_CHECKBOX_FIELDS: readonly SettingsCheckboxField[] = [
     key: 'attentionIncludeDraftChanged',
     label: 'Mark CHANGED draft PRs as attention',
     defaultValue: true,
+    hint: 'Draft PRs need attention when CHANGED, as open ones do.',
   },
   {
     id: 'attention-include-draft-no-activity',
@@ -82,6 +148,7 @@ export const ATTENTION_CHECKBOX_FIELDS: readonly SettingsCheckboxField[] = [
     key: 'attentionIncludeDraftNoActivity',
     label: 'Apply NO_ACTIVITY attention rules to draft PRs',
     defaultValue: false,
+    hint: 'Draft PRs need attention when NO_ACTIVITY, as NO_ACTIVITY handling says.',
   },
 ];
 

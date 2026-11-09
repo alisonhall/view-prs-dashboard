@@ -13,7 +13,8 @@ export function MergeCommitsSection() {
         <p className="subtle-copy" id="merge-commit-rules-help">
           🔀 A commit counts as a merge when its headline matches one of the patterns, or when every one of its authors is in the logins
           list (e.g. bots). Merge commits don&apos;t mark a PR CHANGED, aren&apos;t listed in the Author column, and are what &quot;Exclude
-          merge-only commit activity&quot; leaves out. Default pattern: <code>^Merge\b</code>.
+          merge-only commit activity&quot; leaves out. Default pattern: <code>^Merge\b</code>. The Author column and Needs Attention
+          follow a change at once; CHANGED follows it as each PR is next fetched.
         </p>
         <div className="settings-field">
           <label htmlFor="merge-commit-headline-patterns">Headline patterns (regular expressions, one per line, not case-sensitive)</label>

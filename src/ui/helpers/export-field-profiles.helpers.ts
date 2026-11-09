@@ -1,7 +1,7 @@
 import { readSavedItems, type SavedItem } from "./saved-items.helpers.ts";
 
 // Export profiles: named sets of Export's chosen fields, one click each in
-// Settings › Export. Kept in user-defaults.json (the UI option overrides)
+// Tools › Export. Kept in user-defaults.json (the UI option overrides)
 // under EXPORT_FIELD_PROFILES_KEY, so every browser has them.
 
 export const EXPORT_FIELD_PROFILES_KEY = "exportFieldProfiles";

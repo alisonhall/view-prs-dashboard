@@ -1,4 +1,4 @@
-// Export's field catalog as nested lists (Settings › Export): the dotted
+// Export's field catalog as nested lists (Tools › Export): the dotted
 // paths getFieldCatalog gives ("data.reviews", "notesByPrNumber.stories")
 // grouped by the objects they're in, so a whole group can be chosen at
 // once.

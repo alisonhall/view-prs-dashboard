@@ -23,7 +23,7 @@ import { useHeaderPopover } from './useHeaderPopover';
 const ACTIVITY_TICK_MS = 5000;
 
 const PRIORITY_HINT =
-  'Priority decides which goes first when several are due at once (quick check 5, auto refresh 3, merged/closed drain 1, plus the repo\'s boost in Settings › Background updates).';
+  'Priority decides which goes first when several are due at once (quick check 5, full refresh 3, merged/closed drain 1, plus the repo\'s boost in Settings › Background updates).';
 // What a long-running request's colour says, as its tooltip and for
 // screen readers.
 const SEVERITY_TEXT: Record<string, string | undefined> = {
@@ -256,7 +256,7 @@ function ActivityContent({ onOpenActionLog }: { onOpenActionLog: (focus?: { kind
  *   with Run now), Quick check waiting on a refresh, and what's queued for
  *   the drain.
  * - Just finished: background jobs and your requests, newest first, with
- *   the error when a job failed; the full history is Settings › Action log.
+ *   the error when a job failed; the full history is Tools › Action log.
  *
  * The button counts what's running or queued, and turns red with a
  * problem. A header popover (useHeaderPopover), which its close button

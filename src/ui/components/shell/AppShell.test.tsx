@@ -24,6 +24,7 @@ function mockStandIn(name: string) {
 jest.mock('../PrTableApp', () => ({ PrTableApp: mockStandIn('pr-table') }));
 jest.mock('../filter-bar/DataViewHeader', () => ({ DataViewHeader: mockStandIn('data-view-header') }));
 jest.mock('../settings/SettingsDrawer', () => ({ SettingsDrawer: mockStandIn('settings-drawer') }));
+jest.mock('../settings/ToolsDrawer', () => ({ ToolsDrawer: mockStandIn('tools-drawer') }));
 jest.mock('../ReviewStatsControls', () => ({ ReviewStatsControls: mockStandIn('stats-controls') }));
 jest.mock('../ReviewStatsContent', () => ({ ReviewStatsContent: mockStandIn('stats-content') }));
 jest.mock('../AuthorInsightsSelector', () => ({ AuthorInsightsSelector: mockStandIn('author-selector') }));
@@ -58,11 +59,12 @@ beforeEach(() => {
   mockFailing.clear();
 });
 
-test('renders the page: the header, the three views labelled by their tabs, and the Settings drawer', async () => {
+test('renders the page: the header, the three views labelled by their tabs, and the Tools and Settings drawers', async () => {
   const user = userEvent.setup();
   renderShell();
   expect(screen.getByRole('banner')).toBeInTheDocument();
   expect(panel('Pull requests')).toContainElement(document.getElementById('pr-sections'));
+  expect(screen.getByTestId('tools-drawer')).toBeInTheDocument();
   expect(screen.getByTestId('settings-drawer')).toBeInTheDocument();
   // The lazy views are empty until first shown.
   expect(panel('Review stats')).toBeEmptyDOMElement();
@@ -125,17 +127,17 @@ test('mounts Review stats and Authors the first time each is shown, and keeps th
 
 const renderCount = (name: string) => mockMounts.filter((mounted) => mounted === name).length;
 
-test('switching tabs re-renders only the panels, not the table, the data header or the drawer', async () => {
+test('switching tabs re-renders only the panels, not the table, the data header or the drawers', async () => {
   const user = userEvent.setup();
   renderShell();
   await user.click(screen.getByRole('tab', { name: 'Review stats' }));
   await screen.findByTestId('stats-content');
-  const before = ['pr-table', 'data-view-header', 'settings-drawer', 'stats-content'].map(renderCount);
+  const before = ['pr-table', 'data-view-header', 'tools-drawer', 'settings-drawer', 'stats-content'].map(renderCount);
 
   await user.click(screen.getByRole('tab', { name: 'Pull requests' }));
   await user.click(screen.getByRole('tab', { name: 'Review stats' }));
 
-  expect(['pr-table', 'data-view-header', 'settings-drawer', 'stats-content'].map(renderCount)).toEqual(before);
+  expect(['pr-table', 'data-view-header', 'tools-drawer', 'settings-drawer', 'stats-content'].map(renderCount)).toEqual(before);
 });
 
 test('a view that throws shows a notice in its place; the header and the other views carry on', async () => {

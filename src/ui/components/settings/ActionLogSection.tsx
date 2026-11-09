@@ -27,7 +27,7 @@ const formatDuration = (ms: number | null) => {
 const OUTCOME_TEXT = { ok: 'OK', failed: 'Failed', skipped: 'Skipped' } as const;
 
 /**
- * The Settings drawer's "Action log" (UI_REDESIGN_PLAN.md, phase 9b): the
+ * The Tools drawer's "Action log" (UI_REDESIGN_PLAN.md, phase 9b): the
  * server's log, newest first - what you did (runs, acks, backfills...)
  * and the background runs (quick checks, refreshes, the drain, and the
  * skips that kept one from happening). One line each - when, what, who,
@@ -173,6 +173,10 @@ export function ActionLogSection() {
   return (
     <div className="settings-section">
       <div className="settings-group">
+        <p className="settings-hint">
+          What you did, and what the server did in the background - each quick check, full refresh, update and drain - newest
+          first. Open an entry for its details.
+        </p>
         <div className="settings-actions action-log-filters">
           <Button icon="refresh" disabled={state.status === 'loading'} onClick={() => load()}>
             {state.status === 'loading' && rows.length > 0 ? 'Loading...' : 'Refresh'}

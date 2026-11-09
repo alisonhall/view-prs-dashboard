@@ -386,7 +386,7 @@ function FilterStateTestHandle() {
 // The suite's single persistent root: the real Providers, nested as
 // react-app.tsx nests them, around the real <AppShell /> (the whole page),
 // rendered into index.html's #app-root. The differences from production:
-// the Settings drawer starts open (most tests drive its fields), the test
+// the Tools drawer starts open at Run & check (most tests drive its fields), the test
 // handles below capture Context values for the helpers above, and
 // TabStateProvider, OutputTextProvider, RepoLabelsProvider and
 // JobEventsProvider are left out (their inert defaults are enough here; the
@@ -480,8 +480,8 @@ const installFilterStateProviderBridge = () => {
   );
 };
 
-// UI redesign phase 9b: the run buttons, the PR numbers, the rules, the
-// Script options and Backfill are the real Settings drawer's, open at Run &
+// UI redesign phase 9b: the run buttons, the PR numbers, the script
+// options and Backfill are the real Tools drawer's, open at Run &
 // check (closed in production). showSettingsSectionForTest switches its
 // section.
 function SettingsDrawerTestHandle() {
@@ -1880,7 +1880,7 @@ describe("index page rendering with Testing Library", () => {
     expect(screen.getByRole("tabpanel", { name: "Backfill" })).toBeVisible();
 
     // The backfill badges themselves are React-owned (#backfill-badges,
-    // rendered by the Settings drawer's BackfillSection) and no longer have a vanilla-DOM fallback
+    // rendered by the Tools drawer's BackfillSection) and no longer have a vanilla-DOM fallback
     // to assert against in this jsdom-only suite (which never loads
     // react-app.tsx) - see the "React-owned Backfill status badges..." e2e
     // test for that coverage. This waitFor still gates on the same async

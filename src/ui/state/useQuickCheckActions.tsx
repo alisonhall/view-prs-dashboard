@@ -33,7 +33,7 @@ export interface QuickCheckActions {
 }
 
 /**
- * The quick check buttons' actions, all in Settings › Run & check
+ * The quick check buttons' actions, all in Tools › Run & check
  * (QuickCheckButton): "Quick check", "Quick check open and latest merged"
  * and "Quick check all". Builds createPrQuickCheckActionsHelpers with the form body, the newest
  * stored payload (PrDataProvider's), the per-PR busy markers

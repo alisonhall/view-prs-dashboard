@@ -61,9 +61,9 @@ describe('Settings › Background updates', () => {
     expect(field('acme/api', 'Priority boost')).toHaveValue('');
     expect(field('acme/api', 'Priority boost')).toHaveAttribute('placeholder', '0');
     expect(field('acme/api', 'Quick check every')).toHaveAttribute('placeholder', '5');
-    expect(field('acme/api', 'Auto refresh every')).toHaveAttribute('placeholder', '15');
+    expect(field('acme/api', 'Full refresh every')).toHaveAttribute('placeholder', '15');
     expect(field('acme/api', 'Merged/closed drain every')).toHaveAttribute('placeholder', '30');
-    expect(within(repoGroup('acme/api')).getByText(/Priorities: Quick check 5, Auto refresh 3, Merged\/closed drain 1/)).toBeInTheDocument();
+    expect(within(repoGroup('acme/api')).getByText(/Priorities: Quick check 5, Full refresh 3, Merged\/closed drain 1/)).toBeInTheDocument();
     expect(within(repoGroup('acme/api')).getByRole('button', { name: 'Restore defaults for acme/api' })).toBeDisabled();
   });
 
@@ -77,9 +77,9 @@ describe('Settings › Background updates', () => {
     render(<BackgroundUpdatesSection />);
     await waitFor(() => expect(field('acme/web', 'Priority boost')).toHaveValue('2'));
     expect(field('acme/web', 'Quick check every')).toHaveValue('1.5');
-    expect(within(repoGroup('acme/web')).getByText(/Priorities with the boost: Quick check 7, Auto refresh 5, Merged\/closed drain 3/)).toBeInTheDocument();
+    expect(within(repoGroup('acme/web')).getByText(/Priorities with the boost: Quick check 7, Full refresh 5, Merged\/closed drain 3/)).toBeInTheDocument();
     expect(repoGroup('acme/old')).toHaveTextContent('not checked now');
-    expect(field('acme/old', 'Auto refresh every')).toHaveValue('10');
+    expect(field('acme/old', 'Full refresh every')).toHaveValue('10');
   });
 
   test('a valid change is saved on leaving the field, in milliseconds, keeping the other settings', async () => {
@@ -97,7 +97,7 @@ describe('Settings › Background updates', () => {
         schedulerRepoConfig: { 'acme/api': { quickCheckIntervalMs: 120000, priority: -1 } },
       }),
     );
-    expect(within(repoGroup('acme/api')).getByText(/Quick check 4, Auto refresh 2, Merged\/closed drain 0/)).toBeInTheDocument();
+    expect(within(repoGroup('acme/api')).getByText(/Quick check 4, Full refresh 2, Merged\/closed drain 0/)).toBeInTheDocument();
   });
 
   describe('while typing', () => {
@@ -111,7 +111,7 @@ describe('Settings › Background updates', () => {
       await screen.findByRole('group', { name: /^acme\/api/ });
 
       // "1" on the way to "15" would be a 1-minute auto refresh.
-      await user.type(field('acme/api', 'Auto refresh every'), '15');
+      await user.type(field('acme/api', 'Full refresh every'), '15');
       await act(() => jest.advanceTimersByTimeAsync(SAVE_DELAY_MS - 1));
       expect(puts).toEqual([]);
 
@@ -173,7 +173,7 @@ describe('Settings › Background updates', () => {
       expect(field('acme/api', name)).toHaveAccessibleDescription("Saved outside this form's range; it still applies.");
     }
     expect(field('acme/api', 'Quick check every')).toHaveValue('0.5');
-    expect(within(repoGroup('acme/api')).getByText(/Quick check 30, Auto refresh 28, Merged\/closed drain 26/)).toBeInTheDocument();
+    expect(within(repoGroup('acme/api')).getByText(/Quick check 30, Full refresh 28, Merged\/closed drain 26/)).toBeInTheDocument();
   });
 
   test('repos whose names differ only in punctuation get their own fields', async () => {

@@ -1,6 +1,6 @@
 import type { PostJsonResult } from "./pr-http.helpers.ts";
 
-// The "Trigger auto run" button's request (useTriggerAutoRun): POSTs
+// The "Full refresh now" button's request (useTriggerAutoRun): POSTs
 // /view-prs/run-auto and reports a conflict (409, already running) or a
 // failure through the injected notifiers.
 interface RunAutoResult {

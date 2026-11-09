@@ -81,20 +81,41 @@ const pickAuthor = async (page, name) => {
 };
 // The filter bar's chips, one per applied filter (a group only while any is).
 const filterChips = (page) => filterBar(page).getByRole("group", { name: "Applied table filters", exact: true });
-// The Settings drawer (a modal dialog, opened from the app header).
+// The header's two drawers (modal dialogs): Tools, for things to do, and
+// Settings, for choices kept.
 const settingsDrawer = (page) => page.getByRole("dialog", { name: "Settings", exact: true });
-// Opens it (if it isn't) at a section (its nav tab's name, e.g. "Run & check") and
-// returns it. It covers the page: close it before using the table.
+const toolsDrawer = (page) => page.getByRole("dialog", { name: "Tools", exact: true });
+const TOOLS_SECTIONS = ["Run & check", "Backfill", "Export", "Action log"];
+// Opens the drawer a section is in (if it isn't open) at that section (its
+// nav tab's name, e.g. "Run & check") and returns it; "Script options"
+// opens Run & check with its "Options for Run script" unfolded. It covers
+// the page: close it before using the table.
 const openSettings = async (page, section = "Run & check") => {
-  if (!(await settingsDrawer(page).isVisible())) {
-    await page.getByRole("banner").getByRole("button", { name: "Settings", exact: true }).click();
+  if (section === "Script options") {
+    const drawer = await openSettings(page, "Run & check");
+    const options = drawer.locator("details", { has: page.getByText("Options for Run script", { exact: true }) });
+    if (!(await options.evaluate((element) => element.open))) {
+      await options.getByText("Options for Run script", { exact: true }).click();
+    }
+    return drawer;
   }
-  await settingsDrawer(page).getByRole("tab", { name: section, exact: true }).click();
-  return settingsDrawer(page);
+  const isTools = TOOLS_SECTIONS.includes(section);
+  const drawer = isTools ? toolsDrawer(page) : settingsDrawer(page);
+  if (!(await drawer.isVisible())) {
+    const other = isTools ? settingsDrawer(page) : toolsDrawer(page);
+    if (await other.isVisible()) {
+      await other.getByRole("button", { name: /^Close (settings|tools)$/ }).click();
+    }
+    await page.getByRole("banner").getByRole("button", { name: isTools ? "Tools" : "Settings", exact: true }).click();
+  }
+  await drawer.getByRole("tab", { name: section, exact: true }).click();
+  return drawer;
 };
+// Closes whichever drawer is open.
 const closeSettings = async (page) => {
-  await settingsDrawer(page).getByRole("button", { name: "Close settings", exact: true }).click();
-  await expect(settingsDrawer(page)).toHaveCount(0);
+  const drawer = (await toolsDrawer(page).isVisible()) ? toolsDrawer(page) : settingsDrawer(page);
+  await drawer.getByRole("button", { name: /^Close (settings|tools)$/ }).click();
+  await expect(drawer).toHaveCount(0);
 };
 // A PR section (a <details> named by its title, e.g. "Open PRs").
 const prSection = (page, title) =>
@@ -298,7 +319,7 @@ test.beforeEach(async ({ page }) => {
   await mockRepoLabelsRoute(page);
 });
 
-test("the app header names the repo, switches views and says when the data was updated (the quick checks are in Settings)", async ({ page }) => {
+test("the app header names the repo, switches views and says when the data was updated (the quick checks are in Tools)", async ({ page }) => {
   const { consoleErrors } = collectPageErrors(page);
   await page.goto("/");
   await waitForPrTable(page);
@@ -325,9 +346,9 @@ test("the app header names the repo, switches views and says when the data was u
 test("at phone width the Settings sections are one row that scrolls sideways, leaving the drawer to the section", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 700 });
   await page.goto("/");
-  await openSettings(page);
+  await openSettings(page, "Sources");
   const nav = settingsDrawer(page).getByRole("tablist", { name: "Settings sections", exact: true });
-  const firstTab = nav.getByRole("tab", { name: "Run & check", exact: true });
+  const firstTab = nav.getByRole("tab", { name: "Sources", exact: true });
   const lastTab = nav.getByRole("tab", { name: "Appearance", exact: true });
 
   // One row: the nav is about one tab high (stacked, they took over 300px).
@@ -417,24 +438,45 @@ test("tabbing out of the activity popover closes it, so Settings opens alone and
   await expect(settingsButton).toBeFocused();
 });
 
-test("the Settings drawer opens from the header, switches sections, and closes with Esc back to its button", async ({ page }) => {
+test("the Tools and Settings drawers open from the header, switch sections, and close with Esc back to their buttons", async ({ page }) => {
   const { consoleErrors } = collectPageErrors(page);
   await page.goto("/");
   await waitForPrTable(page);
 
+  // Tools: things to do, starting at Run & check, with Run script's options folded.
+  const toolsButton = page.getByRole("banner").getByRole("button", { name: "Tools", exact: true });
+  await toolsButton.click();
+  const tools = toolsDrawer(page);
+  await expect(tools).toBeVisible();
+  await expect(tools.getByRole("tab", { name: "Run & check", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(tools.getByRole("button", { name: "Run script", exact: true })).toBeVisible();
+  await expect(tools.getByRole("region", { name: "Status message", exact: true })).toBeVisible();
+  await expect(tools.getByLabel("Repo (owner/name)", { exact: true })).toBeHidden();
+  await tools.getByText("Options for Run script", { exact: true }).click();
+  await expect(tools.getByLabel("Repo (owner/name)", { exact: true })).toBeVisible();
+  await expect(tools.getByText("The repo Run script fetches PRs from.", { exact: false })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(tools).toHaveCount(0);
+  await expect(toolsButton).toBeFocused();
+
+  // Settings: choices kept, starting at Sources, its sections grouped.
   const settingsButton = page.getByRole("banner").getByRole("button", { name: "Settings", exact: true });
   await settingsButton.click();
   const drawer = settingsDrawer(page);
   await expect(drawer).toBeVisible();
-  await expect(drawer.getByRole("tab", { name: "Run & check", exact: true })).toHaveAttribute("aria-selected", "true");
-  await expect(drawer.getByRole("button", { name: "Run script", exact: true })).toBeVisible();
-  await expect(drawer.getByRole("region", { name: "Status message", exact: true })).toBeVisible();
+  await expect(drawer.getByRole("tab", { name: "Sources", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(drawer.getByText("Rules", { exact: true })).toBeVisible();
+  await expect(drawer.getByRole("tab", { name: "Run & check" })).toHaveCount(0);
 
-  // ↓ moves to the next section; End to the last.
-  await drawer.getByRole("tab", { name: "Run & check", exact: true }).focus();
+  // ↓ moves to the next section, past a group heading; End to the last.
+  await drawer.getByRole("tab", { name: "Background updates", exact: true }).click();
   await page.keyboard.press("ArrowDown");
   await expect(drawer.getByRole("tab", { name: "Attention rules", exact: true })).toHaveAttribute("aria-selected", "true");
-  await expect(drawer.getByLabel("NO_ACTIVITY handling", { exact: true })).toBeVisible();
+  // Each option says what it does, as its description.
+  await expect(drawer.getByLabel("NO_ACTIVITY handling", { exact: true })).toHaveAccessibleDescription(/no activity on yet/);
+  await expect(drawer.getByLabel("Mark CHANGED draft PRs as attention", { exact: true })).toHaveAccessibleDescription(
+    "Draft PRs need attention when CHANGED, as open ones do.",
+  );
   await page.keyboard.press("End");
   await expect(drawer.getByRole("tab", { name: "Appearance", exact: true })).toHaveAttribute("aria-selected", "true");
   await expect(drawer.getByRole("group", { name: "Theme", exact: true })).toBeVisible();
@@ -787,21 +829,21 @@ test("Settings › Background updates: a repo's check interval and priority boos
 
     await group.getByRole("textbox", { name: "Quick check every", exact: true }).fill("2");
     await group.getByRole("textbox", { name: "Priority boost", exact: true }).fill("3");
-    await expect(group).toContainText("Priorities with the boost: Quick check 8, Auto refresh 6, Merged/closed drain 4");
+    await expect(group).toContainText("Priorities with the boost: Quick check 8, Full refresh 6, Merged/closed drain 4");
     await expect
       .poll(async () => (await (await page.request.get("/view-prs/user-defaults")).json()).overrides?.schedulerRepoConfig)
       .toEqual({ [repo]: { quickCheckIntervalMs: 120000, priority: 3 } });
 
     // A value that would be rejected is flagged, and not saved.
-    await group.getByRole("textbox", { name: "Auto refresh every", exact: true }).fill("0");
-    await expect(group.getByRole("textbox", { name: "Auto refresh every", exact: true })).toHaveAttribute("aria-invalid", "true");
+    await group.getByRole("textbox", { name: "Full refresh every", exact: true }).fill("0");
+    await expect(group.getByRole("textbox", { name: "Full refresh every", exact: true })).toHaveAttribute("aria-invalid", "true");
     await expect(group).toContainText("At least 1 minute.");
 
     await page.reload();
     const reopened = await openSettings(page, "Background updates");
     const reopenedGroup = reopened.getByRole("group", { name: new RegExp(`^${repo.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`) });
     await expect(reopenedGroup.getByRole("textbox", { name: "Quick check every", exact: true })).toHaveValue("2");
-    await expect(reopenedGroup.getByRole("textbox", { name: "Auto refresh every", exact: true })).toHaveValue("");
+    await expect(reopenedGroup.getByRole("textbox", { name: "Full refresh every", exact: true })).toHaveValue("");
 
     await reopenedGroup.getByRole("button", { name: `Restore defaults for ${repo}`, exact: true }).click();
     await expect
@@ -1466,8 +1508,7 @@ test("Settings › Sources offers fetching older merged PRs beside a repo follow
   await waitForPrTable(page);
   await expect(page.getByRole("button", { name: "Request more", exact: true })).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await page.getByRole("tab", { name: "Sources" }).click();
+  await openSettings(page, "Sources");
   const panel = page.getByRole("tabpanel", { name: "Sources" });
   await expect(panel.getByRole("button", { name: "Fetch older merged PRs" }).first()).toBeVisible();
 });
@@ -1723,7 +1764,7 @@ test("clicking an 'Auto update paused' chip for a PR switches back to the PR dat
 
 test("bulk Ack/Apply-label from Settings (Run & check) shows a busy indicator on every affected row", async ({ page }) => {
   // Regression test for a real UX gap: pr-ack-label-actions.helpers.ts's
-  // runAckAction (bulk operations submitted via Settings' Run & check
+  // runAckAction (bulk operations submitted via Tools' Run & check
   // "#pr-numbers" field, as opposed to a single row's own Ack button)
   // previously gave no visible per-row feedback at all while a multi-PR
   // request was in flight - only the single-row withPrBusy wrapper in
@@ -3842,7 +3883,7 @@ test("typing an unsaved Author Insights comment draft holds back a real data pol
 });
 
 test("React-owned Backfill status badges render and survive a status refresh", async ({ page }) => {
-  // Settings › Backfill's status badges (BackfillBadges). Only exercises
+  // Tools › Backfill's status badges (BackfillBadges). Only exercises
   // the read-only status GET (opening the section and "Refresh status"
   // both just reload status - this test never starts or stops the actual
   // backfill process).
@@ -3863,10 +3904,10 @@ test("React-owned Backfill status badges render and survive a status refresh", a
   await expect(badges.first()).toHaveText(/Backfill: (running|stopped)/);
 });
 
-test("Settings › Backfill's details and log text replace their loading placeholders from BackfillStatusProvider's state", async ({ page }) => {
+test("Tools › Backfill's details and log text replace their loading placeholders from BackfillStatusProvider's state", async ({ page }) => {
   // Window-bridge elimination Phase 4 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
   // the badges, details text and log text live in <BackfillStatusProvider />,
-  // which the Settings drawer's Backfill section reads via Context. jsdom
+  // which the Tools drawer's Backfill section reads via Context. jsdom
   // covers the Provider
   // and each consumer separately; this proves the real wired path, from a
   // real status GET through the Provider's state into the real DOM. Only the
@@ -3883,7 +3924,7 @@ test("Settings › Backfill's details and log text replace their loading placeho
   await expect(page.getByRole("button", { name: "Refresh log", exact: true, includeHidden: true })).toBeEnabled();
 });
 
-test("opening Settings › Backfill and leaving it idle does not trigger a status/log refetch loop", async ({ page }) => {
+test("opening Tools › Backfill and leaving it idle does not trigger a status/log refetch loop", async ({ page }) => {
   // useBackfillAutoRefresh lists useBackfillActions()'s
   // triggerBackfillTabLoad as an effect dependency and re-fetches whenever
   // that function's identity changes while the section is showing - and each
@@ -3912,7 +3953,7 @@ test("opening Settings › Backfill and leaving it idle does not trigger a statu
   expect(counts.log).toBeLessThanOrEqual(5);
 });
 
-test("Settings › Action log loads its entries on its very first opening, not just on a second one", async ({ page }) => {
+test("Tools › Action log loads its entries on its very first opening, not just on a second one", async ({ page }) => {
   // Deferred-items follow-up, item 5 (see REACT_MIGRATION_PLAN.md):
   // ActionLogSection is lazy-loaded, mounting only once its section is
   // first opened - pr-management-tabs.helpers.js's tab-click handler
@@ -3940,7 +3981,7 @@ test("Settings › Action log loads its entries on its very first opening, not j
   expect(response.ok()).toBe(true);
 });
 
-test("Settings › Action log lists background runs and your actions one line each, filtered, with the rest folded", async ({ page }) => {
+test("Tools › Action log lists background runs and your actions one line each, filtered, with the rest folded", async ({ page }) => {
   const minutesAgo = (minutes) => new Date(Date.now() - minutes * 60_000).toISOString();
   await page.route("**/view-prs/action-log", (route) =>
     route.fulfill({
@@ -4121,7 +4162,7 @@ test("Settings › Actor names loads its mappings on its very first opening, not
   expect(aliasResponse.ok()).toBe(true);
 });
 
-test("Settings › Export's field catalog and Preview JSON produce a real export payload from real page data", async ({ page }) => {
+test("Tools › Export's field catalog and Preview JSON produce a real export payload from real page data", async ({ page }) => {
   // Phase 7 (see REACT_MIGRATION_PLAN.md): getExportFieldCatalog/
   // getVisiblePrNumbersFromSectionsHost/buildExportPayload used to be
   // exposed on window by index.page.js - ExportSection.tsx now builds and
@@ -4187,7 +4228,7 @@ test("an export profile picks its fields in one click, and is kept in user-defau
     await exportPanel.getByRole("button", { name: "Save as profile", exact: true }).click();
     await exportPanel.getByRole("textbox", { name: "Name for the new profile" }).press("Escape");
     await expect(exportPanel.getByRole("button", { name: "Save as profile", exact: true })).toBeFocused();
-    await expect(settingsDrawer(page)).toBeVisible();
+    await expect(toolsDrawer(page)).toBeVisible();
     const saved = page.waitForResponse((response) => response.url().includes("/view-prs/user-defaults") && response.request().method() === "PUT");
     await exportPanel.getByRole("button", { name: "Save as profile", exact: true }).click();
     await exportPanel.getByRole("textbox", { name: "Name for the new profile" }).fill("Numbers");
@@ -4319,9 +4360,9 @@ test("the activity popover opens, connects over real SSE (not the jsdom-faked Ev
   // localhost:9000 - never previously exercised for a streaming response
   // in this suite, only ordinary fetch/JSON routes).
   //
-  // Placed deliberately BEFORE "Trigger auto run and Quick check..." below:
+  // Placed deliberately BEFORE "Full refresh now and Quick check..." below:
   // every test in this suite shares one long-lived server process
-  // (playwright.config.js), and that test's own "Trigger auto run" click
+  // (playwright.config.js), and that test's own "Full refresh now" click
   // starts a real auto-refresh that - with no real GitHub network/auth in
   // whatever environment runs this suite - can stay "in progress" for a
   // long time afterward (the button itself only waits for the fire-and-
@@ -4362,7 +4403,7 @@ test("the activity popover opens, connects over real SSE (not the jsdom-faked Ev
 });
 
 test("a Quick check pushes a real 'running' state into the open activity popover over SSE, not a poll", async ({ page }) => {
-  // Also placed before "Trigger auto run and Quick check..." below, for
+  // Also placed before "Full refresh now and Quick check..." below, for
   // the same shared-server reason as the test above - this one would
   // otherwise see quickCheck immediately skipped (isAutoRunInProgress
   // already true from that other test), never reaching "Running" at all.
@@ -4384,7 +4425,7 @@ test("a Quick check pushes a real 'running' state into the open activity popover
 
   // Starts it as Run & check's Quick check button does (the same POST, an
   // empty PR-numbers field sending {}), with the popover kept open: a click
-  // on the button would close it. "Trigger auto run and Quick check
+  // on the button would close it. "Full refresh now and Quick check
   // buttons..." below covers the button itself.
   // Not awaited: the check can run a long time here (see above).
   await page.evaluate(() => {
@@ -4397,7 +4438,7 @@ test("a Quick check pushes a real 'running' state into the open activity popover
   });
 });
 
-test("Trigger auto run and Quick check buttons click, show a transient state, and settle back to enabled", async ({ page }) => {
+test("Full refresh now and Quick check buttons click, show a transient state, and settle back to enabled", async ({ page }) => {
   // Deferred-items follow-up (full vanilla-to-React sweep, see
   // REACT_MIGRATION_PLAN.md): both buttons are now React-owned
   // (TriggerAutoRunButton.jsx/QuickCheckButton.jsx), replacing
@@ -4408,9 +4449,9 @@ test("Trigger auto run and Quick check buttons click, show a transient state, an
 
   await openSettings(page, "Run & check");
   const triggerBtn = page.getByTestId("trigger-auto-run-button");
-  await expect(triggerBtn).toHaveText("Trigger auto run");
+  await expect(triggerBtn).toHaveText("Full refresh now");
   await triggerBtn.click();
-  await expect(triggerBtn).toHaveText("Trigger auto run", { timeout: 5000 });
+  await expect(triggerBtn).toHaveText("Full refresh now", { timeout: 5000 });
   await expect(triggerBtn).toBeEnabled();
 
   const quickCheckBtn = page.getByTestId("quick-check-button");

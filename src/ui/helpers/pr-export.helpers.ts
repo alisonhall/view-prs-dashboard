@@ -3,7 +3,7 @@ import type { PerPrUserState, UserStatePayload } from "./pr-per-pr-user-state.he
 import { asArray } from "./pr-as-array.helpers.ts";
 import { findPrEntry } from "./pr-entry-keys.helpers.ts";
 
-// Settings › Export's "Export Visible PR JSON": the field catalog (every
+// Tools › Export's "Export Visible PR JSON": the field catalog (every
 // dotted leaf path in the PR data and user state), which PRs are visible,
 // and the export payload holding only the selected fields of each.
 

@@ -7,7 +7,7 @@ import { RowFilterSelectionProvider } from '../../state/RowFilterSelectionProvid
 import { AuthorThreadResolutionSelectionProvider } from '../../state/AuthorThreadResolutionSelectionProvider';
 import { ChangeFilterActorSelectionProvider } from '../../state/ChangeFilterActorSelectionProvider';
 import { useFilterState } from '../../state/FilterStateContext';
-import { ScriptOptionsSection } from './ScriptOptionsSection';
+import { ScriptOptions } from './ScriptOptions';
 
 let values: Record<string, unknown> = {};
 function Probe() {
@@ -22,14 +22,14 @@ const renderSection = () =>
         <ChangeFilterActorSelectionProvider>
           <FilterStateProvider initialValues={{ repo: '', limit: '', mergedLimit: '', jobs: '', openMode: 'none', ackChanged: false, showReason: true, quiet: false }}>
             <Probe />
-            <ScriptOptionsSection />
+            <ScriptOptions />
           </FilterStateProvider>
         </ChangeFilterActorSelectionProvider>
       </AuthorThreadResolutionSelectionProvider>
     </RowFilterSelectionProvider>,
   );
 
-describe('ScriptOptionsSection', () => {
+describe('ScriptOptions', () => {
   test('every option is labelled, with its saved value', () => {
     renderSection();
     expect(screen.getByRole('combobox', { name: 'Repo (owner/name)' })).toHaveValue('');
@@ -48,5 +48,18 @@ describe('ScriptOptionsSection', () => {
     await user.selectOptions(screen.getByRole('combobox', { name: 'Open mode' }), 'changed');
     await user.click(screen.getByRole('checkbox', { name: 'Ack all CHANGED non-draft PRs from this run' }));
     expect(values).toMatchObject({ repo: 'o/r', openMode: 'changed', ackChanged: true });
+  });
+
+  test('every option says what it does, as its description', () => {
+    renderSection();
+    expect(screen.getByRole('combobox', { name: 'Repo (owner/name)' })).toHaveAccessibleDescription(/VIEW_PRS_REPO/);
+    expect(screen.getByRole('spinbutton', { name: 'Open PR limit' })).toHaveAccessibleDescription(/Empty: 200/);
+    expect(screen.getByRole('spinbutton', { name: 'Merged PR limit' })).toHaveAccessibleDescription(/7 most recent days/);
+    expect(screen.getByRole('spinbutton', { name: 'Parallel jobs' })).toHaveAccessibleDescription(/Empty: 6/);
+    expect(screen.getByRole('combobox', { name: 'Open mode' })).toHaveAccessibleDescription(/opens in a browser/);
+    for (const name of ['Ack all CHANGED non-draft PRs from this run', 'Show CHANGED reason in status', 'Quiet mode (hide run metadata header)']) {
+      expect(screen.getByRole('checkbox', { name }).getAttribute('aria-describedby')).toBeTruthy();
+      expect(screen.getByRole('checkbox', { name })).not.toHaveAccessibleDescription('');
+    }
   });
 });

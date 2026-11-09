@@ -40,7 +40,7 @@ const { getBackfillStatusViewModel, getBackfillStateKey, formatBackfillLogMessag
  * render-time read of `isBackfillRunning`).
  *
  * It doesn't need the `#backfill-badges`/`#backfill-details` nodes to
- * exist to hold its state; the Settings drawer's BackfillSection renders
+ * exist to hold its state; the Tools drawer's BackfillSection renders
  * the state into them.
  */
 export function BackfillStatusProvider({ children }: { children?: ReactNode }) {

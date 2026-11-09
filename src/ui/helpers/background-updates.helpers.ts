@@ -12,7 +12,7 @@ export type TaskType = 'quickCheck' | 'autoRefresh' | 'mergedDrain';
 // In the dispatcher's order, labelled as the Activity popover labels them.
 export const TASK_TYPES: ReadonlyArray<{ taskType: TaskType; label: string }> = [
   { taskType: 'quickCheck', label: 'Quick check' },
-  { taskType: 'autoRefresh', label: 'Auto refresh' },
+  { taskType: 'autoRefresh', label: 'Full refresh' },
   { taskType: 'mergedDrain', label: 'Merged/closed drain' },
 ];
 

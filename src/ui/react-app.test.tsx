@@ -64,7 +64,7 @@ describe('react-app.tsx: mounts the app, and the PR table once PrDataProvider ha
   // The Run Script inputs render the password-manager hints themselves, and
   // the bootstrap installs the credential-field error filters before
   // mounting.
-  test('given the app has mounted, when the Settings drawer repo input is read, then it carries the non-credential-field hints and keeps its name', () => {
+  test('given the app has mounted, when the Run & check repo input is read, then it carries the non-credential-field hints and keeps its name', () => {
     const repo = document.getElementById('repo');
     expect(repo).toHaveAttribute('name', 'repo');
     expect(repo).toHaveAttribute('autocomplete', 'off');

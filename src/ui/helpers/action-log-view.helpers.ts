@@ -43,7 +43,7 @@ export interface ActionLogRow {
 // its entry.
 const ACTIONS: Record<string, { kind: string; label: string; origin: 'you' | 'background' }> = {
   'post/run': { kind: 'runScript', label: 'Run script', origin: 'you' },
-  'post/run-auto': { kind: 'runAuto', label: 'Trigger auto run', origin: 'you' },
+  'post/run-auto': { kind: 'runAuto', label: 'Full refresh now', origin: 'you' },
   'post/quick-check': { kind: 'quickCheck', label: 'Quick check', origin: 'you' },
   'post/ack': { kind: 'ackClear', label: 'Ack/Clear', origin: 'you' },
   'post/merged/request-more': { kind: 'olderMerged', label: 'Fetch older merged PRs', origin: 'you' },

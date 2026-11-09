@@ -11,6 +11,7 @@ import { ReviewStatsProvider } from '../ReviewStatsProvider';
 import { Snackbar } from '../Snackbar';
 import { DataViewHeader } from '../filter-bar/DataViewHeader';
 import { SettingsDrawer } from '../settings/SettingsDrawer';
+import { ToolsDrawer } from '../settings/ToolsDrawer';
 import { ErrorBoundary } from '../ui/ErrorBoundary';
 import { ViewHeading } from '../ui/ViewHeading';
 import { AppHeader } from './AppHeader';
@@ -201,6 +202,7 @@ export function AppShell() {
       </div>
 
       <div id="settings-drawer-root">
+        <ToolsDrawer />
         <SettingsDrawer />
       </div>
     </>

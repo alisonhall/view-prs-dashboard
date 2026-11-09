@@ -1154,7 +1154,7 @@ const callEmitJobEvent = (event) => {
   return (module.exports.emitJobEvent || emitJobEvent)(event);
 };
 
-// The background runs in Settings › Action log, by their job events: each
+// The background runs in Tools › Action log, by their job events: each
 // quick check, and each skip that kept a run from happening (not one that
 // found nothing to do). A full refresh - the drain's included - writes its
 // own entry, with its timings, and what you start is logged by its route;

@@ -98,7 +98,7 @@ Improvements noted once PRs could come from several repos and sources (subscript
 
 #### Settings
 
-- [ ] Reorganize the Settings drawer so items are grouped by what they do, and describe every option so it makes sense to someone with no context.
+- [x] ~~Reorganize the Settings drawer so items are grouped by what they do, and describe every option so it makes sense to someone with no context.~~ - done (2026-11-09): split into two drawers. `Tools` (things to do: Run & check, Backfill, Export, Action log), with Script options moved into Run & check as a folded `Options for Run script`, since only Run script reads them. `Settings` (choices kept), its sections under `PRs followed` (Sources, Background updates), `Rules` (Attention rules, Change detection, Merge commits, Actor names) and `Display` (Appearance). Every section and option says what it does under it, as the option's description. Renamed to match Activity: `Trigger auto run` is `Full refresh now`, and Background updates' `Auto refresh` is `Full refresh`.
 - [ ] Keep Settings › Background updates separate from Sources, and link the two. Decided (2026-11-04): Background updates is per repo (how often each check runs, and priority), while Sources also has PRs added one by one, whose repo shares one schedule - and the env var's repos need timing too. Merging would crowd Sources' everyday list with expert settings, and mix its saving (the sources file) with Background updates' (`user-defaults.json`). So:
   - Background updates lists every source's repo - each subscription, and the repos of PRs added one by one - with a "From your sources" note, not only the repos the dispatcher has scheduled.
   - Sources gets a "Timing…" link beside each repo that opens Background updates at that repo.

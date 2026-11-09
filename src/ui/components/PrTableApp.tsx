@@ -108,7 +108,7 @@ export function PrTableApp() {
   const { collectAssignedUsers, collectPendingReviewRequests } = usePrInsightsDisplay();
 
   // Section open/closed and expanded insights rows live in
-  // PrTableUiStateProvider (above AppShell), not here, so Settings › Export can
+  // PrTableUiStateProvider (above AppShell), not here, so Tools › Export can
   // read which sections are open from state instead of the DOM
   // (UI_REDESIGN_PLAN.md, phase 1). Sections are keyed by section key
   // ('flagged', 'open', etc.), rows by buildExpandedInsightsKey.
@@ -765,7 +765,7 @@ export function PrTableApp() {
   }, [sections]);
 
   // Tell PrTableUiStateProvider which sections are on screen and which PRs
-  // each shows, so Settings › Export can export the open sections' rows. The
+  // each shows, so Tools › Export can export the open sections' rows. The
   // numbers are each row's `data.number`, which PrNumberCell renders.
   useEffect(() => {
     if (!areSectionPreferencesReady) return;

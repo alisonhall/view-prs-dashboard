@@ -1,5 +1,5 @@
 /**
- * The Settings drawer's "Export" (UI_REDESIGN_PLAN.md, phase 9b): the
+ * The Tools drawer's "Export" (UI_REDESIGN_PLAN.md, phase 9b): the
  * field catalog, field selection (saved to user-defaults), and Preview /
  * Copy / Download of the export JSON. Lazy-loaded, mounting the first time
  * the section is opened; it then stays mounted, keeping the selection.

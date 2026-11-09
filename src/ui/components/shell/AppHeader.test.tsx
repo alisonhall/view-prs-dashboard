@@ -8,11 +8,11 @@ import { StatusTextProvider } from '../StatusTextProvider';
 import { useStatusText } from '../../state/StatusTextContext';
 import type { PrDataPayload } from '../../types/pr-data.ts';
 import { AppHeader } from './AppHeader';
-import { SettingsDrawerProvider, useSettingsDrawer } from '../../state/SettingsDrawerContext';
+import { SettingsDrawerProvider, useOpenDrawer } from '../../state/SettingsDrawerContext';
 
-let settingsOpen = false;
+let openDrawer: string | null = null;
 function SettingsProbe() {
-  settingsOpen = useSettingsDrawer().isOpen;
+  openDrawer = useOpenDrawer();
   return null;
 }
 
@@ -168,7 +168,10 @@ describe('AppHeader', () => {
     expect(status).toHaveAttribute('title', 'Ack only completed\nPR #1: acked');
   });
 
-  test('Settings opens the Settings drawer', async () => {
+  test.each([
+    ['Tools', 'tools'],
+    ['Settings', 'settings'],
+  ])('%s opens its own drawer, and says it is open (the other button does not)', async (name, drawer) => {
     const user = userEvent.setup();
     render(
       <PrDataProvider initialPayload={loaded(null)}>
@@ -178,15 +181,17 @@ describe('AppHeader', () => {
         </SettingsDrawerProvider>
       </PrDataProvider>,
     );
-    const settings = screen.getByRole('button', { name: 'Settings' });
-    expect(settings).toHaveAttribute('aria-haspopup', 'dialog');
-    expect(settings).toHaveAttribute('aria-expanded', 'false');
-    await user.click(settings);
-    expect(settingsOpen).toBe(true);
-    expect(settings).toHaveAttribute('aria-expanded', 'true');
+    const button = screen.getByRole('button', { name });
+    const other = screen.getByRole('button', { name: name === 'Tools' ? 'Settings' : 'Tools' });
+    expect(button).toHaveAttribute('aria-haspopup', 'dialog');
+    expect(button).toHaveAttribute('aria-expanded', 'false');
+    await user.click(button);
+    expect(openDrawer).toBe(drawer);
+    expect(button).toHaveAttribute('aria-expanded', 'true');
+    expect(other).toHaveAttribute('aria-expanded', 'false');
   });
 
-  test('has no quick check of its own: those are in Settings › Run & check', () => {
+  test('has no quick check of its own: those are in Tools › Run & check', () => {
     renderHeader();
     expect(within(screen.getByRole('banner')).queryByRole('button', { name: /quick check/i })).not.toBeInTheDocument();
   });

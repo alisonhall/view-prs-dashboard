@@ -166,6 +166,11 @@ export function SourcesSection() {
 
   return (
     <div className="settings-section sources-section">
+      <p className="settings-hint">
+        Which PRs the page shows and keeps up to date. A repo you subscribe to is followed for its recent PRs (the open ones, and
+        the latest merged and closed) or only the PRs you list; a PR added by its URL is followed on its own. The background
+        updates keep them current (Background updates sets how often).
+      </p>
       {!sources && (
         <p className="settings-hint">
           No sources file yet, so every stored row shows and the background updates follow every repo with rows. Subscribing

@@ -80,6 +80,35 @@
   box-shadow: inset 2px 0 0 var(--color-accent);
 }
 
+/* A heading over a run of sections (Settings: PRs followed, Rules, Display). */
+.settings-nav .ui-tab-group {
+  padding: var(--space-3) var(--space-2) var(--space-1);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.settings-nav .ui-tab-group:first-child {
+  padding-top: 0;
+}
+
+/* A checkbox with what it does under it, lined up with its label. */
+.settings-check-field {
+  display: grid;
+  gap: 2px;
+}
+
+.settings-check-field > .settings-hint {
+  padding-left: 22px;
+}
+
+.settings-hint-list {
+  margin: 0;
+  padding-left: var(--space-4);
+}
+
 .settings-panel {
   padding: var(--space-4);
   overflow-y: auto;
@@ -310,6 +339,11 @@
 
   .settings-nav .ui-tab[aria-selected="true"] {
     box-shadow: inset 0 -2px 0 var(--color-accent);
+  }
+
+  /* No room for the group headings in the row. */
+  .settings-nav .ui-tab-group {
+    display: none;
   }
 }
 

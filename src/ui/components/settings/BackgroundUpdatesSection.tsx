@@ -150,11 +150,26 @@ export function BackgroundUpdatesSection() {
 
   return (
     <div className="settings-section">
-      <p className="subtle-copy">
-        While the server runs, it checks each repo in the background: a quick check for changed PRs, an auto
-        refresh of everything, and a drain of changed merged/closed PRs. Leave a field empty for its default.
-        Changes apply within a few seconds.
-      </p>
+      <div className="settings-group">
+        <p className="settings-hint">While the server runs, it checks each followed repo in the background, on three timers:</p>
+        <ul className="settings-hint settings-hint-list">
+          <li>
+            <strong>Quick check</strong>: asks GitHub which of the repo&apos;s PRs changed, without fetching them, and fetches
+            those that did straight after.
+          </li>
+          <li>
+            <strong>Full refresh</strong>: a safety net - fetches the PRs that changed since their last fetch, and open ones
+            not fetched in full for 4 hours.
+          </li>
+          <li>
+            <strong>Merged/closed drain</strong>: fetches the merged and closed PRs a quick check found changed.
+          </li>
+        </ul>
+        <p className="settings-hint">
+          The priority boost puts a repo&apos;s checks ahead of other repos&apos; when several are due at once (or behind them,
+          below 0). Leave a field empty for its default. A change applies within a few seconds.
+        </p>
+      </div>
       {repos.length === 0 && <p className="subtle-copy">No repos are checked in the background yet.</p>}
       {repos.map((repo, index) => {
         const settings = config[repo] || {};

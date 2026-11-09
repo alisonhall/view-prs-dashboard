@@ -1,71 +1,138 @@
 /** @jest-environment jsdom */
 
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { SettingsDrawerProvider, useSettingsDrawer, type SettingsSectionId } from '../../state/SettingsDrawerContext';
 import { SETTINGS_NAV_ROW_QUERY, SettingsDrawer } from './SettingsDrawer';
+import { ToolsDrawer } from './ToolsDrawer';
 
 // The sections need the whole app's Providers; the integration suite
 // covers them in the real tree.
-jest.mock('./RunCheckSection', () => ({ RunCheckSection: () => <button type="button">Run script</button> }));
-jest.mock('./ScriptOptionsSection', () => ({ ScriptOptionsSection: () => <input aria-label="Repo (owner/name)" /> }));
+jest.mock('./RunCheckSection', () => ({
+  RunCheckSection: () => (
+    <>
+      <button type="button">Run script</button>
+      <input aria-label="Repo (owner/name)" />
+    </>
+  ),
+}));
+jest.mock('./SourcesSection', () => ({ SourcesSection: () => <p>Sources content</p> }));
+jest.mock('./AppearanceSection', () => ({ AppearanceSection: () => <p>Appearance content</p> }));
 jest.mock('./AttentionRulesSection', () => ({ AttentionRulesSection: () => <p>Attention rules content</p> }));
 jest.mock('./MergeCommitsSection', () => ({ MergeCommitsSection: () => <p>Merge commits content</p> }));
 jest.mock('./ChangeDetectionSection', () => ({ ChangeDetectionSection: () => <p>Change detection content</p> }));
 jest.mock('./BackfillSection', () => ({ BackfillSection: () => <p>Backfill content</p> }));
 jest.mock('./BackgroundUpdatesSection', () => ({ BackgroundUpdatesSection: () => <p>Background updates content</p> }));
-jest.mock('./ActionLogSection',() => ({ ActionLogSection: () => <p>Action log content</p> }));
+jest.mock('./ActionLogSection', () => ({ ActionLogSection: () => <p>Action log content</p> }));
 jest.mock('./ActorNamesSection', () => ({ ActorNamesSection: () => <p>Actor names content</p> }));
 jest.mock('./ExportSection', () => ({ ExportSection: () => <p>Export content</p> }));
 
 let drawer: ReturnType<typeof useSettingsDrawer>;
-function Opener() {
+function Openers() {
   drawer = useSettingsDrawer();
   return (
-    <button type="button" onClick={() => drawer.open()}>
-      Settings
-    </button>
+    <>
+      <button type="button" onClick={() => drawer.open('tools')}>
+        Tools
+      </button>
+      <button type="button" onClick={() => drawer.open('settings')}>
+        Settings
+      </button>
+    </>
   );
 }
 
-const renderDrawer = (initialOpen = false, initialSection: SettingsSectionId = 'run') =>
+const renderDrawers = (initialOpen = false, initialSection: SettingsSectionId = 'sources') =>
   render(
     <SettingsDrawerProvider initialOpen={initialOpen} initialSection={initialSection}>
-      <Opener />
+      <Openers />
+      <ToolsDrawer />
       <SettingsDrawer />
     </SettingsDrawerProvider>,
   );
 
-const dialog = () => screen.getByRole('dialog', { name: 'Settings' });
+const settingsDialog = () => screen.getByRole('dialog', { name: 'Settings' });
+const toolsDialog = () => screen.getByRole('dialog', { name: 'Tools' });
+const tabNames = (dialog: HTMLElement) => within(dialog).getAllByRole('tab').map((tab) => tab.textContent);
 
-describe('SettingsDrawer', () => {
-  test('is closed until opened; open, it is a modal dialog named Settings, focused', async () => {
+describe('SettingsDrawer and ToolsDrawer', () => {
+  test('both are closed until opened; open, each is a modal dialog named for itself, focused, alone', async () => {
     const user = userEvent.setup();
-    renderDrawer();
+    renderDrawers();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
     await user.click(screen.getByRole('button', { name: 'Settings' }));
-    expect(dialog()).toHaveAttribute('aria-modal', 'true');
-    expect(dialog()).toHaveFocus();
+    expect(settingsDialog()).toHaveAttribute('aria-modal', 'true');
+    expect(settingsDialog()).toHaveFocus();
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
+
+    await user.keyboard('{Escape}');
+    await user.click(screen.getByRole('button', { name: 'Tools' }));
+    expect(toolsDialog()).toHaveFocus();
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
   });
 
-  test('its sections are a vertical tab list; the chosen one shows', async () => {
+  test('Settings: its sections in order, under what they are for; it opens at the first', async () => {
     const user = userEvent.setup();
-    renderDrawer(true);
-    const nav = screen.getByRole('tablist', { name: 'Settings sections' });
-    expect(nav).toHaveAttribute('aria-orientation', 'vertical');
-    expect(screen.getByRole('tab', { name: 'Run & check' })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByRole('tabpanel', { name: 'Run & check' })).toContainElement(screen.getByRole('button', { name: 'Run script' }));
-    expect(screen.queryByRole('textbox', { name: 'Repo (owner/name)' })).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole('tab', { name: 'Script options' }));
-    expect(screen.getByRole('tabpanel', { name: 'Script options' })).toBeVisible();
-    expect(screen.getByRole('textbox', { name: 'Repo (owner/name)' })).toBeInTheDocument();
+    renderDrawers(false, 'run');
+    await user.click(screen.getByRole('button', { name: 'Settings' }));
+    expect(tabNames(settingsDialog())).toEqual([
+      'Sources',
+      'Background updates',
+      'Attention rules',
+      'Change detection',
+      'Merge commits',
+      'Actor names',
+      'Appearance',
+    ]);
+    expect(within(settingsDialog()).getByRole('tab', { name: 'Sources' })).toHaveAttribute('aria-selected', 'true');
+    // The group headings are seen, not read: a tab list holds only tabs.
+    const headings = Array.from(settingsDialog().querySelectorAll('.ui-tab-group'));
+    expect(headings.map((heading) => heading.textContent)).toEqual(['PRs followed', 'Rules', 'Display']);
+    expect(headings.every((heading) => heading.getAttribute('aria-hidden') === 'true')).toBe(true);
   });
 
-  test('↑/↓ move between sections', async () => {
+  test('Tools: Run & check (with the script options), Backfill, Export and the Action log', async () => {
     const user = userEvent.setup();
-    renderDrawer(true);
-    await user.click(screen.getByRole('tab', { name: 'Run & check' }));
+    renderDrawers();
+    await user.click(screen.getByRole('button', { name: 'Tools' }));
+    expect(tabNames(toolsDialog())).toEqual(['Run & check', 'Backfill', 'Export', 'Action log']);
+    expect(within(toolsDialog()).getByRole('tabpanel', { name: 'Run & check' })).toContainElement(
+      screen.getByRole('button', { name: 'Run script' }),
+    );
+    expect(toolsDialog().querySelector('.ui-tab-group')).toBeNull();
+  });
+
+  test('each drawer opens again at its own last section', async () => {
+    const user = userEvent.setup();
+    renderDrawers();
+    await user.click(screen.getByRole('button', { name: 'Settings' }));
+    await user.click(within(settingsDialog()).getByRole('tab', { name: 'Appearance' }));
+    await user.keyboard('{Escape}');
+    await user.click(screen.getByRole('button', { name: 'Tools' }));
+    await user.click(within(toolsDialog()).getByRole('tab', { name: 'Export' }));
+    await user.keyboard('{Escape}');
+
+    await user.click(screen.getByRole('button', { name: 'Settings' }));
+    expect(within(settingsDialog()).getByRole('tab', { name: 'Appearance' })).toHaveAttribute('aria-selected', 'true');
+    await user.keyboard('{Escape}');
+    await user.click(screen.getByRole('button', { name: 'Tools' }));
+    expect(within(toolsDialog()).getByRole('tab', { name: 'Export' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  test('opened at a section, the drawer it is in opens there', () => {
+    renderDrawers();
+    act(() => drawer.open('action-log'));
+    expect(within(toolsDialog()).getByRole('tab', { name: 'Action log' })).toHaveAttribute('aria-selected', 'true');
+    act(() => drawer.open('appearance'));
+    expect(screen.queryByRole('dialog', { name: 'Tools' })).not.toBeInTheDocument();
+    expect(within(settingsDialog()).getByRole('tab', { name: 'Appearance' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  test('↑/↓ move between sections, past the group headings', async () => {
+    const user = userEvent.setup();
+    renderDrawers(true, 'background-updates');
+    await user.click(screen.getByRole('tab', { name: 'Background updates' }));
     await user.keyboard('{ArrowDown}');
     expect(screen.getByRole('tab', { name: 'Attention rules' })).toHaveFocus();
     expect(screen.getByRole('tab', { name: 'Attention rules' })).toHaveAttribute('aria-selected', 'true');
@@ -81,26 +148,27 @@ describe('SettingsDrawer', () => {
       removeEventListener: () => {},
     })) as unknown as typeof window.matchMedia;
     try {
-      renderDrawer(true);
+      renderDrawers(true);
       expect(screen.getByRole('tablist', { name: 'Settings sections' })).toHaveAttribute('aria-orientation', 'horizontal');
-      await user.click(screen.getByRole('tab', { name: 'Run & check' }));
+      await user.click(screen.getByRole('tab', { name: 'Sources' }));
       await user.keyboard('{ArrowRight}');
-      expect(screen.getByRole('tab', { name: 'Attention rules' })).toHaveFocus();
+      expect(screen.getByRole('tab', { name: 'Background updates' })).toHaveFocus();
     } finally {
       window.matchMedia = original;
     }
   });
 
   test('every section stays in the page while hidden (fields keep their ids)', () => {
-    renderDrawer(false);
+    renderDrawers(false);
     expect(screen.getByRole('button', { name: 'Run script', hidden: true })).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: 'Repo (owner/name)', hidden: true })).toBeInTheDocument();
+    expect(screen.getByText('Sources content')).toBeInTheDocument();
   });
 
   test('Esc, the close button or the backdrop closes it, and focus goes back to what opened it', async () => {
     const user = userEvent.setup();
-    const { container } = renderDrawer();
-    const opener = screen.getByRole('button', { name: 'Settings' });
+    renderDrawers();
+    const opener = screen.getByRole('button', { name: 'Tools' });
 
     await user.click(opener);
     await user.keyboard('{Escape}');
@@ -108,34 +176,21 @@ describe('SettingsDrawer', () => {
     expect(opener).toHaveFocus();
 
     await user.click(opener);
-    await user.click(screen.getByRole('button', { name: 'Close settings' }));
+    await user.click(screen.getByRole('button', { name: 'Close tools' }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 
     await user.click(opener);
-    await user.click(container.querySelector('.settings-backdrop') as HTMLElement);
+    const backdrop = toolsDialog().parentElement?.querySelector('.settings-backdrop') as HTMLElement;
+    await user.click(backdrop);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Settings' }));
+    await user.click(screen.getByRole('button', { name: 'Close settings' }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  test('the sections, in order', () => {
-    renderDrawer(true);
-    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
-      'Run & check',
-      'Attention rules',
-      'Merge commits',
-      'Change detection',
-      'Sources',
-      'Script options',
-      'Background updates',
-      'Backfill',
-      'Action log',
-      'Actor names',
-      'Export',
-      'Appearance',
-    ]);
-  });
-
   test('Backfill is mounted from the start; Background updates, Action log, Actor names and Export once first opened, then they stay', async () => {
-    renderDrawer(false);
+    renderDrawers(false);
     expect(screen.getByText('Backfill content')).toBeInTheDocument();
     expect(screen.queryByText('Background updates content')).not.toBeInTheDocument();
     expect(screen.queryByText('Action log content')).not.toBeInTheDocument();
@@ -157,11 +212,5 @@ describe('SettingsDrawer', () => {
     expect(screen.getByText('Action log content')).toBeInTheDocument();
     expect(screen.getByText('Export content')).toBeInTheDocument();
     expect(screen.queryByText('Actor names content')).not.toBeInTheDocument();
-  });
-
-  test('can be opened at a section', () => {
-    renderDrawer();
-    act(() => drawer.open('script-options'));
-    expect(screen.getByRole('tab', { name: 'Script options' })).toHaveAttribute('aria-selected', 'true');
   });
 });

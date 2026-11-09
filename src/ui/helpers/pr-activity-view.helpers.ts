@@ -67,7 +67,7 @@ export const ACTIVITY_KIND_GUIDE: ActivityKindGuide[] = [
   {
     kind: "runScript",
     label: "Run script",
-    does: "Started from Settings › Run & check: fetches a repo's PRs, or the ones you chose, in full - none reused from what's stored.",
+    does: "Started from Tools › Run & check: fetches a repo's PRs, or the ones you chose, in full - none reused from what's stored.",
     doesNotUpdate: "Other repos, or (for chosen PRs) the repo's other PRs.",
   },
   {

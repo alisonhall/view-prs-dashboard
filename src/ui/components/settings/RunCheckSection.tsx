@@ -14,19 +14,21 @@ import { useTriggerAutoRun } from '../../state/useTriggerAutoRun';
 import { ApplyLabelSelect } from './ApplyLabelSelect';
 import { ContextRunScriptTextInput } from './ContextRunScriptTextInput';
 import { QUICK_CHECK_LIMITS, QuickCheckButton } from './QuickCheckButton';
+import { ScriptOptions } from './ScriptOptions';
 import { TriggerAutoRunButton } from './TriggerAutoRunButton';
 import { PR_NUMBERS_FIELD } from './settings-fields';
 
 /**
- * The Settings drawer's "Run & check" (UI_REDESIGN_PLAN.md, phase 9b):
- * - the latest status message, and "Trigger auto run" (the old Activity
- *   tab's);
+ * The Tools drawer's "Run & check" (UI_REDESIGN_PLAN.md, phase 9b), each
+ * part saying what it does:
+ * - the latest status message, and "Full refresh now";
  * - Quick check: "Quick check open and latest merged" and "Quick check all"
  *   (once in the app header);
  * - the PR numbers to run on, with Run script, Quick check and Apply ack
- *   only / clear only;
+ *   only / Undo ack, and Run script's options, folded (once Settings'
+ *   Script options);
  * - a label to apply to them, with the repo's labels reloadable;
- * - the latest request's output, collapsed.
+ * - the latest request's output, folded.
  *
  * #status and #output keep their ids: PrDataProvider's last-resort viewer
  * login reads the script's "Viewer: <login>" line from them.
@@ -45,6 +47,7 @@ export function RunCheckSection() {
     <div className="settings-section">
       <div className="settings-group">
         <h3 className="settings-heading">Latest status</h3>
+        <p className="settings-hint">The result of the latest thing done here or on a row: a run, a check, an Ack.</p>
         <pre id="status" className="settings-output" role="region" aria-label="Status message">
           {statusText}
         </pre>
@@ -79,6 +82,11 @@ export function RunCheckSection() {
 
       <div className="settings-group">
         <h3 className="settings-heading">Run check-open-pr-updates.sh</h3>
+        <p className="settings-hint">
+          Run script fetches PRs in full: those numbered here (a row&apos;s checkbox adds it), or with none, the repo&apos;s open
+          PRs and its latest merged and closed ones. Apply ack only acks the PRs numbered, as their rows&apos; Ack buttons would -
+          each CHANGED one goes back to NO_CHANGE until there&apos;s new activity - and Undo ack takes that back.
+        </p>
         <div className="settings-field">
           <label htmlFor={PR_NUMBERS_FIELD.id}>{PR_NUMBERS_FIELD.label}</label>
           <ContextRunScriptTextInput
@@ -108,10 +116,18 @@ export function RunCheckSection() {
             Undo ack
           </Button>
         </div>
+        <details className="settings-details">
+          <summary>Options for Run script</summary>
+          <div className="settings-group">
+            <p className="settings-hint">Only Run script uses these. They&apos;re saved when a run starts.</p>
+            <ScriptOptions />
+          </div>
+        </details>
       </div>
 
       <div className="settings-group">
         <h3 className="settings-heading">Labels</h3>
+        <p className="settings-hint">Adds a label the repo already has on GitHub to the PRs numbered above.</p>
         <div className="settings-field">
           <label htmlFor="apply-label-select">Apply existing GitHub label to selected PR(s)</label>
           <div className="settings-actions">

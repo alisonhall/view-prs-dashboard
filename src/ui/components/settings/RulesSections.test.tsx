@@ -17,6 +17,7 @@ import { setPendingMultiSelectSelection } from '../../helpers/pr-pending-multi-s
 import { AttentionRulesSection } from './AttentionRulesSection';
 import { ChangeDetectionSection } from './ChangeDetectionSection';
 import { MergeCommitsSection } from './MergeCommitsSection';
+import { ATTENTION_CHECKBOX_FIELDS } from './settings-fields';
 
 const ACTORS = [
   { value: 'bob', label: 'Bob' },
@@ -77,6 +78,14 @@ describe('AttentionRulesSection', () => {
     await user.click(screen.getByRole('checkbox', { name: 'Mark PRs with my pending (unsubmitted) comments' }));
     await user.selectOptions(screen.getByRole('combobox', { name: 'NO_ACTIVITY handling' }), 'none');
     expect(state.values).toMatchObject({ attentionIncludePendingComments: false, attentionNoActivityMode: 'none' });
+  });
+
+  test('every rule says what it does, as its description', () => {
+    renderWith(<AttentionRulesSection />);
+    expect(screen.getByRole('combobox', { name: 'NO_ACTIVITY handling' })).toHaveAccessibleDescription(/had no activity on yet/);
+    for (const field of ATTENTION_CHECKBOX_FIELDS) {
+      expect(screen.getByRole('checkbox', { name: field.label })).toHaveAccessibleDescription(field.hint as string);
+    }
   });
 
   test('the thread starters list shows for the policy that uses it; the other keeps its picks, hidden', async () => {

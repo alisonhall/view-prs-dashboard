@@ -16,9 +16,11 @@ export interface ContextRunScriptTextInputProps {
   // A datalist's id: its options are suggested (the repo field's known
   // repos - KnownReposDatalist).
   list?: string;
+  // The id of what describes it (its hint).
+  describedBy?: string;
 }
 
-export function ContextRunScriptTextInput({ id, name, type = 'text', placeholder = '', filterStateKey, list }: ContextRunScriptTextInputProps) {
+export function ContextRunScriptTextInput({ id, name, type = 'text', placeholder = '', filterStateKey, list, describedBy }: ContextRunScriptTextInputProps) {
   const { values, setValue } = useFilterState();
   return (
     <input
@@ -27,6 +29,7 @@ export function ContextRunScriptTextInput({ id, name, type = 'text', placeholder
       name={name}
       placeholder={placeholder}
       list={list}
+      aria-describedby={describedBy}
       {...(type === 'number' ? { min: 1 } : {})}
       {...NON_CREDENTIAL_INPUT_PROPS}
       value={String(values[filterStateKey] ?? '')}

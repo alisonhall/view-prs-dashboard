@@ -4,7 +4,7 @@ import { Icon } from '../ui/Icon';
 import { Tabs } from '../ui/Tabs';
 import { usePrData } from '../../state/PrDataContext';
 import { NowProvider, useNow } from '../../state/NowContext';
-import { useSettingsDrawer } from '../../state/SettingsDrawerContext';
+import { useOpenDrawer, useSettingsDrawer } from '../../state/SettingsDrawerContext';
 import { INITIAL_STATUS_TEXT, useStatusText } from '../../state/StatusTextContext';
 import { useTabState, type DataTabKey } from '../../state/TabStateContext';
 import { describeLastUpdate, describeRepos } from '../../helpers/pr-app-header.helpers.ts';
@@ -26,7 +26,7 @@ const viewIds = (id: string) => ({ tab: `tab-${id}`, panel: `tab-panel-${id}` })
 
 // The latest action's result or progress (StatusTextContext: a row's Ack, a
 // run, a backfill...), its first line; all of it on hover, and in the
-// Settings drawer's Run & check. Nothing until something has reported. A
+// Tools drawer's Run & check. Nothing until something has reported. A
 // polite live region, in the page from the start so it's announced.
 function LatestStatus() {
   const { statusText } = useStatusText();
@@ -87,14 +87,16 @@ function LastUpdatePill({
  * hover), the view tabs (Pull requests / Review stats / Authors,
  * TabStateContext's data tab), the latest action's status, when the data
  * was last updated, adding a PR by URL (AddPrPopover), the background
- * activity (ActivityPopover) and the Settings drawer's button (the quick
- * checks are in its Run & check). The auto-update-paused banner has its
+ * activity (ActivityPopover), and the buttons of the Tools drawer (things
+ * to do: Run & check, with the quick checks, Backfill, Export, the Action
+ * log) and the Settings drawer (choices kept). The auto-update-paused banner has its
  * own root under it (AutoUpdatePausedBanner).
  */
 export function AppHeader() {
   const { payload, selectedRepo } = usePrData();
   const { activeDataTab, setActiveDataTab } = useTabState();
   const settings = useSettingsDrawer();
+  const openDrawer = useOpenDrawer();
   const repos = useMemo(
     () => describeRepos(Object.values(payload?.byPrNumber || {}), selectedRepo || String(payload?.lastRun?.repo || '')),
     [payload, selectedRepo],
@@ -133,7 +135,10 @@ export function AppHeader() {
           </NowProvider>
           <AddPrPopover />
           <ActivityPopover />
-          <Button icon="sliders" aria-haspopup="dialog" aria-expanded={settings.isOpen} onClick={() => settings.open()}>
+          <Button icon="wrench" aria-haspopup="dialog" aria-expanded={openDrawer === 'tools'} onClick={() => settings.open('tools')}>
+            Tools
+          </Button>
+          <Button icon="sliders" aria-haspopup="dialog" aria-expanded={openDrawer === 'settings'} onClick={() => settings.open('settings')}>
             Settings
           </Button>
           {/* The server this app is mounted in (the app hub, at /view-prs). */}

@@ -8,15 +8,18 @@ export interface ContextFilterCheckboxProps {
   id: string;
   name: string;
   filterStateKey: string;
+  // The id of what describes it (its hint).
+  describedBy?: string;
 }
 
-export function ContextFilterCheckbox({ id, name, filterStateKey }: ContextFilterCheckboxProps) {
+export function ContextFilterCheckbox({ id, name, filterStateKey, describedBy }: ContextFilterCheckboxProps) {
   const { values, setValue } = useFilterState();
   return (
     <input
       type="checkbox"
       id={id}
       name={name}
+      aria-describedby={describedBy}
       checked={Boolean(values[filterStateKey])}
       onChange={(event) => setValue(filterStateKey, event.target.checked)}
     />

@@ -13,9 +13,10 @@ export function ChangeDetectionSection() {
   return (
     <div className="settings-section">
       <div className="settings-group">
-        <p className="subtle-copy">
-          Configure what activity should NOT trigger CHANGED status. Use this to filter out automated notifications or non-blocking
-          feedback.
+        <p className="settings-hint">
+          Activity that shouldn&apos;t mark a PR CHANGED, such as bots&apos; notifications or optional reviewers&apos; feedback. It
+          applies each time a PR is fetched (an update after a quick check, a full refresh, Run script); a stored PR keeps its
+          status until then.
         </p>
         <div className="settings-field">
           <SettingsListDropdown list={IGNORE_COMMENT_AUTHORS_LIST} selection={selection} />

@@ -2,7 +2,7 @@
 // popover (shell/KeyboardShortcutsPopover.tsx) lists them, and the
 // README's "Keyboard shortcuts" repeats them line for line (its test
 // checks). The keys themselves are handled where they work - PrTable,
-// Tabs, the Settings drawer, useHeaderPopover, MultiSelectDropdown,
+// Tabs, the Tools and Settings drawers, useHeaderPopover, MultiSelectDropdown,
 // ComboBox, MenuButton - so a change there belongs here too.
 
 export interface KeyboardShortcut {
@@ -20,14 +20,14 @@ export const KEYBOARD_SHORTCUTS: KeyboardShortcutGroup[] = [
   {
     where: "Anywhere",
     shortcuts: [
-      { keys: ["?"], action: "Show or hide this list (not while typing in a field, or with Settings or another dialog open)." },
+      { keys: ["?"], action: "Show or hide this list (not while typing in a field, or with Tools, Settings or another dialog open)." },
       { keys: ["Esc"], action: "Close the open popover, drawer or dialog." },
     ],
   },
   {
-    where: "Tabs, with focus on them (the views, the detail pane's, Settings' sections)",
+    where: "Tabs, with focus on them (the views, the detail pane's, the Tools and Settings drawers' sections)",
     shortcuts: [
-      { keys: ["← / →"], action: "Show the tab before or after (↑ / ↓ for Settings' sections down the left)." },
+      { keys: ["← / →"], action: "Show the tab before or after (↑ / ↓ for the drawers' sections down the left)." },
       { keys: ["Home / End"], action: "Show the first or last tab." },
     ],
   },
