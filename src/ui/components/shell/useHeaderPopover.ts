@@ -16,14 +16,14 @@ export interface HeaderPopover {
 }
 
 /**
- * A button's popover (the header's ActivityPopover and AddPrPopover, the
- * table toolbar's PrLegendPopover): a non-modal
- * dialog under the button (fixed, kept in the window like the row menu,
- * following it on resize). Esc, a click or focus moving outside it, or the
- * page scrolling (the header isn't sticky, so it would carry the popover
- * off the top) closes it; Esc returns focus to the button (or where open()
- * was told). Once placed,
- * focuses getFocusTarget()'s element - the panel itself by default.
+ * A button's popover (the header's ActivityPopover, AddPrPopover and
+ * KeyboardShortcutsPopover, the table toolbar's PrLegendPopover): a
+ * non-modal dialog under the button (fixed, kept in the window like the row
+ * menu, following it on resize). Esc (with focus in it), a click outside
+ * it or focus moving outside it (Tab) closes it; Esc returns focus to the
+ * button (or where open() was told). Scrolling doesn't: it stays where it
+ * is in the window. Once placed, focuses getFocusTarget()'s element - the
+ * panel itself by default.
  */
 export function useHeaderPopover(getFocusTarget?: () => HTMLElement | null): HeaderPopover {
   const [isOpen, setIsOpen] = useState(false);
@@ -80,11 +80,14 @@ export function useHeaderPopover(getFocusTarget?: () => HTMLElement | null): Hea
   // document) can take it first and stop it here.
   useEffect(() => {
     if (!isOpen) return undefined;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') close(true);
-    };
     const isInside = (target: EventTarget | null) =>
       target instanceof Node && Boolean(panelRef.current?.contains(target) || buttonRef.current?.contains(target));
+    // Only while focus is in it (left open with focus elsewhere, Esc there
+    // is for that - a search box, a drawer), and not when something has
+    // handled the Esc already (a modal's focus trap).
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !event.defaultPrevented && isInside(document.activeElement)) close(true);
+    };
     const onPointerDown = (event: PointerEvent) => {
       if (!isInside(event.target)) close(false);
     };
@@ -94,23 +97,13 @@ export function useHeaderPopover(getFocusTarget?: () => HTMLElement | null): Hea
     const onFocusOut = (event: FocusEvent) => {
       if (event.relatedTarget && !isInside(event.relatedTarget)) close(false);
     };
-    // It's placed under the button with fixed positioning, so it closes when
-    // the button moves: the page, or a container around the button,
-    // scrolling. Scrolling anything else (its own content, a list in the
-    // filter bar, the table) keeps it open.
-    const onScroll = (event: Event) => {
-      const { target } = event;
-      if (target instanceof Document || (target instanceof Node && target.contains(buttonRef.current))) close(false);
-    };
     window.addEventListener('keydown', onKeyDown);
     document.addEventListener('pointerdown', onPointerDown);
     document.addEventListener('focusout', onFocusOut);
-    window.addEventListener('scroll', onScroll, true);
     return () => {
       window.removeEventListener('keydown', onKeyDown);
       document.removeEventListener('pointerdown', onPointerDown);
       document.removeEventListener('focusout', onFocusOut);
-      window.removeEventListener('scroll', onScroll, true);
     };
   }, [isOpen, close]);
 

@@ -259,8 +259,10 @@ function ActivityContent({ onOpenActionLog }: { onOpenActionLog: (focus?: { kind
  *   the error when a job failed; the full history is Tools › Action log.
  *
  * The button counts what's running or queued, and turns red with a
- * problem. A header popover (useHeaderPopover), which its close button
- * closes too. Opening focuses the popover itself (not its close button,
+ * problem. A header popover (useHeaderPopover) that stays open until its
+ * close button, a click or Tab outside it, or Esc closes it - not when the
+ * page scrolls (it stays where it is in the window).
+ * Opening focuses the popover itself (not its close button,
  * whose tooltip would take the first Esc). Its content mounts only while
  * open, with its own clock for the times.
  */

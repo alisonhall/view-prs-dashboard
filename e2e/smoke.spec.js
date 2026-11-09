@@ -389,9 +389,7 @@ test("at phone width the activity popover stays in the window, under its button"
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(375);
 });
 
-test("the activity popover closes when the page scrolls, but not when its own content does", async ({ page }) => {
-  // The header isn't sticky: following its button, the popover would be
-  // carried off the top of the window.
+test("the activity popover stays open, where it is in the window, while its content or the page scrolls; a click outside closes it", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 500 });
   await page.goto("/");
   await waitForPrTable(page);
@@ -411,15 +409,24 @@ test("the activity popover closes when the page scrolls, but not when its own co
   await expect.poll(() => content.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
   await expect(activityPanel).toBeVisible();
 
+  // The page scrolling leaves it open, and where it was in the window.
+  const panelTop = (await activityPanel.boundingBox()).y;
   await page.mouse.move(100, 450);
   await page.mouse.wheel(0, 300);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+  await expect(activityPanel).toBeVisible();
+  expect((await activityPanel.boundingBox()).y).toBe(panelTop);
+
+  // A click outside it closes it.
+  await page.mouse.click(100, 450);
   await expect(activityPanel).toBeHidden();
 });
 
-test("tabbing out of the activity popover closes it, so Settings opens alone and Esc goes back to Settings", async ({ page }) => {
+test("tabbing out of the activity popover closes it, so Settings opens alone and Esc goes back to Settings; Esc in it closes it", async ({ page }) => {
   await page.goto("/");
   await waitForPrTable(page);
-  await page.getByRole("banner").getByRole("button", { name: /^Activity/ }).click();
+  const activityButton = page.getByRole("banner").getByRole("button", { name: /^Activity/ });
+  await activityButton.click();
   const activityPanel = page.getByRole("dialog", { name: "Activity", exact: true });
   await expect(activityPanel).toBeFocused();
 
@@ -436,6 +443,13 @@ test("tabbing out of the activity popover closes it, so Settings opens alone and
   await page.keyboard.press("Escape");
   await expect(settingsDrawer(page)).toHaveCount(0);
   await expect(settingsButton).toBeFocused();
+
+  // Esc in the popover closes it, back to its button.
+  await activityButton.click();
+  await expect(activityPanel).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(activityPanel).toBeHidden();
+  await expect(activityButton).toBeFocused();
 });
 
 test("the Tools and Settings drawers open from the header, switch sections, and close with Esc back to their buttons", async ({ page }) => {

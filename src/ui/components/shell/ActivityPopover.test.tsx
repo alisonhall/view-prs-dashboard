@@ -294,27 +294,36 @@ describe('ActivityPopover', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  test('the page scrolling closes it; scrolling its own content, or a list elsewhere, does not', async () => {
+  test('Esc in it closes it, back to its button; not one something else has handled (a modal\'s focus trap)', async () => {
     const user = userEvent.setup();
-    renderPopover(undefined, <div data-testid="list-elsewhere" />);
+    renderPopover();
+    await user.click(button());
+    const dialog = screen.getByRole('dialog', { name: 'Activity' });
+
+    act(() => dialog.focus());
+    act(() => {
+      const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+      event.preventDefault();
+      dialog.dispatchEvent(event);
+    });
+    expect(dialog).toBeInTheDocument();
+
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(button()).toHaveFocus();
+  });
+
+  test('scrolling - the page, a container around the button, its own content or a list elsewhere - leaves it open', async () => {
+    const user = userEvent.setup();
+    const { container } = renderPopover(undefined, <div data-testid="list-elsewhere" />);
     await user.click(button());
     const dialog = screen.getByRole('dialog', { name: 'Activity' });
 
     fireEvent.scroll(dialog.querySelector('.activity-popover-content') as Element);
     fireEvent.scroll(screen.getByTestId('list-elsewhere'));
-    expect(dialog).toBeInTheDocument();
-
     fireEvent.scroll(document);
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-  });
-
-  test('a container around the button scrolling closes it (the button moves)', async () => {
-    const user = userEvent.setup();
-    const { container } = renderPopover();
-    await user.click(button());
-
     fireEvent.scroll(container);
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(dialog).toBeInTheDocument();
   });
 
   test('closed, it leaves no listeners behind', async () => {

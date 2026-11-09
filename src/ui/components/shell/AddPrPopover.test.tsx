@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AddPrPopover } from './AddPrPopover';
 
@@ -19,6 +19,30 @@ const openPopover = async (user: ReturnType<typeof userEvent.setup>) => {
 };
 
 describe('AddPrPopover', () => {
+  // The header popovers' closing (useHeaderPopover).
+  test('focus moving outside closes it; scrolling - the page or its own content - or the window losing focus does not', async () => {
+    const user = userEvent.setup();
+    render(
+      <>
+        <AddPrPopover />
+        <button type="button">Elsewhere</button>
+      </>,
+    );
+    const open = async () => {
+      await user.click(screen.getByRole('button', { name: 'Add PR' }));
+      return screen.getByRole('dialog');
+    };
+
+    const dialog = await open();
+    fireEvent.scroll(dialog);
+    fireEvent.scroll(document);
+    fireEvent.focusOut(dialog, { relatedTarget: null });
+    expect(dialog).toBeInTheDocument();
+
+    act(() => screen.getByRole('button', { name: 'Elsewhere' }).focus());
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
   test('opens on the URL field, and adds the PR it names', async () => {
     const user = userEvent.setup();
     const fetchMock = respond(200, { ok: true, key: 'corp/tool#8', added: true, fetched: true });
