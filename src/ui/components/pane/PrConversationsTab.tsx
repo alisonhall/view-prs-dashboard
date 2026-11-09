@@ -81,7 +81,7 @@ function CommentBlock({ comment, pr, actorsMap, suffix }: { comment: ThreadComme
         {pending && <span className="pr-conv-badge">Pending</span>}
       </p>
       <div
-        className="insight-thread-body"
+        className="insight-thread-body pr-markdown"
         dangerouslySetInnerHTML={{ __html: renderMarkdownAsHtml(comment.body || '(no comment body)') }}
       />
     </div>

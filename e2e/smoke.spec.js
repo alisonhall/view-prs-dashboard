@@ -1130,6 +1130,9 @@ test("the detail pane's Conversations tab lists unresolved threads by file and o
   await expect(thread).toBeFocused();
   await expect(pane.getByText("No, it stops after three tries.")).toBeVisible();
   await expect(pane.getByRole("strong").filter({ hasText: "forever" })).toBeVisible();
+  // The comment's HTML doesn't keep its source's line breaks, which put
+  // gaps between its blocks (spacing is .pr-markdown's).
+  await expect(pane.locator(".insight-thread-body").first()).toHaveCSS("white-space", "normal");
 
   await show.getByRole("button", { name: /^All/ }).click();
   await expect(pane.getByText("Typo in the test name")).toBeVisible();

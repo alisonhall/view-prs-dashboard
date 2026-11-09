@@ -284,9 +284,6 @@
   white-space: pre-wrap;
 }
 
-.pr-activity-text > :first-child { margin-top: 0; }
-.pr-activity-text > :last-child { margin-bottom: 0; }
-
 /* A long body folds to about six lines until "Show more" (PrActivityTab's
    FOLD_EMS matches this height). */
 .pr-activity-text[data-folded="true"] {
@@ -574,8 +571,73 @@
   overflow-wrap: anywhere;
 }
 
-.pr-conv-comment .insight-thread-body > :first-child { margin-top: 0; }
-.pr-conv-comment .insight-thread-body > :last-child { margin-bottom: 0; }
+/* Rendered comment and review markdown (pr-markdown-render.helpers.ts):
+   the Activity tab's text and Conversations' comments. Half a line between
+   blocks, none before the first or after the last; code set apart from
+   the text around it. */
+.pr-markdown {
+  white-space: normal;
+}
+
+.pr-markdown > :first-child { margin-top: 0; }
+.pr-markdown > :last-child { margin-bottom: 0; }
+
+.pr-markdown :is(p, ul, ol, pre, blockquote, table, h1, h2, h3, h4, h5, h6) {
+  margin: 0 0 0.5em;
+}
+
+.pr-markdown :is(h1, h2, h3, h4, h5, h6) {
+  font-size: 1em;
+  font-weight: 600;
+}
+
+/* A list item's own paragraphs (a "loose" list) and nested lists add no
+   gap of their own. */
+.pr-markdown li > :is(p, ul, ol) {
+  margin: 0;
+}
+
+.pr-markdown :is(ul, ol) {
+  padding-left: 1.5em;
+}
+
+.pr-markdown ul { list-style: disc; }
+.pr-markdown ul ul { list-style: circle; }
+
+.pr-markdown blockquote {
+  padding-left: var(--space-2);
+  border-left: 3px solid var(--color-border-strong);
+  color: var(--color-text-muted);
+}
+
+.pr-markdown code {
+  padding: 0.1em 0.35em;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-inset);
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+
+.pr-markdown pre {
+  padding: 6px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-inset);
+  overflow-x: auto;
+}
+
+.pr-markdown pre code {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: var(--font-size-sm);
+}
+
+/* The fail-closed fallback: plain text, its line breaks kept. */
+.md-plain {
+  white-space: pre-wrap;
+}
 
 .pr-conv-thread-footer {
   display: flex;

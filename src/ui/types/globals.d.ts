@@ -2,7 +2,7 @@
 // as far as converted code uses them. Optional because code checks for
 // them before use (tests and early renders may run without them).
 interface MarkedGlobal {
-  parse(markdown: string): string;
+  parse(markdown: string, options?: { breaks?: boolean; gfm?: boolean }): string;
 }
 
 interface DOMPurifyGlobal {

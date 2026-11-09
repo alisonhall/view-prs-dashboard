@@ -138,7 +138,7 @@ function Body({ text, markdown }: { text: string; markdown: boolean }) {
       {markdown ? (
         <div
           ref={textRef}
-          className="pr-activity-text"
+          className="pr-activity-text pr-markdown"
           data-folded={folded ? 'true' : undefined}
           dangerouslySetInnerHTML={{ __html: renderMarkdownAsHtml(text) }}
         />

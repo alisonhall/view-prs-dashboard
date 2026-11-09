@@ -27,9 +27,9 @@ describe("pr markdown render helpers", () => {
     delete window.marked;
     const { renderMarkdownAsHtml } = createPrMarkdownRenderHelpers();
 
-    expect(renderMarkdownAsHtml("  hello  ")).toBe("hello");
+    expect(renderMarkdownAsHtml("  hello  ")).toBe(`<div class="md-plain">hello</div>`);
     expect(renderMarkdownAsHtml('<img src=x onerror="alert(1)">')).toBe(
-      "&lt;img src=x onerror=&quot;alert(1)&quot;&gt;",
+      `<div class="md-plain">&lt;img src=x onerror=&quot;alert(1)&quot;&gt;</div>`,
     );
   });
 
@@ -39,7 +39,7 @@ describe("pr markdown render helpers", () => {
     const { renderMarkdownAsHtml } = createPrMarkdownRenderHelpers();
 
     expect(renderMarkdownAsHtml("**bold** <script>alert(1)</script>")).toBe(
-      "**bold** &lt;script&gt;alert(1)&lt;/script&gt;",
+      `<div class="md-plain">**bold** &lt;script&gt;alert(1)&lt;/script&gt;</div>`,
     );
   });
 
@@ -65,6 +65,15 @@ describe("pr markdown render helpers", () => {
     expect(html).toContain("<li>item</li>");
     expect(html).toContain('<a href="https://example.com">docs</a>');
     expect(html).toContain("const a = 1 &lt; 2;");
+  });
+
+  test("given a line break within a paragraph, when rendering, then it stays a line break, as on GitHub", () => {
+    window.marked = realMarked;
+    const { renderMarkdownAsHtml } = createPrMarkdownRenderHelpers();
+
+    expect(renderMarkdownAsHtml("line one\nline two\n\nnext paragraph")).toBe("<p>line one<br>line two</p>\n<p>next paragraph</p>\n");
+    // Not in code: its lines are kept as they are.
+    expect(renderMarkdownAsHtml("```\na\nb\n```")).toBe("<pre><code>a\nb\n</code></pre>\n");
   });
 
   test("given raw HTML in a comment, when rendering, then scripts and event handlers are stripped", () => {
@@ -150,7 +159,7 @@ describe("pr markdown render helpers", () => {
     const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
     const { renderMarkdownAsHtml } = createPrMarkdownRenderHelpers();
 
-    expect(renderMarkdownAsHtml("  <b>hello</b>  ")).toBe("&lt;b&gt;hello&lt;/b&gt;");
+    expect(renderMarkdownAsHtml("  <b>hello</b>  ")).toBe(`<div class="md-plain">&lt;b&gt;hello&lt;/b&gt;</div>`);
     expect(warnSpy).toHaveBeenCalledWith("Failed to render markdown", expect.any(Error));
     warnSpy.mockRestore();
   });
