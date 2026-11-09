@@ -295,14 +295,10 @@ const createViewPrsActorsStorage = ({
       : { actors: readActors(), movedIds: {}, unreadable: false };
   };
 
-  // Whether the file is there but unreadable.
-  const isUnreadable = () => readFile().unreadable;
-
-  return { readActors, readState, writeActors, replaceActors, addObservedLogins, isUnreadable };
+  return { readActors, readState, writeActors, replaceActors, addObservedLogins };
 };
 
 module.exports = {
-  ACTOR_ID_PREFIX: ID_PREFIX,
   createViewPrsActorsStorage,
   buildActorIndex,
   findMovedIds,

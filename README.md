@@ -539,7 +539,7 @@ The UI features **smart accordion groups** that appear above lifecycle sections 
 - **My Open & Draft PRs**: your own open and draft PRs (expanded by default)
 - **Assigned to Me**: open and draft PRs you're assigned to (expanded by default)
 - **Me as Reviewer**: someone else's open and draft PRs where your review is currently requested (expanded by default). Named for the role rather than "review requested", because some projects add reviewers automatically, so it isn't always a to-do. GitHub usually drops the request once you submit a review, so the PR leaves this section then.
-  - These three compare logins with your actor login aliases resolved; they stay empty when your login isn't known.
+  - These three compare people, so any of your logins (Settings › `People`) counts; they stay empty when your login isn't known.
   - A review requested from a team you're in doesn't count: the stored data records requested people, not teams' members.
 - **💬 Open PRs I'm Involved In**: PRs where viewer has participated (collapsed by default)
   - Purpose: Personal reference for active PRs you're engaged with

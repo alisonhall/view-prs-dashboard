@@ -259,6 +259,30 @@ describe('PrNotesTab saving', () => {
     await waitFor(() => expect(mockPost).toHaveBeenCalled());
     expect(lastPayload()).toMatchObject({ otherNotes: 'Talked it over (mine)', prDifficulty: '5', analysisOfPr: 'From another window' });
   });
+
+  test('a comment author saved from another window is offered, though the PR itself is unchanged', async () => {
+    const user = userEvent.setup();
+    const entry = savedEntry();
+    // The page's map is the same object from render to render.
+    const actorsMap = {};
+    const { rerender } = render(<PrNotesTab entry={entry} pr={pr} actorsMap={actorsMap} />);
+    const refreshed: PrEntry = {
+      ...entry,
+      notes: { ...entry.notes, comments: [...(entry.notes?.comments || []), { id: 'c2', author: 'bob', tone: 'Neutral', note: 'Later' }] },
+    };
+    rerender(
+      <RequestActivityContext.Provider value={{ beginRequestActivity: () => () => {} } as never}>
+        <NotesDirtyContext.Provider value={{ dirtyPrKeys: [], setNotesDirty: () => {} } as never}>
+          <PrNotesTab entry={refreshed} pr={pr} actorsMap={actorsMap} />
+        </NotesDirtyContext.Provider>
+      </RequestActivityContext.Provider>,
+    );
+    await user.click(screen.getByRole('button', { name: 'Edit comments' }));
+    const options = within(screen.getByRole('combobox', { name: 'Comment 1 author' }))
+      .getAllByRole('option')
+      .map((option) => option.getAttribute('value'));
+    expect(options).toEqual(expect.arrayContaining(['alice', 'bob']));
+  });
 });
 
 describe('PrNotesTab unsaved state (NotesDirtyContext)', () => {

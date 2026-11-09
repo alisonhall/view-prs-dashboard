@@ -774,14 +774,7 @@ const {
   toTrimmedString,
 });
 
-const writeJsonFileBestEffort = (filePath, value) => {
-  try {
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
-  } catch (_error) {
-    // Best-effort cache persistence only.
-  }
-};
+const writeJsonFileBestEffort = (filePath, value) => _writeJsonFileBestEffort(filePath, value);
 
 
 // The people (data/actors.json, view-prs-actors-storage.js): one record

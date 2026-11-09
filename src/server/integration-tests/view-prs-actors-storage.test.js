@@ -175,7 +175,7 @@ describe("view-prs actors storage", () => {
     test("is never written over by people seen in the data, and is said to be unreadable", () => {
       const { files, storage } = makeStorage();
       fs.writeFileSync(files.actorsFile, "{ not json");
-      expect(storage.isUnreadable()).toBe(true);
+      expect(storage.readState().unreadable).toBe(true);
       expect(storage.readActors()).toEqual([]);
       expect(storage.addObservedLogins([{ login: "bob", name: "Bob" }])).toEqual([]);
       expect(fs.readFileSync(files.actorsFile, "utf8")).toBe("{ not json");
@@ -185,7 +185,7 @@ describe("view-prs actors storage", () => {
       const { files, storage } = makeStorage();
       fs.writeFileSync(files.actorsFile, "{ not json");
       storage.writeActors([{ name: "Ann", logins: ["ann"] }]);
-      expect(storage.isUnreadable()).toBe(false);
+      expect(storage.readState().unreadable).toBe(false);
       expect(storage.readActors()).toEqual([{ id: "actor:ann", name: "Ann", logins: ["ann"] }]);
       const kept = fs.readdirSync(path.dirname(files.actorsFile)).filter((name) => name.startsWith("actors.json.unreadable-"));
       expect(kept).toHaveLength(1);
