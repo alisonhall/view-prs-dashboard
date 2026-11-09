@@ -9,26 +9,33 @@ import { usePrDataActions } from './PrDataActionsContext';
 import { useRequestActivity, type RequestActivityValue } from './RequestActivityContext';
 import { useNotifyFailureSnackbar } from './useNotifyFailureSnackbar';
 
-const QUICK_CHECK_BUTTON_LABEL = 'Quick check';
-const QUICK_CHECK_ALL_BUTTON_LABEL = 'Quick check all';
+export const QUICK_CHECK_BUTTON_LABEL = 'Quick check';
+export const QUICK_CHECK_OPEN_AND_MERGED_BUTTON_LABEL = 'Quick check open and latest merged';
+export const QUICK_CHECK_ALL_BUTTON_LABEL = 'Quick check all';
 
 const buildQuickCheckCountLabel = (pendingTotal: number): string =>
   pendingTotal > 0
     ? `${pendingTotal} update${pendingTotal === 1 ? '' : 's'} found`
     : 'No changes found';
 
+// "2 updates found across 3 repos", for the checks that span every repo.
+const buildAcrossReposLabel = ({ pendingTotal, reposChecked }: { pendingTotal: number; reposChecked: string[] }): string =>
+  pendingTotal > 0
+    ? `${buildQuickCheckCountLabel(pendingTotal)} across ${reposChecked.length} repo${reposChecked.length === 1 ? '' : 's'}`
+    : 'No changes found';
+
 type QuickCheckHelpers = ReturnType<typeof createPrQuickCheckActionsHelpers>;
 
 export interface QuickCheckActions {
   handleQuickCheck: () => ReturnType<QuickCheckHelpers['runQuickCheckWorkflow']>;
+  handleQuickCheckOpenAndMerged: () => ReturnType<QuickCheckHelpers['runQuickCheckWorkflow']>;
   handleQuickCheckAll: () => ReturnType<QuickCheckHelpers['runQuickCheckAllWorkflow']>;
 }
 
 /**
- * The "Quick check" and "Quick check all" buttons' actions
- * (QuickCheckButton.jsx, and the app header's QuickCheckAllButton, via
- * AppShell):
- * builds createPrQuickCheckActionsHelpers with the form body, the newest
+ * The quick check buttons' actions, all in Settings › Run & check
+ * (QuickCheckButton): "Quick check", "Quick check open and latest merged"
+ * and "Quick check all". Builds createPrQuickCheckActionsHelpers with the form body, the newest
  * stored payload (PrDataProvider's), the per-PR busy markers
  * (usePrActivityQueue, which marks one PR at a time, so they're wrapped in
  * a loop) and snackbars.
@@ -74,18 +81,20 @@ export function useQuickCheckActions(): QuickCheckActions {
         buildSuccessLabel: ({ pendingTotal }) => buildQuickCheckCountLabel(pendingTotal),
       });
 
+    const handleQuickCheckOpenAndMerged = () =>
+      runQuickCheckWorkflow({
+        fallbackLabel: QUICK_CHECK_OPEN_AND_MERGED_BUTTON_LABEL,
+        buildSuccessLabel: buildAcrossReposLabel,
+        ignorePrNumbers: true,
+      });
+
     const handleQuickCheckAll = () =>
       runQuickCheckAllWorkflow({
         fallbackLabel: QUICK_CHECK_ALL_BUTTON_LABEL,
-        buildSuccessLabel: ({ pendingTotal, reposChecked }) =>
-          pendingTotal > 0
-            ? `${buildQuickCheckCountLabel(pendingTotal)} across ${reposChecked.length} repo${
-                reposChecked.length === 1 ? '' : 's'
-              }`
-            : 'No changes found',
+        buildSuccessLabel: buildAcrossReposLabel,
       });
 
-    return { handleQuickCheck, handleQuickCheckAll };
+    return { handleQuickCheck, handleQuickCheckOpenAndMerged, handleQuickCheckAll };
   }, [
     markPrBusy,
     clearPrBusy,

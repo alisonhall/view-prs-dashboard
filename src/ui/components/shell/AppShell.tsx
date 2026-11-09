@@ -2,7 +2,6 @@ import { Suspense, lazy, useEffect, useRef, type ReactNode, type RefObject } fro
 import { usePrData } from '../../state/PrDataContext';
 import { type TabPanelId, useHasTabPanelBeenVisible, useIsTabPanelVisible } from '../../state/useIsTabPanelVisible';
 import { useMultiSelectDropdownClosing } from '../../state/useMultiSelectDropdownClosing';
-import { useQuickCheckActions } from '../../state/useQuickCheckActions';
 import { AuthorInsightsProvider } from '../AuthorInsightsProvider';
 import { NeedsAttentionProvider } from '../NeedsAttentionProvider';
 import { PrInsightsDisplayProvider } from '../PrInsightsDisplayProvider';
@@ -46,13 +45,6 @@ const AuthorInsightsNotesSection = lazy(() =>
 const AuthorCreatedPrsSection = lazy(() =>
   import('../AuthorCreatedPrsSection').then((m) => ({ default: m.AuthorCreatedPrsSection })),
 );
-
-// Its own component so only it follows the filter state (useQuickCheckActions
-// reads the form body).
-function AppHeaderLive() {
-  const quickCheckActions = useQuickCheckActions();
-  return <AppHeader onQuickCheckAll={() => quickCheckActions.handleQuickCheckAll()} />;
-}
 
 // The Auto update paused banner sticks to the top of the window while it
 // shows; its height goes in --sticky-top on <html>, so the section headers
@@ -139,7 +131,7 @@ export function AppShell() {
         <Snackbar />
       </div>
       <div id="app-header-root">
-        <AppHeaderLive />
+        <AppHeader />
       </div>
       {/* Its own element at the top level, so it can stay stuck to the top
           of the window while you scroll (styles/shell.css). */}

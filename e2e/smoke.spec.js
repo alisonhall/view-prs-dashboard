@@ -298,7 +298,7 @@ test.beforeEach(async ({ page }) => {
   await mockRepoLabelsRoute(page);
 });
 
-test("the app header names the repo, switches views, says when the data was updated and offers Quick check all", async ({ page }) => {
+test("the app header names the repo, switches views and says when the data was updated (the quick checks are in Settings)", async ({ page }) => {
   const { consoleErrors } = collectPageErrors(page);
   await page.goto("/");
   await waitForPrTable(page);
@@ -308,7 +308,7 @@ test("the app header names the repo, switches views, says when the data was upda
   await expect(header).toContainText("octocat/hello-world");
   // The fixture's last run is long past.
   await expect(header.getByText(/^Updated \d+d ago$/)).toBeVisible();
-  await expect(header.getByRole("button", { name: "Quick check all", exact: true })).toBeEnabled();
+  await expect(header.getByRole("button", { name: /quick check/i })).toHaveCount(0);
 
   const views = header.getByRole("tablist", { name: "Views" });
   await expect(views.getByRole("tab", { name: "Pull requests" })).toHaveAttribute("aria-selected", "true");
@@ -4417,6 +4417,28 @@ test("Trigger auto run and Quick check buttons click, show a transient state, an
   await expect(quickCheckBtn).toHaveText("Quick check");
   await quickCheckBtn.click();
   await expect(quickCheckBtn).toBeEnabled({ timeout: 5000 });
+
+  // The Quick check group's two (once the header's Quick check all):
+  // what each asks the server, answered here so the shared server's state
+  // stays as it is.
+  const requests = [];
+  await page.route(/\/view-prs\/quick-check(-all)?$/, async (route) => {
+    requests.push({ path: new URL(route.request().url()).pathname, body: route.request().postDataJSON() });
+    await route.fulfill({
+      json: { ok: true, newPendingOpenCount: 1, newPendingMergedClosedCount: 0, reposChecked: ["octocat/hello-world"], reposFailed: [] },
+    });
+  });
+  const openAndMerged = page.getByTestId("quick-check-open-merged-button");
+  await expect(openAndMerged).toHaveText("Quick check open and latest merged");
+  await openAndMerged.click();
+  await expect(openAndMerged).toHaveText("1 update found across 1 repo");
+  const all = page.getByTestId("quick-check-all-button");
+  await expect(all).toHaveText("Quick check all");
+  await all.click();
+  await expect(all).toHaveText("1 update found across 1 repo");
+  expect(requests[0]).toEqual({ path: "/view-prs/quick-check", body: {} });
+  expect(requests[1].path).toBe("/view-prs/quick-check-all");
+  expect(requests[1].body.repos).toEqual([expect.objectContaining({ repo: "octocat/hello-world" })]);
 });
 
 test("a row's More menu opens from the keyboard with its first item focused, and the arrow keys move through it", async ({ page }) => {

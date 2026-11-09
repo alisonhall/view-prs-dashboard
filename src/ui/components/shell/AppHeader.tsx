@@ -14,7 +14,6 @@ import type { PrDataMeta } from '../../types/pr-data.ts';
 import { ActivityPopover } from './ActivityPopover';
 import { AddPrPopover } from './AddPrPopover';
 import { KeyboardShortcutsPopover } from './KeyboardShortcutsPopover';
-import { QuickCheckAllButton, type QuickCheckAllButtonProps } from './QuickCheckAllButton';
 
 // The views, as tabs over AppShell's panels (#tab-panel-*, which AppShell
 // shows and hides).
@@ -87,17 +86,12 @@ function LastUpdatePill({
  * repos the table shows rows from (one by name, else how many - the list on
  * hover), the view tabs (Pull requests / Review stats / Authors,
  * TabStateContext's data tab), the latest action's status, when the data
- * was last updated, the refresh (Quick check all), adding a PR by URL
- * (AddPrPopover), the background activity
- * (ActivityPopover) and the Settings drawer's button. The
- * auto-update-paused banner has its own root under it
- * (AutoUpdatePausedBanner).
+ * was last updated, adding a PR by URL (AddPrPopover), the background
+ * activity (ActivityPopover) and the Settings drawer's button (the quick
+ * checks are in its Run & check). The auto-update-paused banner has its
+ * own root under it (AutoUpdatePausedBanner).
  */
-export interface AppHeaderProps {
-  onQuickCheckAll: QuickCheckAllButtonProps['onCheck'];
-}
-
-export function AppHeader({ onQuickCheckAll }: AppHeaderProps) {
+export function AppHeader() {
   const { payload, selectedRepo } = usePrData();
   const { activeDataTab, setActiveDataTab } = useTabState();
   const settings = useSettingsDrawer();
@@ -137,7 +131,6 @@ export function AppHeader({ onQuickCheckAll }: AppHeaderProps) {
               defaultIntervalMs={readDefaultQuickCheckIntervalMs(payload?.scheduler)}
             />
           </NowProvider>
-          <QuickCheckAllButton onCheck={onQuickCheckAll} />
           <AddPrPopover />
           <ActivityPopover />
           <Button icon="sliders" aria-haspopup="dialog" aria-expanded={settings.isOpen} onClick={() => settings.open()}>

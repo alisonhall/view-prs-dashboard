@@ -4,12 +4,16 @@ import { useOutputText } from '../../state/OutputTextContext';
 import { useRepoLabels } from '../../state/RepoLabelsContext';
 import { useStatusText } from '../../state/StatusTextContext';
 import { useAckLabelActions } from '../../state/useAckLabelActions';
-import { useQuickCheckActions } from '../../state/useQuickCheckActions';
+import {
+  QUICK_CHECK_ALL_BUTTON_LABEL,
+  QUICK_CHECK_OPEN_AND_MERGED_BUTTON_LABEL,
+  useQuickCheckActions,
+} from '../../state/useQuickCheckActions';
 import { useRunScript } from '../../state/useRunScript';
 import { useTriggerAutoRun } from '../../state/useTriggerAutoRun';
 import { ApplyLabelSelect } from './ApplyLabelSelect';
 import { ContextRunScriptTextInput } from './ContextRunScriptTextInput';
-import { QuickCheckButton } from './QuickCheckButton';
+import { QUICK_CHECK_LIMITS, QuickCheckButton } from './QuickCheckButton';
 import { TriggerAutoRunButton } from './TriggerAutoRunButton';
 import { PR_NUMBERS_FIELD } from './settings-fields';
 
@@ -17,6 +21,8 @@ import { PR_NUMBERS_FIELD } from './settings-fields';
  * The Settings drawer's "Run & check" (UI_REDESIGN_PLAN.md, phase 9b):
  * - the latest status message, and "Trigger auto run" (the old Activity
  *   tab's);
+ * - Quick check: "Quick check open and latest merged" and "Quick check all"
+ *   (once in the app header);
  * - the PR numbers to run on, with Run script, Quick check and Apply ack
  *   only / clear only;
  * - a label to apply to them, with the repo's labels reloadable;
@@ -31,7 +37,7 @@ export function RunCheckSection() {
   const { persistRunScriptOptions } = useFilterState();
   const runScript = useRunScript();
   const triggerAutoRun = useTriggerAutoRun();
-  const { handleQuickCheck } = useQuickCheckActions();
+  const { handleQuickCheck, handleQuickCheckOpenAndMerged, handleQuickCheckAll } = useQuickCheckActions();
   const { handleAckOnly, handleClearOnly, handleApplyLabelClick } = useAckLabelActions();
   const { refresh: refreshLabels } = useRepoLabels();
 
@@ -44,6 +50,30 @@ export function RunCheckSection() {
         </pre>
         <div className="settings-actions">
           <TriggerAutoRunButton onTrigger={() => triggerAutoRun()} />
+        </div>
+      </div>
+
+      <div className="settings-group">
+        <h3 className="settings-heading">Quick check</h3>
+        <p className="settings-hint">
+          Asks GitHub which PRs changed since they were last fetched, without fetching their details. Those that changed
+          are updated soon after.
+        </p>
+        <div className="settings-actions">
+          <QuickCheckButton
+            id="quick-check-open-merged-btn"
+            testId="quick-check-open-merged-button"
+            label={QUICK_CHECK_OPEN_AND_MERGED_BUTTON_LABEL}
+            title={`What the background quick check covers: each repo's open PRs and its latest merged ones, as a full refresh lists them, and the PRs added one by one (Sources) - a cheap listing per repo.\n${QUICK_CHECK_LIMITS}`}
+            onCheck={() => handleQuickCheckOpenAndMerged()}
+          />
+          <QuickCheckButton
+            id="quick-check-all-btn"
+            testId="quick-check-all-button"
+            label={QUICK_CHECK_ALL_BUTTON_LABEL}
+            title={`Checks every PR row already stored, across every repo - older merged and closed ones too: one call per PR.\n${QUICK_CHECK_LIMITS}`}
+            onCheck={() => handleQuickCheckAll()}
+          />
         </div>
       </div>
 

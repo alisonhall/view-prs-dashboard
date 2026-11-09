@@ -7,7 +7,7 @@ import { TabStateProvider } from '../TabStateProvider';
 import { StatusTextProvider } from '../StatusTextProvider';
 import { useStatusText } from '../../state/StatusTextContext';
 import type { PrDataPayload } from '../../types/pr-data.ts';
-import { AppHeader, type AppHeaderProps } from './AppHeader';
+import { AppHeader } from './AppHeader';
 import { SettingsDrawerProvider, useSettingsDrawer } from '../../state/SettingsDrawerContext';
 
 let settingsOpen = false;
@@ -19,11 +19,11 @@ function SettingsProbe() {
 const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
 const loaded = (lastRun: PrDataPayload['lastRun']): PrDataPayload => ({ ok: true, byPrNumber: {}, lastRun });
 
-const renderHeader = (payload: PrDataPayload = loaded({ repo: 'octocat/hello-world', updatedAt: minutesAgo(5) }), props: Partial<AppHeaderProps> = {}) =>
+const renderHeader = (payload: PrDataPayload = loaded({ repo: 'octocat/hello-world', updatedAt: minutesAgo(5) })) =>
   render(
     <PrDataProvider initialPayload={payload}>
       <TabStateProvider>
-        <AppHeader onQuickCheckAll={async () => undefined} {...props} />
+        <AppHeader />
       </TabStateProvider>
     </PrDataProvider>,
   );
@@ -155,7 +155,7 @@ describe('AppHeader', () => {
       <PrDataProvider initialPayload={loaded(null)}>
         <StatusTextProvider>
           <StatusSetter />
-          <AppHeader onQuickCheckAll={async () => undefined} />
+          <AppHeader />
         </StatusTextProvider>
       </PrDataProvider>,
     );
@@ -173,7 +173,7 @@ describe('AppHeader', () => {
     render(
       <PrDataProvider initialPayload={loaded(null)}>
         <SettingsDrawerProvider>
-          <AppHeader onQuickCheckAll={async () => undefined} />
+          <AppHeader />
           <SettingsProbe />
         </SettingsDrawerProvider>
       </PrDataProvider>,
@@ -186,12 +186,8 @@ describe('AppHeader', () => {
     expect(settings).toHaveAttribute('aria-expanded', 'true');
   });
 
-  test('Quick check all runs the check and shows what it found', async () => {
-    const user = userEvent.setup();
-    const onQuickCheckAll = jest.fn(async () => ({ label: '2 updates found' }));
-    renderHeader(undefined, { onQuickCheckAll });
-    await user.click(screen.getByRole('button', { name: 'Quick check all' }));
-    expect(onQuickCheckAll).toHaveBeenCalledTimes(1);
-    expect(await screen.findByRole('button', { name: '2 updates found' })).toBeInTheDocument();
+  test('has no quick check of its own: those are in Settings › Run & check', () => {
+    renderHeader();
+    expect(within(screen.getByRole('banner')).queryByRole('button', { name: /quick check/i })).not.toBeInTheDocument();
   });
 });
