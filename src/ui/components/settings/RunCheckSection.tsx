@@ -17,6 +17,10 @@ import { QUICK_CHECK_LIMITS, QuickCheckButton } from './QuickCheckButton';
 import { ScriptOptions } from './ScriptOptions';
 import { TriggerAutoRunButton } from './TriggerAutoRunButton';
 import { PR_NUMBERS_FIELD } from './settings-fields';
+import {
+  describeApplyLabelTargets,
+  getSelectedPrNumbersFromInput,
+} from '../../helpers/pr-selected-pr-numbers.helpers.ts';
 
 /**
  * The Tools drawer's "Run & check" (UI_REDESIGN_PLAN.md, phase 9b), each
@@ -36,7 +40,7 @@ import { PR_NUMBERS_FIELD } from './settings-fields';
 export function RunCheckSection() {
   const { statusText } = useStatusText();
   const { outputText } = useOutputText();
-  const { persistRunScriptOptions } = useFilterState();
+  const { values, setValue, persistRunScriptOptions } = useFilterState();
   const runScript = useRunScript();
   const triggerAutoRun = useTriggerAutoRun();
   const { handleQuickCheck, handleQuickCheckOpenAndMerged, handleQuickCheckAll } = useQuickCheckActions();
@@ -89,13 +93,29 @@ export function RunCheckSection() {
         </p>
         <div className="settings-field">
           <label htmlFor={PR_NUMBERS_FIELD.id}>{PR_NUMBERS_FIELD.label}</label>
-          <ContextRunScriptTextInput
-            id={PR_NUMBERS_FIELD.id}
-            name={PR_NUMBERS_FIELD.name}
-            type={PR_NUMBERS_FIELD.type}
-            placeholder={PR_NUMBERS_FIELD.placeholder}
-            filterStateKey={PR_NUMBERS_FIELD.key}
-          />
+          <div className="settings-actions settings-field-with-action">
+            <ContextRunScriptTextInput
+              id={PR_NUMBERS_FIELD.id}
+              name={PR_NUMBERS_FIELD.name}
+              type={PR_NUMBERS_FIELD.type}
+              placeholder={PR_NUMBERS_FIELD.placeholder}
+              filterStateKey={PR_NUMBERS_FIELD.key}
+              describedBy="pr-numbers-hint"
+            />
+            {/* The rows' checkboxes show what's in the field, so emptying
+                it unticks them all. */}
+            <Button
+              id="clear-pr-numbers-btn"
+              disabled={!String(values[PR_NUMBERS_FIELD.key] ?? '').trim()}
+              onClick={() => setValue(PR_NUMBERS_FIELD.key, '')}
+            >
+              Clear
+            </Button>
+          </div>
+          <p id="pr-numbers-hint" className="settings-hint">
+            A row&apos;s checkbox in the table adds its PR here, and takes it out again. Clear empties the field, unticking
+            them all.
+          </p>
         </div>
         <div className="settings-actions">
           <Button
@@ -127,18 +147,26 @@ export function RunCheckSection() {
 
       <div className="settings-group">
         <h3 className="settings-heading">Labels</h3>
-        <p className="settings-hint">Adds a label the repo already has on GitHub to the PRs numbered above.</p>
+        <p className="settings-hint">
+          Adds a label the repo already has on GitHub to the PRs in &quot;PR number(s)&quot; above - the rows ticked in the
+          table, and any numbers typed there.
+        </p>
         <div className="settings-field">
           <label htmlFor="apply-label-select">Apply existing GitHub label to selected PR(s)</label>
           <div className="settings-actions">
             <ApplyLabelSelect />
-            <Button id="apply-label-btn" onClick={() => handleApplyLabelClick()}>
+            <Button id="apply-label-btn" aria-describedby="apply-label-targets" onClick={() => handleApplyLabelClick()}>
               Apply label
             </Button>
             <Button id="refresh-labels-btn" icon="refresh" title="Reload labels for the current repo" onClick={() => refreshLabels()}>
               Reload labels
             </Button>
           </div>
+          {/* Apply label's description (read with it), not a live region:
+              that would speak on every keystroke in "PR number(s)". */}
+          <p id="apply-label-targets" className="settings-hint">
+            {describeApplyLabelTargets(getSelectedPrNumbersFromInput(values[PR_NUMBERS_FIELD.key]))}
+          </p>
         </div>
       </div>
 

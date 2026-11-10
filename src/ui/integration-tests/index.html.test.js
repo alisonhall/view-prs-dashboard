@@ -1913,6 +1913,28 @@ describe("index page rendering with Testing Library", () => {
     });
   });
 
+  // The rows' checkboxes show what's in "PR number(s)": Clear empties it
+  // (unticking them), and Apply label says which PRs it will label.
+  test("PR number(s)' Clear empties the field, and Apply label says which PRs it applies to", async () => {
+    const user = userEvent.setup();
+    const prNumbersInput = document.getElementById("pr-numbers");
+    const clear = document.getElementById("clear-pr-numbers-btn");
+    const targets = document.getElementById("apply-label-targets");
+    await user.clear(prNumbersInput);
+    expect(clear).toBeDisabled();
+    expect(targets).toHaveTextContent('No PRs to apply it to yet: tick rows in the table, or type their numbers in "PR number(s)" above.');
+    expect(document.getElementById("apply-label-btn")).toHaveAccessibleDescription(targets.textContent);
+    expect(prNumbersInput).toHaveAccessibleDescription(/A row's checkbox in the table adds its PR here/);
+
+    await user.type(prNumbersInput, "912, 921");
+    expect(targets).toHaveTextContent("Applies to 2 PRs: #912, #921.");
+
+    await user.click(clear);
+    expect(prNumbersInput).toHaveValue("");
+    expect(clear).toBeDisabled();
+    expect(targets).toHaveTextContent(/^No PRs to apply it to yet/);
+  });
+
   test("given local filters and mixed PR delimiters when actions run then local apply stays local and run script posts numeric IDs", async () => {
     const user = userEvent.setup();
 

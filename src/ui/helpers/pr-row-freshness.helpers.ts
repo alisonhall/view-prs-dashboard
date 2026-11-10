@@ -1,6 +1,14 @@
 import type { PrEntry, RepoBackgroundUpdatesMeta, RepoLiveSummaryMeta } from "../types/pr-data.ts";
 import { createPrFormattingHelpers } from "./pr-formatting.helpers.ts";
 
+// A check's interval as Settings › Background updates gives it, in minutes
+// ("5m", "2.5m"), or whole hours ("1h").
+const formatInterval = (ms: number): string => {
+  const minutes = ms / 60000;
+  if (minutes >= 60 && minutes % 60 === 0) return `${minutes / 60}h`;
+  return `${Math.round(minutes * 100) / 100}m`;
+};
+
 // How current a row is (ROADMAP.md, Data freshness step 5). An open/draft
 // row has two ages:
 // - its summary - what the collapsed row shows (title, labels, size, CI,
@@ -72,6 +80,8 @@ export interface RepoListing {
   pausedUntil: string;
   // How long before a confirmation counts as stale.
   staleAfterMs: number;
+  // How often it's checked (its quick check's interval).
+  intervalMs: number;
 }
 
 // A repo's entry in the data meta's `backgroundUpdates`: undefined when the
@@ -114,6 +124,7 @@ export const describeRepoListing = (
     lastError: isFailing ? String(meta?.lastError || "") : "",
     isStale: isScheduled && (isFailing || isOld),
     staleAfterMs,
+    intervalMs,
     isScheduled,
     isPaused,
     pausedUntil: isPaused ? pausedUntil : "",
@@ -277,8 +288,10 @@ export const describeRowRefreshProblem = ({
 };
 
 export interface ReposChecked {
-  // "Checked 3m ago" (the least recently checked repo), or "" when no repo
-  // has been listed.
+  // Each repo measured against its own schedule: "Checked 3m ago" for one
+  // repo; for several, "Checked on schedule" while none is overdue, else
+  // the one that is ("acme/api checked 2h ago") or how many ("2 repos
+  // overdue"). "" when no repo has been listed.
   label: string;
   // One line per repo, plus the last run.
   title: string;
@@ -316,20 +329,39 @@ export const describeReposChecked = ({
   // The label is about the repos checked in the background; a repo that
   // isn't (an old listing left from when it was) only when none are.
   const scheduled = listed.filter(({ listing }) => listing.isScheduled);
-  const oldest = (scheduled.length > 0 ? scheduled : listed).reduce((a, b) =>
-    toMs(b.listing.checkedAt) < toMs(a.listing.checkedAt) ? b : a,
-  );
+  const pool = scheduled.length > 0 ? scheduled : listed;
+  const oldest = pool.reduce((a, b) => (toMs(b.listing.checkedAt) < toMs(a.listing.checkedAt) ? b : a));
   const oldestAgo = formatAgo(oldest.listing.checkedAt, nowMs);
+  // Each repo against its own schedule (isStale: not checked within twice
+  // its interval, or failing): a repo checked hourly isn't late at 40m,
+  // though another is checked every 5.
+  const overdue = scheduled.filter(({ listing }) => listing.isStale);
+  // Why it's overdue: failing or paused (its last check can be recent), else
+  // when it was last checked.
+  const checkedAgo = ({ listing }: (typeof listed)[number]) => {
+    if (listing.isPaused) return "paused";
+    if (listing.isFailing) return "check failing";
+    const ago = formatAgo(listing.checkedAt, nowMs);
+    return ago ? `checked ${ago}` : "not checked yet";
+  };
+  let label = oldestAgo ? `Checked ${oldestAgo}` : "Not checked yet";
+  if (scheduled.length > 1) {
+    const [onlyOverdue] = overdue;
+    if (!onlyOverdue) label = "Checked on schedule";
+    else if (overdue.length === 1) label = `${onlyOverdue.repo} ${checkedAgo(onlyOverdue)}`;
+    else label = `${overdue.length} repos overdue`;
+  }
   const lines = listed.map(({ repo, listing }) => {
     const checked = listing.checkedAt ? `checked ${describeAt(listing.checkedAt, nowMs)}` : "not checked yet";
     if (!listing.isScheduled) return `${repo}: ${checked}; not checked automatically`;
     if (listing.isPaused) return `${repo}: ${checked}; paused until ${formatIsoDatetime(listing.pausedUntil)}, after repeated failures`;
     if (listing.isFailing) return `${repo}: ${checked}; failing${listing.lastError ? ` (${listing.lastError})` : ""}`;
-    return `${repo}: ${checked}${listing.isStale ? " (stale)" : ""}`;
+    // Its schedule, so a long gap reads as expected (or not).
+    return `${repo}: ${checked} · every ${formatInterval(listing.intervalMs)}${listing.isStale ? " (overdue)" : ""}`;
   });
   return {
-    label: oldestAgo ? `Checked ${oldestAgo}` : "Not checked yet",
+    label,
     title: [...lines, lastRunLine].filter(Boolean).join("\n"),
-    isStale: listed.some(({ listing }) => listing.isStale),
+    isStale: overdue.length > 0,
   };
 };

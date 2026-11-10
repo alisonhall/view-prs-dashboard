@@ -104,7 +104,7 @@ describe('AppHeader', () => {
       expect(screen.getByText('Updated 1d ago')).toHaveAttribute('data-tone', 'attention');
     });
 
-    test("once the repos shown are checked, says when (the least recent), each repo and the last run on hover", () => {
+    test("once the repos shown are checked, says they're on schedule, with each repo and the last run on hover", () => {
       renderHeader({
         ...loaded({ repo: 'o/a', updatedAt: minutesAgo(30) }),
         byPrNumber: { 1: { repo: 'o/a', prNumber: '1' }, 2: { repo: 'o/b', prNumber: '2' } },
@@ -116,13 +116,45 @@ describe('AppHeader', () => {
           },
         },
       });
-      const pill = screen.getByText('Checked 3m ago');
+      const pill = screen.getByText('Checked on schedule');
       expect(pill.getAttribute('title')?.split('\n')).toEqual([
-        expect.stringMatching(/^o\/a: checked 1m ago/),
-        expect.stringMatching(/^o\/b: checked 3m ago/),
+        expect.stringMatching(/^o\/a: checked 1m ago .* · every 5m$/),
+        expect.stringMatching(/^o\/b: checked 3m ago .* · every 5m$/),
         expect.stringMatching(/^Last run 30m ago/),
       ]);
       expect(pill).not.toHaveAttribute('data-tone');
+    });
+
+    // The checks keep the data current: a full run long ago is in the
+    // title, but "Checked on schedule" isn't flagged for it.
+    test("an old full run doesn't flag it while every repo is checked on schedule", () => {
+      renderHeader({
+        ...loaded({ repo: 'o/a', updatedAt: minutesAgo(3 * 24 * 60) }),
+        byPrNumber: { 1: { repo: 'o/a', prNumber: '1' }, 2: { repo: 'o/b', prNumber: '2' } },
+        dataMeta: {
+          dataVersion: 'v1',
+          liveSummary: {
+            'o/a': { checkedAt: minutesAgo(1), quickCheckIntervalMs: 5 * 60_000 },
+            'o/b': { checkedAt: minutesAgo(50), quickCheckIntervalMs: 60 * 60_000 },
+          },
+        },
+      });
+      expect(screen.getByText('Checked on schedule')).not.toHaveAttribute('data-tone');
+    });
+
+    test('names the one repo overdue on its own schedule, flagged', () => {
+      renderHeader({
+        ...loaded({ repo: 'o/a', updatedAt: minutesAgo(30) }),
+        byPrNumber: { 1: { repo: 'o/a', prNumber: '1' }, 2: { repo: 'o/b', prNumber: '2' } },
+        dataMeta: {
+          dataVersion: 'v1',
+          liveSummary: {
+            'o/a': { checkedAt: minutesAgo(1), quickCheckIntervalMs: 5 * 60_000 },
+            'o/b': { checkedAt: minutesAgo(30), quickCheckIntervalMs: 5 * 60_000 },
+          },
+        },
+      });
+      expect(screen.getByText('o/b checked 30m ago')).toHaveAttribute('data-tone', 'attention');
     });
 
     test("marks a repo whose check is failing", () => {

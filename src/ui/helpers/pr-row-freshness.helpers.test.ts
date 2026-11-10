@@ -238,20 +238,102 @@ describe("describeRowFreshness", () => {
 });
 
 describe("describeReposChecked", () => {
-  test("the least recently checked repo, each one in the title, and the last run", () => {
+  test("several repos, none overdue: on schedule, each one in the title with its schedule, and the last run", () => {
     const checked = describeReposChecked({
       repos: ["a/one", "b/two"],
       liveSummary: { "a/one": { checkedAt: ago(1) }, "b/two": { checkedAt: ago(4) } },
       lastRunAt: ago(30),
       nowMs: NOW,
     });
-    expect(checked.label).toBe("Checked 4m ago");
+    expect(checked.label).toBe("Checked on schedule");
     expect(checked.isStale).toBe(false);
     expect(checked.title.split("\n")).toEqual([
-      expect.stringMatching(/^a\/one: checked 1m ago \(.+\)$/),
-      expect.stringMatching(/^b\/two: checked 4m ago \(.+\)$/),
+      expect.stringMatching(/^a\/one: checked 1m ago \(.+\) · every 5m$/),
+      expect.stringMatching(/^b\/two: checked 4m ago \(.+\) · every 5m$/),
       expect.stringMatching(/^Last run 30m ago \(.+\)\.$/),
     ]);
+  });
+
+  // Each repo against its own schedule: one checked hourly isn't late at
+  // 40m, though the others are checked every 5.
+  test("a repo checked less often isn't late on its own schedule", () => {
+    const checked = describeReposChecked({
+      repos: ["a/often", "b/hourly"],
+      liveSummary: {
+        "a/often": { checkedAt: ago(2), quickCheckIntervalMs: 300000 },
+        "b/hourly": { checkedAt: ago(40), quickCheckIntervalMs: 3600000 },
+      },
+      nowMs: NOW,
+    });
+    expect(checked.label).toBe("Checked on schedule");
+    expect(checked.isStale).toBe(false);
+    expect(checked.title).toMatch(/b\/hourly: checked 40m ago \(.+\) · every 1h/);
+  });
+
+  test("one repo overdue on its own schedule: named, and flagged", () => {
+    const checked = describeReposChecked({
+      repos: ["a/often", "b/hourly"],
+      liveSummary: {
+        "a/often": { checkedAt: ago(30), quickCheckIntervalMs: 300000 },
+        "b/hourly": { checkedAt: ago(40), quickCheckIntervalMs: 3600000 },
+      },
+      nowMs: NOW,
+    });
+    expect(checked.label).toBe("a/often checked 30m ago");
+    expect(checked.isStale).toBe(true);
+    expect(checked.title).toMatch(/a\/often: checked 30m ago \(.+\) · every 5m \(overdue\)/);
+  });
+
+  // A failing or paused repo's last check can be recent: the label says why
+  // it's flagged, rather than a time that looks fine.
+  test("an overdue repo that's failing or paused says so, not when it was checked", () => {
+    const failing = describeReposChecked({
+      repos: ["a/one", "b/two"],
+      liveSummary: { "a/one": { checkedAt: ago(1) }, "b/two": { checkedAt: ago(1), lastError: "boom", lastErrorAt: ago(0) } },
+      nowMs: NOW,
+    });
+    expect(failing.label).toBe("b/two check failing");
+    expect(failing.isStale).toBe(true);
+
+    const paused = describeReposChecked({
+      repos: ["a/one", "b/two"],
+      liveSummary: { "a/one": { checkedAt: ago(1) }, "b/two": { checkedAt: ago(60) } },
+      backgroundUpdates: {
+        "a/one": { quickCheckIntervalMs: 300000, pausedUntil: null },
+        "b/two": { quickCheckIntervalMs: 300000, pausedUntil: new Date(NOW + 30 * 60000).toISOString() },
+      },
+      nowMs: NOW,
+    });
+    expect(paused.label).toBe("b/two paused");
+  });
+
+  test("an interval in minutes as Settings gives it - a fraction too - or whole hours", () => {
+    const checked = describeReposChecked({
+      repos: ["a/one", "b/two"],
+      liveSummary: {
+        "a/one": { checkedAt: ago(1), quickCheckIntervalMs: 150000 },
+        "b/two": { checkedAt: ago(1), quickCheckIntervalMs: 2 * 3600000 },
+      },
+      nowMs: NOW,
+    });
+    expect(checked.title).toMatch(/a\/one: .* · every 2\.5m/);
+    expect(checked.title).toMatch(/b\/two: .* · every 2h/);
+  });
+
+  test("several overdue: how many", () => {
+    const checked = describeReposChecked({
+      repos: ["a/one", "b/two", "c/three"],
+      liveSummary: { "a/one": { checkedAt: ago(30) }, "b/two": { checkedAt: ago(45) }, "c/three": { checkedAt: ago(1) } },
+      nowMs: NOW,
+    });
+    expect(checked.label).toBe("2 repos overdue");
+    expect(checked.isStale).toBe(true);
+  });
+
+  test("one repo: when it was checked, as before", () => {
+    expect(describeReposChecked({ repos: ["a/one"], liveSummary: { "a/one": { checkedAt: ago(4) } }, nowMs: NOW }).label).toBe(
+      "Checked 4m ago",
+    );
   });
 
   test("stale when one repo is failing", () => {

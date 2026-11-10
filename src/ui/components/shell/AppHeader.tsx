@@ -70,9 +70,10 @@ function LastUpdatePill({
     nowMs: now,
   });
   const lastUpdate = describeLastUpdate(updatedAt, now);
-  const { label, title, isStale } = checked.label
-    ? { label: checked.label, title: checked.title, isStale: checked.isStale || lastUpdate.isStale }
-    : lastUpdate;
+  // With repos checked in the background, only one overdue on its own
+  // schedule flags it - not an old full run, which "Checked on schedule"
+  // would contradict (the run is in the title).
+  const { label, title, isStale } = checked.label ? checked : lastUpdate;
   return (
     <span className="app-header-status" data-tone={isStale ? 'attention' : undefined} title={title || undefined}>
       <span className="app-header-status-dot" aria-hidden="true" />
