@@ -2,7 +2,6 @@ const {
   createViewPrsEventsRouteHelpers,
   createDataVersionWatcher,
   formatSseFrame,
-  formatSseComment,
   SSE_RESPONSE_HEADERS,
 } = require("./view-prs-events-route-helpers");
 
@@ -26,16 +25,6 @@ describe("View Prs Events Route Helpers", () => {
       // two being the frame's trailing blank-line terminator) must contain
       // no literal newline - only the escaped "\\n" JSON.stringify produced.
       expect(frame.split("\n")[1]).not.toContain("\n");
-    });
-  });
-
-  describe("Given formatSseComment", () => {
-    test("When called, Then produces a colon-prefixed comment line ignored by EventSource", () => {
-      // Act
-      const comment = formatSseComment("keep-alive");
-
-      // Assert
-      expect(comment).toBe(": keep-alive\n\n");
     });
   });
 

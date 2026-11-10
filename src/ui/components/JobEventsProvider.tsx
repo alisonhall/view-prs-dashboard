@@ -31,7 +31,9 @@ type JobEventsFrame = JobEventEnvelope & { type?: string };
  * A Provider (not a bare hook) deliberately - so exactly one EventSource
  * exists for the page however many consumers read it.
  *
- * On every frame it receives (snapshot/job/scheduler/data-changed), it calls
+ * Any frame - a `heartbeat` (every 25s) too - says the connection is alive:
+ * `isStale` is a minute without one. On every other frame (snapshot/job/
+ * scheduler/data-changed), it calls
  * RequestActivityProvider's renderSchedulerStatus with the bundled
  * scheduler object, which keeps the per-row progress indicator and the
  * request-activity badges current. And on an autoRefresh/mergedQueueDrain/
@@ -70,8 +72,17 @@ export function JobEventsProvider({ children }: { children?: ReactNode }) {
   isPayloadLoadedRef.current = isPayloadLoaded;
   const pollWhenLoadedRef = useRef(false);
   const requestDataPollRef = useRef<(() => void) | null>(null);
-  const lastEventAtRef = useRef<string | null>(null);
-  lastEventAtRef.current = jobEventsState.lastEventAt;
+  // When this page last received any frame - heartbeats too, which say the
+  // connection is alive though nothing changed - by its own clock (a
+  // frame's `at` is the server's, which can differ from this computer's).
+  // What staleness is judged by.
+  const lastFrameReceivedAtRef = useRef<number | null>(null);
+  const noteFrameReceived = () => {
+    lastFrameReceivedAtRef.current = Date.now();
+    setIsStale(false);
+  };
+  const noteFrameReceivedRef = useRef(noteFrameReceived);
+  noteFrameReceivedRef.current = noteFrameReceived;
 
   useEffect(() => {
     if (typeof window.EventSource !== 'function') {
@@ -111,7 +122,13 @@ export function JobEventsProvider({ children }: { children?: ReactNode }) {
       renderSchedulerStatusRef.current?.(scheduler);
     };
 
+    // Only says the connection is alive (see lastFrameReceivedAtRef).
+    const handleHeartbeat = () => {
+      noteFrameReceivedRef.current();
+    };
+
     const handleSnapshot = (event: MessageEvent) => {
+      noteFrameReceivedRef.current();
       let payload: { scheduler?: SchedulerSnapshot; at?: string };
       try {
         payload = JSON.parse(event.data);
@@ -130,6 +147,7 @@ export function JobEventsProvider({ children }: { children?: ReactNode }) {
     };
 
     const handleJobOrSchedulerFrame = (event: MessageEvent) => {
+      noteFrameReceivedRef.current();
       let envelope: JobEventsFrame;
       try {
         envelope = JSON.parse(event.data);
@@ -169,6 +187,7 @@ export function JobEventsProvider({ children }: { children?: ReactNode }) {
       eventSource.addEventListener('job', handleJobOrSchedulerFrame);
       eventSource.addEventListener('scheduler', handleJobOrSchedulerFrame);
       eventSource.addEventListener('data-changed', handleJobOrSchedulerFrame);
+      eventSource.addEventListener('heartbeat', handleHeartbeat);
 
       eventSource.onerror = () => {
         if (stopped) {
@@ -215,13 +234,14 @@ export function JobEventsProvider({ children }: { children?: ReactNode }) {
   }, [isPayloadLoaded]);
 
   useEffect(() => {
+    // The server sends a heartbeat every 25s (VIEW_PRS_EVENTS_HEARTBEAT_INTERVAL_MS),
+    // so a minute without any frame means the connection isn't delivering.
     const watchdog = setInterval(() => {
-      const lastEventAt = lastEventAtRef.current;
-      if (!lastEventAt) {
+      const lastReceivedAt = lastFrameReceivedAtRef.current;
+      if (lastReceivedAt === null) {
         return;
       }
-      const elapsedMs = Date.now() - Date.parse(lastEventAt);
-      setIsStale(elapsedMs > STALENESS_THRESHOLD_MS);
+      setIsStale(Date.now() - lastReceivedAt > STALENESS_THRESHOLD_MS);
     }, STALENESS_CHECK_INTERVAL_MS);
     return () => clearInterval(watchdog);
   }, []);

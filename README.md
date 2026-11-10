@@ -464,7 +464,7 @@ PR data changes are pushed too. While a page is connected, the server checks the
 
 Optional tuning via env vars:
 
-- `VIEW_PRS_EVENTS_HEARTBEAT_INTERVAL_MS` (default `25000`): how often a keep-alive comment is written to an idle `/view-prs/events` connection.
+- `VIEW_PRS_EVENTS_HEARTBEAT_INTERVAL_MS` (default `25000`): how often a `heartbeat` event is sent on an idle `/view-prs/events` connection. The page says "Live updates may be stale" after a minute without any event, so keep this well under `60000`. (Before 2026-11-10 it was an SSE comment, which the page never sees, so every quiet minute between background runs showed that warning.)
 - `VIEW_PRS_EVENTS_MAX_CLIENTS` (default `25`): how many concurrent `/view-prs/events` connections are accepted before a further one gets a 503.
 - `VIEW_PRS_EVENTS_DATA_WATCH_INTERVAL_MS` (default `3000`, at least `500`): how often the server checks the data version for `data-changed` while a page is connected. It doesn't check while none is.
 - `VIEW_PRS_SCHEDULER_STATE_THROTTLE_MS` (default `250`): caps how often a per-PR progress update (during a refresh) actually pushes an SSE frame - set to `0` to disable throttling entirely.

@@ -81,10 +81,13 @@ export function readDataPollMsOverride(search: string | null | undefined): numbe
 
 // `dataPollMs` (the URL override) is used as given; without it the data poll
 // runs every AUTO_DATA_POLL_MS, or PUSHED_DATA_POLL_MS while the event
-// stream (JobEventsProvider, an ancestor in the app) is open.
+// stream (JobEventsProvider, an ancestor in the app) is open and delivering
+// - not while it's stale (open, but nothing - not even a heartbeat - for a
+// minute), when pushed changes may not be arriving either.
 export function PrDataPolling({ dataPollMs: dataPollMsOverride }: { dataPollMs?: number }) {
-  const { connection } = useJobEvents();
-  const dataPollMs = dataPollMsOverride ?? (connection === 'open' ? PUSHED_DATA_POLL_MS : AUTO_DATA_POLL_MS);
+  const { connection, isStale } = useJobEvents();
+  const dataPollMs =
+    dataPollMsOverride ?? (connection === 'open' && !isStale ? PUSHED_DATA_POLL_MS : AUTO_DATA_POLL_MS);
   // Phase F/F.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
   // pollForDataChanges/pollBackfillStatus/renderRequestActivity are all
   // built by <PrDataProvider /> itself (this component's own parent - see

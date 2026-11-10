@@ -17,8 +17,6 @@ const SSE_RESPONSE_HEADERS = {
 const formatSseFrame = ({ event, data }) =>
   `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 
-const formatSseComment = (text = "") => `: ${text}\n\n`;
-
 // Pushes "data-changed" when what the page shows moved: checks the data
 // version (getDataVersion - the data file, the live summary, the update
 // queue) every intervalMs and emits when it differs from the last check.
@@ -97,7 +95,6 @@ const createViewPrsEventsRouteHelpers = ({ getViewPrsSchedulerPublicState } = {}
   return {
     SSE_RESPONSE_HEADERS,
     formatSseFrame,
-    formatSseComment,
     buildJobEventsSnapshotPayload,
   };
 };
@@ -107,5 +104,4 @@ module.exports = {
   createDataVersionWatcher,
   SSE_RESPONSE_HEADERS,
   formatSseFrame,
-  formatSseComment,
 };

@@ -193,6 +193,30 @@ describe('PrDataPolling', () => {
     expect(window.pollForDataChanges).toHaveBeenCalledTimes(2);
   });
 
+  // Open but delivering nothing - not even the heartbeat - for a minute:
+  // pushed changes may not be arriving, so the poll is back to every 30s
+  // until frames do.
+  test('given the open event stream goes stale, then the data poll is back to every 30s until it delivers again', () => {
+    const renderWith = (isStale) =>
+      React.createElement(
+        JobEventsContext.Provider,
+        { value: { connection: 'open', isStale } },
+        React.createElement(
+          PrDataContext.Provider,
+          { value: { pollForDataChanges: (...args) => window.pollForDataChanges?.(...args) } },
+          React.createElement(PrDataPolling),
+        ),
+      );
+    const { rerender } = render(renderWith(true));
+
+    jest.advanceTimersByTime(AUTO_DATA_POLL_MS);
+    expect(window.pollForDataChanges).toHaveBeenCalledTimes(1);
+
+    rerender(renderWith(false));
+    jest.advanceTimersByTime(AUTO_DATA_POLL_MS);
+    expect(window.pollForDataChanges).toHaveBeenCalledTimes(1);
+  });
+
   test('given the event stream is open, a dataPollMs prop still sets the cadence', () => {
     render(
       React.createElement(

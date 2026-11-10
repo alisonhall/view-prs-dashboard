@@ -182,14 +182,16 @@ describe("GET /view-prs/events", () => {
     }
   });
 
-  test("sends a heartbeat comment frame on the configured interval", async () => {
+  // A named event the page sees (an SSE comment never reaches it), so a
+  // quiet minute doesn't read as a stale connection.
+  test("sends a heartbeat event on the configured interval", async () => {
     const { server } = createTestServer({ heartbeatIntervalMs: 50 });
     try {
       const response = await fetch(`${baseUrl(server)}/view-prs/events`);
       const { text, reader } = await readFramesUntil(response, (acc) =>
-        acc.includes(": keep-alive"),
+        acc.includes("event: heartbeat"),
       );
-      expect(text).toContain(": keep-alive");
+      expect(text).toMatch(/event: heartbeat\ndata: \{"at":"[^"]+"\}\n\n/);
       await reader.cancel();
     } finally {
       server.close();

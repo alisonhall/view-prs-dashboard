@@ -25,7 +25,7 @@ const registerViewPrsEventsRoutes = ({
   dataWatchIntervalMs = 3000,
 }) => {
   const consoleSafe = console || globalThis.console;
-  const { SSE_RESPONSE_HEADERS, formatSseFrame, formatSseComment, buildJobEventsSnapshotPayload } =
+  const { SSE_RESPONSE_HEADERS, formatSseFrame, buildJobEventsSnapshotPayload } =
     createViewPrsEventsRouteHelpers({ getViewPrsSchedulerPublicState });
   const dataVersionWatcher = createDataVersionWatcher({
     getDataVersion,
@@ -92,8 +92,13 @@ const registerViewPrsEventsRoutes = ({
       dataVersionWatcher.retain();
       releaseWatcher = () => dataVersionWatcher.release();
 
+      // A named event, not an SSE comment: EventSource never hands a
+      // comment to the page, and the page calls live updates stale after a
+      // minute without a frame - so with only comments, every quiet minute
+      // between background runs showed "Live updates may be stale" over a
+      // connection that was fine.
       heartbeatTimer = setInterval(() => {
-        safeWrite(formatSseComment("keep-alive"));
+        safeWrite(formatSseFrame({ event: "heartbeat", data: { at: new Date().toISOString() } }));
       }, heartbeatIntervalMs);
       heartbeatTimer.unref?.();
 

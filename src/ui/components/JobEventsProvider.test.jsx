@@ -339,6 +339,76 @@ describe('JobEventsProvider', () => {
     expect(ProbeLastValue.isStale).toBe(true);
   });
 
+  // The server's heartbeat is a named event (an SSE comment never reaches
+  // the page): a quiet server isn't a stale connection.
+  test('heartbeats keep it from going stale while nothing happens, and one after a silence clears it at once', () => {
+    render(
+      <JobEventsProvider>
+        <Probe />
+      </JobEventsProvider>,
+    );
+    const instance = FakeEventSource.instances[0];
+    act(() => {
+      instance.emit('snapshot', { scheduler: {}, at: new Date().toISOString() });
+    });
+
+    for (let i = 0; i < 8; i += 1) {
+      act(() => {
+        jest.advanceTimersByTime(25000);
+        instance.emit('heartbeat', { at: new Date().toISOString() });
+      });
+    }
+    expect(ProbeLastValue.isStale).toBe(false);
+
+    act(() => {
+      jest.advanceTimersByTime(90000);
+    });
+    expect(ProbeLastValue.isStale).toBe(true);
+    act(() => {
+      instance.emit('heartbeat', { at: new Date().toISOString() });
+    });
+    expect(ProbeLastValue.isStale).toBe(false);
+  });
+
+  test("staleness goes by when frames arrive, not the server's timestamps on them", () => {
+    render(
+      <JobEventsProvider>
+        <Probe />
+      </JobEventsProvider>,
+    );
+    const instance = FakeEventSource.instances[0];
+    // A server whose clock is ten minutes behind this computer's.
+    const behind = () => new Date(Date.now() - 10 * 60000).toISOString();
+    act(() => {
+      instance.emit('snapshot', { scheduler: {}, at: behind() });
+    });
+    act(() => {
+      jest.advanceTimersByTime(30000);
+      instance.emit('job', { type: 'job', seq: 1, at: behind() });
+      jest.advanceTimersByTime(30000);
+    });
+    expect(ProbeLastValue.isStale).toBe(false);
+  });
+
+  test('a heartbeat changes nothing else: no poll, no job state', () => {
+    const pollForDataChanges = jest.fn(() => Promise.resolve());
+    render(
+      <PrDataContext.Provider value={{ payload: { ok: true }, pollForDataChanges }}>
+        <JobEventsProvider>
+          <Probe />
+        </JobEventsProvider>
+      </PrDataContext.Provider>,
+    );
+    const instance = FakeEventSource.instances[0];
+    const before = ProbeLastValue;
+    act(() => {
+      instance.emit('heartbeat', { at: new Date().toISOString() });
+    });
+    expect(pollForDataChanges).not.toHaveBeenCalled();
+    expect(ProbeLastValue.jobs).toBe(before.jobs);
+    expect(ProbeLastValue.lastSeq).toBe(before.lastSeq);
+  });
+
   test('unmount closes the EventSource and clears pending timers', () => {
     const { unmount } = render(
       <JobEventsProvider>
