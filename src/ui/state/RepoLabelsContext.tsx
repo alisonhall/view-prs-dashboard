@@ -23,8 +23,13 @@ export interface RepoLabel {
   color?: string;
 }
 
+// Where the current repo's `labels` stand: not asked for yet, being
+// fetched, fetched, or the last request failed (any earlier ones stay).
+export type RepoLabelsStatus = 'idle' | 'loading' | 'loaded' | 'failed';
+
 export interface RepoLabelsValue {
   labels: RepoLabel[];
+  labelsStatus?: RepoLabelsStatus;
   // Fetches for repoOverride, else the current repo.
   refresh: (repoOverride?: string) => Promise<void> | void;
   labelsByRepo?: Record<string, RepoLabel[]>;

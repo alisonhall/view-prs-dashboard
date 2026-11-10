@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { RepoLabelsContext, type RepoLabel } from '../state/RepoLabelsContext';
+import { RepoLabelsContext, type RepoLabel, type RepoLabelsStatus } from '../state/RepoLabelsContext';
 import { usePrData } from '../state/PrDataContext';
 import { useFilterState } from '../state/FilterStateContext';
 import { resolveRepoForLabelsFetch } from '../helpers/pr-repo-labels.helpers.ts';
@@ -20,6 +20,14 @@ import { resolveRepoForLabelsFetch } from '../helpers/pr-repo-labels.helpers.ts'
  */
 export function RepoLabelsProvider({ children }: { children?: ReactNode }) {
   const [labels, setLabels] = useState<RepoLabel[]>([]);
+  // How the current repo's labels (`labels`) stand, so Settings' dropdown
+  // can tell loading and a failed request from a repo with none.
+  const [labelsStatus, setLabelsStatus] = useState<RepoLabelsStatus>('idle');
+  const refreshCountRef = useRef(0);
+  // The repo `labels` are for, and every repo's last fetched labels (as
+  // labelsByRepo, but read when the repo changes without a render).
+  const labelsRepoRef = useRef('');
+  const labelsCacheRef = useRef(new Map<string, RepoLabel[]>());
   const [labelsByRepo, setLabelsByRepo] = useState<Record<string, RepoLabel[]>>({});
   // The repos whose last request failed: their menus offer to try again.
   const [failedRepos, setFailedRepos] = useState<Record<string, true>>({});
@@ -44,6 +52,7 @@ export function RepoLabelsProvider({ children }: { children?: ReactNode }) {
         if (response.ok && result?.ok !== false) {
           const fetched = Array.isArray(result.labels) ? (result.labels as RepoLabel[]) : [];
           fetchedReposRef.current.add(repo);
+          labelsCacheRef.current.set(repo, fetched);
           setLabelsByRepo((previous) => ({ ...previous, [repo]: fetched }));
           return fetched;
         }
@@ -67,8 +76,22 @@ export function RepoLabelsProvider({ children }: { children?: ReactNode }) {
       if (!repo) {
         return;
       }
+      // The latest refresh's answer is the one shown (a repo change can
+      // overtake a slower request).
+      refreshCountRef.current += 1;
+      const thisRefresh = refreshCountRef.current;
+      // Another repo: its own labels from the start (fetched before, or
+      // none) - the last repo's would offer labels this one doesn't have,
+      // and stay if this request failed. Reloading the same repo keeps them.
+      if (repo !== labelsRepoRef.current) {
+        labelsRepoRef.current = repo;
+        setLabels(labelsCacheRef.current.get(repo) || []);
+      }
+      setLabelsStatus('loading');
       const fetched = await fetchLabels(repo);
+      if (thisRefresh !== refreshCountRef.current) return;
       if (fetched) setLabels(fetched);
+      setLabelsStatus(fetched ? 'loaded' : 'failed');
     },
     [selectedRepo, values.repo, fetchLabels],
   );
@@ -103,8 +126,8 @@ export function RepoLabelsProvider({ children }: { children?: ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ labels, refresh, labelsByRepo, failedRepos, ensureLabels }),
-    [labels, refresh, labelsByRepo, failedRepos, ensureLabels],
+    () => ({ labels, labelsStatus, refresh, labelsByRepo, failedRepos, ensureLabels }),
+    [labels, labelsStatus, refresh, labelsByRepo, failedRepos, ensureLabels],
   );
   return <RepoLabelsContext.Provider value={value}>{children}</RepoLabelsContext.Provider>;
 }

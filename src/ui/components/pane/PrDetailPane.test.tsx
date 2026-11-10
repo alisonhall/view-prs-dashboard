@@ -204,6 +204,28 @@ describe('PrDetailPane', () => {
       await user.click(screen.getByRole('menuitem', { name: 'docs' }));
       expect(handlers.onApplyLabel).toHaveBeenCalledWith('7', 'docs', 'owner/repo');
     });
+
+    // As the row's menu: not "Loading labels…" for good.
+    test("labels that couldn't load: Add label offers to try again, keeping the menu open", async () => {
+      const user = userEvent.setup();
+      const ensureLabels = jest.fn();
+      render(
+        <RequestActivityContext.Provider value={{ beginRequestActivity: () => () => {} } as never}>
+          <RepoLabelsContext.Provider value={{ labels: [], refresh: () => {}, labelsByRepo: {}, failedRepos: { 'owner/repo': true }, ensureLabels }}>
+            <NotesDirtyContext.Provider value={{ dirtyPrKeys: [], setNotesDirty: () => {} }}>
+              <PrDetailPane {...paneProps()} />
+            </NotesDirtyContext.Provider>
+          </RepoLabelsContext.Provider>
+        </RequestActivityContext.Provider>,
+      );
+
+      await user.click(screen.getByRole('button', { name: 'Add label' }));
+      expect(screen.queryByText('Loading labels…')).not.toBeInTheDocument();
+      ensureLabels.mockClear();
+      await user.click(screen.getByRole('menuitem', { name: "Couldn't load labels - retry" }));
+      expect(ensureLabels).toHaveBeenCalledWith('owner/repo');
+      expect(screen.getByRole('menuitem', { name: "Couldn't load labels - retry" })).toBeInTheDocument();
+    });
   });
 
   describe('switching PRs', () => {

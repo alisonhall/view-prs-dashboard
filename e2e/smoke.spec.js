@@ -285,7 +285,7 @@ const waitForFilterPersist = async (page) => {
 // configured - there is no GH_TOKEN or network access to github.com in
 // CI, so every real run 500s. That 500 is otherwise harmless (the vanilla
 // code already treats it as best-effort and leaves the dropdown showing
-// "No labels found for this repo"), but this suite's own
+// "Couldn't load labels - try Reload labels"), but this suite's own
 // collectPageErrors() below asserts zero failed requests/console errors
 // per test, so left unmocked, EVERY test failed this exact way once the
 // suite got far enough to stop hanging - not a React timing bug, a

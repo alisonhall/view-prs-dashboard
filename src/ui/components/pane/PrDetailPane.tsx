@@ -193,7 +193,7 @@ function PaneContent({
   const url = pr.url || `https://github.com/${repo}/pull/${prNumber}`;
   // This PR's repo's labels, not the current repo's, fetched when the
   // Add label menu first opens.
-  const { labels: repoLabels, loaded: labelsLoaded, load: loadLabels } = useLabelsForRepo(repo);
+  const { labels: repoLabels, loaded: labelsLoaded, failed: labelsFailed, load: loadLabels } = useLabelsForRepo(repo);
   const { buildRowActorsMap, getEffectiveViewerLogin, getPreferredActorKey } = useActorIdentity();
   // "by" lists who the row's Who cell does: the author, then anyone else
   // with non-merge commits (its "+N" and tooltip) - same helper, same
@@ -328,7 +328,12 @@ function PaneContent({
               id: 'labels',
               label: 'Labels',
               emptyText: labelsLoaded ? 'No labels to add' : 'Loading labels…',
-              items: availableLabels.map((name) => ({ id: name, label: name, onSelect: () => onApplyLabel?.(pr.number, name, repo) })),
+              // As the row's menu (PrActionsCell): a failed request offers
+              // to try again, the menu staying open for what it brings -
+              // rather than "Loading labels…" for good.
+              items: labelsFailed
+                ? [{ id: 'retry-labels', label: "Couldn't load labels - retry", icon: 'refresh', keepOpen: true, onSelect: loadLabels }]
+                : availableLabels.map((name) => ({ id: name, label: name, onSelect: () => onApplyLabel?.(pr.number, name, repo) })),
             },
           ]}
         />
