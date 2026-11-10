@@ -20,6 +20,14 @@ resolve_data_dir() {
       *) setting=$(printf '%s' "$setting" | sed -e 's/[[:space:]][[:space:]]*#.*$//' -e 's/[[:space:]]*$//') ;;
     esac
   fi
+  # On Windows (Git Bash) a Windows path - the server passes its folder as
+  # one - is made bash's (/d/...): a backslash is an escape character in the
+  # script's file patterns, so D:\...\backups/*.bak would match nothing.
+  if command -v cygpath >/dev/null 2>&1; then
+    case "$setting" in
+      *\\* | [A-Za-z]:*) setting=$(cygpath -u "$setting") ;;
+    esac
+  fi
   case "$setting" in
     '') printf '%s\n' "$app_dir/data" ;;
     /* | [A-Za-z]:[\\/]*) printf '%s\n' "$setting" ;;

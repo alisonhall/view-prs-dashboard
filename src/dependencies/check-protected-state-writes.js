@@ -32,6 +32,11 @@ const ALLOWED_WRITER_FILES = new Set([
   "src/server/storage/view-prs-state-storage.js",
   "src/script/check-open-pr-updates.sh",
   "src/dependencies/check-protected-state-writes.js",
+  // npm run data:move moves the whole data folder, protected files and all,
+  // when you run it (with the server stopped): it renames the folder aside,
+  // copies it, checks the copy, and puts it back if a step fails. It never
+  // writes a state file's contents (the file names are in its .gitignore).
+  "src/dependencies/move-data-folder.js",
   // Not real production writers - the marker/write-op combo below is a
   // false positive in each case, confirmed by inspection:
   // - file-io-helpers.js only *reads* viewPrsUserStateFile; its

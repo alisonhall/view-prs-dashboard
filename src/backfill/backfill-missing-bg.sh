@@ -11,8 +11,12 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 . "$PROJECT_DIR/src/script/data-dir.sh"
 DATA_DIR="$(resolve_data_dir "$PROJECT_DIR")"
 # backfill-missing-data.js reads VIEW_PRS_DATA_DIR (data-dir.js), the
-# script it runs DATA_DIR: the same folder for both.
+# script it runs DATA_DIR: the same folder for both - for Node, on Windows,
+# as D:/... (it would take bash's /d/... as D:\d\...).
 VIEW_PRS_DATA_DIR="$DATA_DIR"
+if command -v cygpath >/dev/null 2>&1; then
+  VIEW_PRS_DATA_DIR="$(cygpath -m "$DATA_DIR")"
+fi
 export DATA_DIR VIEW_PRS_DATA_DIR
 PID_FILE="${VIEW_PRS_BACKFILL_PID_FILE:-$DATA_DIR/backfill-missing.pid}"
 LOG_FILE="${VIEW_PRS_BACKFILL_LOG_FILE:-$DATA_DIR/backfill-missing.log}"

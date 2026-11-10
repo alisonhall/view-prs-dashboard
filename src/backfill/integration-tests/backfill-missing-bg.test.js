@@ -50,4 +50,24 @@ describe("backfill-missing-bg.sh", () => {
     expect(stdout).toContain("Backfill status: not running");
     expect(fs.existsSync(pidFile)).toBe(false);
   });
+
+  // backfill-missing-data.js reads it with Node, which would take Git
+  // Bash's /c/... as C:\c\... on Windows.
+  test("hands the backfill a data folder Node finds", () => {
+    const env = {
+      ...process.env,
+      VIEW_PRS_DATA_DIR: tempDir,
+      VIEW_PRS_BACKFILL_PID_FILE: path.join(tempDir, "backfill-missing.pid"),
+      VIEW_PRS_BACKFILL_LOG_FILE: path.join(tempDir, "backfill-missing.log"),
+    };
+    delete env.DATA_DIR;
+
+    const handed = execFileSync(
+      "bash",
+      ["-c", '. "$1" status >/dev/null && printf "%s" "$VIEW_PRS_DATA_DIR"', "bash", scriptPath.replace(/\\/g, "/")],
+      { encoding: "utf8", env },
+    );
+
+    expect(path.resolve(handed)).toBe(path.resolve(tempDir));
+  });
 });

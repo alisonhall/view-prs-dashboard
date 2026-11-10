@@ -102,8 +102,34 @@ describe("data-dir", () => {
     test("takes DATA_DIR, then VIEW_PRS_DATA_DIR, before .env; keeps absolute folders", () => {
       writeEnv("VIEW_PRS_DATA_DIR=from-env-file\n");
       expect(resolveInBash({ DATA_DIR: "/abs/one", VIEW_PRS_DATA_DIR: "two" })).toBe("/abs/one");
-      expect(resolveInBash({ VIEW_PRS_DATA_DIR: "C:/abs/two" })).toBe("C:/abs/two");
       expect(resolveInBash({ VIEW_PRS_DATA_DIR: "two" })).toBe(`${posix(appDir)}/two`);
+    });
+
+    // The server passes its folder as a Windows path; a backslash in the
+    // script's file patterns is an escape character.
+    (process.platform === "win32" ? test : test.skip)("makes a Windows path bash's on Windows", () => {
+      expect(resolveInBash({ DATA_DIR: "C:\\abs\\two" })).toBe("/c/abs/two");
+      expect(resolveInBash({ VIEW_PRS_DATA_DIR: "C:/abs/two" })).toBe("/c/abs/two");
+      expect(resolveInBash({ DATA_DIR: "..\\up" })).toBe(`${posix(appDir)}/../up`);
+    });
+
+    test("check-open-pr-updates.sh finds the backups in the data folder the server passes, as it passes it", () => {
+      const dataDir = path.join(appDir, "data-here");
+      fs.mkdirSync(path.join(dataDir, "backups"), { recursive: true });
+      fs.writeFileSync(
+        path.join(dataDir, "backups", "check-open-pr-updates.data.json.pr-data.20261109T000000Z-1-1.bak"),
+        "{}",
+        "utf8",
+      );
+      const env = { ...process.env, DATA_DIR: dataDir, VIEW_PRS_DATA_DIR: dataDir };
+      ["PR_STATE_FILE", "USER_STATE_FILE", "STATE_BACKUP_DIR"].forEach((key) => delete env[key]);
+
+      const stdout = execFileSync("bash", [path.join(__dirname, "..", "..", "script", "check-open-pr-updates.sh"), "--backup-list"], {
+        encoding: "utf8",
+        env,
+      });
+
+      expect(stdout).toContain("check-open-pr-updates.data.json.pr-data.20261109T000000Z-1-1.bak");
     });
   });
 });
