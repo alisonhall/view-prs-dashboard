@@ -258,6 +258,7 @@ async function main() {
     VIEW_PRS_DATA_FILE: dataFile,
     VIEW_PRS_USER_STATE_FILE: path.join(tempDir, "check-open-pr-updates.user-state.json"),
     DATA_DIR: tempDir,
+    VIEW_PRS_DATA_DIR: tempDir,
     VIEW_PRS_SCHEDULER_FILE: path.join(tempDir, "scheduler.json"),
     VIEW_PRS_ACTION_LOG_FILE: path.join(tempDir, "action-log.json"),
     VIEW_PRS_AUTHOR_COMMENTS_FILE: path.join(tempDir, "author-comments.json"),

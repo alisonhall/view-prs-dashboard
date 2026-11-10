@@ -37,11 +37,17 @@ describe("backfill-missing-bg.sh", () => {
     expect(fs.existsSync(pidFile)).toBe(false);
   });
 
-  test("by default, it uses the project's data/ folder, as the server does", () => {
-    const script = fs.readFileSync(scriptPath, "utf8");
+  test("by default, its PID file is in the data folder (VIEW_PRS_DATA_DIR), as the server's is", () => {
+    const pidFile = path.join(tempDir, "backfill-missing.pid");
+    fs.writeFileSync(pidFile, "999999\n", "utf8");
+    const env = { ...process.env, VIEW_PRS_DATA_DIR: tempDir };
+    delete env.DATA_DIR;
+    delete env.VIEW_PRS_BACKFILL_PID_FILE;
+    delete env.VIEW_PRS_BACKFILL_LOG_FILE;
 
-    expect(script).toContain('PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"');
-    expect(script).toContain('"${VIEW_PRS_BACKFILL_PID_FILE:-$PROJECT_DIR/data/backfill-missing.pid}"');
-    expect(script).toContain('"${VIEW_PRS_BACKFILL_LOG_FILE:-$PROJECT_DIR/data/backfill-missing.log}"');
+    const stdout = execFileSync("bash", [scriptPath, "status"], { encoding: "utf8", env });
+
+    expect(stdout).toContain("Backfill status: not running");
+    expect(fs.existsSync(pidFile)).toBe(false);
   });
 });

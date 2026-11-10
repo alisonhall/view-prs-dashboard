@@ -52,6 +52,9 @@ if (!process.env.VIEW_PRS_TEST_STATE_DIR) {
   // the script tests that didn't set PR_DETAIL_DIR themselves wrote
   // data/pr-details/owner_repo__pr-{321,501,701}.json there.
   process.env.DATA_DIR = tempDir;
+  // And the server's data folder setting - one exported in a developer's
+  // shell would otherwise put every default in their real data folder.
+  process.env.VIEW_PRS_DATA_DIR = tempDir;
   process.env.VIEW_PRS_PR_DIFF_CONCURRENCY = "0";
   process.env.VIEW_PRS_DISABLE_BACKGROUND_DIFF_REFRESH = "1";
   // Quick checks would otherwise list PRs with a real `gh api graphql`.

@@ -23,6 +23,7 @@ const {
   createViewPrsApp,
   initializeScheduler,
   appendActionLogEntry,
+  viewPrsDataDir,
 } = require("./app.js");
 
 const rawRequestedPort = String(
@@ -59,6 +60,7 @@ const server = app.listen(requestedPort, requestedHost, () => {
   console.log(`- UI: ${baseUrl}/`);
   console.log(`- PR Data: ${baseUrl}/data`);
   console.log(`- Backfill Status: ${baseUrl}/backfill`);
+  console.log(`Data folder: ${viewPrsDataDir}`);
 
   appendActionLogEntry({
     action: "server/start",

@@ -2,6 +2,7 @@
 node_modules
 .npmrc
 data
+data.moved-*
 coverage
 dist
 test-results

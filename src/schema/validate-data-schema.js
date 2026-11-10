@@ -3,6 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 const Ajv2020 = require("ajv/dist/2020");
+const { resolveDataDir } = require("../server/config/data-dir.js");
 
 const schemaDir = __dirname;
 const projectRoot = path.resolve(schemaDir, "..", "..");
@@ -18,21 +19,11 @@ const authorCommentsSchemaPath = path.join(
   schemaDir,
   "check-open-pr-updates.author-comments.schema.json",
 );
-const dataPath = path.join(
-  projectRoot,
-  "data",
-  "check-open-pr-updates.data.json",
-);
-const userStatePath = path.join(
-  projectRoot,
-  "data",
-  "check-open-pr-updates.user-state.json",
-);
-const authorCommentsPath = path.join(
-  projectRoot,
-  "data",
-  "check-open-pr-updates.author-comments.json",
-);
+// The data folder's files (data-dir.js).
+const dataDir = resolveDataDir({ viewPrsDir: projectRoot });
+const dataPath = path.join(dataDir, "check-open-pr-updates.data.json");
+const userStatePath = path.join(dataDir, "check-open-pr-updates.user-state.json");
+const authorCommentsPath = path.join(dataDir, "check-open-pr-updates.author-comments.json");
 
 const readJsonFile = (filePath) => {
   const raw = fs.readFileSync(filePath, "utf8");

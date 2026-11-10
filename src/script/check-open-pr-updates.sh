@@ -105,7 +105,13 @@ fi
 # editor's bundled Node; run standalone, `node` from PATH.
 NODE_BIN="${VIEW_PRS_NODE:-node}"
 
-DATA_DIR="${DATA_DIR:-$VIEW_PRS_DIR/data}"
+# The data folder (README "Data folder"; data-dir.sh): DATA_DIR - the
+# server always passes its own - else VIEW_PRS_DATA_DIR, from the
+# environment or the app's .env (as the server reads it, so the CLI uses
+# the same folder), else the app's data/.
+# shellcheck source=data-dir.sh
+. "$VIEW_PRS_DIR/src/script/data-dir.sh"
+DATA_DIR="$(resolve_data_dir "$VIEW_PRS_DIR")"
 PR_STATE_FILE="${PR_STATE_FILE:-$DATA_DIR/check-open-pr-updates.data.json}"
 PR_STATE_LOCK_DIR="${PR_STATE_LOCK_DIR:-$DATA_DIR/check-open-pr-updates.data.lock}"
 USER_STATE_FILE="${USER_STATE_FILE:-$DATA_DIR/check-open-pr-updates.user-state.json}"

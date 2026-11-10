@@ -233,6 +233,7 @@ See [Development Servers](#development-servers) section for more details.
 - Backend only: `npm run start:server-only` (Node.js server without Vite)
 - Interactive page: `src/ui/index.html`
 - People (names and logins): `data/actors.json`
+- The data folder (`VIEW_PRS_DATA_DIR`, see [Data folder](#data-folder)): `src/server/config/data-dir.js`, `src/script/data-dir.sh`; moving it: `npm run data:move`
 - JSON Schema: `src/schema/check-open-pr-updates.data.schema.json`
 - Author comments schema: `src/schema/check-open-pr-updates.author-comments.schema.json`
 - Persisted data schema: `src/schema/DATA_SCHEMA.md`
@@ -252,6 +253,21 @@ Run `npm run deps:check` any time to verify all of the above (plus a few coreuti
 Optional for date formatting fallback:
 
 - `gdate` / GNU `date -d` / macOS `date -j`
+
+## Data folder
+
+Everything the app keeps - the PR data, your notes and Acks, People, settings, Sources, backups - is in one folder, `data/` in the app by default (this README's `data/...` paths mean that folder). To keep it somewhere else, for backing it up or tracking it in git, set `VIEW_PRS_DATA_DIR` in `.env` (an absolute path, or one from the app's folder). The server, `check-open-pr-updates.sh` (`./run-prs`, `npm run cli-view`), the background backfill and the npm tools all read it; the server logs the folder it uses when it starts. A `VIEW_PRS_DATA_DIR` in the environment wins over `.env`, and the per-file variables (`VIEW_PRS_DATA_FILE`, `VIEW_PRS_ACTORS_FILE`...) still win over the folder.
+
+To move an existing folder, stop the server and run:
+
+```bash
+npm run data:move -- ~/Documents/view-prs-data --dry-run   # what it would do
+npm run data:move -- ~/Documents/view-prs-data
+```
+
+It copies the folder (the new one must be new or empty, and not inside the old one), checks every file arrived, sets `VIEW_PRS_DATA_DIR` in `.env`, and renames the old folder to `data.moved-<time>` - delete that once the app works from the new one. It won't move while a run holds a lock in the folder, and if a step fails it puts the old folder back and leaves `.env` as it was.
+
+The move also puts a `.gitignore` in the new folder, so you can `git init` it and commit what's yours: notes and Acks (`check-open-pr-updates.user-state.json`), Authors comments, People (`actors.json`), settings (`user-defaults.json`) and Sources. It leaves out what's fetched again or changes every minute: the PR data and live summary, PR details and diffs, backups, the scheduler state, the action log, locks, logs and temporary files. Commit while the server is stopped, or at least not mid-save.
 
 ## Reusing unchanged rows
 

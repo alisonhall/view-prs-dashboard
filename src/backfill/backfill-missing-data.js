@@ -16,27 +16,22 @@ const {
 const { createFileIoHelpers } = require("../server/helpers/file-io-helpers.js");
 const { createViewPrsStateStorage } = require("../server/storage/view-prs-state-storage.js");
 const { enforceProtectedWritePolicy } = require("../server/state-write-policy.js");
+const { resolveDataDir } = require("../server/config/data-dir.js");
 
-// The project root: the same data/, src/schema/ and src/script/ locations
-// the server uses (src/server/config/app-config.js).
+// The project root, and the data folder: the same src/schema/,
+// src/script/ and data locations the server uses
+// (src/server/config/app-config.js, data-dir.js).
 const viewPrsDir = path.resolve(__dirname, "..", "..");
+const dataDir = resolveDataDir({ viewPrsDir });
 const schemaPathDefault = path.join(
   viewPrsDir,
   "src",
   "schema",
   "check-open-pr-updates.data.schema.json",
 );
-const dataPathDefault = path.join(
-  viewPrsDir,
-  "data",
-  "check-open-pr-updates.data.json",
-);
-const userStatePathDefault = path.join(
-  viewPrsDir,
-  "data",
-  "check-open-pr-updates.user-state.json",
-);
-const backupDirDefault = path.join(viewPrsDir, "data", "backups");
+const dataPathDefault = path.join(dataDir, "check-open-pr-updates.data.json");
+const userStatePathDefault = path.join(dataDir, "check-open-pr-updates.user-state.json");
+const backupDirDefault = path.join(dataDir, "backups");
 const refreshScriptPathDefault = path.join(
   viewPrsDir,
   "src",

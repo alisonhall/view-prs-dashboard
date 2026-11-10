@@ -13,6 +13,7 @@
     "guard:state-health": "node src/dependencies/check-state-health.js",
     "validate:schema": "node src/schema/validate-data-schema.js",
     "migrate:pr-detail:v1": "node src/script/migrate-pr-detail-sidecar-v1.js",
+    "data:move": "node src/dependencies/move-data-folder.js",
     "backfill:missing": "node src/backfill/backfill-missing-data.js",
     "backfill:missing:dry": "node src/backfill/backfill-missing-data.js --dry-run",
     "backfill:missing:bg": "node src/dependencies/run-bash-script.js src/backfill/backfill-missing-bg.sh start",

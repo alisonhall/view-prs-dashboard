@@ -65,6 +65,9 @@ const isolatedEnv = {
   // ($VIEW_PRS_DIR/data, i.e. the real production data/ directory) no
   // matter what the VIEW_PRS_* vars above are set to.
   DATA_DIR: tempDir,
+  // The server's data folder setting, likewise (a shell's or .env's
+  // would otherwise win over DATA_DIR).
+  VIEW_PRS_DATA_DIR: tempDir,
   VIEW_PRS_SCHEDULER_FILE: path.join(tempDir, "scheduler.json"),
   VIEW_PRS_ACTION_LOG_FILE: path.join(tempDir, "action-log.json"),
   VIEW_PRS_AUTHOR_COMMENTS_FILE: path.join(tempDir, "author-comments.json"),

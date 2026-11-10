@@ -95,6 +95,11 @@ const config = createAppConfig({
   env: process.env,
   isTestEnv: process.env.NODE_ENV === "test",
 });
+// The scripts and tools it runs find their files from DATA_DIR
+// (check-open-pr-updates.sh's name) or VIEW_PRS_DATA_DIR (data-dir.js): both
+// the server's own data folder, so they always agree.
+process.env.DATA_DIR = config.viewPrsDataDir;
+process.env.VIEW_PRS_DATA_DIR = config.viewPrsDataDir;
 
 // Extract commonly used config values for compatibility
 const {
@@ -122,6 +127,7 @@ const {
   viewPrsActorNameCacheFile,
   viewPrsActorLoginAliasesFile,
   viewPrsActorsFile,
+  viewPrsDataDir,
   viewPrsActionLogFile,
   viewPrsAutoIntervalMs,
   viewPrsManualCooldownMs,
@@ -2493,7 +2499,12 @@ const runViewPrsAutoRefresh = async ({
 
       // Automatically split heavy PR detail arrays into separate files
       try {
-        runPrDetailMigration({ silent: true });
+        runPrDetailMigration({
+          silent: true,
+          dataFile: viewPrsDataFile,
+          detailDir: viewPrsPrDetailDir,
+          backupDir: viewPrsBackupDir,
+        });
       } catch (migrationError) {
         console.error(
           `[view-prs] warning: PR detail split failed: ${migrationError.message || migrationError}`,
@@ -4045,6 +4056,7 @@ module.exports = {
   viewPrsActorNameCacheFile,
   viewPrsActorLoginAliasesFile,
   viewPrsActorsFile,
+  viewPrsDataDir,
   viewPrsBackfillManagerScript,
   viewPrsActionLogFile,
   viewPrsBackfillPidFile,
