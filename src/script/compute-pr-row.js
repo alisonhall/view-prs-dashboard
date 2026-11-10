@@ -594,10 +594,56 @@ const splitList = (text, separator) =>
 // viewer's latest review was on), the commits after it in the PR count as
 // new too: a commit's date is when it was made, not pushed, so one made
 // before the review and pushed after it would otherwise be missed.
-const countExternalCommits = (detail, { viewerLogin, since = "", ignoreCommitPatterns = "", mergeHeadlinePatterns = [], mergeLogins = [], reviewedOid = "" }) => {
+// When each of a PR's commits was pushed, by id, from the pushes to its
+// branch ([{before, after, timestamp}], fetch_pr_push_history_json): a
+// commit came with the first push that moved the branch past it - from
+// before it (`before`; any commit, when that isn't one of the PR's: a new
+// branch, a force-push) to it or a commit after it (`after`). Commits no
+// push reached (a fork's, or ones from before the oldest push GitHub
+// returned) aren't in it.
+const pushedAtByOid = (commits, pushes) => {
+  const oids = each(commits).map((commit) => alt(commit?.oid, ""));
+  const pushedAt = {};
+  sortBy(
+    each(pushes).filter((push) => alt(push?.after, "") !== "" && alt(push?.timestamp, "") !== ""),
+    (push) => push.timestamp,
+  ).forEach((push) => {
+    const from = oids.indexOf(alt(push.before, ""));
+    const upTo = oids.indexOf(push.after);
+    for (let i = from + 1; i <= upTo; i += 1) {
+      if (oids[i] !== "" && pushedAt[oids[i]] === undefined) pushedAt[oids[i]] = push.timestamp;
+    }
+  });
+  return pushedAt;
+};
+
+// Whether each of a PR's commits (by its index among them) is new since
+// `since`: pushed after it, when the push history says when it was pushed
+// (a commit's date is when it was made, not pushed). Else dated after it,
+// or after the commit the PR was at when a run first saw `since` (seenOid:
+// pushed after that run, so after `since`), or after the one the viewer's
+// latest review was on (reviewedOid). Everything is, with no `since`.
+const newCommitTest = (commits, { since = "", reviewedOid = "", pushedAt = {}, seenOid = "" }) => {
+  const indexOf = (oid) => (oid === "" ? -1 : each(commits).findIndex((commit) => commit?.oid === oid));
+  const reviewedIndex = indexOf(reviewedOid);
+  const seenIndex = indexOf(seenOid);
+  return (commit, index) => {
+    if (since === "") return true;
+    const pushed = pushedAt[alt(commit?.oid, "")];
+    if (pushed !== undefined) return gt(pushed, since);
+    return (
+      gt(alt(commit?.committedDate, ""), since) || (seenIndex !== -1 && index > seenIndex) || (reviewedIndex !== -1 && index > reviewedIndex)
+    );
+  };
+};
+
+const countExternalCommits = (
+  detail,
+  { viewerLogin, since = "", ignoreCommitPatterns = "", mergeHeadlinePatterns = [], mergeLogins = [], reviewedOid = "", pushedAt = {}, seenOid = "" },
+) => {
   const mergeLoginList = mergeLogins.map(asciiDowncase);
   const allCommits = each(field(detail, "commits"));
-  const reviewedIndex = reviewedOid === "" ? -1 : allCommits.findIndex((commit) => commit?.oid === reviewedOid);
+  const isNew = newCommitTest(allCommits, { since, reviewedOid, pushedAt, seenOid });
   let ignoreRegex = null;
   if (ignoreCommitPatterns.length > 0) {
     try {
@@ -608,8 +654,7 @@ const countExternalCommits = (detail, { viewerLogin, since = "", ignoreCommitPat
   }
   return allCommits.filter((commit, index) => {
     if (!each(commit?.authors).some((a) => a?.login !== null && a?.login !== undefined && a.login !== viewerLogin)) return false;
-    const pushedAfterReview = reviewedIndex !== -1 && index > reviewedIndex;
-    if (since !== "" && !pushedAfterReview && !gt(alt(commit?.committedDate, ""), since)) return false;
+    if (!isNew(commit, index)) return false;
     const headline = alt(commit?.messageHeadline, "");
     if (
       mergeHeadlinePatterns.some((pattern) => {
@@ -695,6 +740,10 @@ const computePrRow = (input) => {
     ignoreCommitPatterns = "",
     mergeHeadlinePatterns = ["^Merge\\b"],
     mergeLogins = [],
+    // The pushes to the PR's branch (fetch_pr_push_history_json).
+    pushes = [],
+    // The stored row's viewerSeenHead.
+    seenHead = null,
   } = input || {};
 
   const number = jqRaw(pr.number);
@@ -846,21 +895,38 @@ const computePrRow = (input) => {
     ].some((at) => gt(alt(at, ""), myLatestReview.submittedAt));
   const reviewedOid =
     since !== "" && since === toString(myLast) && !myActivityAfterReview ? alt(myLatestReview?.commit?.oid, "") : "";
-  // For the Activity tab's "since I last looked": the commits after the
-  // reviewed one, which their dates alone would put before it.
   const detailCommits = each(field(detail, "commits"));
-  const reviewedIndex = reviewedOid === "" ? -1 : detailCommits.findIndex((commit) => commit?.oid === reviewedOid);
-  const commitsAfterReview = reviewedIndex === -1 ? [] : detailCommits.slice(reviewedIndex + 1).map((commit) => alt(commit?.oid, "")).filter((oid) => oid !== "");
+  // When the commits were pushed, where the branch's push history says.
+  const pushedAt = pushedAtByOid(detailCommits, pushes);
+  // The commit the PR was at when a run first saw `since` (the viewer's
+  // last activity, or Ack): kept from the stored row while `since` is the
+  // same, else this run's. Commits after it were pushed after that run, so
+  // after `since` - for those the push history doesn't cover (a fork's PR,
+  // an older GitHub Enterprise server).
+  const storedSeen = seenHead && typeof seenHead === "object" && !Array.isArray(seenHead) ? seenHead : null;
+  const keptSeen = since !== "" && storedSeen !== null && storedSeen.at === since && alt(storedSeen.oid, "") !== "" ? storedSeen : null;
+  const headOid = alt(lastOr(detailCommits, null)?.oid, "");
+  const viewerSeenHead = keptSeen || (since !== "" && headOid !== "" ? { at: since, oid: headOid } : null);
+  const commitTest = { since, reviewedOid, pushedAt, seenOid: keptSeen ? keptSeen.oid : "" };
+  // For the Activity tab's "since I last looked": the commits new though
+  // their dates alone would put them before it.
+  const isNewCommit = newCommitTest(detailCommits, commitTest);
+  const commitsAfterReview =
+    since === ""
+      ? []
+      : detailCommits
+          .filter((commit, index) => isNewCommit(commit, index) && !gt(alt(commit?.committedDate, ""), since))
+          .map((commit) => alt(commit?.oid, ""))
+          .filter((oid) => oid !== "");
   // How many commits the PR has, when that's more than its details hold:
   // GitHub returns the newest 250 at most.
   const commitTotalCount = Number(field(detail, "commitTotalCount")) || 0;
   const externalCommitCount = countExternalCommits(detail, {
     viewerLogin,
-    since,
     ignoreCommitPatterns,
     mergeHeadlinePatterns,
     mergeLogins,
-    reviewedOid,
+    ...commitTest,
   });
 
   let myLatestReviewState = sortBy(
@@ -1049,6 +1115,7 @@ const computePrRow = (input) => {
     activityTimeline,
     baseline: effectiveLast,
     commitsAfterReview,
+    ...(viewerSeenHead ? { viewerSeenHead } : {}),
     ...(commitTotalCount > detailCommits.length ? { commitTotalCount } : {}),
     reason,
   };
@@ -1058,6 +1125,8 @@ const computePrRow = (input) => {
 module.exports = {
   computePrRow,
   // Each piece, for the tests.
+  newCommitTest,
+  pushedAtByOid,
   normalizeAuthorName,
   normalizeComments,
   normalizeReviews,
@@ -1091,6 +1160,7 @@ const readInputDir = (dir) => {
     reviewComments: read("review-comments.json", []),
     reviewUrlMap: read("review-url-map.json", {}),
     viewedFilesStats: read("viewed-files.json", {}),
+    pushes: read("pushes.json", []),
   };
 };
 

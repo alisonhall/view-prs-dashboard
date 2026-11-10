@@ -23,7 +23,7 @@ const isolatedUserStateFile = runShell("mktemp");
 runShell(`printf '%s' '{}' > "${isolatedUserStateFile}"`);
 
 // The row's computation (compute_pr_state_json's, before it moved there).
-const { computePrRow, buildReasons, buildActivityEvents, buildActivityTimelineSummary, normalizeCommits } = require("../compute-pr-row");
+const { computePrRow, buildReasons, buildActivityEvents, buildActivityTimelineSummary, normalizeCommits, pushedAtByOid } = require("../compute-pr-row");
 
 const runScriptFn = (expression) =>
   runShell(`source "${scriptPath}"; USER_STATE_FILE="${isolatedUserStateFile}"; ${expression}`);
@@ -145,6 +145,55 @@ describe("fetches too big for a command line", () => {
     expect(output).toBe('[102,"https://github.com/o/r/pull/5#pullrequestreview-101"]');
   });
 
+  describe("push history", () => {
+    const pushes = [
+      { before: "b0", after: "c2", timestamp: "2026-03-02T00:00:00Z", activity_type: "push", actor: { login: "x" } },
+      { before: "0000", after: "c1", timestamp: "", activity_type: "branch_creation" },
+    ];
+    // A fake gh that records each call (CALLS) and answers from $PAGES/1.json,
+    // or fails with $FAIL on stderr when that's set.
+    const fakeGh = `
+      CALLS=$(mktemp); PUSH_HISTORY_CACHE_DIR=$(mktemp -d); sleep() { :; }
+      run_with_timeout() {
+        shift
+        printf '%s\\n' "$*" >>"$CALLS"
+        if [[ -n "\${FAIL:-}" ]]; then echo "$FAIL" >&2; return 1; fi
+        cat "$PAGES/1.json"
+      }`;
+
+    test("the branch's pushes, from its encoded ref, with no leading slash", () => {
+      const output = withFakePages([pushes], `${fakeGh}
+        fetch_pr_push_history_json 5 'feature/a b' | jq -c .
+        tr -d '\\r' <"$CALLS"`);
+      const [result, call] = output.split("\n");
+      expect(JSON.parse(result)).toEqual([{ before: "b0", after: "c2", timestamp: "2026-03-02T00:00:00Z" }]);
+      expect(call).toBe("gh api repos/o/r/activity?ref=refs%2Fheads%2Ffeature%2Fa%20b&per_page=100");
+    });
+
+    test("a 404 isn't asked again, by that PR or the next", () => {
+      const output = withFakePages([pushes], `${fakeGh}
+        FAIL='HTTP 404: Not Found'
+        echo -n "$(fetch_pr_push_history_json 5 a)$(fetch_pr_push_history_json 6 b)"
+        echo " $(wc -l <"$CALLS" | tr -d ' ')"`);
+      expect(output).toBe("[][] 1");
+    });
+
+    test("another failure is tried three times, and the next PR still asks", () => {
+      const output = withFakePages([pushes], `${fakeGh}
+        FAIL='HTTP 502: Bad Gateway'
+        echo -n "$(fetch_pr_push_history_json 5 a)$(fetch_pr_push_history_json 6 b)"
+        echo " $(wc -l <"$CALLS" | tr -d ' ')"`);
+      expect(output).toBe("[][] 6");
+    });
+
+    test("a fork's PR has no branch to ask about", () => {
+      const output = withFakePages([pushes], `${fakeGh}
+        echo "$(push_history_ref_of '{"headRefName":"main","isCrossRepository":true}')|$(push_history_ref_of '{"headRefName":"main","isCrossRepository":false}')"
+        echo "$(fetch_pr_push_history_json 5 '') $(wc -l <"$CALLS" | tr -d ' ')"`);
+      expect(output).toBe("|main\n[] 0");
+    });
+  });
+
   test("viewed files: every file of a PR with over a thousand", () => {
     const pages = Array.from({ length: 12 }, (_, p) => ({
       data: {
@@ -252,6 +301,28 @@ describe("check-open-pr-updates shell helper behavior", () => {
     expect(row.status).toBe("NO_CHANGE");
   });
 
+  describe("pushedAtByOid", () => {
+    const commits = ["a", "b", "c", "d"].map((oid) => ({ oid }));
+
+    test("a commit's push is the first that moved the branch past it", () => {
+      const pushes = [
+        { before: "b", after: "d", timestamp: "2026-03-03T00:00:00Z" },
+        { before: "", after: "b", timestamp: "2026-03-01T00:00:00Z" },
+      ];
+      expect(pushedAtByOid(commits, pushes)).toEqual({
+        a: "2026-03-01T00:00:00Z",
+        b: "2026-03-01T00:00:00Z",
+        c: "2026-03-03T00:00:00Z",
+        d: "2026-03-03T00:00:00Z",
+      });
+    });
+
+    test("leaves out commits from before the oldest push returned, and a fork's branch of the same name", () => {
+      expect(pushedAtByOid(commits, [{ before: "b", after: "c", timestamp: "2026-03-03T00:00:00Z" }])).toEqual({ c: "2026-03-03T00:00:00Z" });
+      expect(pushedAtByOid(commits, [{ before: "x", after: "y", timestamp: "2026-03-03T00:00:00Z" }])).toEqual({});
+    });
+  });
+
   describe("commits after the one the viewer reviewed", () => {
     // Committed at 10:00, the viewer reviewed "r1" at 11:00, pushed at 12:00.
     const lateCommitRow = (extra = {}) =>
@@ -301,6 +372,57 @@ describe("check-open-pr-updates shell helper behavior", () => {
         },
       });
       expect([later.status, later.reason]).toEqual(["CHANGED", "commit"]);
+    });
+
+    // Made before the viewer's 12:30 comment, pushed after it.
+    const pushedLate = {
+      detail: {
+        comments: [{ author: { login: "me" }, createdAt: "2026-03-01T12:30:00Z" }],
+        commits: [
+          { oid: "r1", committedDate: "2026-03-01T09:00:00Z", messageHeadline: "feat: first", authors: [{ login: "alice" }] },
+          { oid: "x2", committedDate: "2026-03-01T10:00:00Z", messageHeadline: "fix: review", authors: [{ login: "alice" }] },
+          { oid: "x3", committedDate: "2026-03-01T12:00:00Z", messageHeadline: "fix: more", authors: [{ login: "alice" }] },
+        ],
+      },
+    };
+
+    test("by the branch's push history: a commit made before the viewer's comment but pushed after it is new", () => {
+      const pushes = [
+        { before: "0000000", after: "r1", timestamp: "2026-03-01T09:30:00Z" },
+        { before: "r1", after: "x2", timestamp: "2026-03-01T12:00:00Z" },
+        { before: "x2", after: "x3", timestamp: "2026-03-01T13:00:00Z" },
+      ];
+      const row = lateCommitRow({ ...pushedLate, input: { pushes } });
+      expect([row.status, row.reason]).toEqual(["CHANGED", "commit"]);
+      expect(row.commitsAfterReview).toEqual(["x3"]);
+
+      // Without the history, it goes by the commit's date.
+      expect(lateCommitRow(pushedLate).status).toBe("NO_CHANGE");
+    });
+
+    test("the push history beats the reviewed commit: a commit pushed before the review isn't new", () => {
+      // Reviewed on r1, though x2 was already pushed (at 10:30).
+      const pushes = [
+        { before: "", after: "r1", timestamp: "2026-03-01T09:30:00Z" },
+        { before: "r1", after: "x2", timestamp: "2026-03-01T10:30:00Z" },
+      ];
+      const row = lateCommitRow({ input: { pushes } });
+      expect(row.status).toBe("NO_CHANGE");
+      expect(row.commitsAfterReview).toEqual([]);
+    });
+
+    test("without push history, commits after the one a run first saw the viewer's comment at are new", () => {
+      const at = "2026-03-01T12:30:00Z";
+      // A run saw the comment while the PR was at x2: x3 came after.
+      const kept = lateCommitRow({ ...pushedLate, input: { seenHead: { at, oid: "x2" } } });
+      expect([kept.status, kept.reason]).toEqual(["CHANGED", "commit"]);
+      expect(kept.commitsAfterReview).toEqual(["x3"]);
+      expect(kept.viewerSeenHead).toEqual({ at, oid: "x2" });
+
+      // A record from an earlier activity: this run's is the PR as it is now.
+      const fresh = lateCommitRow({ ...pushedLate, input: { seenHead: { at: "2026-03-01T08:00:00Z", oid: "r1" } } });
+      expect(fresh.status).toBe("NO_CHANGE");
+      expect(fresh.viewerSeenHead).toEqual({ at, oid: "x3" });
     });
 
     test("a comment before the review leaves them new", () => {

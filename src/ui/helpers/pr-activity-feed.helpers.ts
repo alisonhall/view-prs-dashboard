@@ -65,8 +65,7 @@ export const getLastAckedAt = (history: readonly string[] | null | undefined, cu
   String(buildAckEvents(history, currentAck, "")[0]?.occurredAt || "");
 
 // The commits new since the viewer last looked though dated before it:
-// those after the one their latest review was on (the row's
-// commitsAfterReview). Not once an Ack later than the row's baseline is
+// pushed after it (the row's commitsAfterReview). Not once an Ack later than the row's baseline is
 // when they last looked: that saw these commits too.
 export const newCommitOidsFor = (pr: PrData, lastLookedAt: string): string[] =>
   lastLookedAt && lastLookedAt === String(pr?.baseline || "").trim() && Array.isArray(pr?.commitsAfterReview)
@@ -254,8 +253,8 @@ export interface ActivityFeedOptions {
   kinds: readonly ActivityKind[];
   // Days are calendar days here; the browser's own zone when omitted.
   timeZone?: string;
-  // Commits new since the viewer last looked though dated before it: those
-  // after the one their latest review was on (the row's commitsAfterReview).
+  // Commits new since the viewer last looked though dated before it:
+  // pushed after it (the row's commitsAfterReview).
   newCommitOids?: readonly string[];
 }
 

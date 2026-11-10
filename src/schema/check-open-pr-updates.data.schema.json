@@ -334,6 +334,19 @@
             "type": "string"
           }
         },
+        "viewerSeenHead": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["at", "oid"],
+          "properties": {
+            "at": {
+              "type": "string"
+            },
+            "oid": {
+              "type": "string"
+            }
+          }
+        },
         "commitTotalCount": {
           "type": "integer",
           "minimum": 0

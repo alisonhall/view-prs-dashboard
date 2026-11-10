@@ -53,7 +53,8 @@ VIEW_PRS_OPEN_REVALIDATE_SECONDS="${VIEW_PRS_OPEN_REVALIDATE_SECONDS:-14400}"
 # changes what it writes, so stored rows are computed again.
 # 2 (2026-11-10): ignore lists match whatever the case and "[bot]", and
 # cover review-thread comments; comments after a review see its commits.
-ROW_CACHE_VERSION=2
+# 3 (2026-11-10): commits are new by when they were pushed (viewerSeenHead).
+ROW_CACHE_VERSION=3
 VIEW_PRS_PREFETCH_GROUP_CONCURRENCY="${VIEW_PRS_PREFETCH_GROUP_CONCURRENCY:-3}"
 VIEW_PRS_PROGRESS_MARKERS="${VIEW_PRS_PROGRESS_MARKERS:-0}"
 
@@ -77,6 +78,9 @@ FILES_CACHE_DIR="${FILES_CACHE_DIR:-}"
 REVIEW_URL_CACHE_DIR="${REVIEW_URL_CACHE_DIR:-}"
 REVIEW_COMMENT_CACHE_DIR="${REVIEW_COMMENT_CACHE_DIR:-}"
 CI_MERGE_CACHE_DIR="${CI_MERGE_CACHE_DIR:-}"
+PUSH_HISTORY_CACHE_DIR="${PUSH_HISTORY_CACHE_DIR:-}"
+# Each open PR's number and branch (tab-separated), for the push history.
+PUSH_HISTORY_REFS_FILE=''
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VIEW_PRS_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -1230,6 +1234,84 @@ fetch_pr_review_url_map_json() {
   printf '%s' "$result"
 }
 
+# The pushes to an open PR's branch, newest 100, as [{before, after,
+# timestamp}] (GitHub's repository activity: when each push moved the
+# branch, from which commit to which) - for when its commits were pushed, which their dates (when
+# they were made) don't say. compute-pr-row.js matches them to the PR's
+# commits by id, so a fork's branch of the same name as one here matches
+# nothing. [] when there's no history: a fork's PR (its pushes are to the
+# fork), pushes older than GitHub keeps, or a GitHub Enterprise server
+# without the API (asked once a run). The branch is the second argument, or
+# the one the run noted for the PR (PUSH_HISTORY_REFS_FILE).
+fetch_pr_push_history_json() {
+  local number="$1"
+  local ref="${2:-}"
+  local cache_dir="${PUSH_HISTORY_CACHE_DIR:-}"
+  local cache_file='' api_output='' result='' ref_param err_file attempt
+
+  if [[ -n "$cache_dir" ]]; then
+    cache_file="$cache_dir/$number.json"
+    if [[ -f "$cache_file" ]]; then
+      cat "$cache_file"
+      return
+    fi
+    if [[ -f "$cache_dir/unsupported" ]]; then
+      echo '[]'
+      return
+    fi
+  fi
+  if [[ -z "$ref" && -n "${PUSH_HISTORY_REFS_FILE:-}" && -f "$PUSH_HISTORY_REFS_FILE" ]]; then
+    ref=$(awk -F '\t' -v n="$number" '$1 == n { print $2; exit }' "$PUSH_HISTORY_REFS_FILE")
+  fi
+  if [[ -z "$ref" ]]; then
+    echo '[]'
+    return
+  fi
+
+  ref_param=$(jq -rn --arg ref "refs/heads/$ref" '$ref | @uri')
+  # No leading slash (Git Bash would make it a Windows path - see
+  # fetch_pr_review_url_map_json).
+  # Tried three times, as gh_with_retry does, but not again after a 404:
+  # the API isn't there (an older GitHub Enterprise server), so it isn't
+  # asked again this run either.
+  err_file=$(mktemp)
+  for attempt in 1 2 3; do
+    if api_output=$(run_with_timeout "$GH_COMMAND_TIMEOUT_SECONDS" gh api "repos/$REPO_OWNER/$REPO_NAME/activity?ref=$ref_param&per_page=100" 2>"$err_file"); then
+      result=$(printf '%s' "$api_output" | jq -c '[.[]? | select((.after // "") != "" and (.timestamp // "") != "") | {before: (.before // ""), after, timestamp}]' 2>/dev/null) || result=''
+      break
+    fi
+    if grep -q 'HTTP 404' "$err_file"; then
+      [[ -n "$cache_dir" ]] && : >"$cache_dir/unsupported"
+      break
+    fi
+    [[ "$attempt" -lt 3 ]] && sleep "$attempt"
+  done
+  rm -f "$err_file"
+  [[ -z "$result" ]] && result='[]'
+  [[ -n "$cache_file" ]] && printf '%s' "$result" >"$cache_file"
+  printf '%s' "$result"
+}
+
+# The branch whose pushes say when a PR's commits were pushed: its head
+# branch, or "" for a fork's PR (its pushes are to the fork, so a branch of
+# the same name here would be the wrong one).
+push_history_ref_of() {
+  printf '%s' "$1" | jq -r 'if .isCrossRepository == true then "" else (.headRefName // "") end'
+}
+
+# What the stored row says the PR was at when a run first saw the viewer's
+# last activity ({at, oid}), or null - compute-pr-row.js's viewerSeenHead.
+get_stored_viewer_seen_head_json() {
+  local number="$1"
+  local found=''
+  if [[ -n "${PR_STATE_FILE:-}" && -f "$PR_STATE_FILE" ]]; then
+    found=$(jq -c --arg number "$number" --arg repo "$REPO" "$PR_KEY_JQ"'
+      pr_row($repo; $number) | .data.viewerSeenHead // empty
+    ' "$PR_STATE_FILE" 2>/dev/null || true)
+  fi
+  printf '%s' "${found:-null}"
+}
+
 get_pr_detail_json() {
   local number="$1"
   local cache_file="$DETAIL_CACHE_DIR/$number.json"
@@ -1402,7 +1484,7 @@ fetch_quick_check_target_prs() {
     }
 
     for attempt in 1 2 3; do
-      if run_with_timeout_inner "$gh_timeout" gh pr view "$number" -R "$repo" --json number,title,url,labels,isDraft,author,mergedAt,closedAt,mergedBy,createdAt,updatedAt,headRefName,baseRefName,additions,deletions --jq ". | @base64" > "$out_dir/$number.txt" 2>/dev/null; then
+      if run_with_timeout_inner "$gh_timeout" gh pr view "$number" -R "$repo" --json number,title,url,labels,isDraft,author,mergedAt,closedAt,mergedBy,createdAt,updatedAt,headRefName,isCrossRepository,baseRefName,additions,deletions --jq ". | @base64" > "$out_dir/$number.txt" 2>/dev/null; then
         exit 0
       fi
       sleep $((2 ** (attempt - 1)))
@@ -1489,6 +1571,19 @@ prefetch_review_urls() {
   [[ -z "$REVIEW_URL_CACHE_DIR" ]] && return
 
   run_for_each_number_in_parallel fetch_pr_review_url_map_json "$numbers"
+}
+
+prefetch_push_history() {
+  local numbers="$1"
+  local first
+  [[ -z "$numbers" ]] && return
+  [[ -z "${PUSH_HISTORY_CACHE_DIR:-}" ]] && return
+
+  # The first alone, so a server without the API is found once rather
+  # than by every PR at the same time.
+  first=$(printf '%s\n' "$numbers" | grep -m 1 .)
+  fetch_pr_push_history_json "$first" >/dev/null 2>&1 || true
+  run_for_each_number_in_parallel fetch_pr_push_history_json "$numbers"
 }
 
 prefetch_viewed_files_stats() {
@@ -1912,7 +2007,7 @@ get_stored_viewed_files_stats_json() {
 compute_pr_state_json() {
   local pr_json="$1"
   local number merged_at closed_at detail_json threads_json review_comments_json review_url_map_json viewed_files_stats_json
-  local input_dir computed ack_action row_json_out
+  local push_history_json input_dir computed ack_action row_json_out
 
   number=$(printf '%s' "$pr_json" | jq -r '.number')
   emit_pr_progress_marker 'START' "$number"
@@ -1945,7 +2040,15 @@ compute_pr_state_json() {
   [[ -n "$review_comments_json" ]] || review_comments_json='[]'
   [[ -n "$review_url_map_json" ]] || review_url_map_json='{}'
   [[ -n "$viewed_files_stats_json" ]] || viewed_files_stats_json='{}'
+  # When its commits were pushed: an open PR's only (a merged or closed
+  # one's are settled).
+  push_history_json='[]'
+  if [[ -z "$merged_at" && -z "$closed_at" ]]; then
+    push_history_json=$(fetch_pr_push_history_json "$number" "$(push_history_ref_of "$pr_json")") || push_history_json='[]'
+    [[ -n "$push_history_json" ]] || push_history_json='[]'
+  fi
   input_dir=$(mktemp -d)
+  printf '%s' "$push_history_json" >"$input_dir/pushes.json"
   printf '%s' "$pr_json" >"$input_dir/pr.json"
   printf '%s' "$detail_json" >"$input_dir/detail.json"
   printf '%s' "$threads_json" >"$input_dir/threads.json"
@@ -1962,6 +2065,7 @@ compute_pr_state_json() {
     --arg ignoreCommitPatterns "$CHANGE_FILTER_IGNORE_COMMIT_PATTERNS" \
     --argjson mergeHeadlinePatterns "$MERGE_COMMIT_HEADLINE_PATTERNS_JSON" \
     --argjson mergeLogins "$MERGE_COMMIT_LOGINS_JSON" \
+    --argjson seenHead "$(get_stored_viewer_seen_head_json "$number")" \
     '$ARGS.named' >"$input_dir/settings.json"
 
   if ! computed=$("$NODE_BIN" "$SCRIPT_DIR/compute-pr-row.js" "$input_dir"); then
@@ -2164,7 +2268,7 @@ reconcile_missing_open_rows() {
     # A PR it can't look up keeps its open row - and says so: it used to be
     # skipped silently, every run, while the row still showed it open.
     fetch_err_file=$(mktemp)
-    fresh_pr_b64=$(gh_with_retry gh pr view "$number" -R "$REPO" --json number,title,url,labels,isDraft,author,mergedAt,closedAt,mergedBy,createdAt,updatedAt,headRefName,baseRefName,additions,deletions --jq '. | @base64' 2>"$fetch_err_file" || true)
+    fresh_pr_b64=$(gh_with_retry gh pr view "$number" -R "$REPO" --json number,title,url,labels,isDraft,author,mergedAt,closedAt,mergedBy,createdAt,updatedAt,headRefName,isCrossRepository,baseRefName,additions,deletions --jq '. | @base64' 2>"$fetch_err_file" || true)
     fetch_err=$(tail -n 1 "$fetch_err_file" 2>/dev/null || true)
     rm -f "$fetch_err_file"
     if [[ -z "$fresh_pr_b64" ]]; then
@@ -3103,7 +3207,7 @@ main() {
       TARGET_PRS_MISSING=$(printf '%s\n' "$TARGET_PRS" | awk 'NF' | sort -u | grep -vxF -f <(printf '%s\n' "$fetched_numbers") || true)
     fi
   elif [[ -n "$TARGET_PR_NUMBER" ]]; then
-    target_pr_b64=$(gh_with_retry gh pr view "$TARGET_PR_NUMBER" -R "$REPO" --json number,title,url,labels,isDraft,author,mergedAt,closedAt,mergedBy,createdAt,updatedAt,headRefName,baseRefName,additions,deletions --jq '. | @base64')
+    target_pr_b64=$(gh_with_retry gh pr view "$TARGET_PR_NUMBER" -R "$REPO" --json number,title,url,labels,isDraft,author,mergedAt,closedAt,mergedBy,createdAt,updatedAt,headRefName,isCrossRepository,baseRefName,additions,deletions --jq '. | @base64')
 
     if [[ -z "$target_pr_b64" ]]; then
       echo "PR #$TARGET_PR_NUMBER not found" >&2
@@ -3131,7 +3235,7 @@ main() {
       prs_b64="$target_pr_b64"
     fi
   else
-    prs_b64_raw=$(gh_with_retry gh pr list -R "$REPO" --state open --limit "$LIMIT" --json number,title,url,labels,isDraft,author,mergedBy,createdAt,updatedAt,headRefName,baseRefName,additions,deletions --jq '.[] | @base64')
+    prs_b64_raw=$(gh_with_retry gh pr list -R "$REPO" --state open --limit "$LIMIT" --json number,title,url,labels,isDraft,author,mergedBy,createdAt,updatedAt,headRefName,isCrossRepository,baseRefName,additions,deletions --jq '.[] | @base64')
     prs_b64="$prs_b64_raw"
 
     if [[ "$MERGED_LIMIT_SET" -eq 1 ]]; then
@@ -3142,10 +3246,10 @@ main() {
     fi
     ((merged_fetch_limit > 200)) && merged_fetch_limit=200
 
-    closed_prs_b64_all_raw=$(gh_with_retry gh pr list -R "$REPO" --state closed --limit "$merged_fetch_limit" --json number,title,url,labels,mergedAt,closedAt,mergedBy,author,createdAt,updatedAt,headRefName,baseRefName,additions,deletions --jq 'map(select((.mergedAt // null) == null and (.closedAt // null) != null)) | sort_by(.closedAt) | reverse | .[] | @base64')
+    closed_prs_b64_all_raw=$(gh_with_retry gh pr list -R "$REPO" --state closed --limit "$merged_fetch_limit" --json number,title,url,labels,mergedAt,closedAt,mergedBy,author,createdAt,updatedAt,headRefName,isCrossRepository,baseRefName,additions,deletions --jq 'map(select((.mergedAt // null) == null and (.closedAt // null) != null)) | sort_by(.closedAt) | reverse | .[] | @base64')
     closed_prs_b64_all="$closed_prs_b64_all_raw"
 
-    merged_prs_b64_all_raw=$(gh_with_retry gh pr list -R "$REPO" --state merged --limit "$merged_fetch_limit" --json number,title,url,labels,mergedAt,closedAt,mergedBy,author,createdAt,updatedAt,headRefName,baseRefName,additions,deletions --jq 'sort_by(.mergedAt) | reverse | .[] | @base64')
+    merged_prs_b64_all_raw=$(gh_with_retry gh pr list -R "$REPO" --state merged --limit "$merged_fetch_limit" --json number,title,url,labels,mergedAt,closedAt,mergedBy,author,createdAt,updatedAt,headRefName,isCrossRepository,baseRefName,additions,deletions --jq 'sort_by(.mergedAt) | reverse | .[] | @base64')
     merged_prs_b64_all="$merged_prs_b64_all_raw"
 
     if [[ "$MERGED_LIMIT_SET" -eq 1 ]]; then
@@ -3255,6 +3359,17 @@ main() {
     CI_MERGE_CACHE_DIR=$(mktemp -d)
     ci_merge_cache_tmp=1
   fi
+  push_history_cache_tmp=0
+  if [[ -z "$PUSH_HISTORY_CACHE_DIR" ]]; then
+    PUSH_HISTORY_CACHE_DIR=$(mktemp -d)
+    push_history_cache_tmp=1
+  fi
+  PUSH_HISTORY_REFS_FILE="$PUSH_HISTORY_CACHE_DIR/refs.tsv"
+  while IFS= read -r pr_item; do
+    [[ -z "$pr_item" ]] && continue
+    pr_item=$(printf '%s' "$pr_item" | base64 --decode)
+    printf '%s\t%s\n' "$(printf '%s' "$pr_item" | jq -r '.number')" "$(push_history_ref_of "$pr_item")"
+  done <<<"$prs_b64" >"$PUSH_HISTORY_REFS_FILE"
   ROW_REUSE_SNAPSHOT_DIR=$(mktemp -d)
   build_row_reuse_snapshot
 
@@ -3266,6 +3381,7 @@ main() {
   [[ "$review_url_cache_tmp" -eq 1 ]] && EXIT_CLEANUP_PATHS+=("$REVIEW_URL_CACHE_DIR")
   [[ "$review_comment_cache_tmp" -eq 1 ]] && EXIT_CLEANUP_PATHS+=("$REVIEW_COMMENT_CACHE_DIR")
   [[ "$ci_merge_cache_tmp" -eq 1 ]] && EXIT_CLEANUP_PATHS+=("$CI_MERGE_CACHE_DIR")
+  [[ "$push_history_cache_tmp" -eq 1 ]] && EXIT_CLEANUP_PATHS+=("$PUSH_HISTORY_CACHE_DIR")
 
   collect_prioritized_stale_number_sets "$prs_b64" "$closed_prs_b64" "$merged_prs_b64"
 
@@ -3294,6 +3410,7 @@ main() {
     prefetch_review_comments "$STALE_OPEN_DRAFT_PR_NUMBERS" \
     prefetch_review_urls "$STALE_OPEN_DRAFT_PR_NUMBERS" \
     prefetch_viewed_files_stats "$STALE_OPEN_DRAFT_PR_NUMBERS" \
+    prefetch_push_history "$STALE_OPEN_DRAFT_PR_NUMBERS" \
     prefetch_ci_merge_stats "$reused_open_numbers"
 
   deferred_prefetch_pid=''

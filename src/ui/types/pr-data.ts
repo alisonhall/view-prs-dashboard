@@ -200,10 +200,14 @@ export interface PrData {
   // The viewer's own last activity on the PR (README: "Your last
   // activity"); "" or "-" when there is none.
   baseline?: string;
-  // The commits after the one the viewer's latest review was on: new since
-  // that review though dated before it (a commit's date is when it was
-  // made, not pushed). Empty when an ack is the baseline.
+  // The commits new since the baseline though dated before it (a commit's
+  // date is when it was made, not pushed): pushed after it, by the branch's
+  // push history; else after the commit the PR was at when a run first saw
+  // the baseline, or after the one the viewer's latest review was on.
   commitsAfterReview?: string[];
+  // The commit the PR was at when a run first saw the baseline (`at`), for
+  // the commits pushed after it on a PR without push history.
+  viewerSeenHead?: { at: string; oid: string };
   // How many commits the PR has, only when that's more than `commits`
   // holds: GitHub returns the newest 250 at most.
   commitTotalCount?: number;
