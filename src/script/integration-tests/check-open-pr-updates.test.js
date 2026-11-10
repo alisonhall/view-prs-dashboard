@@ -321,6 +321,44 @@ describe("check-open-pr-updates shell helper behavior", () => {
       expect(pushedAtByOid(commits, [{ before: "b", after: "c", timestamp: "2026-03-03T00:00:00Z" }])).toEqual({ c: "2026-03-03T00:00:00Z" });
       expect(pushedAtByOid(commits, [{ before: "x", after: "y", timestamp: "2026-03-03T00:00:00Z" }])).toEqual({});
     });
+
+    test("a force-push brought the commit it pushed, not the ones below it", () => {
+      // The branch was created with a, b and c; then c was amended to d and
+      // force-pushed, so a and b were pushed with the branch.
+      const amended = ["a", "b", "d"].map((oid) => ({ oid }));
+      const pushes = [
+        { before: "0000000000000000000000000000000000000000", after: "c", timestamp: "2026-03-01T00:00:00Z" },
+        { before: "c", after: "d", timestamp: "2026-03-05T00:00:00Z" },
+      ];
+      expect(pushedAtByOid(amended, pushes)).toEqual({ d: "2026-03-05T00:00:00Z" });
+      // Created with all of them: every commit up to the one pushed.
+      expect(pushedAtByOid(commits, [{ ...pushes[0], after: "c" }])).toEqual({
+        a: "2026-03-01T00:00:00Z",
+        b: "2026-03-01T00:00:00Z",
+        c: "2026-03-01T00:00:00Z",
+      });
+    });
+
+    test("a force-pushed amend doesn't make the commits before it new", () => {
+      // The viewer commented on the 3rd, between creating the branch (with
+      // a and c) and force-pushing their own c amended as d: a isn't new.
+      const { row } = computePrRow({
+        pr: { number: 1, author: { login: "alice" } },
+        viewerLogin: "me",
+        detail: {
+          comments: [{ author: { login: "me" }, createdAt: "2026-03-03T00:00:00Z" }],
+          commits: [
+            { oid: "a", committedDate: "2026-03-01T00:00:00Z", authors: [{ login: "alice" }], messageHeadline: "one" },
+            { oid: "d", committedDate: "2026-03-04T00:00:00Z", authors: [{ login: "me" }], messageHeadline: "two" },
+          ],
+        },
+        pushes: [
+          { before: "0000000000000000000000000000000000000000", after: "c", timestamp: "2026-03-01T00:00:00Z" },
+          { before: "c", after: "d", timestamp: "2026-03-05T00:00:00Z" },
+        ],
+      });
+      expect(row.status).toBe("NO_CHANGE");
+    });
   });
 
   describe("commits after the one the viewer reviewed", () => {

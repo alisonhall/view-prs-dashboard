@@ -585,22 +585,17 @@ const splitList = (text, separator) =>
     .split(separator)
     .filter((part) => part.length > 0);
 
-// countExternalCommits: commits with an author other than the viewer,
-// after `since` (every one when empty), leaving out merge commits (a
-// headline matching a merge pattern, case-insensitively - an invalid
-// pattern matches nothing - or every author in the merge logins) and ones
-// matching the ignore patterns. An invalid ignore pattern failed the jq
-// there, which counted as none. With `reviewedOid` (the commit the
-// viewer's latest review was on), the commits after it in the PR count as
-// new too: a commit's date is when it was made, not pushed, so one made
-// before the review and pushed after it would otherwise be missed.
 // When each of a PR's commits was pushed, by id, from the pushes to its
 // branch ([{before, after, timestamp}], fetch_pr_push_history_json): a
 // commit came with the first push that moved the branch past it - from
-// before it (`before`; any commit, when that isn't one of the PR's: a new
-// branch, a force-push) to it or a commit after it (`after`). Commits no
-// push reached (a fork's, or ones from before the oldest push GitHub
-// returned) aren't in it.
+// before it (`before`) to it or a commit after it (`after`). A push that
+// created the branch (`before` all zeros) brought every commit up to
+// `after`. One that replaced it (a force-push: `before` isn't one of the
+// PR's commits any more) brought `after`, but which of the commits below
+// it is unknown - after amending the last commit, the ones before it were
+// pushed long ago - so those are left to their dates, which a rebase or
+// amend makes new. Commits no push reached (a fork's, or ones from before
+// the oldest push GitHub returned) aren't in it.
 const pushedAtByOid = (commits, pushes) => {
   const oids = each(commits).map((commit) => alt(commit?.oid, ""));
   const pushedAt = {};
@@ -608,9 +603,12 @@ const pushedAtByOid = (commits, pushes) => {
     each(pushes).filter((push) => alt(push?.after, "") !== "" && alt(push?.timestamp, "") !== ""),
     (push) => push.timestamp,
   ).forEach((push) => {
-    const from = oids.indexOf(alt(push.before, ""));
+    const before = alt(push.before, "");
     const upTo = oids.indexOf(push.after);
-    for (let i = from + 1; i <= upTo; i += 1) {
+    const created = /^0*$/.test(before);
+    const from = created ? -1 : oids.indexOf(before);
+    const start = !created && from === -1 ? upTo : from + 1;
+    for (let i = start; i >= 0 && i <= upTo; i += 1) {
       if (oids[i] !== "" && pushedAt[oids[i]] === undefined) pushedAt[oids[i]] = push.timestamp;
     }
   });
@@ -637,6 +635,12 @@ const newCommitTest = (commits, { since = "", reviewedOid = "", pushedAt = {}, s
   };
 };
 
+// countExternalCommits: commits with an author other than the viewer, new
+// since `since` (newCommitTest; every one when empty), leaving out merge
+// commits (a headline matching a merge pattern, case-insensitively - an
+// invalid pattern matches nothing - or every author in the merge logins)
+// and ones matching the ignore patterns. An invalid ignore pattern failed
+// the jq there, which counted as none.
 const countExternalCommits = (
   detail,
   { viewerLogin, since = "", ignoreCommitPatterns = "", mergeHeadlinePatterns = [], mergeLogins = [], reviewedOid = "", pushedAt = {}, seenOid = "" },
