@@ -6,6 +6,7 @@ const {
   buildActorIndex,
   findMovedIds,
   isActorId,
+  isCommitAuthorIdentity,
   migrateLegacyActors,
   normalizeActors,
   validateActorsInput,
@@ -201,6 +202,80 @@ describe("view-prs actors storage", () => {
     expect(fs.existsSync(files.actorsFile)).toBe(false);
     // A save asked for (Settings › People) still reports it.
     expect(() => storage.writeActors([{ name: "Ann", logins: ["ann"] }])).toThrow("EACCES");
+  });
+
+  // A commit author: a name or email GitHub gives for commits not linked
+  // to an account, which the script records as their actor.
+  describe("commit authors (a name or email, not a login)", () => {
+    test("tells them from logins: a space, comma or @", () => {
+      expect(["Kandal, Vipul", "Vipul Kandal", "vipul@corp.example", " Ann "].map(isCommitAuthorIdentity)).toEqual([true, true, true, false]);
+      expect(["vkandal", "dependabot[bot]", "ann_corp", "ann-lee"].map(isCommitAuthorIdentity)).toEqual([false, false, false, false]);
+    });
+
+    test("the page's rule is the same", () => {
+      const { isCommitAuthorIdentity: pageRule } = require("../../ui/helpers/actor-identity-kind.helpers.ts");
+      ["Kandal, Vipul", "vipul@corp.example", "Vipul\tKandal", "vkandal", "dependabot[bot]", "", "  "].forEach((value) => {
+        expect(pageRule(value)).toBe(isCommitAuthorIdentity(value));
+      });
+    });
+
+    test("a new one named exactly as one person (case and spaces aside) joins them, rather than becoming someone", () => {
+      const { storage } = makeStorage();
+      storage.writeActors([{ id: "actor:vkandal", name: "Kandal,  Vipul", logins: ["vkandal"] }]);
+      expect(storage.addObservedLogins([{ login: "kandal, vipul", name: "" }])).toEqual([
+        { id: "actor:vkandal", name: "Kandal,  Vipul", logins: ["vkandal", "kandal, vipul"] },
+      ]);
+    });
+
+    test("one added before joins them the next time the data is read, with nothing new; its id moves to them", () => {
+      const { files, storage } = makeStorage();
+      storage.writeActors([
+        { id: "actor:vkandal", name: "Kandal, Vipul", logins: ["vkandal"] },
+        { id: "actor:kandal,-vipul", name: "", logins: ["Kandal, Vipul"] },
+      ]);
+      expect(storage.addObservedLogins([])).toEqual([{ id: "actor:vkandal", name: "Kandal, Vipul", logins: ["vkandal", "Kandal, Vipul"] }]);
+      const { actors, movedIds } = storage.readState();
+      expect(movedIds).toEqual({ "actor:kandal,-vipul": "actor:vkandal" });
+      expect(buildActorIndex(actors, movedIds).keyOf("actor:kandal,-vipul")).toBe("actor:vkandal");
+      expect(readJson(files.actorsFile).actors).toHaveLength(1);
+    });
+
+    test("with no one, or two people, of that name, it stays someone of its own", () => {
+      const { storage } = makeStorage();
+      storage.writeActors([
+        { id: "actor:ann", name: "Ann Lee", logins: ["ann"] },
+        { id: "actor:ann2", name: "Ann Lee", logins: ["ann2"] },
+      ]);
+      const after = storage.addObservedLogins([
+        { login: "Ann Lee", name: "" },
+        { login: "Vipul Kandal", name: "" },
+      ]);
+      expect(after.map((actor) => actor.logins)).toEqual([["ann"], ["ann2"], ["Ann Lee"], ["Vipul Kandal"]]);
+    });
+
+    test("a row given another name in Settings isn't moved: it was kept apart on purpose", () => {
+      const { storage } = makeStorage();
+      storage.writeActors([
+        { id: "actor:vkandal", name: "Kandal, Vipul", logins: ["vkandal"] },
+        { id: "actor:laptop", name: "Vipul's old laptop", logins: ["Kandal, Vipul"] },
+      ]);
+      expect(storage.addObservedLogins([]).map((actor) => actor.id)).toEqual(["actor:vkandal", "actor:laptop"]);
+    });
+
+    test("a login never joins someone by name: two people can share a name but not a login", () => {
+      const { storage } = makeStorage();
+      storage.writeActors([{ id: "actor:vkandal", name: "vipul", logins: ["vkandal"] }]);
+      expect(storage.addObservedLogins([{ login: "vipul", name: "" }]).map((actor) => actor.logins)).toEqual([["vkandal"], ["vipul"]]);
+    });
+
+    test("with nothing new and no one to join, the file isn't written", () => {
+      const { files, storage } = makeStorage();
+      storage.writeActors([{ id: "actor:ann", name: "Ann", logins: ["ann"] }]);
+      // Back-dated, so a write would show.
+      fs.utimesSync(files.actorsFile, new Date(2020, 0, 1), new Date(2020, 0, 1));
+      storage.addObservedLogins([{ login: "ann", name: "" }]);
+      expect(fs.statSync(files.actorsFile).mtimeMs).toBe(new Date(2020, 0, 1).getTime());
+    });
   });
 
   describe("merging two people (Settings › People)", () => {

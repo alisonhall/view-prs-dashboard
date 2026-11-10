@@ -774,7 +774,11 @@ ensure_pr_state_store() {
 # ("actor:alice", Settings › People): it becomes every login actors.json
 # lists for them - after its movedIds (a person merged into another is
 # them). A login is kept as it is. Without a readable actors.json an id is
-# left out, as it's no login.
+# left out, as it's no login. A person's commit-author names and emails
+# (a space, comma or @ - never in a login) are left out too: no comment or
+# review is theirs (those need an account), and a comma in one would split
+# it here into other logins ("Kandal, Vipul" into Kandal and Vipul, who
+# could be someone else).
 read_change_filter_authors() {
   local list_path="$1"
   local actors_file="${VIEW_PRS_ACTORS_FILE:-$DATA_DIR/actors.json}"
@@ -784,7 +788,7 @@ read_change_filter_authors() {
       | [ ($list_path // [])[] | tostring
         | (reduce range(0; 10) as \$step (.; \$moves[.] // .)) as \$pick
         | if (\$pick | startswith(\"actor:\"))
-          then ((\$people[0].actors // [])[] | select(.id == \$pick) | .logins[])
+          then ((\$people[0].actors // [])[] | select(.id == \$pick) | .logins[] | select(test(\"[[:space:],@]\") | not))
           else \$pick
           end ]
       | join(\",\")" "$USER_DEFAULTS_FILE" 2>/dev/null); then

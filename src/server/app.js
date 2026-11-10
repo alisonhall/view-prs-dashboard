@@ -79,7 +79,7 @@ const {
 const {
   createViewPrsActorHelpers,
 } = require("./helpers/view-prs-actor-helpers");
-const { buildActorIndex, createViewPrsActorsStorage } = require("./helpers/view-prs-actors-storage");
+const { buildActorIndex, createViewPrsActorsStorage, isCommitAuthorIdentity } = require("./helpers/view-prs-actors-storage");
 const { createAppConfig } = require("./config/app-config");
 const { createFileIoHelpers } = require("./helpers/file-io-helpers");
 const { createCommandExecutionHelpers, describeFailure } = require("./helpers/command-execution-helpers");
@@ -834,7 +834,8 @@ const resolveActorNameFromGitHub = (login) => {
 // buildActorIndex) - adding a person for each login in the data no one has
 // yet: named as the data names them, else as GitHub does (gh api
 // users/<login>), else not named. A person already there is never changed
-// (their name may have been set in Settings). While the people file is
+// (their name may have been set in Settings) but to take a commit author
+// named exactly as they are (addObservedLogins). While the people file is
 // unreadable, no one is added (nor asked of GitHub, which every read
 // would do again).
 const buildViewPrsActorMaps = (byPrNumberRaw = {}) => {
@@ -916,11 +917,15 @@ const buildViewPrsActorMaps = (byPrNumberRaw = {}) => {
     );
   });
 
+  // Not asked of GitHub for a commit author's name or email: no account has
+  // it, so the lookup (a gh call, up to 15s, holding up the read) only fails.
   const added = Array.from(dataNameByLogin, ([login, name]) => ({
     login,
-    name: name || resolveActorNameFromGitHub(login),
+    name: name || (isCommitAuthorIdentity(login) ? "" : resolveActorNameFromGitHub(login)),
   }));
-  const actors = added.length > 0 ? actorsStorage.addObservedLogins(added) : knownActors;
+  // Every time, not only with someone new: it also joins a commit author
+  // added before to the person of that name (it writes only on a change).
+  const actors = unreadable ? knownActors : actorsStorage.addObservedLogins(added);
   return { actors, actorIdMoves: movedIds, actorsMap: buildActorIndex(actors, movedIds).actorsMap };
 };
 

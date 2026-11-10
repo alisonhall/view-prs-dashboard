@@ -381,11 +381,61 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto;
   gap: 8px;
-  align-items: center;
+  /* The name and Remove line up with the first login. */
+  align-items: start;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .people-row input {
   min-width: 0;
+}
+
+/* A person's logins, one field each (PeopleSection.tsx), with + Add login. */
+.people-logins {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.people-login {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px 4px;
+}
+
+.people-login-remove,
+.people-login-add {
+  border: 0;
+  background: none;
+  color: var(--color-text-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.people-login-remove {
+  padding: 0 6px;
+  font-size: var(--font-size-md);
+  line-height: 1;
+}
+
+.people-login-remove:hover,
+.people-login-add:hover {
+  color: var(--color-text);
+}
+
+.people-login-add {
+  justify-self: start;
+  padding: 2px 0;
+  font-size: var(--font-size-sm);
+}
+
+/* Under a login that's a commit author's name or email, not a login. */
+.people-login-kind {
+  grid-column: 1 / -1;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
 }
 
 /* Narrow: the name and Remove on a line, the logins under them. */
@@ -394,7 +444,7 @@
     grid-template-columns: minmax(0, 1fr) auto;
   }
 
-  .people-row input:nth-of-type(2) {
+  .people-logins {
     grid-column: 1 / -1;
     grid-row: 2;
   }

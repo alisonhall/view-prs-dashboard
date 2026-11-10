@@ -64,6 +64,16 @@ describe("change filter configuration loading", () => {
       expect(loadWith({ actors })).toBe("comments=bot-a,bot-c,plain-login|reviews=bot-a,bot-c");
     });
 
+    // A commit author's name or email (Settings › People) writes no comment
+    // or review, and its comma would split it into other logins here.
+    test("a person's commit-author names and emails are left out: only their GitHub logins count", () => {
+      const actors = JSON.stringify({
+        version: 1,
+        actors: [{ id: "actor:bots", name: "Kandal, Vipul", logins: ["vkandal", "Kandal, Vipul", "vipul@corp.example", "Vipul Kandal"] }],
+      });
+      expect(loadWith({ actors })).toBe("comments=vkandal,plain-login|reviews=vkandal");
+    });
+
     test("without actors.json, or with one that isn't JSON, ids are left out and logins kept", () => {
       expect(loadWith({})).toBe("comments=plain-login|reviews=");
       expect(loadWith({ actors: "{ not json" })).toBe("comments=plain-login|reviews=");

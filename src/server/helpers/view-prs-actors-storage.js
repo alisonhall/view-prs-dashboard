@@ -25,6 +25,49 @@ const ID_PREFIX = "actor:";
 const trim = (value) => String(value ?? "").trim();
 const loginKey = (login) => trim(login).toLowerCase();
 
+// A commit author's name or email, not a GitHub login: what GitHub gives
+// for a commit whose author isn't linked to an account (made with an email
+// it doesn't know), which compute-pr-row.js records as the commit's actor.
+// A login has no space, comma or @. The page's isCommitAuthorIdentity
+// (actor-identity-kind.helpers.ts) is the same rule.
+const isCommitAuthorIdentity = (value) => /[\s,@]/.test(trim(value));
+
+// A name as compared with a commit author's: case and runs of spaces aside.
+const nameKey = (name) => trim(name).replace(/\s+/g, " ").toLowerCase();
+
+// The one person named exactly as this commit author (not counting
+// `except`), or null when no one or more than one is.
+const personNamed = (actors, identity, except = null) => {
+  const key = nameKey(identity);
+  if (!key) return null;
+  const named = actors.filter((actor) => actor !== except && nameKey(actor.name) === key);
+  return named.length === 1 ? named[0] : null;
+};
+
+// A person added only for a commit author: that one identity, and no name
+// but it (as one added from the data is).
+const isLoneCommitAuthor = (actor) =>
+  actor.logins.length === 1 &&
+  isCommitAuthorIdentity(actor.logins[0]) &&
+  (!trim(actor.name) || nameKey(actor.name) === nameKey(actor.logins[0]));
+
+// Each lone commit author (isLoneCommitAuthor) that's exactly one other
+// person's name moved to them, its row gone. Returns the people, changed
+// or not, and whether any moved.
+const attachLoneCommitAuthors = (actors) => {
+  let next = actors.map((actor) => ({ ...actor, logins: [...actor.logins] }));
+  let moved = false;
+  next.slice().forEach((actor) => {
+    if (!isLoneCommitAuthor(actor)) return;
+    const owner = personNamed(next, actor.logins[0], actor);
+    if (!owner || isLoneCommitAuthor(owner)) return;
+    owner.logins.push(actor.logins[0]);
+    next = next.filter((candidate) => candidate !== actor);
+    moved = true;
+  });
+  return { actors: next, moved };
+};
+
 const isActorId = (value) => trim(value).startsWith(ID_PREFIX);
 
 // A new id for a person whose first login is `login`, unlike any in `taken`.
@@ -268,8 +311,12 @@ const createViewPrsActorsStorage = ({
 
   // Adds a person for each login no one has, with its name (or none), and
   // saves when it can - reading the file again first, so a save in between
-  // is kept. Never changes a person already there, and never writes over
-  // an unreadable file (whose people aren't known). Returns the people.
+  // is kept. A commit author's name or email (isCommitAuthorIdentity) that's
+  // exactly one person's name joins them instead, and so does one added
+  // before (attachLoneCommitAuthors) - the only change it makes to someone
+  // already there; what was picked or noted for the row it leaves moves with
+  // it (findMovedIds). Never writes over an unreadable file (whose people
+  // aren't known). Returns the people.
   const addObservedLogins = (entries = []) => {
     const file = readFile();
     if (file.unreadable) return [];
@@ -283,7 +330,13 @@ const createViewPrsActorsStorage = ({
       const normalizedName = trim(name);
       added.push({ name: normalizedName === normalized ? "" : normalizedName, logins: [normalized] });
     });
-    return added.length > 0 ? writeActorsBestEffort([...actors, ...added]) : actors;
+    const { actors: next, moved } = attachLoneCommitAuthors([...actors, ...added]);
+    if (added.length === 0 && !moved) return actors;
+    try {
+      return writeActors(next, findMovedIds(file.actors, next, file.movedIds));
+    } catch (_error) {
+      return normalizeActors(next);
+    }
   };
 
   // The people, their id moves, and whether the file is there but
@@ -300,9 +353,11 @@ const createViewPrsActorsStorage = ({
 
 module.exports = {
   createViewPrsActorsStorage,
+  attachLoneCommitAuthors,
   buildActorIndex,
   findMovedIds,
   isActorId,
+  isCommitAuthorIdentity,
   migrateLegacyActors,
   normalizeActors,
   validateActorsInput,

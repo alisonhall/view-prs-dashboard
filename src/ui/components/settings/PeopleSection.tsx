@@ -3,6 +3,7 @@ import { sendJson } from '../../helpers/pr-http.helpers.ts';
 import { NON_CREDENTIAL_INPUT_PROPS } from '../../helpers/form-parsing.helpers.ts';
 import { useIsSettingsSectionVisible } from '../../state/SettingsDrawerContext';
 import { Button } from '../ui/Button';
+import { isCommitAuthorIdentity } from '../../helpers/actor-identity-kind.helpers.ts';
 
 // A person as the server keeps them (GET/PUT /view-prs/actors).
 export interface Person {
@@ -11,21 +12,30 @@ export interface Person {
   logins: string[];
 }
 
-// A person as edited: their logins as typed. `key` tells rows apart, a new
-// one (no id yet) included.
+// A person as edited: their logins one each, as typed (a blank one while
+// it's being added). `key` tells rows apart, a new one (no id yet) included.
+// One field each, not one for all split on commas: a commit author's name
+// ("Kandal, Vipul") has a comma in it, and splitting would break it apart.
 interface PersonDraft {
   key: string;
   id?: string;
   name: string;
-  logins: string;
+  logins: string[];
 }
 
 type Status = { tone: 'info' | 'success' | 'error'; text: string };
 
-const toDraft = (person: Person): PersonDraft => ({ key: person.id, id: person.id, name: person.name, logins: person.logins.join(', ') });
-const parseLogins = (text: string) => text.split(/[\s,]+/).filter(Boolean);
+const toDraft = (person: Person): PersonDraft => ({ key: person.id, id: person.id, name: person.name, logins: [...person.logins] });
+const cleanLogins = (logins: string[]) => logins.map((login) => login.trim()).filter(Boolean);
 const sameDrafts = (a: PersonDraft[], b: PersonDraft[]) =>
-  a.length === b.length && a.every((draft, index) => draft.id === b[index]?.id && draft.name === b[index]?.name && draft.logins === b[index]?.logins);
+  a.length === b.length &&
+  a.every(
+    (draft, index) =>
+      draft.id === b[index]?.id &&
+      draft.name === b[index]?.name &&
+      draft.logins.length === b[index]?.logins.length &&
+      draft.logins.every((login, at) => login === b[index]?.logins[at]),
+  );
 
 const countOf = (count: number) => `${count} ${count === 1 ? 'person' : 'people'}`;
 
@@ -104,16 +114,21 @@ export function PeopleSection() {
   const add = () => {
     newKeyRef.current += 1;
     setQuery('');
-    setDrafts((previous) => [{ key: `new-${newKeyRef.current}`, name: '', logins: '' }, ...previous]);
+    setDrafts((previous) => [{ key: `new-${newKeyRef.current}`, name: '', logins: [''] }, ...previous]);
   };
+  // One person's logins, changed by `change`.
+  const updateLogins = (key: string, change: (logins: string[]) => string[]) =>
+    setDrafts((previous) => previous.map((draft) => (draft.key === key ? { ...draft, logins: change(draft.logins) } : draft)));
+  // The login field to focus once it renders: one just added.
+  const focusLoginRef = useRef<string | null>(null);
 
   const save = async () => {
     setSaving(true);
     try {
       // A new row left empty isn't anyone.
       const actors = drafts
-        .filter((draft) => draft.id || draft.name.trim() || draft.logins.trim())
-        .map((draft) => ({ ...(draft.id ? { id: draft.id } : {}), name: draft.name.trim(), logins: parseLogins(draft.logins) }));
+        .filter((draft) => draft.id || draft.name.trim() || cleanLogins(draft.logins).length > 0)
+        .map((draft) => ({ ...(draft.id ? { id: draft.id } : {}), name: draft.name.trim(), logins: cleanLogins(draft.logins) }));
       const { response, result } = await sendJson<{ ok?: boolean; error?: string; actors?: Person[] }>('PUT', '/view-prs/actors', { actors });
       if (!response.ok || result.ok === false) throw new Error(result.error || `HTTP ${response.status}`);
       const people = Array.isArray(result.actors) ? result.actors : [];
@@ -129,7 +144,7 @@ export function PeopleSection() {
   const shown = useMemo(() => {
     const needle = query.trim().toLowerCase();
     if (!needle) return drafts;
-    return drafts.filter((draft) => !draft.id || `${draft.name} ${draft.logins}`.toLowerCase().includes(needle));
+    return drafts.filter((draft) => !draft.id || [draft.name, ...draft.logins].join(' ').toLowerCase().includes(needle));
   }, [drafts, query]);
 
   return (
@@ -138,8 +153,13 @@ export function PeopleSection() {
         <p className="settings-hint">
           Everyone the app knows: the name shown for them in the table, the filters, Review stats and Authors, and every GitHub
           login that&apos;s them. Someone new is added as soon as they appear in a PR, named as GitHub names them. To make two
-          logins one person, put both in one row (the first is their main login) and remove the other row - what was picked
-          or noted for the removed one (filters, rules, Authors comments) becomes the other&apos;s.
+          logins one person, add the other to their row (the first is their main login) and remove the other row - what was
+          picked or noted for the removed one (filters, rules, Authors comments) becomes the other&apos;s.
+        </p>
+        <p className="settings-hint">
+          A <strong>commit author</strong> is a name or email that commits are listed under because GitHub didn&apos;t link
+          them to an account (they were made with an email it doesn&apos;t know). One whose name is exactly someone&apos;s
+          here joins them by itself; otherwise add it to the person it is, so those commits are theirs.
         </p>
         <div className="settings-actions">
           <label className="ui-visually-hidden" htmlFor={`${idPrefix}-find`}>
@@ -170,7 +190,7 @@ export function PeopleSection() {
         </p>
         <ul className="people-list" aria-label="People">
           {shown.map((draft, index) => {
-            const label = draft.name.trim() || parseLogins(draft.logins)[0] || 'New person';
+            const label = draft.name.trim() || cleanLogins(draft.logins)[0] || 'New person';
             return (
               <li key={draft.key} className="people-row">
                 <input
@@ -183,15 +203,67 @@ export function PeopleSection() {
                   autoFocus={!draft.id && index === 0}
                   onChange={(event) => update(draft.key, { name: event.target.value })}
                 />
-                <input
-                  type="text"
-                  className="settings-control"
-                  placeholder="login, other-login"
-                  aria-label={`Logins for ${label}`}
-                  {...NON_CREDENTIAL_INPUT_PROPS}
-                  value={draft.logins}
-                  onChange={(event) => update(draft.key, { logins: event.target.value })}
-                />
+                <div className="people-logins" role="group" aria-label={`Logins for ${label}`}>
+                  {draft.logins.map((login, at) => {
+                    const fieldKey = `${draft.key}:${at}`;
+                    // By position, not the person's id: an id made from a
+                    // commit author ("actor:kandal, vipul") has a space, which
+                    // would split aria-describedby's id list.
+                    const kindId = `${idPrefix}-commit-author-${index}-${at}`;
+                    const isCommitAuthor = isCommitAuthorIdentity(login);
+                    const loginLabel = login.trim() || 'new login';
+                    return (
+                      <div key={at} className="people-login">
+                        <input
+                          type="text"
+                          className="settings-control"
+                          placeholder={at === 0 ? 'GitHub login' : 'Another login'}
+                          aria-label={at === 0 ? `Main login for ${label}` : `Login ${at + 1} for ${label}`}
+                          aria-describedby={isCommitAuthor ? kindId : undefined}
+                          {...NON_CREDENTIAL_INPUT_PROPS}
+                          value={login}
+                          ref={(node) => {
+                            if (node && focusLoginRef.current === fieldKey) {
+                              focusLoginRef.current = null;
+                              node.focus();
+                            }
+                          }}
+                          onChange={(event) =>
+                            updateLogins(draft.key, (logins) => logins.map((value, i) => (i === at ? event.target.value : value)))
+                          }
+                        />
+                        <button
+                          type="button"
+                          className="people-login-remove"
+                          aria-label={`Remove ${loginLabel} from ${label}`}
+                          title="Remove this login"
+                          onClick={() => updateLogins(draft.key, (logins) => logins.filter((_value, i) => i !== at))}
+                        >
+                          ×
+                        </button>
+                        {isCommitAuthor && (
+                          <span
+                            id={kindId}
+                            className="people-login-kind"
+                            title="Commits listed under this name or email: GitHub didn't link them to an account (made with an email it doesn't know). Keep it with the person it is, so those commits are theirs."
+                          >
+                            Commit author (no GitHub account)
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    className="people-login-add"
+                    onClick={() => {
+                      focusLoginRef.current = `${draft.key}:${draft.logins.length}`;
+                      updateLogins(draft.key, (logins) => [...logins, '']);
+                    }}
+                  >
+                    + Add login
+                  </button>
+                </div>
                 <Button aria-label={`Remove ${label}`} onClick={() => remove(draft.key)}>
                   Remove
                 </Button>
