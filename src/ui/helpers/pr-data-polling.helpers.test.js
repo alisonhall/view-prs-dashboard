@@ -131,6 +131,15 @@ describe("pr data polling helpers", () => {
     expect(computePrDataManifest({ byPrNumber: { 5: entry } })["5"].rowVersion).toBe(computeViewPrsRowVersion(entry, "5"));
   });
 
+  test("the page's row-version hash is the server's, whatever the text", () => {
+    const { hashRowVersion: serverHash } = require("../../server/helpers/view-prs-data-helpers.js");
+    const { hashRowVersion: pageHash } = require("./pr-data-polling.helpers.ts");
+    ["", "a", '{"prNumber":"5"}', "naïve – “quotes” ✓ 🙂 日本語", "x".repeat(100000)].forEach((text) => {
+      expect(pageHash(text)).toBe(serverHash(text));
+    });
+    expect(pageHash("a")).not.toBe(pageHash("b"));
+  });
+
   test("computePrDataManifest returns an empty manifest for missing payload data", () => {
     expect(computePrDataManifest(null)).toEqual({});
     expect(computePrDataManifest({ byPrNumber: null })).toEqual({});

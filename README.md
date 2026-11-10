@@ -184,6 +184,7 @@ Script guide:
   - Vite dev server on `http://localhost:3456` (frontend with HMR)
   - Access UI at: `http://localhost:3456`
   - Use this for React/UI development work
+  - The dev server passes the page's `/view-prs` requests to the backend with its own small forwarder (`src/dev/view-prs-api-forwarder.js`), not Vite's `server.proxy`, which sometimes stopped large responses short and left the page waiting for ever (stuck on "Loading…", or no longer updating). The page also gives up on any data request that hasn't fully arrived in 60 seconds, and tries again with its next poll.
 
 - **`npm run start:server-only`**: Backend-only mode for API development
   - Starts only Node.js server on `http://localhost:9000`

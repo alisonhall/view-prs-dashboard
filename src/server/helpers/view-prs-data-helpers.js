@@ -459,20 +459,46 @@ const buildGitDiffOnlyMergedEntry = (
   };
 };
 
-// The page's row freshness reads fetchedAt/ciFetchedAt, which a run of
-// chosen PRs can move without changing anything else (it keeps updatedAt).
+// cyrb53 (public domain): a fast 53-bit hash of a string's UTF-16 code
+// units, here twice with different seeds. The page's hashRowVersion
+// (pr-data-polling.helpers.ts) is the same function: a manifest the page
+// computes is compared with the server's.
+const cyrb53 = (text, seed) => {
+  let h1 = 0xdeadbeef ^ seed;
+  let h2 = 0x41c6ce57 ^ seed;
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507);
+  h1 ^= Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507);
+  h2 ^= Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+};
+const hashRowVersion = (text) => `${cyrb53(text, 0)}.${cyrb53(text, 1)}`;
+
+// A hash of everything the page shows of a row: the manifest holds one per
+// row, so the page can tell which rows changed without a copy of each (it
+// was each row written out in full, so the manifest was as big as the
+// data, fetched again on every change, and kept beside the rows). The
+// page's row freshness reads fetchedAt/ciFetchedAt, which a run of chosen
+// PRs can move without changing anything else (it keeps updatedAt).
 // Mirrored by the page's computePrDataManifest (pr-data-polling.helpers.ts).
 const computeViewPrsRowVersion = (entry = {}, prNumber = "") =>
-  JSON.stringify({
-    prNumber: String(prNumber || ""),
-    repo: String(entry?.repo || ""),
-    section: String(entry?.section || ""),
-    updatedAt: String(entry?.updatedAt || ""),
-    fetchedAt: String(entry?.fetchedAt || ""),
-    ciFetchedAt: String(entry?.ciFetchedAt || ""),
-    notes: entry?.notes || null,
-    data: entry?.data || null,
-  });
+  hashRowVersion(
+    JSON.stringify({
+      prNumber: String(prNumber || ""),
+      repo: String(entry?.repo || ""),
+      section: String(entry?.section || ""),
+      updatedAt: String(entry?.updatedAt || ""),
+      fetchedAt: String(entry?.fetchedAt || ""),
+      ciFetchedAt: String(entry?.ciFetchedAt || ""),
+      notes: entry?.notes || null,
+      data: entry?.data || null,
+    }),
+  );
 
 const buildViewPrsDataManifest = (data = {}) => {
   const byPrNumber = isObject(data?.byPrNumber) ? data.byPrNumber : {};
@@ -503,6 +529,7 @@ const backupStamp = () =>
     .replace(/\.\d{3}Z$/, "Z");
 
 module.exports = {
+  hashRowVersion,
   isViewPrsFixtureRow,
   parseTimestamp,
   isObject,

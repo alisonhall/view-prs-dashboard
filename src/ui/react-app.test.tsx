@@ -83,7 +83,7 @@ describe('react-app.tsx: mounts the app, and the PR table once PrDataProvider ha
 
   // These run in order against the one app mounted above.
   test('given the initial data fetch is still pending, when the app has mounted, then the PR table is not rendered yet', () => {
-    expect(fetchMock).toHaveBeenCalledWith('/view-prs/data');
+    expect(fetchMock).toHaveBeenCalledWith('/view-prs/data', { signal: expect.any(AbortSignal) });
     expect(getPrTableApp()).toBeNull();
     expect(capturedContext).toHaveLength(0);
   });

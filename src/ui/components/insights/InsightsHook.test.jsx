@@ -15,7 +15,7 @@ window.DOMPurify = {
 const { render, screen, waitFor } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { act } = require('@testing-library/react');
-const { useInsightsHookHtml, InsightsHookContent, clearInsightsHookCache, INSIGHTS_HOOK_DELAY_MS } = require('./InsightsHook');
+const { useInsightsHookHtml, InsightsHookContent, clearInsightsHookCache, insightsHookCacheSize, INSIGHTS_HOOK_DELAY_MS } = require('./InsightsHook');
 
 // The detail pane's use of it: the content when there is HTML, else nothing.
 function InsightsHookSection({ repo, prNumber, version }) {
@@ -182,6 +182,21 @@ describe('useInsightsHookHtml and InsightsHookContent', () => {
       await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1));
       rerender(<InsightsHookSection repo="owner/repo" prNumber="1" version="v2" />);
       await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(2));
+    });
+
+    test('keeps only the latest version\'s answer for a PR, so a long session doesn\'t pile them up', async () => {
+      mockFetchAlways({ ok: true, html: '<div>hook output</div>', error: null });
+      const { rerender } = render(<InsightsHookSection repo="owner/repo" prNumber="1" version="v1" />);
+      await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1));
+      rerender(<InsightsHookSection repo="owner/repo" prNumber="1" version="v2" />);
+      await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(2));
+      await waitFor(() => expect(screen.getByText('hook output')).toBeInTheDocument());
+      expect(insightsHookCacheSize()).toBe(1);
+
+      // Back to the older version: no longer remembered, so asked again.
+      rerender(<InsightsHookSection repo="owner/repo" prNumber="1" version="v1" />);
+      await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(3));
+      expect(insightsHookCacheSize()).toBe(1);
     });
 
     test('does not remember a failed script, so the next look asks again', async () => {

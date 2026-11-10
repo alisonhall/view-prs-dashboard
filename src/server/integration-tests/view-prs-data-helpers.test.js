@@ -38,7 +38,14 @@ describe("view-prs data helper manifest functions", () => {
 
   test("computeViewPrsRowVersion handles empty inputs predictably", () => {
     expect(typeof computeViewPrsRowVersion(null, null)).toBe("string");
-    expect(computeViewPrsRowVersion(null, null)).toContain('"prNumber":""');
+    expect(computeViewPrsRowVersion(null, null)).toBe(computeViewPrsRowVersion(undefined, ""));
+  });
+
+  test("computeViewPrsRowVersion is a short hash, not the row written out", () => {
+    const entry = { repo: "owner/repo", section: "open", data: { comments: Array.from({ length: 200 }, (_, i) => ({ body: `comment ${i} `.repeat(50) })) } };
+    const version = computeViewPrsRowVersion(entry, "101");
+    expect(version).toMatch(/^[0-9a-z]+\.[0-9a-z]+$/);
+    expect(version.length).toBeLessThan(30);
   });
 
   test("buildViewPrsDataManifest sorts PR numbers and preserves manifest metadata", () => {

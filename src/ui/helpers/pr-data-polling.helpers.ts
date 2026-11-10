@@ -8,6 +8,25 @@ import type { EntryDerivedCache } from "./pr-entry-derived-cache.helpers.ts";
 // AutoRenderBlockingProvider also uses getPendingAutoRenderAction to decide
 // when a queued update can be applied.
 
+// cyrb53 (public domain), twice with different seeds: the server's
+// hashRowVersion (view-prs-data-helpers.js) exactly, as the manifests this
+// page computes are compared with the server's.
+const cyrb53 = (text: string, seed: number): string => {
+  let h1 = 0xdeadbeef ^ seed;
+  let h2 = 0x41c6ce57 ^ seed;
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507);
+  h1 ^= Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507);
+  h2 ^= Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+};
+export const hashRowVersion = (text: string): string => `${cyrb53(text, 0)}.${cyrb53(text, 1)}`;
+
 // What getDataPollRenderAction / getPendingAutoRenderAction decide.
 export type DataPollRenderAction =
   | { type: "skip-render" }
@@ -101,17 +120,21 @@ const computePrDataManifest = (payload: PrDataPayload | null | undefined): PrMan
     .forEach((prNumber) => {
       const entry = byPrNumber[prNumber] || {};
       manifest[prNumber] = {
-        // As the server's computeViewPrsRowVersion (view-prs-data-helpers.js).
-        rowVersion: JSON.stringify({
-          prNumber,
-          repo: entry?.repo || "",
-          section: entry?.section || "",
-          updatedAt: entry?.updatedAt || "",
-          fetchedAt: entry?.fetchedAt || "",
-          ciFetchedAt: entry?.ciFetchedAt || "",
-          notes: entry?.notes || null,
-          data: entry?.data || null,
-        }),
+        // As the server's computeViewPrsRowVersion (view-prs-data-helpers.js):
+        // a hash, not the row written out (which made each manifest a
+        // second copy of every row).
+        rowVersion: hashRowVersion(
+          JSON.stringify({
+            prNumber,
+            repo: entry?.repo || "",
+            section: entry?.section || "",
+            updatedAt: entry?.updatedAt || "",
+            fetchedAt: entry?.fetchedAt || "",
+            ciFetchedAt: entry?.ciFetchedAt || "",
+            notes: entry?.notes || null,
+            data: entry?.data || null,
+          }),
+        ),
         repo: entry?.repo || "",
         section: entry?.section || "",
         updatedAt: entry?.updatedAt || "",

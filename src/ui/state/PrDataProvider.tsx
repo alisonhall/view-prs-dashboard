@@ -28,6 +28,12 @@ import { PrDataActionsContext, type PrDataActionsValue } from './PrDataActionsCo
 import { useBackfillStatusActions } from './BackfillStatusContext';
 import { useFilterFieldActions } from './FilterStateContext';
 import type { PrDataPayload, PrManifest } from '../types/pr-data.ts';
+import { createFetchWithTimeout } from '../helpers/fetch-with-timeout.helpers.ts';
+
+// The data loads and polls give up on an answer that stalls part way (see
+// fetch-with-timeout.helpers.ts): the next poll tries again, where waiting
+// would stop the page updating. The global fetch is looked up per call.
+const fetchWithTimeout = createFetchWithTimeout((input, init) => fetch(input, init));
 
 // pollForDataChanges' bookkeeping (see trackingRef below): which polling
 // endpoints the server supports, what was last seen and rendered, and the
@@ -276,7 +282,7 @@ export function PrDataProvider({
 
   const pollOnce = useMemo(() => {
     const helpers = createPrDataPollingOrchestrationHelpers({
-      fetchFn: (input, init) => fetch(input, init),
+      fetchFn: fetchWithTimeout,
       documentRef: typeof document !== 'undefined' ? document : null,
       computePrDataManifest: pollingHelpers.computePrDataManifest,
       getManifestDelta: pollingHelpers.getManifestDelta,
@@ -397,7 +403,7 @@ export function PrDataProvider({
 
   const loadStoredData = useMemo(() => {
     const helpers = createPrStoredDataLoadHelpers({
-      fetch: (input) => fetch(input),
+      fetch: (input) => fetchWithTimeout(input),
       beginRequestActivity,
       setLastSeenDataVersion: (value) => {
         trackingRef.current.lastSeenDataVersion = value;
@@ -437,6 +443,15 @@ export function PrDataProvider({
     }
     hasStartedInitialLoadRef.current = true;
     loadStoredData('').catch((error) => {
+      // A poll loaded the data while this load stalled (it gives up after
+      // FETCH_TIMEOUT_MS; polls don't wait for it): nothing failed that
+      // the page shows.
+      if (getLatestStoredPayload()) {
+        return;
+      }
+      // Up until the next poll that works, which loads the data in its
+      // place and hides this (markPollSuccess).
+      trackingRef.current.hasActivePollWarning = true;
       setStatusText('Failed to load stored data');
       renderRequestActivity();
       setOutputText(String(error));
@@ -447,7 +462,7 @@ export function PrDataProvider({
       );
       showError(title, detail, 0);
     });
-  }, [loadOnMount, loadStoredData, setStatusText, renderRequestActivity, setOutputText, showError]);
+  }, [loadOnMount, loadStoredData, getLatestStoredPayload, setStatusText, renderRequestActivity, setOutputText, showError]);
 
   const setPayload = useCallback<PrDataValue['setPayload']>((newPayload) => {
     setState((previous) => ({ ...previous, payload: newPayload }));

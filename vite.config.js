@@ -2,11 +2,15 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { viewPrsApiForwarderPlugin } from './src/dev/view-prs-api-forwarder.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
-  plugins: [react()],
+  // The forwarder passes /view-prs to the app server, in place of Vite's
+  // server.proxy, which sometimes stops large responses short (see
+  // src/dev/view-prs-api-forwarder.js).
+  plugins: [react(), viewPrsApiForwarderPlugin({ target: 'http://localhost:9000' })],
   // Relative, so the build works wherever the page is served: / on the
   // standalone server, /view-prs/ under the hub (src/server/app.js serves
   // dist/ui with NODE_ENV=production). The dev server treats it as /.
@@ -24,12 +28,6 @@ export default defineConfig({
   },
   server: {
     port: 3456,
-    proxy: {
-      '/view-prs': {
-        target: 'http://localhost:9000',
-        changeOrigin: true,
-      },
-    },
   },
   resolve: {
     alias: {
