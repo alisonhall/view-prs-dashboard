@@ -24,6 +24,7 @@ const ACTORS = [
   { value: 'dependabot[bot]', label: 'dependabot[bot]' },
 ];
 const OPTIONS: FilterOptionsValue = {
+  repoOptions: [],
   labelOptions: [],
   excludeLabelOptions: [],
   authorOptions: [],

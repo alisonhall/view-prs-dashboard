@@ -9,6 +9,12 @@ export interface RowFilterCriteria {
   prNumbers: string[];
   prKeys: string[];
   repos: string[];
+  // The Repos list: PRs in any of these repos.
+  repoNames: string[];
+  // The Last activity range (pr-last-activity-range.helpers.ts): date
+  // inputs' values, "" for no limit on that side.
+  lastActivityFrom: string;
+  lastActivityTo: string;
   includeLabels: string[];
   excludeLabels: string[];
   authorLogins: string[];
@@ -57,6 +63,9 @@ const createPrRowFilteringHelpers = ({
     prNumbers,
     prKeys,
     repos,
+    repoNames,
+    lastActivityFrom,
+    lastActivityTo,
     includeLabels,
     excludeLabels,
     authorLogins,
@@ -73,6 +82,9 @@ const createPrRowFilteringHelpers = ({
     prNumbers: asStringArray(prNumbers),
     prKeys: asStringArray(prKeys),
     repos: asStringArray(repos),
+    repoNames: asStringArray(repoNames),
+    lastActivityFrom: String(lastActivityFrom || ""),
+    lastActivityTo: String(lastActivityTo || ""),
     includeLabels: asStringArray(includeLabels),
     excludeLabels: asStringArray(excludeLabels),
     authorLogins: asStringArray(authorLogins),

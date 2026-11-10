@@ -42,6 +42,10 @@ export interface FilterValues {
   onlyWaitingOnMe?: boolean;
   onlyThreadsToCheck?: boolean;
   filterPrNumbers?: string;
+  // The Last activity range: date inputs' values ("2026-11-03"), "" for no
+  // limit on that side (pr-last-activity-range.helpers.ts).
+  filterLastActivityFrom?: string;
+  filterLastActivityTo?: string;
   alwaysShowInReview?: boolean;
   filterCustomComments?: string;
   filterOtherNotes?: string;

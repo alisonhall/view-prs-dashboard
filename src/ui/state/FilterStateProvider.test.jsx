@@ -16,6 +16,10 @@ const { RowFilterSelectionProvider } = require('./RowFilterSelectionProvider');
 const { AuthorThreadResolutionSelectionProvider } = require('./AuthorThreadResolutionSelectionProvider');
 const { ChangeFilterActorSelectionProvider } = require('./ChangeFilterActorSelectionProvider');
 const { useRowFilterSelection } = require('./RowFilterSelectionContext');
+const {
+  getPendingMultiSelectSelection,
+  setPendingMultiSelectSelection,
+} = require('../helpers/pr-pending-multi-select-selections.helpers.ts');
 const { useAuthorThreadResolutionSelection } = require('./AuthorThreadResolutionSelectionContext');
 const { useChangeFilterActorSelection } = require('./ChangeFilterActorSelectionContext');
 
@@ -476,6 +480,86 @@ describe('FilterStateProvider', () => {
       expect(putBody.author).toEqual(['zuser']);
       expect(putBody['attention-author-thread-resolution-allow']).toEqual(['allowed-user']);
       expect(putBody.changeFilters.ignoreCommentsFromAuthors).toEqual(['ignored-user']);
+    });
+  });
+
+  describe('the Repos list and the Last activity range', () => {
+    let putBody;
+    const mockUserDefaults = (overrides) => {
+      putBody = null;
+      global.fetch = jest.fn(async (url, init = {}) => {
+        if (String(url) === '/view-prs/user-defaults' && !init.method) {
+          return { ok: true, json: async () => ({ ok: true, overrides }) };
+        }
+        if (String(url) === '/view-prs/user-defaults' && init.method === 'PUT') {
+          putBody = JSON.parse(init.body);
+        }
+        return { ok: true, json: async () => ({ ok: true }) };
+      });
+    };
+
+    function RepoAndDatesProbe() {
+      const { values, setValue } = useFilterState();
+      const { setChecked } = useRowFilterSelection();
+      return (
+        <div>
+          <span data-testid="from">{values.filterLastActivityFrom || ''}</span>
+          <span data-testid="to">{values.filterLastActivityTo || ''}</span>
+          <button onClick={() => setChecked('repo-list', ['owner/repo'])}>pick repo</button>
+          <button onClick={() => setValue('filterLastActivityFrom', '2026-11-01')}>set from</button>
+          <button onClick={() => setValue('filterLastActivityFrom', '')}>clear from</button>
+        </div>
+      );
+    }
+
+    const renderProbe = () =>
+      render(
+        <FilterStateProviderWithSelectionContexts initialValues={{ filterPrNumbers: '' }}>
+          <RepoAndDatesProbe />
+        </FilterStateProviderWithSelectionContexts>,
+      );
+
+    afterEach(() => {
+      delete global.fetch;
+      setPendingMultiSelectSelection('pendingRepoSelections', undefined);
+    });
+
+    test('given saved repos and dates, when the restore resolves, then the dates show and the repos wait for their options', async () => {
+      mockUserDefaults({
+        repos: ['owner/repo'],
+        'filter-last-activity-from': '2026-11-01',
+        'filter-last-activity-to': '2026-11-10',
+        repo: 'owner/run-repo',
+      });
+      renderProbe();
+
+      await waitFor(() => expect(screen.getByTestId('from').textContent).toBe('2026-11-01'));
+      expect(screen.getByTestId('to').textContent).toBe('2026-11-10');
+      expect(getPendingMultiSelectSelection('pendingRepoSelections')).toEqual(['owner/repo']);
+    });
+
+    test("given a repo picked and a start date, when the persist debounce fires, then they're saved - not under Run & check's repo - and a cleared date is dropped", async () => {
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      mockUserDefaults({ repo: 'owner/run-repo' });
+      renderProbe();
+      await act(async () => {});
+
+      await user.click(screen.getByText('pick repo'));
+      await user.click(screen.getByText('set from'));
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(150);
+      });
+
+      expect(putBody.repos).toEqual(['owner/repo']);
+      expect(putBody.repo).toBe('owner/run-repo');
+      expect(putBody['filter-last-activity-from']).toBe('2026-11-01');
+      expect(putBody).not.toHaveProperty('filter-last-activity-to');
+
+      await user.click(screen.getByText('clear from'));
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(150);
+      });
+      expect(putBody).not.toHaveProperty('filter-last-activity-from');
     });
   });
 

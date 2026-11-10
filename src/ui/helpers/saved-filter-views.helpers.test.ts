@@ -16,7 +16,7 @@ describe('toViewFilters', () => {
     );
     expect(filters.fields).toMatchObject({ onlyWaitingOnMe: true, filterSearch: 'parser', onlyNeedsAttention: false, filterStories: '' });
     expect(filters.fields).not.toHaveProperty('unrelated');
-    expect(filters.lists).toEqual({ 'label-list': ['bug'], 'exclude-label-list': [], 'author-list': ['ann'], 'assigned-list': [], 'approver-list': [] });
+    expect(filters.lists).toEqual({ 'repo-list': [], 'label-list': ['bug'], 'exclude-label-list': [], 'author-list': ['ann'], 'assigned-list': [], 'approver-list': [] });
   });
 });
 

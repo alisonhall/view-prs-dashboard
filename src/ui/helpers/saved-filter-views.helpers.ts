@@ -14,6 +14,8 @@ export const SAVED_FILTER_VIEWS_KEY = "savedFilterViews";
 export const VIEW_FIELD_DEFAULTS = {
   filterSearch: "",
   filterPrNumbers: "",
+  filterLastActivityFrom: "",
+  filterLastActivityTo: "",
   onlyNeedsAttention: false,
   alwaysShowInReview: false,
   onlyOpenConversationsWithMe: false,
@@ -30,7 +32,7 @@ export type ViewFieldKey = keyof typeof VIEW_FIELD_DEFAULTS;
 export const VIEW_FIELD_KEYS = Object.keys(VIEW_FIELD_DEFAULTS) as ViewFieldKey[];
 
 // The filter bar's lists (RowFilterSelectionContext ids).
-export const VIEW_LIST_IDS = ["label-list", "exclude-label-list", "author-list", "assigned-list", "approver-list"] as const;
+export const VIEW_LIST_IDS = ["repo-list", "label-list", "exclude-label-list", "author-list", "assigned-list", "approver-list"] as const;
 export type ViewListId = (typeof VIEW_LIST_IDS)[number];
 
 export interface ViewFilters {
@@ -98,6 +100,7 @@ export const withPeopleAsKeys = (filters: ViewFilters, keyOf: (value: string) =>
 export const describeViewFilters = (filters: ViewFilters, nameOfPerson?: (value: string) => string): string[] =>
   buildTableFilterChipsViewModel({
     ...filters.fields,
+    repoNames: filters.lists["repo-list"],
     includeLabels: filters.lists["label-list"],
     excludeLabels: filters.lists["exclude-label-list"],
     authorLogins: filters.lists["author-list"],

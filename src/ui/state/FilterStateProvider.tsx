@@ -41,6 +41,8 @@ const TEXT_FIELD_IDS = [
   'pr-numbers',
   'open-mode',
   'filter-pr-numbers',
+  'filter-last-activity-from',
+  'filter-last-activity-to',
   'attention-no-activity-mode',
   'attention-author-thread-resolution-mode',
   'filter-custom-comments',
@@ -115,7 +117,7 @@ const checkedList = <L extends string>(checkedByListId: Partial<Record<L, Set<st
  * (`test-fixtures/filter-state-probe.tsx`).
  *
  * Restore: a mount-only effect reads the saved overrides into `values`,
- * and hands the 9 multi-select lists' saved selections to
+ * and hands the 10 multi-select lists' saved selections to
  * `setPendingMultiSelectSelection` (that store is deliberately
  * window-level, see its file's comment) for ListSelectionSeeding to
  * apply once their options exist.
@@ -257,6 +259,9 @@ export function FilterStateProvider({
         setRestoredRepoOverride(String(overrides.repo));
       }
 
+      if (Array.isArray(overrides.repos)) {
+        restorePending('pendingRepoSelections', overrides.repos);
+      }
       if (Array.isArray(overrides.author)) {
         restorePending('pendingAuthorSelections', overrides.author);
       }
@@ -349,6 +354,7 @@ export function FilterStateProvider({
         delete overrides[id];
       }
     };
+    setArrayField('repos', () => checkedList(rowFilterSelection.checkedByListId, 'repo-list'));
     setArrayField('author', () => checkedList(rowFilterSelection.checkedByListId, 'author-list'));
     setArrayField('assigned', () => checkedList(rowFilterSelection.checkedByListId, 'assigned-list'));
     setArrayField('approver', () => checkedList(rowFilterSelection.checkedByListId, 'approver-list'));
@@ -482,6 +488,9 @@ export function FilterStateProvider({
         'only-waiting-on-me',
         'only-threads-to-check',
         'filter-pr-numbers',
+        'repos',
+        'filter-last-activity-from',
+        'filter-last-activity-to',
         'label',
         'exclude-label',
         'author',

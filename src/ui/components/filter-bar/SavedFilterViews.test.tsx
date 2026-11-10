@@ -12,6 +12,7 @@ import { ListSelectionSeeding } from '../../state/useListSelectionSeeding';
 import { FilterBar } from './FilterBar';
 
 const OPTIONS: FilterOptionsValue = {
+  repoOptions: [],
   labelOptions: [{ value: 'bug', label: 'bug' }],
   excludeLabelOptions: [],
   authorOptions: [{ value: 'octocat', label: 'The Octocat' }],

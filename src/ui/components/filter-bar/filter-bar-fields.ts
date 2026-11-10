@@ -18,9 +18,22 @@ export interface RowFilterList {
   normalizeToken?: (value: unknown) => unknown;
   // What picking options does (at the top of the open list).
   description: string;
+  // The filter bar's group it's in: Rows, or Labels and people.
+  group: 'rows' | 'people';
 }
 
 export const ROW_FILTER_LISTS: readonly RowFilterList[] = [
+  {
+    listId: 'repo-list',
+    label: 'Repos',
+    idPrefix: 'repo',
+    optionsKey: 'repoOptions',
+    pendingKey: 'pendingRepoSelections',
+    // A saved repo takes its option whatever the case, as it matches rows.
+    normalizeToken: normalizeFilterToken,
+    description: 'Shows PRs in any of these repos.',
+    group: 'rows',
+  },
   {
     listId: 'label-list',
     label: 'Labels',
@@ -29,6 +42,7 @@ export const ROW_FILTER_LISTS: readonly RowFilterList[] = [
     pendingKey: 'pendingLabelSelections',
     normalizeToken: normalizeFilterToken,
     description: 'Shows PRs with any of these labels.',
+    group: 'people',
   },
   {
     listId: 'exclude-label-list',
@@ -38,6 +52,7 @@ export const ROW_FILTER_LISTS: readonly RowFilterList[] = [
     pendingKey: 'pendingExcludeLabelSelections',
     normalizeToken: normalizeFilterToken,
     description: 'Hides PRs with any of these labels.',
+    group: 'people',
   },
   {
     listId: 'author-list',
@@ -46,6 +61,7 @@ export const ROW_FILTER_LISTS: readonly RowFilterList[] = [
     optionsKey: 'authorOptions',
     pendingKey: 'pendingAuthorSelections',
     description: 'Shows PRs opened by any of these people.',
+    group: 'people',
   },
   {
     listId: 'assigned-list',
@@ -54,6 +70,7 @@ export const ROW_FILTER_LISTS: readonly RowFilterList[] = [
     optionsKey: 'assignedOptions',
     pendingKey: 'pendingAssignedSelections',
     description: 'Shows PRs assigned to any of these people.',
+    group: 'people',
   },
   {
     listId: 'approver-list',
@@ -62,6 +79,7 @@ export const ROW_FILTER_LISTS: readonly RowFilterList[] = [
     optionsKey: 'approverOptions',
     pendingKey: 'pendingApproverSelections',
     description: 'Shows PRs approved by any of these people.',
+    group: 'people',
   },
 ];
 

@@ -89,6 +89,11 @@ export function FilterOptionsProvider({ children }: { children?: ReactNode }) {
       formatIsoDatetime,
     });
 
+    // Every repo with a stored row, not only the selected one's.
+    const repoOptions = Array.from(new Set(allEntries.map((entry) => String(entry?.repo || '').trim()).filter(Boolean)))
+      .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))
+      .map((repo) => ({ value: repo, label: repo }));
+
     const labelsByToken = new Map<string, string>();
     scopedEntries.forEach((entry) => {
       getOrCompute(entry, 'labelNames', () => extractRowLabelNames(entry?.data || {})).forEach((labelName) => {
@@ -155,6 +160,7 @@ export function FilterOptionsProvider({ children }: { children?: ReactNode }) {
     );
 
     return {
+      repoOptions,
       labelOptions,
       excludeLabelOptions: labelOptions,
       authorOptions,

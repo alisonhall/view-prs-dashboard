@@ -21,6 +21,8 @@ const DEFAULT_FILTER_STATE_VALUES: FilterValues = {
   onlyWaitingOnMe: false,
   onlyThreadsToCheck: false,
   filterPrNumbers: '',
+  filterLastActivityFrom: '',
+  filterLastActivityTo: '',
   alwaysShowInReview: false,
   filterCustomComments: '',
   filterOtherNotes: '',
@@ -73,6 +75,9 @@ export function useTableFilterChips(): { chips: TableFilterChip[] } {
       onlyWaitingOnMe: Boolean(values.onlyWaitingOnMe),
       onlyThreadsToCheck: Boolean(values.onlyThreadsToCheck),
       filterPrNumbers: debouncedFilterPrNumbers,
+      repoNames: Array.from(checkedByListId['repo-list'] || []),
+      filterLastActivityFrom: values.filterLastActivityFrom,
+      filterLastActivityTo: values.filterLastActivityTo,
       includeLabels: Array.from(checkedByListId['label-list'] || []),
       excludeLabels: Array.from(checkedByListId['exclude-label-list'] || []),
       authorLogins: Array.from(checkedByListId['author-list'] || []),
@@ -93,6 +98,8 @@ export function useTableFilterChips(): { chips: TableFilterChip[] } {
       onRemove: () => {
         if (descriptor.clear.kind === 'field') {
           setValue?.(descriptor.clear.key, descriptor.clear.value);
+        } else if (descriptor.clear.kind === 'fields') {
+          Object.entries(descriptor.clear.values).forEach(([key, value]) => setValue?.(key, value));
         } else if (descriptor.clear.kind === 'list') {
           toggle(descriptor.clear.listId as RowFilterListId, descriptor.clear.value);
         }

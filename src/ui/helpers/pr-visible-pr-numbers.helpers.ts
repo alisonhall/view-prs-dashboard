@@ -10,6 +10,7 @@ import { parseSearchTerms } from "./pr-row-search.helpers.ts";
 // narrowing and row-filter helpers (narrowRows/buildRowFilterCriteria/
 // applyRowUiFilters) rather than reimplementing them.
 export interface RowFilterSelections {
+  repoNames?: string[];
   includeLabels?: string[];
   excludeLabels?: string[];
   authorLogins?: string[];
@@ -46,6 +47,9 @@ export interface VisiblePrNumbersInput {
   filterPrNumbersRaw?: string;
   attentionConfig?: AttentionConfig;
   rowFilterSelections?: RowFilterSelections;
+  // The Last activity range: date inputs' values, "" for no limit.
+  lastActivityFrom?: string;
+  lastActivityTo?: string;
   alwaysShowInReview?: boolean;
   customComments?: string;
   otherNotes?: string;
@@ -91,6 +95,8 @@ const createPrVisiblePrNumbersHelpers = ({
     filterPrNumbersRaw,
     attentionConfig,
     rowFilterSelections = {},
+    lastActivityFrom,
+    lastActivityTo,
     alwaysShowInReview,
     customComments,
     otherNotes,
@@ -122,6 +128,9 @@ const createPrVisiblePrNumbersHelpers = ({
       prNumbers: prFilter.prNumbers,
       prKeys: prFilter.prKeys,
       repos: prFilter.repos,
+      repoNames: rowFilterSelections.repoNames,
+      lastActivityFrom,
+      lastActivityTo,
       includeLabels: rowFilterSelections.includeLabels,
       excludeLabels: rowFilterSelections.excludeLabels,
       authorLogins: rowFilterSelections.authorLogins,

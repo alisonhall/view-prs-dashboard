@@ -14,6 +14,7 @@ import { ListSelectionSeeding } from '../../state/useListSelectionSeeding';
 import { FILTER_BAR_OPEN_STORAGE_KEY, FilterBar, type FilterBarProps } from './FilterBar';
 
 const NO_OPTIONS: FilterOptionsValue = {
+  repoOptions: [],
   labelOptions: [],
   excludeLabelOptions: [],
   authorOptions: [],
@@ -176,6 +177,10 @@ describe('FilterBar panel', () => {
     const rows = screen.getByRole('group', { name: 'Rows' });
     expect(within(rows).queryByRole('combobox')).not.toBeInTheDocument();
     expect(within(rows).getByRole('textbox', { name: 'PRs' })).toBeInTheDocument();
+    expect(within(rows).getByRole('group', { name: 'Repos' })).toHaveClass('multi-select-list');
+    const lastActivity = within(rows).getByRole('group', { name: 'Last activity' });
+    expect(within(lastActivity).getByLabelText('From')).toHaveAttribute('type', 'date');
+    expect(within(lastActivity).getByLabelText('To')).toHaveAttribute('type', 'date');
     expect(within(rows).getByRole('checkbox', { name: 'Only PRs that need attention' })).toBeInTheDocument();
     expect(within(rows).getByRole('checkbox', { name: 'Always show PRs in review' })).toBeInTheDocument();
     const people = screen.getByRole('group', { name: 'Labels and people' });
@@ -227,6 +232,39 @@ describe('FilterBar panel', () => {
     expect(within(screen.getByRole('group', { name: 'Applied table filters' })).getByText(/docs/)).toBeInTheDocument();
   });
 
+  test('the Repos list picks repos the table filters by, with a chip each', async () => {
+    const user = userEvent.setup();
+    renderBar(withOptions({ repoOptions: [{ value: 'owner/other', label: 'owner/other' }, { value: 'owner/repo', label: 'owner/repo' }] }));
+    await open(user);
+    const repos = screen.getByRole('group', { name: 'Repos' });
+    await user.click(repos.closest('details')?.querySelector('summary') as HTMLElement);
+    await user.click(within(repos).getByRole('checkbox', { name: 'owner/repo' }));
+    expect(Array.from(selection?.checkedByListId['repo-list'] ?? [])).toEqual(['owner/repo']);
+    expect(within(screen.getByRole('group', { name: 'Applied table filters' })).getByText('Repo: owner/repo')).toBeInTheDocument();
+  });
+
+  test('the Last activity dates set the range, with one chip for it, and a start after the end says no PR matches', async () => {
+    const user = userEvent.setup();
+    renderBar();
+    await open(user);
+    const from = screen.getByLabelText('From');
+    const to = screen.getByLabelText('To');
+    expect(screen.getByRole('group', { name: 'Last activity' })).toHaveAccessibleDescription(/Leave a date empty for no limit/);
+
+    await user.type(from, '2026-11-10');
+    const chips = () => screen.getByRole('group', { name: 'Applied table filters' });
+    expect(within(chips()).getByText('Last activity: from Nov 10, 2026')).toBeInTheDocument();
+    expect(to).toHaveAttribute('min', '2026-11-10');
+    expect(screen.queryByText(/start date is after the end date/)).not.toBeInTheDocument();
+
+    await user.type(to, '2026-11-01');
+    expect(screen.getByText(/start date is after the end date/)).toBeInTheDocument();
+
+    await user.click(within(chips()).getByRole('button', { name: 'Remove filter: Last activity: Nov 10, 2026 – Nov 1, 2026' }));
+    expect(from).toHaveValue('');
+    expect(to).toHaveValue('');
+  });
+
   test('a list with no options says so', async () => {
     const user = userEvent.setup();
     renderBar();
@@ -249,6 +287,13 @@ describe('FilterBar list selections (ListSelectionSeeding, mounted beside it)', 
     rerenderWith(LABELS);
     // Labels match case-insensitively.
     expect(checked('label-list')).toEqual(['docs']);
+  });
+
+  test("a saved repo takes its option's value whatever the case, as it matches rows - not listed as one no PR has", () => {
+    act(() => setPendingMultiSelectSelection('pendingRepoSelections', ['Owner/Repo']));
+    const { rerenderWith } = renderBar(NO_OPTIONS);
+    rerenderWith(withOptions({ repoOptions: [{ value: 'owner/repo', label: 'owner/repo' }] }));
+    expect(Array.from(selection?.checkedByListId['repo-list'] ?? [])).toEqual(['owner/repo']);
   });
 
   test('options rebuilt the same (every data poll) leave the selection as it was, so nothing re-filters or re-saves', async () => {

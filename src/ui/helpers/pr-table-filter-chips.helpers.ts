@@ -1,10 +1,13 @@
 import { asArray } from "./pr-as-array.helpers.ts";
+import { describeLastActivityRange } from "./pr-last-activity-range.helpers.ts";
 
 // The removable chips above the PR table, one per active filter, each with
 // what clearing it means: reset a field to its default, or uncheck one
 // value in a multi-select list (useTableFilterChips applies it).
 export type FilterChipClear =
   | { kind: "field"; key: string; value: unknown }
+  // Several fields at once (the Last activity range's two dates).
+  | { kind: "fields"; values: Record<string, unknown> }
   | { kind: "list"; listId: string; value: string };
 
 export interface FilterChip {
@@ -19,6 +22,9 @@ export interface TableFilterChipsInput {
   onlyWaitingOnMe?: boolean;
   onlyThreadsToCheck?: boolean;
   filterPrNumbers?: string;
+  repoNames?: string[];
+  filterLastActivityFrom?: string;
+  filterLastActivityTo?: string;
   includeLabels?: string[];
   excludeLabels?: string[];
   authorLogins?: string[];
@@ -70,6 +76,9 @@ const createPrTableFilterChipsHelpers = () => {
     onlyWaitingOnMe,
     onlyThreadsToCheck,
     filterPrNumbers,
+    repoNames,
+    filterLastActivityFrom,
+    filterLastActivityTo,
     includeLabels,
     excludeLabels,
     authorLogins,
@@ -111,6 +120,18 @@ const createPrTableFilterChipsHelpers = () => {
           "",
         ),
       );
+    }
+
+    chips.push(...listChips("Repo", "repo-list", repoNames));
+
+    // One chip for the range, both dates cleared with it.
+    const lastActivity = describeLastActivityRange(filterLastActivityFrom, filterLastActivityTo);
+    if (lastActivity) {
+      chips.push({
+        id: "filterLastActivity",
+        label: lastActivity,
+        clear: { kind: "fields", values: { filterLastActivityFrom: "", filterLastActivityTo: "" } },
+      });
     }
 
     chips.push(...listChips("Label", "label-list", includeLabels));

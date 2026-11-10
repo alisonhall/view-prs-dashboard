@@ -9,6 +9,7 @@ import { FilterMultiSelect } from './FilterMultiSelect';
 import { FilterOptionSelect } from './FilterOptionSelect';
 import { FilterSearchInput } from './FilterSearchInput';
 import { PrNumberFilterInput } from './PrNumberFilterInput';
+import { LastActivityRangeFilter } from './LastActivityRangeFilter';
 import { NOTES_FILTER_FIELDS, ROW_FILTER_LISTS } from './filter-bar-fields';
 
 // Whether the bar was left open, per browser (like the detail pane's
@@ -44,7 +45,7 @@ export interface FilterBarProps {
 
 /**
  * The filter bar above the PR table (UI_REDESIGN_PLAN.md, phase 8): the
- * row filters - PR numbers, "Only PRs that need attention", "Always show
+ * row filters - PR numbers, repos, the last activity range, "Only PRs that need attention", "Always show
  * PRs in review", the label/author/assigned/approver lists, the notes
  * filters, and Conversations' "Open conversations with me", "Waiting on
  * me" and "Resolved for you to check".
@@ -129,6 +130,10 @@ export function FilterBar({ shownCount, totalCount, loaded, hiddenCount = 0 }: F
               checkboxes below say.
             </p>
           </div>
+          {ROW_FILTER_LISTS.filter((list) => list.group === 'rows').map((list) => (
+            <FilterMultiSelect key={list.listId} list={list} />
+          ))}
+          <LastActivityRangeFilter />
           <div className="filter-bar-field">
             <label className="filter-bar-check">
               <FilterCheckbox id="only-needs-attention" valueKey="onlyNeedsAttention" />
@@ -153,7 +158,7 @@ export function FilterBar({ shownCount, totalCount, loaded, hiddenCount = 0 }: F
           <h3 id={headingIds.people} className="filter-bar-heading">
             Labels and people
           </h3>
-          {ROW_FILTER_LISTS.map((list) => (
+          {ROW_FILTER_LISTS.filter((list) => list.group === 'people').map((list) => (
             <FilterMultiSelect key={list.listId} list={list} />
           ))}
         </div>

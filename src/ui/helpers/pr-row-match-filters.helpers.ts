@@ -4,9 +4,10 @@ import type { RowFilterCriteria } from "./pr-row-filtering.helpers.ts";
 import type { GetPreferredActorKey } from "./pr-actor-identity.helpers.ts";
 import { prFilterPicksPrs, rowMatchesPrFilter } from "./pr-filter-input.helpers.ts";
 import { matchRowSearch } from "./pr-row-search.helpers.ts";
+import { isInLastActivityRange } from "./pr-last-activity-range.helpers.ts";
 
-// Whether one PR entry passes the table's row filters (PR numbers, labels,
-// people, notes fields). Pure with respect to its (entry, filters) args;
+// Whether one PR entry passes the table's row filters (PR numbers, repos,
+// last activity, labels, people, notes fields). Pure with respect to its (entry, filters) args;
 // useVisiblePrNumbers injects the actor-identity and notes lookups from
 // Context.
 interface LoginRecord {
@@ -78,6 +79,18 @@ const createPrRowMatchFiltersHelpers = ({
 
     if (prFilterPicksPrs(prFilter)) {
       return true;
+    }
+
+    // The Repos list: a repo picked, whatever its case.
+    if (filters.repoNames?.length > 0) {
+      const repo = String(entry?.repo || "").trim().toLowerCase();
+      if (!filters.repoNames.some((name) => String(name).trim().toLowerCase() === repo)) {
+        return false;
+      }
+    }
+
+    if (!isInLastActivityRange(entry, filters.lastActivityFrom, filters.lastActivityTo)) {
+      return false;
     }
 
     if (

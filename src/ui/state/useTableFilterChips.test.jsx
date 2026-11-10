@@ -93,6 +93,31 @@ describe('useTableFilterChips', () => {
     expect(screen.getByText('Label: docs')).toBeInTheDocument();
   });
 
+  test('given repos picked, then a chip each, and removing one unpicks only that repo', async () => {
+    const user = userEvent.setup();
+    renderProbe({ seedListId: 'repo-list', seedValues: ['owner/repo', 'owner/other'] });
+
+    expect(screen.getByText('Repo: owner/repo')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'remove Repo: owner/repo' }));
+    expect(screen.queryByText('Repo: owner/repo')).not.toBeInTheDocument();
+    expect(screen.getByText('Repo: owner/other')).toBeInTheDocument();
+  });
+
+  test('given a last activity range, then one chip for it, and removing it clears both dates', async () => {
+    const user = userEvent.setup();
+    renderProbe({ filterStateValues: { filterLastActivityFrom: '2026-11-01', filterLastActivityTo: '2026-11-10' } });
+
+    const label = 'Last activity: Nov 1, 2026 – Nov 10, 2026';
+    expect(screen.getByText(label)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: `remove ${label}` }));
+    expect(screen.queryAllByRole('listitem')).toHaveLength(0);
+  });
+
+  test('given only one side of the range, then its chip says which', () => {
+    renderProbe({ filterStateValues: { filterLastActivityFrom: '', filterLastActivityTo: '2026-11-10' } });
+    expect(screen.getByText('Last activity: until Nov 10, 2026')).toBeInTheDocument();
+  });
+
   test('given a non-default boolean field (alwaysShowInReview), when rendered, then shows its chip', () => {
     renderProbe({ filterStateValues: { alwaysShowInReview: true } });
     expect(screen.getByText('Always show in review')).toBeInTheDocument();
