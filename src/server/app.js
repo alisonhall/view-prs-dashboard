@@ -3747,6 +3747,13 @@ const createViewPrsApp = ({ production = isProductionEnv } = {}) => {
     });
   });
 
+  // That this server is running, and its data folder - npm run data:move
+  // asks, and won't move the folder from under it. Cheap: no checks, no
+  // action log entry.
+  app.get("/health", (_req, res) => {
+    res.json({ app: "view-prs", dataDir: viewPrsDataDir });
+  });
+
   // Dependency health route - README's own "Troubleshooting" section
   // already documents `curl -s http://localhost:9000/health/deps` as the
   // way to check this, but the route itself was never implemented; wires

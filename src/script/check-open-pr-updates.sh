@@ -111,7 +111,14 @@ NODE_BIN="${VIEW_PRS_NODE:-node}"
 # the same folder), else the app's data/.
 # shellcheck source=data-dir.sh
 . "$VIEW_PRS_DIR/src/script/data-dir.sh"
+DATA_DIR_GIVEN="${DATA_DIR:-}"
 DATA_DIR="$(resolve_data_dir "$VIEW_PRS_DIR")"
+# Your setting's folder (not one the server or a test passes): not when it's
+# missing while the data is still in data/ - the run would start it empty.
+if [[ -z "$DATA_DIR_GIVEN" ]] && data_dir_message="$(data_dir_problem "$VIEW_PRS_DIR" "$DATA_DIR")"; then
+  echo "$data_dir_message" >&2
+  exit 1
+fi
 PR_STATE_FILE="${PR_STATE_FILE:-$DATA_DIR/check-open-pr-updates.data.json}"
 PR_STATE_LOCK_DIR="${PR_STATE_LOCK_DIR:-$DATA_DIR/check-open-pr-updates.data.lock}"
 USER_STATE_FILE="${USER_STATE_FILE:-$DATA_DIR/check-open-pr-updates.user-state.json}"
@@ -398,7 +405,7 @@ format_iso_datetime() {
 create_state_backup() {
   local target_file="$1"
   local tag="$2"
-  local ts suffix backup_file pattern retention daily_days
+  local ts suffix backup_file prefix pattern retention daily_days
 
   [[ -f "$target_file" ]] || return 0
 
@@ -410,7 +417,10 @@ create_state_backup() {
 
   retention="$STATE_BACKUP_RETENTION"
   if [[ "$retention" =~ ^[0-9]+$ ]] && ((retention > 0)); then
-    pattern="$STATE_BACKUP_DIR/$(basename "$target_file").${tag}.*.bak"
+    # The folder quoted, only the * a pattern: the data folder's path may
+    # have spaces in it.
+    prefix="$STATE_BACKUP_DIR/$(basename "$target_file").${tag}."
+    pattern="${prefix}*.bak"
     if compgen -G "$pattern" >/dev/null; then
       # Best-effort trim only: with `set -e -o pipefail`, if a concurrent
       # invocation of this same cleanup deletes the last matching files
@@ -423,7 +433,7 @@ create_state_backup() {
       # the name's UTC timestamp) until $daily_days days have one.
       daily_days="$STATE_BACKUP_DAILY_DAYS"
       [[ "$daily_days" =~ ^[0-9]+$ ]] || daily_days=7
-      ls -1t $pattern 2>/dev/null | awk -v keep="$retention" -v days="$daily_days" '
+      ls -1t "$prefix"*.bak 2>/dev/null | awk -v keep="$retention" -v days="$daily_days" '
         function day_of(name) {
           return match(name, /\.[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]T/) ? substr(name, RSTART + 1, 8) : ""
         }
@@ -487,14 +497,14 @@ move_into_state_file() {
 }
 
 list_state_backups() {
-  local pr_base user_base pattern_pr pattern_user stats_tmp backup_path mtime
+  local pr_base user_base stats_tmp backup_path mtime
   pr_base="$(basename "$PR_STATE_FILE")"
   user_base="$(basename "$USER_STATE_FILE")"
-  pattern_pr="$STATE_BACKUP_DIR/${pr_base}.pr-data.*.bak"
-  pattern_user="$STATE_BACKUP_DIR/${user_base}.user-state.*.bak"
 
   stats_tmp=$(mktemp)
-  for backup_path in $pattern_pr $pattern_user; do
+  # The folder quoted, only the * a pattern: the data folder's path may have
+  # spaces in it.
+  for backup_path in "$STATE_BACKUP_DIR/${pr_base}.pr-data."*.bak "$STATE_BACKUP_DIR/${user_base}.user-state."*.bak; do
     [[ -f "$backup_path" ]] || continue
     mtime=$(stat -f '%m' "$backup_path" 2>/dev/null || stat -c '%Y' "$backup_path" 2>/dev/null || echo '0')
     printf '%s\t%s\n' "$mtime" "$backup_path" >>"$stats_tmp"

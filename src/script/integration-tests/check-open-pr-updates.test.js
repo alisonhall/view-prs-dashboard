@@ -1447,7 +1447,8 @@ describe("create_state_backup keeps the newest backups, and one a day for a week
   test("the newest STATE_BACKUP_RETENTION, then the newest of each older day until STATE_BACKUP_DAILY_DAYS days have one", () => {
     // Made here, not with mktemp: Node on Windows can't open bash's /tmp paths.
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "state-backup-")).replace(/\\/g, "/");
-    const backupDir = `${dir}/backups`;
+    // With a space: the data folder may be anywhere (README "Data folder").
+    const backupDir = `${dir}/my backups`;
     fs.mkdirSync(backupDir);
     fs.writeFileSync(`${dir}/data.json`, "{}");
     backupsByDay.forEach(([day, times]) =>

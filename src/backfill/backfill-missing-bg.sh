@@ -9,7 +9,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # shellcheck source=../script/data-dir.sh
 . "$PROJECT_DIR/src/script/data-dir.sh"
+DATA_DIR_GIVEN="${DATA_DIR:-}"
 DATA_DIR="$(resolve_data_dir "$PROJECT_DIR")"
+if [[ -z "$DATA_DIR_GIVEN" ]] && data_dir_message="$(data_dir_problem "$PROJECT_DIR" "$DATA_DIR")"; then
+  echo "$data_dir_message" >&2
+  exit 1
+fi
 # backfill-missing-data.js reads VIEW_PRS_DATA_DIR (data-dir.js), the
 # script it runs DATA_DIR: the same folder for both - for Node, on Windows,
 # as D:/... (it would take bash's /d/... as D:\d\...).

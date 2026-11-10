@@ -256,7 +256,7 @@ Optional for date formatting fallback:
 
 ## Data folder
 
-Everything the app keeps - the PR data, your notes and Acks, People, settings, Sources, backups - is in one folder, `data/` in the app by default (this README's `data/...` paths mean that folder). To keep it somewhere else, for backing it up or tracking it in git, set `VIEW_PRS_DATA_DIR` in `.env` (an absolute path, or one from the app's folder). The server, `check-open-pr-updates.sh` (`./run-prs`, `npm run cli-view`), the background backfill and the npm tools all read it; the server logs the folder it uses when it starts. A `VIEW_PRS_DATA_DIR` in the environment wins over `.env`, and the per-file variables (`VIEW_PRS_DATA_FILE`, `VIEW_PRS_ACTORS_FILE`...) still win over the folder.
+Everything the app keeps - the PR data, your notes and Acks, People, settings, Sources, backups - is in one folder, `data/` in the app by default (this README's `data/...` paths mean that folder). To keep it somewhere else, for backing it up or tracking it in git, set `VIEW_PRS_DATA_DIR` in `.env` (an absolute path, `~/...` for your home folder, or one from the app's folder; spaces are fine, but put a path with a `#` in single quotes, since `.env` takes everything from a `#` on as a comment, and write Windows paths with `/`, since `\n` in double quotes is a new line). If the folder it names doesn't exist while your data is still in `data/`, the server and the CLI won't start (a mistyped path, or one set before moving the data, would otherwise start an empty dashboard there) - create the folder yourself to start with no data. The server, `check-open-pr-updates.sh` (`./run-prs`, `npm run cli-view`), the background backfill and the npm tools all read it; the server logs the folder it uses when it starts. A `VIEW_PRS_DATA_DIR` in the environment wins over `.env`, and the per-file variables (`VIEW_PRS_DATA_FILE`, `VIEW_PRS_ACTORS_FILE`...) still win over the folder.
 
 To move an existing folder, stop the server and run:
 
@@ -265,7 +265,9 @@ npm run data:move -- ~/Documents/view-prs-data --dry-run   # what it would do
 npm run data:move -- ~/Documents/view-prs-data
 ```
 
-It copies the folder (the new one must be new or empty, and not inside the old one), checks every file arrived, sets `VIEW_PRS_DATA_DIR` in `.env`, and renames the old folder to `data.moved-<time>` - delete that once the app works from the new one. It won't move while a run holds a lock in the folder, and if a step fails it puts the old folder back and leaves `.env` as it was.
+It copies the folder (the new one must be new or empty, and not inside the old one; a relative path is from where you run it), checks every file arrived, sets `VIEW_PRS_DATA_DIR` in `.env`, and renames the old folder to `data.moved-<time>` - delete that once the app works from the new one. It won't move while a server using the folder answers on its port (one from another copy of the app, with its own folder, doesn't count) (`VIEW_PRS_PORT` or `PORT`, and `VIEW_PRS_HOST`) or a run holds a lock in the folder, and if a step fails it puts the old folder back and leaves `.env` as it was. A folder inside the app's own gets a reminder to add it to the app's `.gitignore`.
+
+A folder that a sync service (iCloud Drive, Dropbox, OneDrive) keeps works, but the app writes several files a minute and uses lock folders, which those services can sync half-way or duplicate as conflicted copies; git, committed now and then, doesn't have that problem.
 
 The move also puts a `.gitignore` in the new folder, so you can `git init` it and commit what's yours: notes and Acks (`check-open-pr-updates.user-state.json`), Authors comments, People (`actors.json`), settings (`user-defaults.json`) and Sources. It leaves out what's fetched again or changes every minute: the PR data and live summary, PR details and diffs, backups, the scheduler state, the action log, locks, logs and temporary files. Commit while the server is stopped, or at least not mid-save.
 

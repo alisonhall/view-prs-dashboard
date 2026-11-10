@@ -856,6 +856,14 @@ describe("route behavior", () => {
     }
   });
 
+  // npm run data:move asks it, and won't move the folder while it answers.
+  test("GET /health says it's this app, and its data folder", async () => {
+    const { response, payload } = await requestJson(server, "/health");
+
+    expect(response.status).toBe(200);
+    expect(payload).toEqual({ app: "view-prs", dataDir: appModule.viewPrsDataDir });
+  });
+
   test("returns 503 and the missing list when GET /health/deps is requested and a dependency is absent", async () => {
     const originalDeps = appModule.getDependencyStatus;
     const originalAuth = appModule.isGhAuthenticated;

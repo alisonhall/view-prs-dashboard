@@ -19,6 +19,18 @@ if (envFile && fs.existsSync(envFile)) {
   process.loadEnvFile(envFile);
 }
 
+// Not with a data folder set but missing while the data is still in data/
+// (data-dir.js): checked before app.js, which makes files in it as it loads.
+{
+  const { findDataDirProblem, resolveDataDir } = require("./config/data-dir.js");
+  const viewPrsDir = path.resolve(__dirname, "../..");
+  const problem = findDataDirProblem({ viewPrsDir, dataDir: resolveDataDir({ viewPrsDir, envFile: null }) });
+  if (problem) {
+    console.error(`[view-prs] ${problem}`);
+    process.exit(1);
+  }
+}
+
 const {
   createViewPrsApp,
   initializeScheduler,
