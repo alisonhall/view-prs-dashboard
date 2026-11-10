@@ -5,6 +5,7 @@ import { ChangeDetectionSection } from './ChangeDetectionSection';
 import { Drawer, OnceOpened, type DrawerSection } from './Drawer';
 import { MergeCommitsSection } from './MergeCommitsSection';
 import { SourcesSection } from './SourcesSection';
+import { RulesScopeProvider } from '../../state/RulesScopeContext';
 
 export { SETTINGS_NAV_ROW_QUERY } from './Drawer';
 
@@ -52,6 +53,11 @@ const SECTIONS: ReadonlyArray<DrawerSection> = [
  * to do are in the Tools drawer (ToolsDrawer). Background updates and
  * People mount the first time they're opened.
  */
+// The Rules sections share which repo's rules they edit (RulesScopeContext).
 export function SettingsDrawer() {
-  return <Drawer kind="settings" title="Settings" sections={SECTIONS} />;
+  return (
+    <RulesScopeProvider>
+      <Drawer kind="settings" title="Settings" sections={SECTIONS} />
+    </RulesScopeProvider>
+  );
 }

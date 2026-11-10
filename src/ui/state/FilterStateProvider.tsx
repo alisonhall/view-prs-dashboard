@@ -17,6 +17,7 @@ import {
 } from '../helpers/pr-ui-option-persistence.helpers.ts';
 import { setPendingMultiSelectSelection } from '../helpers/pr-pending-multi-select-selections.helpers.ts';
 import { formatCommitPatternsForTextarea, parseCsvTokens } from '../helpers/form-parsing.helpers.ts';
+import { normalizeRepoRules } from '../helpers/repo-rules.helpers.ts';
 import {
   DEFAULT_MERGE_COMMIT_RULES,
   formatRuleLines,
@@ -247,6 +248,12 @@ export function FilterStateProvider({
         }
       }
 
+      // Each repo's own rules (repo-rules.helpers.ts), cleaned.
+      const repoRules = normalizeRepoRules(overrides.repoRules);
+      if (Object.keys(repoRules).length > 0) {
+        mapped.repoRules = repoRules;
+      }
+
       if (Object.keys(mapped).length > 0) {
         store.setMany(mapped);
         setValues((previous) => ({ ...previous, ...mapped }));
@@ -388,6 +395,17 @@ export function FilterStateProvider({
       }
     }
 
+    // Each repo's own rules, as they'll be used: patterns trimmed, blank
+    // lines dropped, a repo without any left out.
+    if (includeField('repo-rules')) {
+      const repoRules = normalizeRepoRules(currentValues.repoRules);
+      if (Object.keys(repoRules).length > 0) {
+        overrides.repoRules = repoRules;
+      } else {
+        delete overrides.repoRules;
+      }
+    }
+
     // Saved only when they differ from the defaults (an emptied patterns
     // list is kept, as "no headline counts as a merge").
     if (includeField('merge-commit-rules')) {
@@ -507,6 +525,7 @@ export function FilterStateProvider({
         'attention-author-thread-resolution-allow',
         'attention-author-thread-resolution-deny',
         'merge-commit-rules',
+        'repo-rules',
         'change-filter-ignore-comment-authors',
         'change-filter-ignore-review-authors',
         'change-filter-ignore-commit-patterns',

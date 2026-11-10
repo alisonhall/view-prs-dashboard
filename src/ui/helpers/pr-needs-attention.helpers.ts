@@ -16,7 +16,17 @@ export interface AttentionConfig {
   includeClosedMerged?: boolean;
   includeDraftChanged?: boolean;
   includeDraftNoActivity?: boolean;
+  // Each repo's own config, by its lower-cased name (Settings › Rules for a
+  // repo, repo-rules.helpers.ts): a PR's is used for it.
+  byRepo?: Record<string, AttentionConfig>;
 }
+
+// The config a PR of this repo is judged by: its repo's own, else the one
+// for every repo.
+export const attentionConfigForRepo = (config: AttentionConfig | null | undefined, repo: unknown): AttentionConfig => {
+  const own = config?.byRepo?.[String(repo ?? "").trim().toLowerCase()];
+  return own || config || {};
+};
 
 interface LoginRecord {
   login?: string;
@@ -230,7 +240,7 @@ const createPrNeedsAttentionHelpers = ({
       sectionKey,
       hasPendingComments: pendingCommentCount > 0,
       pendingCommentCount,
-      config,
+      config: attentionConfigForRepo(config, entry?.repo),
     });
   };
 

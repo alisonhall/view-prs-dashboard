@@ -1,4 +1,5 @@
 import { MergeCommitRulesTextarea } from './MergeCommitRulesTextarea';
+import { RepoRuleGroup, RulesScopePicker, SameForEveryRepoNote } from './RepoRulesScope';
 
 /**
  * The Settings drawer's "Merge commits" (UI_REDESIGN_PLAN.md, phase 9b):
@@ -9,6 +10,7 @@ import { MergeCommitRulesTextarea } from './MergeCommitRulesTextarea';
 export function MergeCommitsSection() {
   return (
     <div className="settings-section">
+      <RulesScopePicker />
       <div className="settings-group">
         <p className="subtle-copy" id="merge-commit-rules-help">
           🔀 A commit counts as a merge when its headline matches one of the patterns, or when every one of its authors is in the logins
@@ -16,6 +18,7 @@ export function MergeCommitsSection() {
           merge-only commit activity&quot; leaves out. Default pattern: <code>^Merge\b</code>. The Author column and Needs Attention
           follow a change at once; CHANGED follows it as each PR is next fetched.
         </p>
+        <RepoRuleGroup group="mergeCommitHeadlinePatterns">
         <div className="settings-field">
           <label htmlFor="merge-commit-headline-patterns">Headline patterns (regular expressions, one per line, not case-sensitive)</label>
           <MergeCommitRulesTextarea
@@ -25,6 +28,8 @@ export function MergeCommitsSection() {
             validatePatterns
           />
         </div>
+        </RepoRuleGroup>
+        <SameForEveryRepoNote />
         <div className="settings-field">
           <label htmlFor="merge-commit-logins">Logins whose commits always count as merges (one per line)</label>
           <MergeCommitRulesTextarea id="merge-commit-logins" filterStateKey="mergeCommitLogins" placeholder={'dependabot[bot]\nrenovate[bot]'} />

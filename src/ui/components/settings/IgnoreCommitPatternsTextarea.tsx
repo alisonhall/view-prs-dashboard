@@ -1,4 +1,4 @@
-import { useFilterState } from '../../state/FilterStateContext';
+import { useRuleField } from '../../state/useRuleField';
 
 /**
  * Change detection's commit message patterns (regular expressions, one per
@@ -6,7 +6,8 @@ import { useFilterState } from '../../state/FilterStateContext';
  * `changeFilterIgnoreCommitPatterns`; its help text is #commit-patterns-help.
  */
 export function IgnoreCommitPatternsTextarea() {
-  const { values, setValue } = useFilterState();
+  // Every repo's, or the repo's own (Settings › Rules for a repo).
+  const { value, setValue } = useRuleField('changeFilterIgnoreCommitPatterns');
   return (
     <textarea
       id="change-filter-ignore-commit-patterns"
@@ -14,8 +15,8 @@ export function IgnoreCommitPatternsTextarea() {
       rows={4}
       placeholder={'^docs: \n^test: \n^chore: update dependencies\n^style: formatting'}
       aria-describedby="commit-patterns-help"
-      value={String(values.changeFilterIgnoreCommitPatterns ?? '')}
-      onChange={(event) => setValue('changeFilterIgnoreCommitPatterns', event.target.value)}
+      value={String(value ?? '')}
+      onChange={(event) => setValue(event.target.value)}
     />
   );
 }

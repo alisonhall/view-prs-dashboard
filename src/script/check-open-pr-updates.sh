@@ -822,6 +822,27 @@ load_change_filter_config() {
       elif ($logins | type) == "string" then [$logins | select(length > 0)]
       else [] end' "$USER_DEFAULTS_FILE" 2>/dev/null || echo '[]')
 
+  # The repo's own versions of the two pattern lists, when it has them
+  # (repoRules, Settings › Rules for a repo - repo-rules.helpers.ts), its
+  # name matched whatever the case. A list saved empty is kept: no commit
+  # ignored, no headline a merge. The people lists stay for every repo.
+  local own_rules own_ignore own_merge
+  if [[ -n "$REPO" ]]; then
+    own_rules=$(jq -c --arg repo "$REPO" '
+      (.repoRules // {}) | if type == "object" then to_entries else [] end
+      | map(select((.key | ascii_downcase) == ($repo | ascii_downcase)) | .value)
+      | (first // {})
+      | if type == "object" then . else {} end' "$USER_DEFAULTS_FILE" 2>/dev/null || echo '{}')
+    own_ignore=$(printf '%s' "$own_rules" | jq -c 'if (.ignoreCommitPatterns | type) == "array" then [.ignoreCommitPatterns[] | tostring | select(length > 0)] else null end' 2>/dev/null || echo 'null')
+    own_merge=$(printf '%s' "$own_rules" | jq -c 'if (.mergeCommitHeadlinePatterns | type) == "array" then [.mergeCommitHeadlinePatterns[] | tostring | select(length > 0)] else null end' 2>/dev/null || echo 'null')
+    if [[ -n "$own_ignore" && "$own_ignore" != 'null' ]]; then
+      CHANGE_FILTER_IGNORE_COMMIT_PATTERNS=$(printf '%s' "$own_ignore" | jq -r 'join("|")')
+    fi
+    if [[ -n "$own_merge" && "$own_merge" != 'null' ]]; then
+      MERGE_COMMIT_HEADLINE_PATTERNS_JSON="$own_merge"
+    fi
+  fi
+
   debug_log "change_filter_config loaded: ignore_comment_authors=$CHANGE_FILTER_IGNORE_COMMENT_AUTHORS ignore_review_authors=$CHANGE_FILTER_IGNORE_REVIEW_AUTHORS ignore_commit_patterns=$CHANGE_FILTER_IGNORE_COMMIT_PATTERNS merge_commit_patterns=$MERGE_COMMIT_HEADLINE_PATTERNS_JSON merge_commit_logins=$MERGE_COMMIT_LOGINS_JSON"
 }
 

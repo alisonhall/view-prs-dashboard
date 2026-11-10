@@ -32,6 +32,37 @@ describe("change filter configuration loading", () => {
     expect(result).toContain("patterns=^docs:|^test:");
   });
 
+  // Settings › Rules for a repo (repoRules in user-defaults.json): the repo
+  // a run is on uses its own pattern lists.
+  describe("a repo's own pattern lists (repoRules)", () => {
+    const loadFor = (repo) => {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "view-prs-repo-rules-"));
+      fs.writeFileSync(
+        path.join(tempDir, "user-defaults.json"),
+        JSON.stringify({
+          changeFilters: { ignoreCommitPatterns: ["^docs:"], ignoreCommentsFromAuthors: ["bot1"] },
+          mergeCommitRules: { headlinePatterns: ["^Merge\\b"], logins: ["merge-bot"] },
+          repoRules: {
+            "Acme/Api": { ignoreCommitPatterns: ["^chore\\(release\\)", ""], mergeCommitHeadlinePatterns: ["^Sync"] },
+            "acme/quiet": { ignoreCommitPatterns: [] },
+          },
+        }),
+      );
+      return runShell(
+        `unset VIEW_PRS_ACTORS_FILE; source "${scriptPath}"; DATA_DIR="${tempDir.replace(/\\/g, "/")}"; REPO='${repo}'; load_change_filter_config; echo "ignore=$CHANGE_FILTER_IGNORE_COMMIT_PATTERNS|merge=$MERGE_COMMIT_HEADLINE_PATTERNS_JSON|logins=$MERGE_COMMIT_LOGINS_JSON|comments=$CHANGE_FILTER_IGNORE_COMMENT_AUTHORS"`,
+      );
+    };
+
+    test("a repo with its own uses them (its name matched whatever the case); the people lists and merge logins stay every repo's", () => {
+      expect(loadFor("acme/api")).toBe('ignore=^chore\\(release\\)|merge=["^Sync"]|logins=["merge-bot"]|comments=bot1');
+    });
+
+    test("one saved empty is kept: no commit ignored; a repo without its own uses every repo's", () => {
+      expect(loadFor("acme/quiet")).toBe('ignore=|merge=["^Merge\\\\b"]|logins=["merge-bot"]|comments=bot1');
+      expect(loadFor("acme/other")).toBe('ignore=^docs:|merge=["^Merge\\\\b"]|logins=["merge-bot"]|comments=bot1');
+    });
+  });
+
   describe("people saved by id (Settings › People)", () => {
     const loadWith = ({ actors }) => {
       const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "view-prs-change-filters-"));

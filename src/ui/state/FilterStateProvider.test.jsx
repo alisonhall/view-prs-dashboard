@@ -563,6 +563,75 @@ describe('FilterStateProvider', () => {
     });
   });
 
+  describe("each repo's own rules (repoRules)", () => {
+    let putBody;
+    beforeEach(() => {
+      putBody = null;
+    });
+    afterEach(() => {
+      delete global.fetch;
+    });
+    const mockUserDefaults = (overrides) => {
+      global.fetch = jest.fn(async (url, init = {}) => {
+        if (String(url) === '/view-prs/user-defaults' && !init.method) {
+          return { ok: true, json: async () => ({ ok: true, overrides }) };
+        }
+        if (String(url) === '/view-prs/user-defaults' && init.method === 'PUT') {
+          putBody = JSON.parse(init.body);
+        }
+        return { ok: true, json: async () => ({ ok: true }) };
+      });
+    };
+    function RepoRulesProbe() {
+      const { values, setValue } = useFilterState();
+      return (
+        <div>
+          <span data-testid="repo-rules">{JSON.stringify(values.repoRules || {})}</span>
+          <button onClick={() => setValue('repoRules', { ...values.repoRules, 'acme/web': { ignoreCommitPatterns: [' ^docs: ', '', '^test:'] } })}>
+            add web
+          </button>
+          <button onClick={() => setValue('repoRules', {})}>clear all</button>
+        </div>
+      );
+    }
+    const renderProbe = () =>
+      render(
+        <FilterStateProviderWithSelectionContexts initialValues={{ filterPrNumbers: '' }}>
+          <RepoRulesProbe />
+        </FilterStateProviderWithSelectionContexts>,
+      );
+
+    test('saved rules come back cleaned', async () => {
+      mockUserDefaults({ repoRules: { 'acme/api': { mergeCommitHeadlinePatterns: ['^Sync'], attention: 'broken' }, 'acme/none': {} } });
+      renderProbe();
+      await waitFor(() =>
+        expect(JSON.parse(screen.getByTestId('repo-rules').textContent)).toEqual({ 'acme/api': { mergeCommitHeadlinePatterns: ['^Sync'] } }),
+      );
+    });
+
+    test("they're saved as they'll be used - blank pattern lines dropped - and removed when none are left", async () => {
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      mockUserDefaults({ repoRules: { 'acme/api': { mergeCommitHeadlinePatterns: ['^Sync'] } } });
+      renderProbe();
+      await waitFor(() => expect(screen.getByTestId('repo-rules').textContent).toContain('acme/api'));
+
+      await user.click(screen.getByText('add web'));
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(150);
+      });
+      expect(putBody.repoRules).toEqual({
+        'acme/api': { mergeCommitHeadlinePatterns: ['^Sync'] },
+        'acme/web': { ignoreCommitPatterns: ['^docs:', '^test:'] },
+      });
+
+      await user.click(screen.getByText('clear all'));
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(150);
+      });
+      expect(putBody).not.toHaveProperty('repoRules');
+    });
+  });
+
   // Window-bridge elimination Phase 5 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
   // the per-key store (filterValuesStore.ts) mirrors `values`. Every write path
   // updates both in the same call, so a store reader and a useFilterState()

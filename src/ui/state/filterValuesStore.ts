@@ -1,3 +1,5 @@
+import type { RepoRulesByRepo } from '../helpers/repo-rules.helpers.ts';
+
 /**
  * A tiny external store holding FilterStateProvider's field values, with
  * per-key subscriptions - the shape `useSyncExternalStore` wants (and what
@@ -65,6 +67,9 @@ export interface FilterValues {
   // "Merge commits" rules, one entry per line (pr-merge-commit-rules.helpers.ts)
   mergeCommitHeadlinePatterns?: string;
   mergeCommitLogins?: string;
+  // Each repo's own versions of some of these rules (repo-rules.helpers.ts),
+  // saved as user-defaults.json's repoRules.
+  repoRules?: RepoRulesByRepo;
   [key: string]: unknown;
 }
 

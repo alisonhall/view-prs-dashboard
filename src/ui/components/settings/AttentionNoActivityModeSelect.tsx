@@ -1,4 +1,4 @@
-import { useFilterState } from '../../state/FilterStateContext';
+import { useRuleField } from '../../state/useRuleField';
 
 /**
  * Attention rules' "NO_ACTIVITY handling": which PRs you haven't acted on
@@ -6,14 +6,15 @@ import { useFilterState } from '../../state/FilterStateContext';
  * `attentionNoActivityMode`.
  */
 export function AttentionNoActivityModeSelect({ describedBy }: { describedBy?: string }) {
-  const { values, setValue } = useFilterState();
+  // Every repo's, or the repo's own (Settings › Rules for a repo).
+  const { value, setValue } = useRuleField('attentionNoActivityMode');
   return (
     <select
       id="attention-no-activity-mode"
       name="attentionNoActivityMode"
       aria-describedby={describedBy}
-      value={String(values.attentionNoActivityMode ?? 'all')}
-      onChange={(event) => setValue('attentionNoActivityMode', event.target.value)}
+      value={String(value ?? 'all')}
+      onChange={(event) => setValue(event.target.value)}
     >
       <option value="all">Every NO_ACTIVITY PR</option>
       <option value="mine-only">Only those assigned to me or where I&apos;m a requested reviewer</option>

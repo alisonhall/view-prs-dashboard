@@ -4,6 +4,7 @@ import { useActorIdentity } from '../../state/ActorIdentityContext';
 import { useNeedsAttention } from '../../state/NeedsAttentionContext';
 import { usePrInsightsDisplay } from '../../state/PrInsightsDisplayContext';
 import { createPrAuthorCellHelpers } from '../../helpers/pr-author-cell.helpers.ts';
+import { attentionConfigForRepo } from '../../helpers/pr-needs-attention.helpers.ts';
 import { Avatar } from '../ui/Avatar';
 import { Tooltip } from '../ui/Tooltip';
 import type { ActorsMap } from '../../helpers/pr-actor-identity.helpers.ts';
@@ -15,13 +16,15 @@ import type { ActorsMap } from '../../helpers/pr-actor-identity.helpers.ts';
  */
 export interface PrWhoCellProps {
   pr: PrData;
+  // Its repo, whose merge-commit rules apply (Settings › Rules for a repo).
+  repo?: string;
   actorsMap?: ActorsMap;
 }
 
-export function PrWhoCell({ pr, actorsMap = {} }: PrWhoCellProps) {
+export function PrWhoCell({ pr, repo = '', actorsMap = {} }: PrWhoCellProps) {
   const { getPreferredActorKey, resolveActorDisplayName, getEffectiveViewerKey, loginOfActorKey } = useActorIdentity();
   const { getUserInitials } = usePrInsightsDisplay();
-  const { mergeCommitRules } = useNeedsAttention().attentionConfig;
+  const { mergeCommitRules } = attentionConfigForRepo(useNeedsAttention().attentionConfig, repo);
   // The real, alias-resolving getPreferredActorKey, so a co-author who's
   // an alias of the PR author is deduped (as the old Author column did).
   const { collectPrAuthors } = useMemo(

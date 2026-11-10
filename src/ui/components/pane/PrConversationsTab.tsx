@@ -228,7 +228,8 @@ function ThreadItem({
 }
 
 export function PrConversationsTab({ pr, actorsMap = {}, entry, onDataRefresh }: PrConversationsTabProps) {
-  const policy = useAuthorThreadResolutionPolicy();
+  // Its repo's policy, when it has its own (Settings › Rules for a repo).
+  const policy = useAuthorThreadResolutionPolicy(String(entry?.repo || '').trim());
   const { getEffectiveViewerLogin, resolveActorDisplayName } = useActorIdentity();
   const { getReviewConversationsUiState, setReviewConversationsUiState } = useReviewConversationsUiState();
   const payload = useOptionalPrData()?.payload;

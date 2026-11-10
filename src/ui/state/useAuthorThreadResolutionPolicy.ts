@@ -3,6 +3,7 @@ import { useActorIdentity } from './ActorIdentityContext';
 import { FilterStateContext } from './FilterStateContext';
 import { AuthorThreadResolutionSelectionContext } from './AuthorThreadResolutionSelectionContext';
 import type { ThreadResolutionPolicy } from '../helpers/pr-review-threads.helpers.ts';
+import { repoRulesFor } from '../helpers/repo-rules.helpers.ts';
 
 /**
  * The "PR author thread resolution" rule (Advanced visibility and attention
@@ -29,17 +30,22 @@ const normalizeMode = (value: unknown): ThreadResolutionPolicy['mode'] => {
 };
 
 
-export function useAuthorThreadResolutionPolicy(): ThreadResolutionPolicy {
+// `repo`: the PR's - its own policy and lists when it has them (Settings ›
+// Rules for a repo, repo-rules.helpers.ts), else the ones for every repo.
+export function useAuthorThreadResolutionPolicy(repo = ''): ThreadResolutionPolicy {
   const filterState = useContext(FilterStateContext);
   const selection = useContext(AuthorThreadResolutionSelectionContext);
   const domMode =
     typeof document !== 'undefined'
       ? (document.getElementById('attention-author-thread-resolution-mode') as HTMLSelectElement | null)?.value
       : undefined;
-  const mode = normalizeMode(filterState?.values?.attentionAuthorThreadResolutionMode ?? domMode);
+  const own = repoRulesFor(filterState?.values?.repoRules, repo).threadResolution;
+  const mode = normalizeMode(own ? own.mode : (filterState?.values?.attentionAuthorThreadResolutionMode ?? domMode));
   // `selection` itself is stable unless the Provider's state changes; a
   // fallback object built here would be new on every render.
   const checkedByListId = selection?.checkedByListId;
+  const allowPicks = own ? own.allow : checkedByListId?.['attention-author-thread-resolution-allow-list'];
+  const denyPicks = own ? own.deny : checkedByListId?.['attention-author-thread-resolution-deny-list'];
   const { loginsOfActorKey } = useActorIdentity();
 
   return useMemo(() => {
@@ -51,8 +57,8 @@ export function useAuthorThreadResolutionPolicy(): ThreadResolutionPolicy {
       );
     return {
       mode,
-      allowLoginKeys: toLoginKeySet(checkedByListId?.['attention-author-thread-resolution-allow-list']),
-      denyLoginKeys: toLoginKeySet(checkedByListId?.['attention-author-thread-resolution-deny-list']),
+      allowLoginKeys: toLoginKeySet(allowPicks),
+      denyLoginKeys: toLoginKeySet(denyPicks),
     };
-  }, [mode, checkedByListId, loginsOfActorKey]);
+  }, [mode, allowPicks, denyPicks, loginsOfActorKey]);
 }

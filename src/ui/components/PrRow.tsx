@@ -140,7 +140,7 @@ export const PrRow = memo(function PrRow({
           onToggleInsights={onToggleInsights}
           onRetry={onUpdatePr ? () => onUpdatePr(pr?.number, { prNumber: String(pr?.number || ''), repo }, pr) : undefined}
         />
-        <PrWhoCell pr={pr} actorsMap={actorsMap} />
+        <PrWhoCell pr={pr} repo={repo} actorsMap={actorsMap} />
         <PrReviewCell entry={entry} pr={pr} actorsMap={actorsMap} />
         <PrChecksCell pr={pr} />
         <PrSizeCell pr={pr} />

@@ -19,6 +19,7 @@ import { useLabelsForRepo } from '../../state/RepoLabelsContext';
 import { usePrInsightsDisplay } from '../../state/PrInsightsDisplayContext';
 import { useActorIdentity } from '../../state/ActorIdentityContext';
 import { useNeedsAttention } from '../../state/NeedsAttentionContext';
+import { attentionConfigForRepo } from '../../helpers/pr-needs-attention.helpers.ts';
 import { createPrAuthorCellHelpers } from '../../helpers/pr-author-cell.helpers.ts';
 import { buildPrEntryKey } from '../../helpers/pr-entry-keys.helpers.ts';
 import { useNotesDirty } from '../../state/NotesDirtyContext';
@@ -198,7 +199,8 @@ function PaneContent({
   // "by" lists who the row's Who cell does: the author, then anyone else
   // with non-merge commits (its "+N" and tooltip) - same helper, same
   // merge-commit rules and alias dedupe.
-  const { mergeCommitRules } = useNeedsAttention().attentionConfig;
+  // The PR's repo's merge-commit rules (Settings › Rules for a repo).
+  const { mergeCommitRules } = attentionConfigForRepo(useNeedsAttention().attentionConfig, repo);
   const { collectPrAuthors } = useMemo(
     () => createPrAuthorCellHelpers({ getPreferredActorKey, mergeCommitRules }),
     [getPreferredActorKey, mergeCommitRules],
