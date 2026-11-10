@@ -793,6 +793,11 @@
   color: var(--color-text);
 }
 
+/* A one-line field: 30px, as the page's other text boxes and selects. */
+.pr-notes-input {
+  padding: 4px 8px;
+}
+
 /* Grows with its text (AutoResizeTextarea). */
 .pr-notes-textarea {
   overflow-y: hidden;

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { sendJson } from '../../helpers/pr-http.helpers.ts';
 import { NON_CREDENTIAL_INPUT_PROPS } from '../../helpers/form-parsing.helpers.ts';
 import { useIsSettingsSectionVisible } from '../../state/SettingsDrawerContext';
-import { Button } from '../ui/Button';
+import { Button, IconButton } from '../ui/Button';
 import { isCommitAuthorIdentity } from '../../helpers/actor-identity-kind.helpers.ts';
 
 // A person as the server keeps them (GET/PUT /view-prs/actors).
@@ -232,15 +232,12 @@ export function PeopleSection() {
                             updateLogins(draft.key, (logins) => logins.map((value, i) => (i === at ? event.target.value : value)))
                           }
                         />
-                        <button
-                          type="button"
+                        <IconButton
+                          icon="close"
                           className="people-login-remove"
-                          aria-label={`Remove ${loginLabel} from ${label}`}
-                          title="Remove this login"
+                          label={`Remove ${loginLabel} from ${label}`}
                           onClick={() => updateLogins(draft.key, (logins) => logins.filter((_value, i) => i !== at))}
-                        >
-                          ×
-                        </button>
+                        />
                         {isCommitAuthor && (
                           <span
                             id={kindId}
@@ -255,7 +252,7 @@ export function PeopleSection() {
                   })}
                   <button
                     type="button"
-                    className="people-login-add"
+                    className="ui-link-button people-login-add"
                     onClick={() => {
                       focusLoginRef.current = `${draft.key}:${draft.logins.length}`;
                       updateLogins(draft.key, (logins) => [...logins, '']);

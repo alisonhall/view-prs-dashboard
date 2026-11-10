@@ -166,6 +166,20 @@
   color: var(--color-text);
 }
 
+/* A Settings text area (the commit and merge patterns): as the text boxes
+   above, in the monospace font, as regular expressions read best. */
+.settings-field textarea {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 60px;
+  padding: 5px 8px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  font: var(--font-size-md) / 1.45 var(--font-mono);
+  color: var(--color-text);
+}
+
 /* display: grid above would otherwise win over the hidden attribute (the
    thread-resolution list the policy doesn't use). */
 .settings-field[hidden] {

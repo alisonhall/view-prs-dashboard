@@ -405,30 +405,11 @@
   gap: 2px 4px;
 }
 
-.people-login-remove,
-.people-login-add {
-  border: 0;
-  background: none;
-  color: var(--color-text-muted);
-  font: inherit;
-  cursor: pointer;
-}
-
-.people-login-remove {
-  padding: 0 6px;
-  font-size: var(--font-size-md);
-  line-height: 1;
-}
-
-.people-login-remove:hover,
-.people-login-add:hover {
-  color: var(--color-text);
-}
-
+/* A login's remove (the page's icon button) and "+ Add login" (its link
+   button) - their look is theirs; only where they sit is set here. */
 .people-login-add {
   justify-self: start;
   padding: 2px 0;
-  font-size: var(--font-size-sm);
 }
 
 /* Under a login that's a commit author's name or email, not a login. */

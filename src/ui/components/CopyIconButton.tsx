@@ -1,10 +1,10 @@
 /**
  * CopyIconButton - a small icon-only "copy to clipboard" button.
  *
- * The glyph is delivered entirely via CSS `::before` content (see
- * `.insight-copy-btn` in styles/insights.css) rather than JSX text, so the button
- * never contributes visible text content to its surroundings - useful when
- * it sits next to a value that other code/tests locate by exact text.
+ * The page's IconButton with the `copy` icon (an SVG, `check` once copied),
+ * sized for a line of text by `.insight-copy-btn` in styles/insights.css. It
+ * adds no text to its surroundings - useful when it sits next to a value that
+ * other code/tests locate by exact text.
  *
  * When `html` is provided alongside `text`, this writes a rich clipboard
  * item (`text/plain` + `text/html`) so pasting into a rich-text target
@@ -17,6 +17,7 @@
  */
 
 import { useState, type MouseEvent } from 'react';
+import { IconButton } from './ui/Button';
 
 export interface CopyIconButtonProps {
   text: string | undefined;
@@ -69,12 +70,13 @@ export function CopyIconButton({ text, html, label = 'Copy', disabled = false, c
 
   const title = copyState === 'copied' ? 'Copied!' : copyState === 'error' ? 'Copy unavailable' : label;
 
+  // The page's icon button (its look, and its label as a tooltip), with the
+  // copy icon - a check once copied.
   return (
-    <button
-      type="button"
+    <IconButton
+      icon={copyState === 'copied' ? 'check' : 'copy'}
+      label={title}
       className={`insight-copy-btn${copyState === 'copied' ? ' is-copied' : ''}${className ? ` ${className}` : ''}`}
-      aria-label={title}
-      title={title}
       onClick={handleCopy}
       disabled={disabled || !text}
     />
