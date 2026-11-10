@@ -51,7 +51,9 @@ GH_COMMAND_TIMEOUT_SECONDS="${GH_COMMAND_TIMEOUT_SECONDS:-45}"
 VIEW_PRS_OPEN_REVALIDATE_SECONDS="${VIEW_PRS_OPEN_REVALIDATE_SECONDS:-14400}"
 # Part of every row's localStateKey: bump it when compute_pr_state_json
 # changes what it writes, so stored rows are computed again.
-ROW_CACHE_VERSION=1
+# 2 (2026-11-10): ignore lists match whatever the case and "[bot]", and
+# cover review-thread comments; comments after a review see its commits.
+ROW_CACHE_VERSION=2
 VIEW_PRS_PREFETCH_GROUP_CONCURRENCY="${VIEW_PRS_PREFETCH_GROUP_CONCURRENCY:-3}"
 VIEW_PRS_PROGRESS_MARKERS="${VIEW_PRS_PROGRESS_MARKERS:-0}"
 

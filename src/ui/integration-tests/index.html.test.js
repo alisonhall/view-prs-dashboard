@@ -1900,19 +1900,17 @@ describe("index page rendering with Testing Library", () => {
 
     await user.click(document.getElementById("only-needs-attention"));
 
+    // For the save itself: another request (a refresh) can come first.
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalled();
+      const putCall = fetchMock.mock.calls.find((call) => {
+        const [url, init] = call;
+        return (
+          String(url || "") === "/view-prs/user-defaults" &&
+          String(init?.method || "GET").toUpperCase() === "PUT"
+        );
+      });
+      expect(putCall).toBeDefined();
     });
-
-    const putCall = fetchMock.mock.calls.find((call) => {
-      const [url, init] = call;
-      return (
-        String(url || "") === "/view-prs/user-defaults" &&
-        String(init?.method || "GET").toUpperCase() === "PUT"
-      );
-    });
-
-    expect(putCall).toBeDefined();
   });
 
   test("given local filters and mixed PR delimiters when actions run then local apply stays local and run script posts numeric IDs", async () => {

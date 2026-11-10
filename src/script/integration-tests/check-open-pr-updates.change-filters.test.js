@@ -1,5 +1,5 @@
 const { execFileSync } = require("child_process");
-const { countExternalCommits } = require("../compute-pr-row");
+const { computePrRow, countExternalCommits } = require("../compute-pr-row");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
@@ -175,6 +175,51 @@ describe("change filter application in jq queries", () => {
     );
 
     expect(count).toBe("2"); // alice COMMENTED and bob CHANGES_REQUESTED
+  });
+});
+
+// ROADMAP: PRs flagged by a comment from an author on the ignore lists.
+describe("the ignore lists, in a row's computation", () => {
+  const rowWith = ({ author = "alice", detail = {}, ignoreCommentAuthors = "", ignoreReviewAuthors = "", threads = [] }) =>
+    computePrRow({
+      pr: { number: 1, author: { login: author } },
+      viewerLogin: "me",
+      detail: { comments: [{ author: { login: "me" }, createdAt: "2026-03-01T09:00:00Z" }], ...detail },
+      threads,
+      ignoreCommentAuthors,
+      ignoreReviewAuthors,
+      viewedFilesStats: { changedFiles: 0, viewedFiles: 0 },
+    }).row;
+
+  test("match a login whatever its case, and a bot's with or without [bot]", () => {
+    // GitHub's GraphQL names the bot "github-actions"; the list says it as REST does.
+    const comments = [
+      { author: { login: "me" }, createdAt: "2026-03-01T09:00:00Z" },
+      { author: { login: "github-actions" }, createdAt: "2026-03-01T10:00:00Z" },
+      { author: { login: "Renovate-Bot" }, createdAt: "2026-03-01T11:00:00Z" },
+    ];
+    expect(rowWith({ detail: { comments }, ignoreCommentAuthors: "github-actions[bot],renovate-bot" }).status).toBe("NO_CHANGE");
+    expect(rowWith({ detail: { comments }, ignoreCommentAuthors: "github-actions[bot]" }).reason).toBe("comment");
+    // gh's name for a bot PR author.
+    expect(rowWith({ detail: { comments }, ignoreCommentAuthors: "app/github-actions,renovate-bot" }).status).toBe("NO_CHANGE");
+
+    const reviews = [{ author: { login: "copilot-pull-request-reviewer" }, state: "COMMENTED", submittedAt: "2026-03-01T10:00:00Z" }];
+    expect(rowWith({ detail: { reviews }, ignoreReviewAuthors: "Copilot-Pull-Request-Reviewer[bot]" }).status).toBe("NO_CHANGE");
+    expect(rowWith({ detail: { reviews } }).reason).toBe("review");
+  });
+
+  test("the comment list covers review-thread replies on the viewer's own PR", () => {
+    const threads = [
+      {
+        isResolved: false,
+        comments: [
+          { authorLogin: "me", createdAt: "2026-03-01T09:00:00Z" },
+          { authorLogin: "coderabbitai", createdAt: "2026-03-01T10:00:00Z" },
+        ],
+      },
+    ];
+    expect(rowWith({ author: "me", threads }).reason).toBe("unanswered-thread|thread-reply");
+    expect(rowWith({ author: "me", threads, ignoreCommentAuthors: "coderabbitai[bot]" }).status).toBe("NO_CHANGE");
   });
 });
 

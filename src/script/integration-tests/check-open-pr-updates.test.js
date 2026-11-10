@@ -283,6 +283,32 @@ describe("check-open-pr-updates shell helper behavior", () => {
       expect(row.commitsAfterReview).toEqual([]);
     });
 
+    // ROADMAP: flagged though the viewer's own comment was the last thing.
+    test("don't count once the viewer has commented since the review; a commit made after the comment still does", () => {
+      const myComment = { author: { login: "me" }, createdAt: "2026-03-01T12:30:00Z" };
+      const commented = lateCommitRow({ detail: { comments: [myComment] } });
+      expect(commented.status).toBe("NO_CHANGE");
+      expect(commented.commitsAfterReview).toEqual([]);
+
+      const later = lateCommitRow({
+        detail: {
+          comments: [myComment],
+          commits: [
+            { oid: "r1", committedDate: "2026-03-01T09:00:00Z", messageHeadline: "feat: first", authors: [{ login: "alice" }] },
+            { oid: "x2", committedDate: "2026-03-01T10:00:00Z", messageHeadline: "fix: review", authors: [{ login: "alice" }] },
+            { oid: "x3", committedDate: "2026-03-01T13:00:00Z", messageHeadline: "fix: comment", authors: [{ login: "alice" }] },
+          ],
+        },
+      });
+      expect([later.status, later.reason]).toEqual(["CHANGED", "commit"]);
+    });
+
+    test("a comment before the review leaves them new", () => {
+      const row = lateCommitRow({ detail: { comments: [{ author: { login: "me" }, createdAt: "2026-03-01T10:30:00Z" }] } });
+      expect([row.status, row.reason]).toEqual(["CHANGED", "commit"]);
+      expect(row.commitsAfterReview).toEqual(["x2"]);
+    });
+
     test("a PR with more commits than its details hold says how many (GitHub returns 250 at most); one without, doesn't", () => {
       expect(lateCommitRow({ detail: { commitTotalCount: 389 } }).commitTotalCount).toBe(389);
       expect(lateCommitRow({ detail: { commitTotalCount: 2 } })).not.toHaveProperty("commitTotalCount");

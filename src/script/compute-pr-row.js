@@ -784,15 +784,26 @@ const computePrRow = (input) => {
   );
   const effectiveLast = ackAt !== "" && (myLast === "" || gt(ackAt, myLast)) ? ackAt : toString(myLast);
 
-  const ignoredCommentAuthors = splitList(ignoreCommentAuthors, ",");
-  const ignoredReviewAuthors = splitList(ignoreReviewAuthors, ",");
+  // A login as the ignore lists match it: whatever its case, and a bot's
+  // with or without "[bot]" - GitHub's GraphQL (gh pr view) names a bot
+  // "github-actions", its REST API and the README's examples
+  // "github-actions[bot]", and gh its PR authors "app/github-actions".
+  const ignoreKey = (login) =>
+    asciiDowncase(alt(login, ""))
+      .trim()
+      .replace(/^app\//, "")
+      .replace(/\[bot\]$/, "");
+  const ignoredCommentAuthors = splitList(ignoreCommentAuthors, ",").map(ignoreKey);
+  const ignoredReviewAuthors = splitList(ignoreReviewAuthors, ",").map(ignoreKey);
+  const isIgnoredCommenter = (login) => ignoredCommentAuthors.includes(ignoreKey(login));
+  const isIgnoredReviewer = (login) => ignoredReviewAuthors.includes(ignoreKey(login));
   const since = effectiveLast;
   const externalTopCommentCount = each(field(detail, "comments")).filter(
     (c) =>
       alt(c?.author?.login, "") !== "" &&
       c.author.login !== viewerLogin &&
       (since === "" || gt(alt(c.createdAt, ""), since)) &&
-      (ignoredCommentAuthors.length === 0 || !ignoredCommentAuthors.includes(c.author.login)),
+      !isIgnoredCommenter(c.author.login),
   ).length;
   const externalReviewCount = each(field(detail, "reviews")).filter(
     (r) =>
@@ -800,7 +811,7 @@ const computePrRow = (input) => {
       r.author.login !== viewerLogin &&
       (since === "" || gt(alt(r.submittedAt, ""), since)) &&
       alt(r.state, "") !== "APPROVED" &&
-      (ignoredReviewAuthors.length === 0 || !ignoredReviewAuthors.includes(r.author.login)),
+      !isIgnoredReviewer(r.author.login),
   ).length;
   // On the viewer's own PR, reviews that request changes or say something:
   // GitHub wraps each inline comment or thread reply in an empty COMMENTED
@@ -811,25 +822,30 @@ const computePrRow = (input) => {
       r.author.login !== viewerLogin &&
       (since === "" || gt(alt(r.submittedAt, ""), since)) &&
       (r.state === "CHANGES_REQUESTED" || (r.state === "COMMENTED" && String(alt(r.body, "")).trim() !== "")) &&
-      (ignoredReviewAuthors.length === 0 || !ignoredReviewAuthors.includes(r.author.login)),
+      !isIgnoredReviewer(r.author.login),
   ).length;
   // The commit the viewer's latest review was on - unless an ack (seen
-  // everything up to then) is the baseline.
+  // everything up to then) is the baseline, or the viewer has commented on
+  // the PR or committed to it since that review: by then they'd seen the
+  // commits pushed in between, which would otherwise stay new however
+  // often they commented. (Their review-thread replies are reviews too.)
+  const myLatestReview = lastOr(
+    sortBy(
+      each(field(detail, "reviews")).filter(
+        (r) => alt(r?.author?.login, "") === viewerLogin && alt(r.submittedAt, "") !== "" && alt(r.commit?.oid, "") !== "",
+      ),
+      (r) => r.submittedAt,
+    ),
+    null,
+  );
+  const myActivityAfterReview =
+    myLatestReview !== null &&
+    [
+      ...each(field(detail, "comments")).filter((c) => c?.author?.login === viewerLogin).map((c) => c.createdAt),
+      ...each(field(detail, "commits")).filter((c) => each(c?.authors).some((a) => a?.login === viewerLogin)).map((c) => c.committedDate),
+    ].some((at) => gt(alt(at, ""), myLatestReview.submittedAt));
   const reviewedOid =
-    since !== "" && since === toString(myLast)
-      ? alt(
-          lastOr(
-            sortBy(
-              each(field(detail, "reviews")).filter(
-                (r) => alt(r?.author?.login, "") === viewerLogin && alt(r.submittedAt, "") !== "" && alt(r.commit?.oid, "") !== "",
-              ),
-              (r) => r.submittedAt,
-            ),
-            null,
-          )?.commit?.oid,
-          "",
-        )
-      : "";
+    since !== "" && since === toString(myLast) && !myActivityAfterReview ? alt(myLatestReview?.commit?.oid, "") : "";
   // For the Activity tab's "since I last looked": the commits after the
   // reviewed one, which their dates alone would put before it.
   const detailCommits = each(field(detail, "commits"));
@@ -946,6 +962,9 @@ const computePrRow = (input) => {
         last !== null &&
         alt(last?.authorLogin, "") !== "" &&
         last.authorLogin !== viewerLogin &&
+        // "Ignore comments from these authors" covers review-thread
+        // comments too (a bot reviewer's).
+        !isIgnoredCommenter(last.authorLogin) &&
         (effectiveLast === "" || gt(alt(last.createdAt, ""), effectiveLast))
       );
     };

@@ -673,9 +673,11 @@ Change Detection Filters:
 - The Settings drawer's `Change detection` section configures what activity should NOT trigger CHANGED status.
 - These filters are saved to `view-prs/data/user-defaults.json` under `changeFilters`. The two author lists hold people (Settings › `People`): each saved as their id (`actor:dependabot`), which check-open-pr-updates.sh turns into every login `actors.json` lists for them (`VIEW_PRS_ACTORS_FILE`, else `$DATA_DIR/actors.json`) - an id it can't find is left out, and a login saved before ids is used as it is.
 - Supported filter types:
-  - **Ignore comments from these authors**: Filters out general discussion comments (conversation messages, bot notifications, questions, updates) from specified GitHub logins. Use this to ignore informational messages that don't require action.
+  - **Ignore comments from these authors**: Filters out general discussion comments (conversation messages, bot notifications, questions, updates), and review-thread replies on your own PRs, from specified GitHub logins. Use this to ignore informational messages that don't require action.
   - **Ignore reviews from these authors**: Filters out formal code review submissions (created via "Review changes" button with approval/change request states) from specified GitHub logins. Use this to ignore optional reviewers whose approval isn't required.
+  - Both lists match a login whatever its case, and a bot's with or without `[bot]` or `app/` (`github-actions[bot]` matches `github-actions`, as GitHub names it in a PR's comments). Before 2026-11-10 they matched exactly, so a bot listed with `[bot]` still flagged PRs, and review-thread replies weren't filtered.
   - **Ignore commits matching patterns**: Filters out commits whose message headline matches specified regex patterns (one per line). Use this to ignore non-code changes like documentation updates (`^docs:`), test-only commits (`^test:`), or dependency updates (`^chore: update dependencies`).
+- A comment you post, or a commit you push, after your last review counts as having seen the commits pushed since that review. Before 2026-11-10 those commits stayed "new" (and the PR in Needs attention) until your next review or an Ack.
 - Built-in filters:
   - **Approved reviews are always ignored** (cannot be disabled)
   - **Merge commits** never count (see "Merge commits" above)
