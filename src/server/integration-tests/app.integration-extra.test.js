@@ -661,6 +661,71 @@ describe("integration behavior", () => {
 
   // The list's rows carry the detail without its text (the full rows were
   // ~100 MB for 960 PRs); /pr-detail gives one PR's in full.
+  // readViewPrsData keeps its answer while nothing it reads changes: it
+  // parsed every file (~100 MB for 960 PRs) for each poll.
+  describe("readViewPrsData's cache", () => {
+    const row = (number, title, extra = {}) => ({
+      prNumber: number,
+      repo: "owner/repo",
+      section: "open",
+      updatedAt: "2026-06-02T18:00:00Z",
+      data: { number, title, url: `https://github.com/owner/repo/pull/${number}`, viewerLogin: "alice", ...extra },
+    });
+    const diffFile = () => path.join(appModule.viewPrsPrDiffDir, "owner_repo__pr-4242.json");
+    afterEach(() => {
+      jest.restoreAllMocks();
+      fs.rmSync(diffFile(), { force: true });
+    });
+
+    test("given nothing changed, when it's read again, then the same answer comes back without reading any file", () => {
+      writeViewPrsData({ byPrNumber: { "owner/repo#1": row("1", "First") }, lastRun: null });
+      const first = appModule.readViewPrsData();
+      const readSpy = jest.spyOn(fs, "readFileSync");
+
+      expect(appModule.readViewPrsData()).toBe(first);
+      expect(readSpy).not.toHaveBeenCalled();
+    });
+
+    test("given the data file or the user state changes, when it's read again, then the change is there", () => {
+      writeViewPrsData({ byPrNumber: { "owner/repo#1": row("1", "First") }, lastRun: null });
+      appModule.readViewPrsData();
+      writeViewPrsData({ byPrNumber: { "owner/repo#1": row("1", "Renamed") }, lastRun: null });
+      expect(appModule.readViewPrsData().byPrNumber["owner/repo#1"].data.title).toBe("Renamed");
+
+      writeViewPrsUserState({ ...EMPTY_USER_STATE, flaggedByRepo: { "owner/repo": { 1: true } } });
+      expect(appModule.readViewPrsData().flaggedByRepo).toEqual({ "owner/repo": { 1: true } });
+    });
+
+    test("given a PR's diff appears in the diff cache, when it's read again, then its diff-only row is there", () => {
+      writeViewPrsData({ byPrNumber: { "owner/repo#1": row("1", "First") }, lastRun: null });
+      fs.mkdirSync(appModule.viewPrsPrDiffDir, { recursive: true });
+      appModule.readViewPrsData();
+      fs.writeFileSync(diffFile(), JSON.stringify({ repo: "owner/repo", prNumber: "4242", fetchedAt: "2026-06-02T18:00:00Z" }));
+
+      expect(appModule.readViewPrsData().byPrNumber["owner/repo#4242"]).toBeDefined();
+    });
+
+    test("given the list was read, when a PR's detail is asked for, then only its detail file is read, not the data file", async () => {
+      const detailFilePath = path.join(viewPrsPrDetailDir, "owner_repo__pr-778.json");
+      fs.mkdirSync(path.dirname(detailFilePath), { recursive: true });
+      fs.writeFileSync(detailFilePath, JSON.stringify({ activityTimeline: [], activityEvents: [], commentEvents: [{ body: "Hello" }], reviewThreads: [] }));
+      writeViewPrsData({
+        byPrNumber: { "owner/repo#778": row("778", "With detail", { detailRef: { file: detailFilePath, version: "v1" } }) },
+        lastRun: null,
+      });
+      const listed = (await request.get("/data")).body.byPrNumber["owner/repo#778"].data;
+      const readSpy = jest.spyOn(fs, "readFileSync");
+
+      const res = await request.get("/pr-detail").query({ repo: "owner/repo", prNumber: "778" });
+
+      expect(res.body.detail.commentEvents).toEqual([{ body: "Hello" }]);
+      expect(res.body.detailVersion).toBe(listed.detailVersion);
+      const filesRead = readSpy.mock.calls.map(([file]) => path.resolve(String(file)));
+      expect(filesRead).toContain(path.resolve(detailFilePath));
+      expect(filesRead).not.toContain(path.resolve(viewPrsDataFile));
+    });
+  });
+
   test("given a row with a detail file, when GET /data and GET /pr-detail are requested, then the list's row has the detail without its text and /pr-detail all of it", async () => {
     const app = require("../app.js");
     const originalEnqueuePrDiffRefreshForData = app.enqueuePrDiffRefreshForData;

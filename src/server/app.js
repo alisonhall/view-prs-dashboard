@@ -1661,7 +1661,10 @@ const withRunForItsRepo = (byRepo, run) => {
   return map;
 };
 
-const readViewPrsData = () => {
+// detailSources: filled with where each row's full detail is (its detail
+// file, or - data from before the files - the row's own fields), for
+// readViewPrsPrDetails.
+const readViewPrsDataUncached = (detailSources = new Map()) => {
   const rawUserState = readJsonFileIfExists(viewPrsUserStateFile, {});
   const normalizedUserState = normalizeViewPrsUserState(rawUserState);
 
@@ -1709,7 +1712,15 @@ const readViewPrsData = () => {
             return [key, entry];
           }
           const { entry: withDetail, detailVersion } = loadViewPrsEntryDetail(entry);
-          if (detailVersion) detailVersionByKey.set(key, detailVersion);
+          if (detailVersion) {
+            detailVersionByKey.set(key, detailVersion);
+            detailSources.set(
+              key,
+              withDetail !== entry
+                ? { detailRef: entry.data.detailRef }
+                : { inline: extractHeavyPrDetailFields(entry.data), detailVersion },
+            );
+          }
           const hydratedEntry = applyLiveSummaryToEntry(
             withDetail,
             liveSummaryByRepo[toTrimmedString(entry.repo)],
@@ -1805,28 +1816,85 @@ const readViewPrsData = () => {
   }
 };
 
+// A file's or folder's stamp for the cache's key: to the stat's full
+// precision (the data version's are whole milliseconds, and a test - or a
+// quick run - can write twice in one).
+const statStamp = (filePath) => {
+  try {
+    const stats = fs.statSync(filePath);
+    return `${stats.mtimeMs}:${stats.ctimeMs}:${stats.size}`;
+  } catch (_error) {
+    return "none";
+  }
+};
+
+// readViewPrsData's last answer, kept while nothing it reads has changed:
+// it parsed the data file, the user state and every PR's detail file each
+// time (~100 MB for 960 PRs), for each of the page's polls and the
+// scheduler's checks. The key is the data version (the data file, live
+// summary, update queue, user state, sources, unreachable PRs, People),
+// those files to the stat's full precision, and the folders the diff-only
+// rows and the detail files are in. Nothing changes what it returns (they
+// read it, or copy before changing), so one copy serves every caller.
+let viewPrsDataCache = null;
+
+const getViewPrsDataCacheKey = () =>
+  [
+    getViewPrsDataVersion(),
+    statStamp(viewPrsDataFile),
+    statStamp(viewPrsUserStateFile),
+    statStamp(viewPrsLiveSummaryFile),
+    statStamp(viewPrsActorsFile),
+    statStamp(viewPrsPrDiffDir),
+    statStamp(viewPrsPrDetailDir),
+  ].join("|");
+
+const readViewPrsData = () => {
+  const key = getViewPrsDataCacheKey();
+  if (viewPrsDataCache && viewPrsDataCache.key === key) {
+    return viewPrsDataCache.data;
+  }
+  const detailSources = new Map();
+  const data = readViewPrsDataUncached(detailSources);
+  // A read that failed part way isn't kept: the next call tries again.
+  viewPrsDataCache = data?.readError ? null : { key, data, detailSources };
+  return data;
+};
+
+// For tests that change the files within one stat tick.
+const clearViewPrsDataCache = () => {
+  viewPrsDataCache = null;
+};
+
 // PRs' full detail fields (the text the list's rows go without), by key,
 // with each one's version - as the list's rows have it, so the page knows
-// when what it holds is out of date. Reads the data file once for them all.
+// when what it holds is out of date. Only those PRs' detail files are
+// read: where each one is comes from readViewPrsData's cache.
 const readViewPrsPrDetails = (prs = []) => {
   const result = {};
-  if (!fs.existsSync(viewPrsDataFile) || !Array.isArray(prs) || prs.length === 0) return result;
-  const parsed = readJsonFileIfExists(viewPrsDataFile, {});
-  const byPrNumberRaw = normalizePrEntryKeys(parsed?.byPrNumber || {});
+  if (!Array.isArray(prs) || prs.length === 0) return result;
+  const data = readViewPrsData();
+  const detailSources = viewPrsDataCache?.data === data ? viewPrsDataCache.detailSources : new Map();
+  const byPrNumber = data?.byPrNumber || {};
   prs.forEach(({ repo, prNumber } = {}) => {
     const safeRepo = toTrimmedString(repo);
     const safePrNumber = toTrimmedString(prNumber);
     if (!safeRepo || !safePrNumber) return;
-    const key = findPrEntryKey(byPrNumberRaw, safeRepo, safePrNumber);
-    const entry = byPrNumberRaw[key];
+    const key = findPrEntryKey(byPrNumber, safeRepo, safePrNumber);
+    const entry = byPrNumber[key];
     if (!isObject(entry) || toTrimmedString(entry.repo) !== safeRepo) return;
-    const { entry: withDetail, detailVersion } = loadViewPrsEntryDetail(entry);
-    result[buildPrEntryKey(safeRepo, safePrNumber)] = {
-      repo: safeRepo,
-      prNumber: safePrNumber,
-      detailVersion,
-      detail: extractHeavyPrDetailFields(withDetail?.data || {}),
-    };
+    const source = detailSources.get(key);
+    let detailVersion = "";
+    let detail = extractHeavyPrDetailFields(entry.data || {});
+    if (source?.detailRef) {
+      const loaded = loadViewPrsEntryDetail({ ...entry, data: { ...(entry.data || {}), detailRef: source.detailRef } });
+      detailVersion = loaded.detailVersion;
+      detail = extractHeavyPrDetailFields(loaded.entry?.data || {});
+    } else if (source?.inline) {
+      detailVersion = source.detailVersion;
+      detail = source.inline;
+    }
+    result[buildPrEntryKey(safeRepo, safePrNumber)] = { repo: safeRepo, prNumber: safePrNumber, detailVersion, detail };
   });
   return result;
 };
@@ -4224,6 +4292,7 @@ module.exports = {
   getViewPrsViewerLogin,
   resolveViewPrsDetailFilePath,
   readViewPrsDetailPayload,
+  clearViewPrsDataCache,
   hydrateViewPrsEntryWithDetail,
   readViewPrsData,
   getViewPrsDataVersion,

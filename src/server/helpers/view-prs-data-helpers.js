@@ -500,6 +500,20 @@ const computeViewPrsRowVersion = (entry = {}, prNumber = "") =>
     }),
   );
 
+// Each row's version, by the row object: readViewPrsData's cache hands
+// out the same rows while nothing changed (filterToVisibleRows keeps them
+// too), so each poll's manifest doesn't write every row out again. A row
+// that changed is a new object; one no longer held is let go.
+const rowVersionByEntry = new WeakMap();
+const cachedRowVersion = (entry, prKey) => {
+  if (!isObject(entry)) return computeViewPrsRowVersion(entry, prKey);
+  const cached = rowVersionByEntry.get(entry);
+  if (cached && cached.prKey === prKey) return cached.version;
+  const version = computeViewPrsRowVersion(entry, prKey);
+  rowVersionByEntry.set(entry, { prKey, version });
+  return version;
+};
+
 const buildViewPrsDataManifest = (data = {}) => {
   const byPrNumber = isObject(data?.byPrNumber) ? data.byPrNumber : {};
   const manifest = {};
@@ -512,7 +526,7 @@ const buildViewPrsDataManifest = (data = {}) => {
     .forEach((prKey) => {
       const entry = byPrNumber[prKey] || {};
       manifest[String(prKey)] = {
-        rowVersion: computeViewPrsRowVersion(entry, prKey),
+        rowVersion: cachedRowVersion(byPrNumber[prKey], prKey),
         repo: String(entry?.repo || ""),
         section: String(entry?.section || ""),
         updatedAt: String(entry?.updatedAt || ""),

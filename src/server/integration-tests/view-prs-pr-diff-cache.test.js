@@ -174,6 +174,39 @@ describe("view-prs pr-diff cache protection", () => {
     expect(fs.existsSync(writtenPath)).toBe(true);
   });
 
+  // readViewPrsData's cache watches the folder's modified time, which a
+  // write in place over an existing file doesn't move.
+  test("given an existing diff file, when a fresh diff is written, then it goes through a temp file and a rename, leaving no temp file", async () => {
+    const cache = createViewPrsPrDiffCache({
+      fs,
+      safeReadJsonFile,
+      toTrimmedString,
+      isRepoSlug,
+      getPrDiffCommitFingerprint: (entry) => String(entry?.fingerprint || ""),
+      extractRawDiffText: (stdout) => String(stdout || ""),
+      buildPrDiffCacheFilePath: getPrDiffCacheFilePath,
+      runViewPrsCommand: async () => ({ stdout: "diff --git a/a.js b/a.js\n+new\n" }),
+      viewPrsPrDiffDir: tmpDir,
+      viewPrsPrDiffTimeoutMs: 5000,
+      viewPrsPrDiffConcurrency: 1,
+      allowDestructiveWriteRaw: "",
+    });
+    const filePath = cache.getPrDiffCacheFilePath("owner/repo", "789");
+    fs.writeFileSync(filePath, JSON.stringify({ repo: "owner/repo", prNumber: "789", commitFingerprint: "old", diffText: "diff --git a/a.js b/a.js\n+old\n" }));
+    const renameSpy = jest.spyOn(fs, "renameSync");
+
+    try {
+      const result = await cache.syncPrDiffForEntry({ repo: "owner/repo", prNumber: "789", fingerprint: "new" }, { force: true });
+
+      expect(result.source).toBe("fresh");
+      expect(renameSpy).toHaveBeenCalledWith(expect.stringContaining(`${filePath}.tmp-`), filePath);
+      expect(JSON.parse(fs.readFileSync(filePath, "utf8")).diffText).toContain("+new");
+      expect(fs.readdirSync(tmpDir).filter((name) => name.includes(".tmp-"))).toEqual([]);
+    } finally {
+      renameSpy.mockRestore();
+    }
+  });
+
   test("fetches a GitHub Enterprise repo's diff from its host (GH_HOST)", async () => {
     const run = jest.fn(async () => ({ stdout: "diff --git a/a.js b/a.js\n+line\n" }));
     const cache = createViewPrsPrDiffCache({

@@ -48,6 +48,28 @@ describe("view-prs data helper manifest functions", () => {
     expect(version.length).toBeLessThan(30);
   });
 
+  // Each poll asks for the manifest; readViewPrsData's cache gives the same
+  // row objects while nothing changed.
+  test("given the same row objects, when the manifest is built again, then no row is written out again - and a changed row (a new object) is", () => {
+    const unchanged = { repo: "owner/repo", section: "open", data: { title: "A" } };
+    const data = { byPrNumber: { "owner/repo#1": unchanged, "owner/repo#2": { repo: "owner/repo", data: { title: "B" } } } };
+    const first = buildViewPrsDataManifest(data);
+
+    const stringifySpy = jest.spyOn(JSON, "stringify");
+    try {
+      expect(buildViewPrsDataManifest(data)).toEqual(first);
+      expect(stringifySpy).not.toHaveBeenCalled();
+
+      const changed = { byPrNumber: { ...data.byPrNumber, "owner/repo#2": { repo: "owner/repo", data: { title: "B2" } } } };
+      const next = buildViewPrsDataManifest(changed);
+      expect(stringifySpy).toHaveBeenCalledTimes(1);
+      expect(next["owner/repo#1"]).toEqual(first["owner/repo#1"]);
+      expect(next["owner/repo#2"].rowVersion).not.toBe(first["owner/repo#2"].rowVersion);
+    } finally {
+      stringifySpy.mockRestore();
+    }
+  });
+
   test("buildViewPrsDataManifest sorts PR numbers and preserves manifest metadata", () => {
     const manifest = buildViewPrsDataManifest({
       byPrNumber: {

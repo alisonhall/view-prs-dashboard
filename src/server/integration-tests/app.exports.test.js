@@ -111,6 +111,10 @@ describe("exported API surface", () => {
 // Add basic invocation tests for pure functions
 
 describe("pure helper behavior", () => {
+  // Some tests here stand in for the files with fs mocks, which move no
+  // file's stats - so readViewPrsData's cache wouldn't see them.
+  beforeEach(() => app.clearViewPrsDataCache());
+
   test("returns milliseconds when parseTimestamp receives a valid date", () => {
     expect(typeof app.parseTimestamp("2026-01-01T00:00:00Z")).toBe("number");
   });
