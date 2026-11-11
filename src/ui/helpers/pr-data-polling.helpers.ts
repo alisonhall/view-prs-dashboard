@@ -109,40 +109,6 @@ const computePrDataMetaFingerprint = (payload: PrDataPayload | null | undefined)
     actorIdMoves: payload?.actorIdMoves || null,
   });
 
-const computePrDataManifest = (payload: PrDataPayload | null | undefined): PrManifest => {
-  const byPrNumber = payload?.byPrNumber || {};
-  const manifest: PrManifest = {};
-  // Keyed as the rows are (repo#number), in PR number order - as the
-  // server's buildViewPrsDataManifest.
-  const numberOf = (key: string) => Number(key.split("#").pop());
-  Object.keys(byPrNumber)
-    .sort((a, b) => numberOf(a) - numberOf(b) || (a < b ? -1 : a > b ? 1 : 0))
-    .forEach((prNumber) => {
-      const entry = byPrNumber[prNumber] || {};
-      manifest[prNumber] = {
-        // As the server's computeViewPrsRowVersion (view-prs-data-helpers.js):
-        // a hash, not the row written out (which made each manifest a
-        // second copy of every row).
-        rowVersion: hashRowVersion(
-          JSON.stringify({
-            prNumber,
-            repo: entry?.repo || "",
-            section: entry?.section || "",
-            updatedAt: entry?.updatedAt || "",
-            fetchedAt: entry?.fetchedAt || "",
-            ciFetchedAt: entry?.ciFetchedAt || "",
-            notes: entry?.notes || null,
-            data: entry?.data || null,
-          }),
-        ),
-        repo: entry?.repo || "",
-        section: entry?.section || "",
-        updatedAt: entry?.updatedAt || "",
-      };
-    });
-  return manifest;
-};
-
 const getManifestDelta = ({
   previousManifest = {},
   nextManifest = {},
@@ -175,50 +141,6 @@ const getManifestDelta = ({
     changedPrNumbers,
     removedPrNumbers,
     hasChanges: changedPrNumbers.length > 0 || removedPrNumbers.length > 0,
-  };
-};
-
-// Shallow: unchanged entries keep their object identity, which the
-// per-entry caches rely on (see pr-entry-derived-cache.helpers.ts).
-const mergeDataDeltaPayload = ({
-  basePayload = {},
-  deltaByPrNumber = {},
-  removedPrNumbers = [],
-  nextDataMeta = null,
-  nextScheduler = null,
-  nextLastRun = null,
-  nextLastFullRun = null,
-  nextLastRunByRepo = null,
-  nextLastFullRunByRepo = null,
-  nextManifest = null,
-  nextUserState = null,
-  nextActorMaps = null,
-}: MergeDataDeltaInput = {}): PrDataPayload => {
-  const mergedByPrNumber: Record<string, PrEntry> = {
-    ...(basePayload?.byPrNumber || {}),
-    ...(deltaByPrNumber || {}),
-  };
-
-  (Array.isArray(removedPrNumbers) ? removedPrNumbers : []).forEach(
-    (prNumber) => {
-      delete mergedByPrNumber[String(prNumber)];
-    },
-  );
-
-  return {
-    ...basePayload,
-    ...(nextUserState || {}),
-    ...(nextActorMaps || {}),
-    byPrNumber: mergedByPrNumber,
-    dataMeta: nextDataMeta || basePayload?.dataMeta || null,
-    scheduler: nextScheduler || basePayload?.scheduler || null,
-    lastRun: nextLastRun || basePayload?.lastRun || null,
-    lastFullRun: nextLastFullRun || basePayload?.lastFullRun || null,
-    lastRunByRepo: nextLastRunByRepo || basePayload?.lastRunByRepo || {},
-    lastFullRunByRepo: nextLastFullRunByRepo || basePayload?.lastFullRunByRepo || {},
-    dataManifest:
-      nextManifest ||
-      computePrDataManifest({ byPrNumber: mergedByPrNumber }),
   };
 };
 
@@ -315,32 +237,115 @@ const createPrDataPollingHelpers = ({ getOrCompute }: PrDataPollingDeps = {}) =>
   const getOrComputeSafe: EntryDerivedCache["getOrCompute"] =
     typeof getOrCompute === "function" ? getOrCompute : (_entry, _key, compute) => compute();
 
-  // computePrDataFingerprint used to JSON.stringify every stored entry's
-  // full data/notes on every call (called twice per render - once to
-  // decide whether to skip rendering, once again afterward to refresh
-  // lastRenderedPrFingerprint), regardless of how many entries actually
-  // changed. Caches each entry's own stringified piece by entry
-  // reference - safe because mergeDataDeltaPayload's shallow merge keeps
-  // an unchanged entry's object identity stable across polls, so a real
-  // change is simply a different/absent cache key, never a stale hit.
+  // A hash per entry, cached by entry reference (mergeDataDeltaPayload's
+  // shallow merge keeps an unchanged entry's object identity, so a change
+  // is a different key, never a stale hit), joined. Not the entries
+  // written out: each entry's data carries its detail, so that string was
+  // every row in full - 190 MB on a large dataset - kept for the tab's
+  // life as lastRenderedPrFingerprint, with a second copy in the cache.
   const computePrDataFingerprint = (payload: PrDataPayload | null | undefined): string => {
     const byPrNumber = payload?.byPrNumber || {};
     return Object.keys(byPrNumber)
       .sort()
       .map((prNumber) => {
         const entry = byPrNumber[prNumber] || {};
-        return getOrComputeSafe(entry, "fingerprint", () =>
-          JSON.stringify({
-            prNumber,
-            repo: entry?.repo || "",
-            section: entry?.section || "",
-            updatedAt: entry?.updatedAt || "",
-            notes: entry?.notes || null,
-            data: entry?.data || null,
-          }),
+        const hash = getOrComputeSafe(entry, `fingerprint:${prNumber}`, () =>
+          hashRowVersion(
+            JSON.stringify({
+              prNumber,
+              repo: entry?.repo || "",
+              section: entry?.section || "",
+              updatedAt: entry?.updatedAt || "",
+              notes: entry?.notes || null,
+              data: entry?.data || null,
+            }),
+          ),
         );
+        return `${prNumber}=${hash}`;
       })
       .join("|");
+  };
+
+  const computePrDataManifest = (payload: PrDataPayload | null | undefined): PrManifest => {
+    const byPrNumber = payload?.byPrNumber || {};
+    const manifest: PrManifest = {};
+    // Keyed as the rows are (repo#number), in PR number order - as the
+    // server's buildViewPrsDataManifest.
+    const numberOf = (key: string) => Number(key.split("#").pop());
+    Object.keys(byPrNumber)
+      .sort((a, b) => numberOf(a) - numberOf(b) || (a < b ? -1 : a > b ? 1 : 0))
+      .forEach((prNumber) => {
+        const entry = byPrNumber[prNumber] || {};
+        manifest[prNumber] = {
+          // As the server's computeViewPrsRowVersion (view-prs-data-helpers.js):
+          // a hash, not the row written out (which made each manifest a
+          // second copy of every row).
+          // Cached by entry, as the fingerprint above: each row (with its
+          // detail) is written out once, not on every poll and render.
+          rowVersion: getOrComputeSafe(entry, `rowVersion:${prNumber}`, () =>
+            hashRowVersion(
+              JSON.stringify({
+                prNumber,
+                repo: entry?.repo || "",
+                section: entry?.section || "",
+                updatedAt: entry?.updatedAt || "",
+                fetchedAt: entry?.fetchedAt || "",
+                ciFetchedAt: entry?.ciFetchedAt || "",
+                notes: entry?.notes || null,
+                data: entry?.data || null,
+              }),
+            ),
+          ),
+          repo: entry?.repo || "",
+          section: entry?.section || "",
+          updatedAt: entry?.updatedAt || "",
+        };
+      });
+    return manifest;
+  };
+
+  // Shallow: unchanged entries keep their object identity, which the
+  // per-entry caches rely on (see pr-entry-derived-cache.helpers.ts).
+  const mergeDataDeltaPayload = ({
+    basePayload = {},
+    deltaByPrNumber = {},
+    removedPrNumbers = [],
+    nextDataMeta = null,
+    nextScheduler = null,
+    nextLastRun = null,
+    nextLastFullRun = null,
+    nextLastRunByRepo = null,
+    nextLastFullRunByRepo = null,
+    nextManifest = null,
+    nextUserState = null,
+    nextActorMaps = null,
+  }: MergeDataDeltaInput = {}): PrDataPayload => {
+    const mergedByPrNumber: Record<string, PrEntry> = {
+      ...(basePayload?.byPrNumber || {}),
+      ...(deltaByPrNumber || {}),
+    };
+
+    (Array.isArray(removedPrNumbers) ? removedPrNumbers : []).forEach(
+      (prNumber) => {
+        delete mergedByPrNumber[String(prNumber)];
+      },
+    );
+
+    return {
+      ...basePayload,
+      ...(nextUserState || {}),
+      ...(nextActorMaps || {}),
+      byPrNumber: mergedByPrNumber,
+      dataMeta: nextDataMeta || basePayload?.dataMeta || null,
+      scheduler: nextScheduler || basePayload?.scheduler || null,
+      lastRun: nextLastRun || basePayload?.lastRun || null,
+      lastFullRun: nextLastFullRun || basePayload?.lastFullRun || null,
+      lastRunByRepo: nextLastRunByRepo || basePayload?.lastRunByRepo || {},
+      lastFullRunByRepo: nextLastFullRunByRepo || basePayload?.lastFullRunByRepo || {},
+      dataManifest:
+        nextManifest ||
+        computePrDataManifest({ byPrNumber: mergedByPrNumber }),
+    };
   };
 
   return {

@@ -89,6 +89,54 @@ describe("pr data polling helpers", () => {
     }
   });
 
+  // The page keeps the last fingerprint for the tab's life: it was every
+  // row written out, detail and all (190 MB on a large dataset).
+  test("given a row with a lot of data, when computePrDataFingerprint runs, then the fingerprint stays small and still changes with the data", () => {
+    const bigData = { detail: "x".repeat(500000) };
+    const payload = { byPrNumber: { "owner/repo#1": { repo: "owner/repo", section: "open", data: bigData } } };
+    const fingerprint = computePrDataFingerprint(payload);
+
+    expect(fingerprint.length).toBeLessThan(200);
+    expect(
+      computePrDataFingerprint({
+        byPrNumber: { "owner/repo#1": { repo: "owner/repo", section: "open", data: { detail: `${bigData.detail}y` } } },
+      }),
+    ).not.toBe(fingerprint);
+  });
+
+  test("given a getOrCompute cache, when computePrDataManifest runs again with the same entries, then no row is written out again", () => {
+    const cache = new WeakMap();
+    const getOrCompute = (entry, cacheKey, compute) => {
+      let entryCache = cache.get(entry);
+      if (!entryCache) {
+        entryCache = new Map();
+        cache.set(entry, entryCache);
+      }
+      if (!entryCache.has(cacheKey)) {
+        entryCache.set(cacheKey, compute());
+      }
+      return entryCache.get(cacheKey);
+    };
+    const helpers = createPrDataPollingHelpers({ getOrCompute });
+    const payload = {
+      byPrNumber: {
+        1: { repo: "owner/repo", data: { labels: ["a"] } },
+        2: { repo: "owner/repo", data: { labels: ["b"] } },
+      },
+    };
+    const first = helpers.computePrDataManifest(payload);
+
+    const stringifySpy = jest.spyOn(JSON, "stringify");
+    try {
+      expect(helpers.computePrDataManifest(payload)).toEqual(first);
+      helpers.mergeDataDeltaPayload({ basePayload: payload });
+      expect(stringifySpy).not.toHaveBeenCalled();
+    } finally {
+      stringifySpy.mockRestore();
+    }
+    expect(first).toEqual(computePrDataManifest(payload));
+  });
+
   test("computePrDataManifest and getManifestDelta detect changed and removed rows", () => {
     const first = {
       byPrNumber: {
