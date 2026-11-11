@@ -15,13 +15,13 @@ const OPTIONS: ReadonlyArray<{ value: ThemePreference; label: string }> = [
 ];
 
 /**
- * The Settings drawer's "Appearance": the page's theme, and which PR table
- * sections show and start open. Each is saved as soon as it changes
+ * The Settings drawer's "Appearance": the page's theme, which PR table
+ * sections show and start open, and whether rows are grouped by repo. Each is saved as soon as it changes
  * (ThemeProvider, PrSectionPreferencesProvider), in user-defaults.json.
  */
 export function AppearanceSection() {
   const { preference, setPreference } = useTheme();
-  const { preferences, setSectionHidden, setSectionStartsOpen, resetSections } = usePrSectionPreferences();
+  const { preferences, setSectionHidden, setSectionStartsOpen, resetSections, groupByRepo, setGroupByRepo } = usePrSectionPreferences();
   return (
     <div className="settings-section">
       <fieldset className="settings-group settings-fieldset">
@@ -44,6 +44,7 @@ export function AppearanceSection() {
         <h3 className="settings-heading" id="settings-sections-heading">
           Sections
         </h3>
+        <p className="settings-hint">Which of the PR table&apos;s sections show, and which are open when the page loads.</p>
         <table className="settings-sections-table" aria-labelledby="settings-sections-heading">
           <thead>
             <tr>
@@ -81,10 +82,30 @@ export function AppearanceSection() {
           </tbody>
         </table>
         <div className="settings-actions">
-          <Button onClick={resetSections} disabled={Object.keys(preferences).length === 0}>
+          {/* Only show/open choices: a section's sort isn't one of these. */}
+          <Button
+            onClick={resetSections}
+            disabled={!Object.values(preferences).some((preference) => preference.hidden || preference.open !== undefined)}
+          >
             Restore default sections
           </Button>
         </div>
+      </div>
+
+      <div className="settings-group">
+        <h3 className="settings-heading">Rows</h3>
+        <label className="settings-check">
+          <input
+            type="checkbox"
+            checked={groupByRepo}
+            aria-describedby="group-by-repo-hint"
+            onChange={(event) => setGroupByRepo(event.target.checked)}
+          />
+          Group rows by repo (in a section with PRs from more than one)
+        </label>
+        <p className="settings-hint" id="group-by-repo-hint">
+          A section&apos;s rows are listed repo by repo, under each repo&apos;s name, instead of all together.
+        </p>
       </div>
     </div>
   );

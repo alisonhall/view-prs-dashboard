@@ -10,13 +10,22 @@ const {
   extractHeavyPrDetailFields,
   stripHeavyPrDetailFields,
 } = require("../server/helpers/view-prs-pr-detail-storage");
+const { resolveDataDir } = require("../server/config/data-dir");
 
+// Run on its own: the files in the data folder (data-dir.js:
+// VIEW_PRS_DATA_DIR, .env, the app's data/), or as the MIGRATE_* /
+// STATE_BACKUP_DIR env vars name them.
+// The server passes its own paths to runMigration instead (they follow its
+// data folder).
 const viewPrsDir = path.resolve(__dirname, "../..");
-const dataDir = process.env.DATA_DIR || path.join(viewPrsDir, "data");
-const defaultDataBasename = ["check-open-pr-updates", "data.json"].join(".");
-const dataFile = process.env.MIGRATE_DATA_FILE || path.join(dataDir, defaultDataBasename);
-const detailDir = process.env.MIGRATE_DETAIL_DIR || path.join(dataDir, "pr-details");
-const backupDir = process.env.STATE_BACKUP_DIR || path.join(dataDir, "backups");
+const defaultPaths = () => {
+  const dataDir = resolveDataDir({ viewPrsDir });
+  return {
+    dataFile: process.env.MIGRATE_DATA_FILE || path.join(dataDir, ["check-open-pr-updates", "data.json"].join(".")),
+    detailDir: process.env.MIGRATE_DETAIL_DIR || path.join(dataDir, "pr-details"),
+    backupDir: process.env.STATE_BACKUP_DIR || path.join(dataDir, "backups"),
+  };
+};
 
 const isObject = (value) =>
   value != null && typeof value === "object" && !Array.isArray(value);
@@ -32,7 +41,7 @@ const writeAtomicJson = (filePath, value) => {
   fs.renameSync(tmpPath, filePath);
 };
 
-const ensureBackup = (filePath) => {
+const ensureBackup = (filePath, backupDir) => {
   fs.mkdirSync(backupDir, { recursive: true });
   const suffix = `${backupStamp()}-${process.pid}-${Math.random().toString(36).slice(2, 8)}`;
   const backupPath = path.join(
@@ -91,7 +100,13 @@ const formatBytes = (bytes) => {
 };
 
 const runMigration = (options = {}) => {
-  const { silent = false } = options;
+  const defaults = defaultPaths();
+  const {
+    silent = false,
+    dataFile = defaults.dataFile,
+    detailDir = defaults.detailDir,
+    backupDir = defaults.backupDir,
+  } = options;
   const log = silent ? () => {} : console.log;
 
   if (!fs.existsSync(dataFile)) {
@@ -174,7 +189,7 @@ const runMigration = (options = {}) => {
     return;
   }
 
-  const backupPath = ensureBackup(dataFile);
+  const backupPath = ensureBackup(dataFile, backupDir);
   writeAtomicJson(dataFile, parsed);
 
   const afterStats = fs.statSync(dataFile);

@@ -97,6 +97,52 @@ describe("view-prs data response helpers", () => {
     });
   });
 
+  test("the data-manifest payload carries the user state's per-repo maps, so a poll picks up an Ack cleared or made elsewhere", () => {
+    const helpers = createViewPrsDataResponseHelpers({
+      getViewPrsDataMeta: () => ({ rows: 3 }),
+      getViewPrsSchedulerPublicState: () => ({ running: false }),
+      viewPrsBackfillLogFile: "/tmp/backfill.log",
+      viewPrsBackfillPidFile: "/tmp/backfill.pid",
+    });
+    const data = {
+      byPrNumber: { "o/r#1": {} },
+      ackByRepo: { "o/r": { 1: "2026-01-02T00:00:00Z" } },
+      ackHistoryByRepo: { "o/r": { 1: ["2026-01-02T00:00:00Z"] } },
+      flaggedByRepo: { "o/r": { 1: true } },
+    };
+
+    expect(helpers.buildDataManifestPayload({ manifest: {}, data }).userState).toEqual({
+      ackByRepo: data.ackByRepo,
+      ackHistoryByRepo: data.ackHistoryByRepo,
+      reverifyByRepo: {},
+      inReviewByRepo: {},
+      flaggedByRepo: data.flaggedByRepo,
+      threadChecksByRepo: {},
+    });
+  });
+
+  test("the data-manifest payload carries the people's names and logins, so a poll picks up a save in Settings › People", () => {
+    const helpers = createViewPrsDataResponseHelpers({
+      getViewPrsDataMeta: () => ({ rows: 3 }),
+      getViewPrsSchedulerPublicState: () => ({ running: false }),
+      viewPrsBackfillLogFile: "/tmp/backfill.log",
+      viewPrsBackfillPidFile: "/tmp/backfill.pid",
+    });
+    const data = {
+      byPrNumber: {},
+      actorsMap: { "actor:ann": "Ann" },
+      actors: [{ id: "actor:ann", name: "Ann", logins: ["ann", "ann-2"] }],
+      actorIdMoves: { "actor:ann-old": "actor:ann" },
+    };
+
+    expect(helpers.buildDataManifestPayload({ manifest: {}, data }).actorMaps).toEqual({
+      actorsMap: data.actorsMap,
+      actors: data.actors,
+      actorIdMoves: data.actorIdMoves,
+    });
+    expect(helpers.buildDataManifestPayload({ manifest: {} })).not.toHaveProperty("actorMaps");
+  });
+
   test("given scheduler state, when building the scheduler payload, then the route contract includes ok and scheduler fields", () => {
     const helpers = createViewPrsDataResponseHelpers({
       getViewPrsDataMeta: () => ({ rows: 3 }),
@@ -126,7 +172,12 @@ describe("view-prs data response helpers", () => {
           missingPrNumbers: ["999"],
           requestedCount: 2,
         },
-        data: { lastRun: "2026-07-22T12:00:00.000Z" },
+        data: {
+          lastRun: "2026-07-22T12:00:00.000Z",
+          lastFullRun: "2026-07-22T11:45:00.000Z",
+          lastRunByRepo: { "acme/api": { repo: "acme/api", updatedAt: "2026-07-22T12:00:00Z" } },
+          lastFullRunByRepo: { "acme/api": { repo: "acme/api", updatedAt: "2026-07-22T11:45:00Z" } },
+        },
       }),
     ).toEqual({
       ok: true,
@@ -136,6 +187,9 @@ describe("view-prs data response helpers", () => {
       dataMeta: { rows: 7 },
       scheduler: { running: false, intervalMs: 30000 },
       lastRun: "2026-07-22T12:00:00.000Z",
+      lastFullRun: "2026-07-22T11:45:00.000Z",
+      lastRunByRepo: { "acme/api": { repo: "acme/api", updatedAt: "2026-07-22T12:00:00Z" } },
+      lastFullRunByRepo: { "acme/api": { repo: "acme/api", updatedAt: "2026-07-22T11:45:00Z" } },
     });
   });
 
@@ -164,6 +218,9 @@ describe("view-prs data response helpers", () => {
       dataMeta: { rows: 7 },
       scheduler: { running: false },
       lastRun: null,
+      lastFullRun: null,
+      lastRunByRepo: {},
+      lastFullRunByRepo: {},
     });
   });
 });

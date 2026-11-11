@@ -34,6 +34,8 @@ const ICON_SHAPES = {
     </>
   ),
   chat: <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />,
+  // chat, filled in: a conversation waiting on you.
+  chatFilled: <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" fill="currentColor" />,
   check: <path d="M20 6 9 17l-5-5" />,
   checksFail: (
     <>
@@ -221,6 +223,15 @@ const ICON_SHAPES = {
       <path d="M17 16h6" />
     </>
   ),
+  // Up and down arrows side by side: a section's sort (PrSectionSortMenu).
+  sort: (
+    <>
+      <path d="m3 16 4 4 4-4" />
+      <path d="M7 20V4" />
+      <path d="m21 8-4-4-4 4" />
+      <path d="M17 4v16" />
+    </>
+  ),
   tag: (
     <>
       <path d="M12 2H2v10l9.3 9.3a1 1 0 0 0 1.4 0l6.6-6.6a1 1 0 0 0 0-1.4z" />
@@ -241,6 +252,7 @@ const ICON_SHAPES = {
       <path d="M22 21v-1a5 5 0 0 0-3-4.6" />
     </>
   ),
+  wrench: <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z" />,
 } satisfies Record<string, ReactNode>;
 
 export type IconName = keyof typeof ICON_SHAPES;

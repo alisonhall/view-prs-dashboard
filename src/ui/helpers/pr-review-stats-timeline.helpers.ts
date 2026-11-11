@@ -10,7 +10,8 @@ import type { StatsDateRange, TimelinePoint } from "./pr-review-stats-date-bucke
 // Review statistics' per-reviewer timelines: daily counts of each
 // reviewer's activity (comments and reviews), comments (comments and
 // non-approving reviews) and approvals, for the top 12 reviewers. The PR
-// author's own activity and Copilot are left out.
+// author's own activity and Copilot are left out, and so is anyone
+// isIncludedReviewer leaves out (Review stats' Reviewers).
 export interface ReviewerTimelineSeries {
   login: string;
   actor: string;
@@ -29,6 +30,7 @@ export interface PrReviewStatsTimelineDeps {
   isWithinStatsDateRange?: (isoValue: string, range: StatsDateRange) => boolean;
   resolveActorDisplayName?: ResolveActorDisplayName;
   getTimelineDateKeys?: (dates: string[], range: StatsDateRange) => string[];
+  isIncludedReviewer?: (login: string) => boolean;
 }
 
 const MAX_TIMELINE_REVIEWERS = 12;
@@ -40,7 +42,9 @@ const createPrReviewStatsTimelineHelpers = ({
   isWithinStatsDateRange,
   resolveActorDisplayName,
   getTimelineDateKeys,
+  isIncludedReviewer,
 }: PrReviewStatsTimelineDeps = {}) => {
+  const isIncludedReviewerSafe = typeof isIncludedReviewer === "function" ? isIncludedReviewer : () => true;
   // Callers pass typed lists; the injected asArray only coerces.
   const asArraySafe = <T>(value: T[] | null | undefined): T[] =>
     (typeof asArray === "function" ? asArray(value) : Array.isArray(value) ? value : []) as T[];
@@ -79,6 +83,7 @@ const createPrReviewStatsTimelineHelpers = ({
     const allDates = new Set<string>();
 
     const record = (actorLogin: string, actorName: string, date: string) => {
+      if (!isIncludedReviewerSafe(actorLogin)) return;
       allDates.add(date);
       let reviewer = timelineByReviewer.get(actorLogin);
       if (!reviewer) {

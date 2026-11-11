@@ -31,6 +31,25 @@
   max-height: 480px;
 }
 
+/* Light even in the dark theme: the hook's HTML is whatever the script
+   returns, inline colours and all, and those were written against the
+   light page - dark text, light badges. Recolouring unknown content can't
+   be done reliably (an inverting filter mangles images and brand colours),
+   so it keeps the light theme's colours on a light card instead. Literal
+   values: the light theme's tokens, which the dark theme redefines. */
+:root[data-theme="dark"] .pr-insights-hook-content {
+  color-scheme: light;
+  background: #ffffff;
+  color: #1f2328;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+
+:root[data-theme="dark"] .pr-insights-hook-content a {
+  color: #0757ba;
+}
+
 .insight-list {
   display: grid;
   gap: 6px;
@@ -57,10 +76,10 @@
    already strips style/class/id attributes; containment is a second
    layer, like .pr-insights-hook-content's, so nothing in a comment
    can be positioned outside this box. overflow-x keeps wide code
-   blocks scrollable rather than clipped. */
+   blocks scrollable rather than clipped. Its spacing is .pr-markdown's
+   (pane.css). */
 .insight-thread-body {
   margin-top: 4px;
-  white-space: pre-wrap;
   contain: layout paint;
   overflow-x: auto;
 }
@@ -82,47 +101,27 @@
   white-space: pre-line;
 }
 
-.insight-copy-btn {
-  display: inline-block;
-  width: 16px;
-  height: 16px;
-  margin-left: 6px;
-  padding: 0;
-  border: 1px solid var(--color-border-strong);
-  border-radius: 3px;
-  background: var(--color-surface-inset);
-  color: var(--color-text-muted);
-  cursor: pointer;
+/* CopyIconButton: the page's icon button (.ui-icon-button - its look,
+   hover and focus), small enough to sit in a line of text. */
+.insight-copy-btn.ui-icon-button {
+  width: 22px;
+  height: 22px;
+  margin: -3px 0 -3px 4px;
   vertical-align: middle;
-  line-height: 1;
-  font-size: 10px;
 }
 
-.insight-copy-btn::before {
-  content: '⧉';
-}
-
-.insight-copy-btn:hover {
-  background: var(--color-surface-hover);
+.insight-copy-btn .ui-icon {
+  width: 14px;
+  height: 14px;
 }
 
 .insight-copy-btn.is-copied {
-  border-color: var(--color-success);
   color: var(--color-success);
-}
-
-.insight-copy-btn.is-copied::before {
-  content: '✓';
 }
 
 .insight-copy-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
-}
-
-.insight-copy-btn:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
 }
 
 .insight-line-changes-additions {

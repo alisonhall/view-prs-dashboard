@@ -4,6 +4,7 @@ const { render, screen, act, waitFor } = require('@testing-library/react');
 const userEvent = require('@testing-library/user-event').default;
 require('@testing-library/jest-dom');
 const { FilterStateProvider: RealFilterStateProvider } = require('./FilterStateProvider');
+const { buildFilterStateInitialValues } = require('./filterStateInitialValues');
 const {
   useFilterState,
   useFilterFieldValue,
@@ -15,6 +16,10 @@ const { RowFilterSelectionProvider } = require('./RowFilterSelectionProvider');
 const { AuthorThreadResolutionSelectionProvider } = require('./AuthorThreadResolutionSelectionProvider');
 const { ChangeFilterActorSelectionProvider } = require('./ChangeFilterActorSelectionProvider');
 const { useRowFilterSelection } = require('./RowFilterSelectionContext');
+const {
+  getPendingMultiSelectSelection,
+  setPendingMultiSelectSelection,
+} = require('../helpers/pr-pending-multi-select-selections.helpers.ts');
 const { useAuthorThreadResolutionSelection } = require('./AuthorThreadResolutionSelectionContext');
 const { useChangeFilterActorSelection } = require('./ChangeFilterActorSelectionContext');
 
@@ -40,9 +45,9 @@ function Probe() {
   const { values, setValue } = useFilterState();
   return (
     <div>
-      <span data-testid="scope-mode-value">{values.scopeMode}</span>
+      <span data-testid="filter-pr-numbers-value">{values.filterPrNumbers}</span>
       <span data-testid="always-show-value">{String(values.alwaysShowInReview)}</span>
-      <button onClick={() => setValue('scopeMode', 'last-run')}>change scope</button>
+      <button onClick={() => setValue('filterPrNumbers', 'last-run')}>change PRs filter</button>
     </div>
   );
 }
@@ -104,26 +109,26 @@ describe('FilterStateProvider', () => {
 
   test('given initialValues, when rendering, then children see them via useFilterState()', () => {
     render(
-      <FilterStateProviderWithSelectionContexts initialValues={{ scopeMode: 'needs-attention', alwaysShowInReview: true }}>
+      <FilterStateProviderWithSelectionContexts initialValues={{ filterPrNumbers: 'needs-attention', alwaysShowInReview: true }}>
         <Probe />
       </FilterStateProviderWithSelectionContexts>,
     );
 
-    expect(screen.getByTestId('scope-mode-value')).toHaveTextContent('needs-attention');
+    expect(screen.getByTestId('filter-pr-numbers-value')).toHaveTextContent('needs-attention');
     expect(screen.getByTestId('always-show-value')).toHaveTextContent('true');
   });
 
   test('given a value change, when it happens, then every Context reader sees it', async () => {
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     render(
-      <FilterStateProviderWithSelectionContexts initialValues={{ scopeMode: 'all', alwaysShowInReview: false }}>
+      <FilterStateProviderWithSelectionContexts initialValues={{ filterPrNumbers: '', alwaysShowInReview: false }}>
         <Probe />
       </FilterStateProviderWithSelectionContexts>,
     );
 
-    await user.click(screen.getByText('change scope'));
+    await user.click(screen.getByText('change PRs filter'));
 
-    expect(screen.getByTestId('scope-mode-value')).toHaveTextContent('last-run');
+    expect(screen.getByTestId('filter-pr-numbers-value')).toHaveTextContent('last-run');
   });
 
   // Window-bridge elimination Phase 5b (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
@@ -131,7 +136,7 @@ describe('FilterStateProvider', () => {
   // per-key store, so they were deleted rather than kept for tests.
   test('given the provider mounts, when window is inspected, then getFilterStateValues/setFilterStateValue are not published', () => {
     render(
-      <FilterStateProviderWithSelectionContexts initialValues={{ scopeMode: 'all', alwaysShowInReview: false }}>
+      <FilterStateProviderWithSelectionContexts initialValues={{ filterPrNumbers: '', alwaysShowInReview: false }}>
         <Probe />
       </FilterStateProviderWithSelectionContexts>,
     );
@@ -182,7 +187,8 @@ describe('FilterStateProvider', () => {
           <span data-testid="merge-patterns">{JSON.stringify(values.mergeCommitHeadlinePatterns)}</span>
           <span data-testid="merge-logins">{JSON.stringify(values.mergeCommitLogins)}</span>
           <button onClick={() => setValue('mergeCommitLogins', 'dependabot[bot]\n renovate[bot] ')}>add bots</button>
-          <button onClick={() => setValue('scopeMode', 'last-run')}>change scope</button>
+          <button onClick={() => setValue('filterPrNumbers', 'last-run')}>change PRs filter</button>
+          <button onClick={() => setValue('filterSearch', 'parser')}>search</button>
         </div>
       );
     }
@@ -190,7 +196,7 @@ describe('FilterStateProvider', () => {
     const renderProbe = () =>
       render(
         <FilterStateProviderWithSelectionContexts
-          initialValues={{ scopeMode: 'all', mergeCommitHeadlinePatterns: '^Merge\\b', mergeCommitLogins: '' }}
+          initialValues={{ filterPrNumbers: '', mergeCommitHeadlinePatterns: '^Merge\\b', mergeCommitLogins: '' }}
         >
           <MergeRulesProbe />
         </FilterStateProviderWithSelectionContexts>,
@@ -251,11 +257,111 @@ describe('FilterStateProvider', () => {
       renderProbe();
       await act(async () => {});
 
-      await user.click(screen.getByText('change scope'));
+      await user.click(screen.getByText('change PRs filter'));
       await flushPersist();
 
       expect(putBody).not.toHaveProperty('mergeCommitRules');
       expect(putBody.changeFilters).toEqual({ ignoreCommitPatterns: ['^docs:'] });
+    });
+
+    test('given saved settings restored on mount, when the persist debounce fires with nothing changed, then nothing is written', async () => {
+      // The restore changes the values, which schedules a save; writing all
+      // the settings back unchanged could only put back a value another tab
+      // (or an e2e test's cleanup) changed meanwhile.
+      mockUserDefaults({
+        theme: 'dark',
+        prSections: { flagged: { hidden: true } },
+        mergeCommitRules: { headlinePatterns: ['^Sync'], logins: ['bot[bot]'] },
+      });
+      // The page's own starting values (every field's default).
+      render(
+        <FilterStateProviderWithSelectionContexts initialValues={buildFilterStateInitialValues()}>
+          <MergeRulesProbe />
+        </FilterStateProviderWithSelectionContexts>,
+      );
+      await waitFor(() => expect(screen.getByTestId('merge-patterns').textContent).toBe(JSON.stringify('^Sync')));
+      await flushPersist();
+
+      expect(putBody).toBeNull();
+    });
+
+    test('given a search typed, when the persist debounce passes, then the saved settings are neither read nor written - and a later change still saves', async () => {
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      mockUserDefaults({});
+      renderProbe();
+      await act(async () => {});
+      await flushPersist();
+      global.fetch.mockClear();
+
+      await user.click(screen.getByText('search'));
+      await flushPersist();
+      expect(global.fetch).not.toHaveBeenCalled();
+
+      await user.click(screen.getByText('change PRs filter'));
+      await flushPersist();
+      expect(JSON.stringify(putBody)).toContain('"last-run"');
+      expect(JSON.stringify(putBody)).not.toContain('parser');
+    });
+
+    // (Not merge rules: this describe has the save and restore harness.)
+    test.each([
+      ['needs-attention', { onlyNeedsAttention: true, onlyThreadsToCheck: false }, { 'only-needs-attention': true }],
+      ['needs-attention-or-interacted', { onlyNeedsAttention: true, onlyThreadsToCheck: false }, { 'only-needs-attention': true }],
+      ['resolved-for-me', { onlyNeedsAttention: false, onlyThreadsToCheck: true }, { 'only-threads-to-check': true }],
+      ['last-run', { onlyNeedsAttention: false, onlyThreadsToCheck: false }, {}],
+    ])('given a "View scope" saved as %s, then it restores as its checkbox, and the next save keeps that in its place', async (scope, restored, saved) => {
+      mockUserDefaults({ 'scope-mode': scope, 'filter-pr-numbers': '7' });
+      let latest;
+      function OnlyProbe() {
+        latest = useFilterState().values;
+        return null;
+      }
+      render(
+        <FilterStateProviderWithSelectionContexts initialValues={{ filterPrNumbers: '', onlyNeedsAttention: false, onlyThreadsToCheck: false }}>
+          <OnlyProbe />
+        </FilterStateProviderWithSelectionContexts>,
+      );
+      await waitFor(() => expect(latest.filterPrNumbers).toBe('7'));
+      expect({ onlyNeedsAttention: latest.onlyNeedsAttention, onlyThreadsToCheck: latest.onlyThreadsToCheck }).toEqual(restored);
+
+      await flushPersist();
+      expect(putBody).not.toHaveProperty('scope-mode');
+      expect(putBody['filter-pr-numbers']).toBe('7');
+      expect(putBody['only-needs-attention']).toBe(saved['only-needs-attention']);
+      expect(putBody['only-threads-to-check']).toBe(saved['only-threads-to-check']);
+    });
+
+    test('given the checkboxes saved too, then a leftover "View scope" doesn\'t change them', async () => {
+      mockUserDefaults({ 'scope-mode': 'needs-attention', 'only-needs-attention': false });
+      let latest;
+      function OnlyProbe() {
+        latest = useFilterState().values;
+        return null;
+      }
+      render(
+        <FilterStateProviderWithSelectionContexts initialValues={{ onlyNeedsAttention: false }}>
+          <OnlyProbe />
+        </FilterStateProviderWithSelectionContexts>,
+      );
+      await act(async () => {});
+      await flushPersist();
+      expect(latest.onlyNeedsAttention).toBe(false);
+    });
+
+    test("given the saved settings can't be read, when the persist debounce fires, then nothing is written (it would lose them)", async () => {
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      mockUserDefaults({});
+      const succeeding = global.fetch;
+      global.fetch = jest.fn(async (url, init = {}) =>
+        String(url) === '/view-prs/user-defaults' && !init.method ? { ok: false, status: 500 } : succeeding(url, init),
+      );
+      renderProbe();
+      await act(async () => {});
+
+      await user.click(screen.getByText('add bots'));
+      await flushPersist();
+
+      expect(putBody).toBeNull();
     });
   });
 
@@ -304,7 +410,7 @@ describe('FilterStateProvider', () => {
     test('given saved overrides with no repo key, when the restore fetch resolves, then restoredRepoOverride stays null', async () => {
       global.fetch = jest.fn(async (url) => {
         if (String(url) === '/view-prs/user-defaults') {
-          return { ok: true, json: async () => ({ ok: true, overrides: { 'scope-mode': 'last-run' } }) };
+          return { ok: true, json: async () => ({ ok: true, overrides: { 'filter-pr-numbers': 'last-run' } }) };
         }
         throw new Error(`unexpected fetch: ${url}`);
       });
@@ -356,7 +462,7 @@ describe('FilterStateProvider', () => {
     test('given checked values set via each selection Context, when the 150ms persist debounce fires, then all 3 are included in the persisted overrides', async () => {
       const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
       render(
-        <FilterStateProviderWithSelectionContexts initialValues={{ scopeMode: 'all', alwaysShowInReview: false }}>
+        <FilterStateProviderWithSelectionContexts initialValues={{ filterPrNumbers: '', alwaysShowInReview: false }}>
           <MultiSelectSelectionProbe />
         </FilterStateProviderWithSelectionContexts>,
       );
@@ -377,6 +483,155 @@ describe('FilterStateProvider', () => {
     });
   });
 
+  describe('the Repos list and the Last activity range', () => {
+    let putBody;
+    const mockUserDefaults = (overrides) => {
+      putBody = null;
+      global.fetch = jest.fn(async (url, init = {}) => {
+        if (String(url) === '/view-prs/user-defaults' && !init.method) {
+          return { ok: true, json: async () => ({ ok: true, overrides }) };
+        }
+        if (String(url) === '/view-prs/user-defaults' && init.method === 'PUT') {
+          putBody = JSON.parse(init.body);
+        }
+        return { ok: true, json: async () => ({ ok: true }) };
+      });
+    };
+
+    function RepoAndDatesProbe() {
+      const { values, setValue } = useFilterState();
+      const { setChecked } = useRowFilterSelection();
+      return (
+        <div>
+          <span data-testid="from">{values.filterLastActivityFrom || ''}</span>
+          <span data-testid="to">{values.filterLastActivityTo || ''}</span>
+          <button onClick={() => setChecked('repo-list', ['owner/repo'])}>pick repo</button>
+          <button onClick={() => setValue('filterLastActivityFrom', '2026-11-01')}>set from</button>
+          <button onClick={() => setValue('filterLastActivityFrom', '')}>clear from</button>
+        </div>
+      );
+    }
+
+    const renderProbe = () =>
+      render(
+        <FilterStateProviderWithSelectionContexts initialValues={{ filterPrNumbers: '' }}>
+          <RepoAndDatesProbe />
+        </FilterStateProviderWithSelectionContexts>,
+      );
+
+    afterEach(() => {
+      delete global.fetch;
+      setPendingMultiSelectSelection('pendingRepoSelections', undefined);
+    });
+
+    test('given saved repos and dates, when the restore resolves, then the dates show and the repos wait for their options', async () => {
+      mockUserDefaults({
+        repos: ['owner/repo'],
+        'filter-last-activity-from': '2026-11-01',
+        'filter-last-activity-to': '2026-11-10',
+        repo: 'owner/run-repo',
+      });
+      renderProbe();
+
+      await waitFor(() => expect(screen.getByTestId('from').textContent).toBe('2026-11-01'));
+      expect(screen.getByTestId('to').textContent).toBe('2026-11-10');
+      expect(getPendingMultiSelectSelection('pendingRepoSelections')).toEqual(['owner/repo']);
+    });
+
+    test("given a repo picked and a start date, when the persist debounce fires, then they're saved - not under Run & check's repo - and a cleared date is dropped", async () => {
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      mockUserDefaults({ repo: 'owner/run-repo' });
+      renderProbe();
+      await act(async () => {});
+
+      await user.click(screen.getByText('pick repo'));
+      await user.click(screen.getByText('set from'));
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(150);
+      });
+
+      expect(putBody.repos).toEqual(['owner/repo']);
+      expect(putBody.repo).toBe('owner/run-repo');
+      expect(putBody['filter-last-activity-from']).toBe('2026-11-01');
+      expect(putBody).not.toHaveProperty('filter-last-activity-to');
+
+      await user.click(screen.getByText('clear from'));
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(150);
+      });
+      expect(putBody).not.toHaveProperty('filter-last-activity-from');
+    });
+  });
+
+  describe("each repo's own rules (repoRules)", () => {
+    let putBody;
+    beforeEach(() => {
+      putBody = null;
+    });
+    afterEach(() => {
+      delete global.fetch;
+    });
+    const mockUserDefaults = (overrides) => {
+      global.fetch = jest.fn(async (url, init = {}) => {
+        if (String(url) === '/view-prs/user-defaults' && !init.method) {
+          return { ok: true, json: async () => ({ ok: true, overrides }) };
+        }
+        if (String(url) === '/view-prs/user-defaults' && init.method === 'PUT') {
+          putBody = JSON.parse(init.body);
+        }
+        return { ok: true, json: async () => ({ ok: true }) };
+      });
+    };
+    function RepoRulesProbe() {
+      const { values, setValue } = useFilterState();
+      return (
+        <div>
+          <span data-testid="repo-rules">{JSON.stringify(values.repoRules || {})}</span>
+          <button onClick={() => setValue('repoRules', { ...values.repoRules, 'acme/web': { ignoreCommitPatterns: [' ^docs: ', '', '^test:'] } })}>
+            add web
+          </button>
+          <button onClick={() => setValue('repoRules', {})}>clear all</button>
+        </div>
+      );
+    }
+    const renderProbe = () =>
+      render(
+        <FilterStateProviderWithSelectionContexts initialValues={{ filterPrNumbers: '' }}>
+          <RepoRulesProbe />
+        </FilterStateProviderWithSelectionContexts>,
+      );
+
+    test('saved rules come back cleaned', async () => {
+      mockUserDefaults({ repoRules: { 'acme/api': { mergeCommitHeadlinePatterns: ['^Sync'], attention: 'broken' }, 'acme/none': {} } });
+      renderProbe();
+      await waitFor(() =>
+        expect(JSON.parse(screen.getByTestId('repo-rules').textContent)).toEqual({ 'acme/api': { mergeCommitHeadlinePatterns: ['^Sync'] } }),
+      );
+    });
+
+    test("they're saved as they'll be used - blank pattern lines dropped - and removed when none are left", async () => {
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      mockUserDefaults({ repoRules: { 'acme/api': { mergeCommitHeadlinePatterns: ['^Sync'] } } });
+      renderProbe();
+      await waitFor(() => expect(screen.getByTestId('repo-rules').textContent).toContain('acme/api'));
+
+      await user.click(screen.getByText('add web'));
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(150);
+      });
+      expect(putBody.repoRules).toEqual({
+        'acme/api': { mergeCommitHeadlinePatterns: ['^Sync'] },
+        'acme/web': { ignoreCommitPatterns: ['^docs:', '^test:'] },
+      });
+
+      await user.click(screen.getByText('clear all'));
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(150);
+      });
+      expect(putBody).not.toHaveProperty('repoRules');
+    });
+  });
+
   // Window-bridge elimination Phase 5 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
   // the per-key store (filterValuesStore.ts) mirrors `values`. Every write path
   // updates both in the same call, so a store reader and a useFilterState()
@@ -387,13 +642,13 @@ describe('FilterStateProvider', () => {
     let fieldContext;
     let state;
     function FieldProbe() {
-      fieldValue = useFilterFieldValue('scopeMode');
+      fieldValue = useFilterFieldValue('filterPrNumbers');
       fieldActions = useFilterFieldActions();
       fieldContext = useContext(FilterFieldStoreContext);
       state = useFilterState();
       return null;
     }
-    const mount = (initialValues = { scopeMode: 'all' }) =>
+    const mount = (initialValues = { filterPrNumbers: '' }) =>
       render(
         <FilterStateProviderWithSelectionContexts initialValues={initialValues}>
           <FieldProbe />
@@ -405,40 +660,40 @@ describe('FilterStateProvider', () => {
     });
 
     test('given initial values, when a field reader mounts, then it sees them', () => {
-      mount({ scopeMode: 'needs-attention' });
+      mount({ filterPrNumbers: 'needs-attention' });
       expect(fieldValue).toBe('needs-attention');
     });
 
     test('given a write through useFilterState().setValue, when read through the field store, then it is the same value', () => {
       mount();
-      act(() => state.setValue('scopeMode', 'last-run'));
+      act(() => state.setValue('filterPrNumbers', 'last-run'));
       expect(fieldValue).toBe('last-run');
-      expect(fieldActions.getFieldValue('scopeMode')).toBe('last-run');
-      expect(state.values.scopeMode).toBe('last-run');
+      expect(fieldActions.getFieldValue('filterPrNumbers')).toBe('last-run');
+      expect(state.values.filterPrNumbers).toBe('last-run');
     });
 
     test('given a write through the field actions, when read through useFilterState(), then the whole-object Context has it too', () => {
       mount();
-      act(() => fieldActions.setFieldValue('scopeMode', 'needs-attention'));
-      expect(state.values.scopeMode).toBe('needs-attention');
+      act(() => fieldActions.setFieldValue('filterPrNumbers', 'needs-attention'));
+      expect(state.values.filterPrNumbers).toBe('needs-attention');
       expect(fieldValue).toBe('needs-attention');
     });
 
     test('given saved overrides restore on mount, when the restore resolves, then the field store gets them too (not only useFilterState())', async () => {
       global.fetch = jest.fn(async (url) => {
         if (String(url) === '/view-prs/user-defaults') {
-          return { ok: true, json: async () => ({ ok: true, overrides: { 'scope-mode': 'last-run' } }) };
+          return { ok: true, json: async () => ({ ok: true, overrides: { 'filter-pr-numbers': 'last-run' } }) };
         }
         throw new Error(`unexpected fetch: ${url}`);
       });
 
-      mount({ scopeMode: 'all' });
+      mount({ filterPrNumbers: '' });
       await act(async () => {
         await Promise.resolve();
         await Promise.resolve();
       });
 
-      expect(state.values.scopeMode).toBe('last-run');
+      expect(state.values.filterPrNumbers).toBe('last-run');
       expect(fieldValue).toBe('last-run');
     });
 
@@ -449,15 +704,15 @@ describe('FilterStateProvider', () => {
         return null;
       }
       render(
-        <FilterStateProviderWithSelectionContexts initialValues={{ scopeMode: 'all' }}>
+        <FilterStateProviderWithSelectionContexts initialValues={{ filterPrNumbers: '' }}>
           <FieldProbe />
           <IdentityProbe />
         </FilterStateProviderWithSelectionContexts>,
       );
 
-      act(() => state.setValue('scopeMode', 'a'));
-      act(() => state.setValue('scopeMode', 'b'));
-      act(() => fieldActions.setFieldValue('scopeMode', 'c'));
+      act(() => state.setValue('filterPrNumbers', 'a'));
+      act(() => state.setValue('filterPrNumbers', 'b'));
+      act(() => fieldActions.setFieldValue('filterPrNumbers', 'c'));
 
       expect(seen.size).toBe(1);
       expect(fieldContext).toBe([...seen][0]);

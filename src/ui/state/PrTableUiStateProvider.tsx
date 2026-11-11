@@ -8,7 +8,7 @@ import {
   type RenderedSection,
   type SelectedPr,
 } from './PrTableUiStateContext';
-import { getPrNumbersInOpenSections } from '../helpers/pr-export.helpers.ts';
+import { getPrKeysInOpenSections } from '../helpers/pr-export.helpers.ts';
 
 export const PANE_VISIBLE_STORAGE_KEY = 'view-prs:detail-pane-visible';
 
@@ -41,13 +41,13 @@ const sameSections = (a: RenderedSection[], b: RenderedSection[]): boolean =>
       other !== undefined &&
       section.key === other.key &&
       section.defaultOpen === other.defaultOpen &&
-      sameStrings(section.prNumbers, other.prNumbers)
+      sameStrings(section.prKeys, other.prKeys)
     );
   });
 
 /**
  * Owns the PR table's UI state (see PrTableUiStateContext.tsx), wrapping
- * <AppShell /> so both the table (PrTableApp) and Settings › Export, which are
+ * <AppShell /> so both the table (PrTableApp) and Tools › Export, which are
  * siblings, read the same state. Provides both contexts; a report
  * of rendered sections only changes PrTableOpenSectionsContext.
  */
@@ -125,23 +125,23 @@ export function PrTableUiStateProvider({ children }: { children?: ReactNode }) {
   // Reuse the previous array while its contents are the same, and the
   // value while neither field changes, so Export only re-renders when the
   // open sections or their PRs actually change.
-  const previousPrNumbersRef = useRef<string[]>([]);
-  const { openSectionCount, prNumbersInOpenSections } = useMemo(() => {
+  const previousPrKeysRef = useRef<string[]>([]);
+  const { openSectionCount, prKeysInOpenSections } = useMemo(() => {
     const sections = renderedSections.map((section) => ({
       open: isSectionOpen(section.key, section.defaultOpen),
-      prNumbers: section.prNumbers,
+      prKeys: section.prKeys,
     }));
-    const prNumbers = getPrNumbersInOpenSections(sections);
-    const stablePrNumbers = sameStrings(previousPrNumbersRef.current, prNumbers) ? previousPrNumbersRef.current : prNumbers;
-    previousPrNumbersRef.current = stablePrNumbers;
+    const prKeys = getPrKeysInOpenSections(sections);
+    const stablePrKeys = sameStrings(previousPrKeysRef.current, prKeys) ? previousPrKeysRef.current : prKeys;
+    previousPrKeysRef.current = stablePrKeys;
     return {
       openSectionCount: sections.filter((section) => section.open).length,
-      prNumbersInOpenSections: stablePrNumbers,
+      prKeysInOpenSections: stablePrKeys,
     };
   }, [renderedSections, isSectionOpen]);
   const openSectionsValue = useMemo<PrTableOpenSectionsValue>(
-    () => ({ openSectionCount, prNumbersInOpenSections, hiddenPrCount }),
-    [openSectionCount, prNumbersInOpenSections, hiddenPrCount],
+    () => ({ openSectionCount, prKeysInOpenSections, hiddenPrCount }),
+    [openSectionCount, prKeysInOpenSections, hiddenPrCount],
   );
 
   return (

@@ -32,6 +32,17 @@ export { createPrHttpHelpers };
 // directly. It is deliberately not the factory's postJson: the factory's
 // injected `fetch` is what pr-http.helpers.test.js mocks to check the
 // exact call arguments and error propagation.
+// The same, with another method (PUT, DELETE).
+export const sendJson = async <T = unknown>(method: string, url: string, payload: unknown): Promise<PostJsonResult<T>> => {
+  const response = await fetch(url, {
+    method,
+    body: JSON.stringify(payload),
+    headers: { "Content-Type": "application/json" },
+  });
+  const result: T = await response.json();
+  return { response, result };
+};
+
 export const postJson = async <T = unknown>(url: string, payload: unknown): Promise<PostJsonResult<T>> => {
   const response = await fetch(url, {
     method: "POST",

@@ -5,7 +5,7 @@ import { createContext, useContext } from 'react';
  * wraps <AppShell /> in react-app.tsx): which sections are open, which
  * rows show their summary, and the detail pane (UI_REDESIGN_PLAN.md,
  * phase 4): the selected PR, whether the pane is shown, and its tab. It
- * lives above the table so Settings › Export can read it: Export exports the
+ * lives above the table so Tools › Export can read it: Export exports the
  * rows of the open sections, and used to work that out by reading
  * `<details open>` and class names from the DOM.
  *
@@ -25,7 +25,8 @@ import { createContext, useContext } from 'react';
 export interface RenderedSection {
   key: string;
   defaultOpen: boolean;
-  prNumbers: string[];
+  // Its rows' repo-and-number keys ("owner/repo#123").
+  prKeys: string[];
 }
 
 export interface SelectedPr {
@@ -61,12 +62,12 @@ export interface PrTableUiStateValue {
   reportRenderedSections: (sections: RenderedSection[], hiddenPrCount?: number) => void;
 }
 
-// From the reported sections: how many are open, the PR numbers in the
+// From the reported sections: how many are open, the PR keys in the
 // open ones (display order, each once), and how many PRs are only in
 // hidden sections (the filter bar's count mentions them).
 export interface PrTableOpenSectionsValue {
   openSectionCount: number;
-  prNumbersInOpenSections: string[];
+  prKeysInOpenSections: string[];
   hiddenPrCount: number;
 }
 
@@ -88,7 +89,7 @@ export const defaultPrTableUiState: PrTableUiStateValue = {
 
 export const defaultPrTableOpenSections: PrTableOpenSectionsValue = {
   openSectionCount: 0,
-  prNumbersInOpenSections: [],
+  prKeysInOpenSections: [],
   hiddenPrCount: 0,
 };
 

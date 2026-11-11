@@ -96,3 +96,10 @@
   font-size: 13px;
   font-style: italic;
 }
+
+/* What picking options does, at the top of the open list. */
+.multi-select-hint {
+  margin: 0 0 var(--space-1);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}

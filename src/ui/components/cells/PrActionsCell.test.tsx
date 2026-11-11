@@ -34,7 +34,7 @@ const renderCell = (props: Partial<PrActionsCellProps> = {}, labels?: Labels) =>
   );
   render(
     labels ? (
-      <RepoLabelsContext.Provider value={{ labels, refresh: () => Promise.resolve() } as never}>{cell}</RepoLabelsContext.Provider>
+      <RepoLabelsContext.Provider value={{ labels: [], refresh: () => Promise.resolve(), labelsByRepo: { [props.repo || 'owner/repo']: labels }, ensureLabels: () => {} } as never}>{cell}</RepoLabelsContext.Provider>
     ) : (
       cell
     ),
@@ -84,7 +84,27 @@ describe('PrActionsCell', () => {
 
   test('Ack reads "Ack" until acknowledged, then "Ack\'d", pressed', () => {
     renderCell({ isAcknowledged: true });
-    expect(screen.getByRole('button', { name: "Ack'd PR #101", pressed: true })).toBeInTheDocument();
+    // Saying a second click undoes it (as if never made).
+    expect(screen.getByRole('button', { name: "Ack'd PR #101", pressed: true })).toHaveAccessibleDescription('Click again to undo the Ack');
+  });
+
+  test('on the selected row, Ack names its key, a, in its tooltip and for screen readers', () => {
+    renderCell({ isAcknowledged: false, isSelected: true });
+    const ack = screen.getByRole('button', { name: 'Ack PR #101' });
+    expect(ack).toHaveAttribute('aria-keyshortcuts', 'a');
+    expect(ack.closest('[data-tip]')).toHaveAttribute('data-tip', 'Ack PR #101 (A)');
+  });
+
+  test("on other rows, where the key doesn't work, Ack doesn't name it", () => {
+    renderCell({ isAcknowledged: false });
+    const ack = screen.getByRole('button', { name: 'Ack PR #101' });
+    expect(ack).not.toHaveAttribute('aria-keyshortcuts');
+    expect(ack.closest('[data-tip]')).toHaveAttribute('data-tip', 'Ack PR #101');
+  });
+
+  test('Ack has nothing to undo before it\'s acknowledged', () => {
+    renderCell({ isAcknowledged: false });
+    expect(screen.getByRole('button', { name: 'Ack PR #101', pressed: false })).not.toHaveAccessibleDescription();
   });
 
   test('Ack passes whether the PR is acked now, so it acks or clears', async () => {

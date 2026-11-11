@@ -4,6 +4,9 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { PrEntry } from '../types/pr-data.ts';
 import { PrTable, type PrTableProps } from './PrTable';
+import { PrSectionPreferencesContext } from '../state/PrSectionPreferencesProvider';
+import { RowRepoNamesContext } from '../state/RowRepoNamesContext';
+import { shortRepoNames } from '../helpers/pr-repo-grouping.helpers.ts';
 
 const entry = (number: string, extra: Partial<PrEntry['data']> = {}): PrEntry => ({
   prNumber: number,
@@ -29,9 +32,9 @@ const headers = () => within(screen.getAllByRole('rowgroup')[0] as HTMLElement).
 // What each header shows (the abbreviation), and its name for screen
 // readers (the visually hidden full name, when there is one).
 const headerShown = () =>
-  headers().map((header) => header.querySelector('[aria-hidden="true"]')?.textContent ?? header.textContent);
+  headers().map((header) => header.querySelector('span[aria-hidden="true"]')?.textContent ?? header.textContent);
 const headerNames = () =>
-  headers().map((header) => header.querySelector('.ui-visually-hidden')?.textContent ?? header.textContent);
+  headers().map((header) => header.querySelector('.ui-visually-hidden:not([role="status"])')?.textContent ?? header.textContent);
 
 describe('PrTable', () => {
   test('is named by its section and has a header per column', () => {
@@ -92,7 +95,7 @@ describe('PrTable', () => {
 
   describe('keyboard selection', () => {
     const rows = () => Array.from(document.querySelectorAll<HTMLElement>('tr.pr-row'));
-    const prLink = (number: string) => screen.getAllByRole('link', { name: `#${number}` })[0] as HTMLElement;
+    const prLink = (number: string) => screen.getAllByRole('link', { name: `#${number} opens GitHub in a new tab` })[0] as HTMLElement;
 
     test('↓ with nothing selected selects the row with focus', () => {
       const onSelectPr = jest.fn(() => true);
@@ -146,6 +149,59 @@ describe('PrTable', () => {
       fireEvent.keyDown(prLink('2'), { key: 'Escape' });
       expect(onClearSelection).toHaveBeenCalledTimes(1);
     });
+
+    test('j/k move as ↓/↑; with Ctrl or another modifier they do nothing', () => {
+      const onSelectPr = jest.fn(() => true);
+      renderTable({ prs: [entry('3'), entry('2'), entry('1')], selectedPrKey: 'owner/repo::2', onSelectPr });
+      fireEvent.keyDown(prLink('2'), { key: 'j' });
+      expect(onSelectPr).toHaveBeenLastCalledWith('1', 'owner/repo');
+      fireEvent.keyDown(prLink('2'), { key: 'k' });
+      expect(onSelectPr).toHaveBeenLastCalledWith('3', 'owner/repo');
+
+      onSelectPr.mockClear();
+      fireEvent.keyDown(prLink('2'), { key: 'j', ctrlKey: true });
+      fireEvent.keyDown(prLink('2'), { key: 'k', metaKey: true });
+      expect(onSelectPr).not.toHaveBeenCalled();
+    });
+
+    test('a Acks the selected PR from its row, or undoes the Ack, as its button does', () => {
+      const onAckAction = jest.fn();
+      const { unmount } = renderTable({ selectedPrKey: 'owner/repo::2', onAckAction });
+      fireEvent.keyDown(prLink('2'), { key: 'a' });
+      expect(onAckAction).toHaveBeenCalledWith('2', false, 'owner/repo');
+      unmount();
+
+      renderTable({
+        selectedPrKey: 'owner/repo::2',
+        onAckAction,
+        getPrFlags: () => ({ isFlagged: false, isInReview: false, isAcknowledged: true }),
+      });
+      fireEvent.keyDown(prLink('2'), { key: 'a' });
+      expect(onAckAction).toHaveBeenLastCalledWith('2', true, 'owner/repo');
+    });
+
+    test('Caps Lock or Shift (A, J) work the same; a held-down a Acks once', () => {
+      const onAckAction = jest.fn();
+      const onSelectPr = jest.fn(() => true);
+      renderTable({ selectedPrKey: 'owner/repo::2', onAckAction, onSelectPr });
+      fireEvent.keyDown(prLink('2'), { key: 'A' });
+      fireEvent.keyDown(prLink('2'), { key: 'a', repeat: true });
+      fireEvent.keyDown(prLink('2'), { key: 'a', repeat: true });
+      expect(onAckAction).toHaveBeenCalledTimes(1);
+      fireEvent.keyDown(prLink('2'), { key: 'J' });
+      expect(onSelectPr).toHaveBeenLastCalledWith('1', 'owner/repo');
+    });
+
+    test('a does nothing outside the selected row, with nothing selected, with Ctrl (select all), or while typing', () => {
+      const onAckAction = jest.fn();
+      const { unmount } = renderTable({ selectedPrKey: 'owner/repo::2', onAckAction });
+      fireEvent.keyDown(prLink('1'), { key: 'a' });
+      fireEvent.keyDown(prLink('2'), { key: 'a', ctrlKey: true });
+      unmount();
+      renderTable({ onAckAction });
+      fireEvent.keyDown(prLink('2'), { key: 'a' });
+      expect(onAckAction).not.toHaveBeenCalled();
+    });
   });
 
   test('marks only the busy row\'s repo-specific key as active', () => {
@@ -161,5 +217,98 @@ describe('PrTable', () => {
     await user.click(screen.getByRole('button', { name: 'More actions for PR #1' }));
     await user.click(screen.getByRole('menuitem', { name: 'View PR JSON details' }));
     expect(onViewJson).toHaveBeenCalledWith({ prNumber: '1', repo: 'owner/repo' }, { number: '1', title: 'PR 1' });
+  });
+});
+
+describe('PrTable with rows from several repos', () => {
+  const fromRepo = (repo: string, number: string): PrEntry => ({ ...entry(number), repo });
+  const rows = [fromRepo('acme/web', '3'), fromRepo('acme/api', '1'), fromRepo('acme/web', '4')];
+  const preferences = (groupByRepo: boolean) => ({
+    preferences: {},
+    isReady: true,
+    setSectionHidden: jest.fn(),
+    setSectionStartsOpen: jest.fn(),
+    setSectionSort: jest.fn(),
+    resetSections: jest.fn(),
+    groupByRepo,
+    setGroupByRepo: jest.fn(),
+  });
+  const renderRows = (groupByRepo: boolean, showRepo: boolean) =>
+    render(
+      <PrSectionPreferencesContext.Provider value={preferences(groupByRepo)}>
+        <RowRepoNamesContext.Provider value={showRepo ? shortRepoNames(rows.map((row) => row.repo || '')) : null}>
+          <PrTable prs={rows} repo="acme/api" sectionKey="open" label="Open PRs" expandedInsights={{}} onToggleInsights={jest.fn()} />
+        </RowRepoNamesContext.Provider>
+      </PrSectionPreferencesContext.Provider>,
+    );
+
+  test('each row says its repo by name when rows from more than one are in view, in full on hover, beside its number', () => {
+    renderRows(false, true);
+    const firstRow = document.querySelector('tr.pr-row') as HTMLElement;
+    const repo = within(firstRow).getByText('web').closest('.pr-title-repo') as HTMLElement;
+    expect(repo).toHaveAttribute('title', 'In acme/web');
+    // Screen readers hear it in full.
+    expect(within(repo).getByText('acme/web')).toHaveClass('ui-visually-hidden');
+    expect(within(repo).getByText('web')).toHaveAttribute('aria-hidden', 'true');
+    // One unit with the number, which a long name can't push onto a line
+    // of its own (pr-table.css).
+    expect(repo.closest('.pr-title-ref')).toContainElement(within(firstRow).getByRole('link', { name: /^#3/ }));
+  });
+
+  test("doesn't say the repo with rows from one", () => {
+    renderRows(false, false);
+    expect(document.querySelector('.pr-title-repo')).toBeNull();
+  });
+
+  test("grouped by repo, each repo's rows are a body of their own under its heading, A-Z, and don't each say it", () => {
+    renderRows(true, true);
+    const groups = Array.from(document.querySelectorAll('tbody.pr-repo-group')) as HTMLElement[];
+    expect(groups.map((group) => group.querySelector('th[scope="rowgroup"]')?.textContent)).toEqual(['acme/api1 PR', 'acme/web2 PRs']);
+    expect(groups.map((group) => Array.from(group.querySelectorAll('tr.pr-row')).map((row) => (row as HTMLElement).dataset.prNumber))).toEqual([
+      ['1'],
+      ['3', '4'],
+    ]);
+    expect(document.querySelector('.pr-title-repo')).toBeNull();
+  });
+
+  test('not grouped when the option is off', () => {
+    renderRows(false, true);
+    expect(document.querySelector('.pr-repo-group-row')).toBeNull();
+  });
+});
+
+describe('PrTable section sort', () => {
+  test("the Actions header holds the section's sort menu, keeping its own name; a section of one PR has none", () => {
+    const { unmount } = render(
+      <PrTable prs={[entry('2'), entry('1')]} repo="owner/repo" sectionKey="open" label="Open PRs" expandedInsights={{}} onToggleInsights={jest.fn()} />,
+    );
+    const actions = screen.getByRole('columnheader', { name: 'Actions' });
+    expect(within(actions).getByRole('button', { name: 'Sort Open PRs: PR number, highest first' })).toBeInTheDocument();
+    unmount();
+
+    render(<PrTable prs={[entry('2')]} repo="owner/repo" sectionKey="open" label="Open PRs" expandedInsights={{}} onToggleInsights={jest.fn()} />);
+    expect(screen.queryByRole('button', { name: /^Sort Open PRs/ })).not.toBeInTheDocument();
+  });
+
+  test('rows held in an order the sort no longer gives: "Re-sort" in place of the label, the header keeping its name', async () => {
+    const onResort = jest.fn();
+    const { rerender } = renderTable({ orderChanged: false, onResort });
+    expect(screen.queryByRole('button', { name: /re-sort/i })).not.toBeInTheDocument();
+
+    rerender(
+      <PrTable prs={[entry('2'), entry('1')]} repo="owner/repo" sectionKey="open" label="Open PRs" expandedInsights={{}} onToggleInsights={jest.fn()} orderChanged onResort={onResort} />,
+    );
+    const actions = screen.getByRole('columnheader', { name: 'Actions' });
+    // Said once, for screen readers moving through the rows.
+    expect(within(actions).getByRole('status')).toHaveTextContent('Open PRs: order changed - Re-sort is in the Actions header');
+    await userEvent.click(within(actions).getByRole('button', { name: 'Order changed - re-sort Open PRs' }));
+    expect(onResort).toHaveBeenCalledTimes(1);
+    // The button goes with the sort applied: focus is on the sort menu beside it.
+    expect(within(actions).getByRole('button', { name: /^Sort Open PRs/ })).toHaveFocus();
+  });
+
+  test('no order change: nothing said', () => {
+    renderTable({ orderChanged: false, onResort: jest.fn() });
+    expect(within(screen.getByRole('columnheader', { name: 'Actions' })).getByRole('status')).toBeEmptyDOMElement();
   });
 });

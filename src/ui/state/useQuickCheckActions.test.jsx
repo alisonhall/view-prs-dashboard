@@ -86,6 +86,25 @@ describe('useQuickCheckActions', () => {
     expect(global.fetch).toHaveBeenCalledWith('/view-prs/scheduler');
   });
 
+  test('handleQuickCheckOpenAndMerged lists every repo whatever PR numbers are typed, and says what it found across them', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, newPendingOpenCount: 1, newPendingMergedClosedCount: 1, reposChecked: ['a/b', 'c/d'] }),
+    });
+
+    let actions;
+    renderProbe((value) => { actions = value; }, { repo: 'owner/repo', prNumbersInput: '7,8' });
+
+    let result;
+    await act(async () => {
+      result = await actions.handleQuickCheckOpenAndMerged();
+    });
+
+    expect(global.fetch).toHaveBeenCalledWith('/view-prs/quick-check', expect.objectContaining({ body: JSON.stringify({}) }));
+    expect(result).toEqual({ label: '2 updates found across 2 repos', resetAfterMs: 2500 });
+  });
+
   test('given a 409 (already in progress), when handleQuickCheck is called, then it shows the matching notification and returns the fallback label', async () => {
     const snackbarCalls = [];
     global.fetch = jest.fn().mockResolvedValue({

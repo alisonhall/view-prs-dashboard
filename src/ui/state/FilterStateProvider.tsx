@@ -12,10 +12,12 @@ import { useAuthorThreadResolutionSelection } from './AuthorThreadResolutionSele
 import { useChangeFilterActorSelection } from './ChangeFilterActorSelectionContext';
 import {
   createPrUiOptionPersistenceHelpers,
+  serializeOverridesUpdate,
   type UiOptionOverrides,
 } from '../helpers/pr-ui-option-persistence.helpers.ts';
 import { setPendingMultiSelectSelection } from '../helpers/pr-pending-multi-select-selections.helpers.ts';
 import { formatCommitPatternsForTextarea, parseCsvTokens } from '../helpers/form-parsing.helpers.ts';
+import { normalizeRepoRules } from '../helpers/repo-rules.helpers.ts';
 import {
   DEFAULT_MERGE_COMMIT_RULES,
   formatRuleLines,
@@ -24,8 +26,13 @@ import {
 } from '../helpers/pr-merge-commit-rules.helpers.ts';
 
 // Built once, not per render: its only dependency is the real fetch.
-const { getUiOptionDefaults, FILTER_STATE_FIELD_MAP, readUiSessionOverrides, writeUiSessionOverrides } =
-  createPrUiOptionPersistenceHelpers({ fetch: (input, init) => fetch(input, init) });
+const {
+  getUiOptionDefaults,
+  FILTER_STATE_FIELD_MAP,
+  readUiSessionOverrides,
+  readUiSessionOverridesOrNull,
+  writeUiSessionOverrides,
+} = createPrUiOptionPersistenceHelpers({ fetch: (input, init) => fetch(input, init) });
 
 const TEXT_FIELD_IDS = [
   'repo',
@@ -34,8 +41,9 @@ const TEXT_FIELD_IDS = [
   'jobs',
   'pr-numbers',
   'open-mode',
-  'scope-mode',
   'filter-pr-numbers',
+  'filter-last-activity-from',
+  'filter-last-activity-to',
   'attention-no-activity-mode',
   'attention-author-thread-resolution-mode',
   'filter-custom-comments',
@@ -50,6 +58,10 @@ const CHECKBOX_FIELD_IDS = [
   'show-reason',
   'quiet',
   'always-show-in-review',
+  'only-needs-attention',
+  'only-open-conversations-with-me',
+  'only-waiting-on-me',
+  'only-threads-to-check',
   'attention-include-pending-comments',
   'attention-ignore-merge-only-commits',
   'attention-include-closed-merged',
@@ -106,7 +118,7 @@ const checkedList = <L extends string>(checkedByListId: Partial<Record<L, Set<st
  * (`test-fixtures/filter-state-probe.tsx`).
  *
  * Restore: a mount-only effect reads the saved overrides into `values`,
- * and hands the 9 multi-select lists' saved selections to
+ * and hands the 10 multi-select lists' saved selections to
  * `setPendingMultiSelectSelection` (that store is deliberately
  * window-level, see its file's comment) for ListSelectionSeeding to
  * apply once their options exist.
@@ -131,6 +143,18 @@ export function FilterStateProvider({
   const [values, setValues] = useState<FilterValues>(initialValues);
   const valuesRef = useRef(values);
   valuesRef.current = values;
+  // What the automatic save below watches: `values`, except the search box,
+  // which isn't saved - so typing a search doesn't start a save (each one
+  // reads user-defaults from the server first).
+  const valuesToSaveRef = useRef(values);
+  if (
+    Object.keys({ ...valuesToSaveRef.current, ...values }).some(
+      (key) => key !== 'filterSearch' && !Object.is(valuesToSaveRef.current[key], values[key]),
+    )
+  ) {
+    valuesToSaveRef.current = values;
+  }
+  const valuesToSave = valuesToSaveRef.current;
 
   // The per-key store mirroring `values` (see the header comment). Every
   // write below goes to both, in the same call, so they never diverge.
@@ -196,6 +220,15 @@ export function FilterStateProvider({
           mapped[contextKey] = overrides[fieldId];
         }
       });
+      // A "View scope" saved before its select went: the checkbox that
+      // keeps those rows ("Last run rows" has none). The next save drops it.
+      const savedScope = String(overrides['scope-mode'] || '');
+      if (!Object.prototype.hasOwnProperty.call(overrides, 'only-needs-attention') && savedScope.startsWith('needs-attention')) {
+        mapped.onlyNeedsAttention = true;
+      }
+      if (!Object.prototype.hasOwnProperty.call(overrides, 'only-threads-to-check') && savedScope === 'resolved-for-me') {
+        mapped.onlyThreadsToCheck = true;
+      }
 
       const changeFilters = asChangeFilters(overrides.changeFilters);
       const mergeCommitRules = asMergeCommitRules(overrides.mergeCommitRules);
@@ -215,6 +248,12 @@ export function FilterStateProvider({
         }
       }
 
+      // Each repo's own rules (repo-rules.helpers.ts), cleaned.
+      const repoRules = normalizeRepoRules(overrides.repoRules);
+      if (Object.keys(repoRules).length > 0) {
+        mapped.repoRules = repoRules;
+      }
+
       if (Object.keys(mapped).length > 0) {
         store.setMany(mapped);
         setValues((previous) => ({ ...previous, ...mapped }));
@@ -227,6 +266,9 @@ export function FilterStateProvider({
         setRestoredRepoOverride(String(overrides.repo));
       }
 
+      if (Array.isArray(overrides.repos)) {
+        restorePending('pendingRepoSelections', overrides.repos);
+      }
       if (Array.isArray(overrides.author)) {
         restorePending('pendingAuthorSelections', overrides.author);
       }
@@ -319,6 +361,7 @@ export function FilterStateProvider({
         delete overrides[id];
       }
     };
+    setArrayField('repos', () => checkedList(rowFilterSelection.checkedByListId, 'repo-list'));
     setArrayField('author', () => checkedList(rowFilterSelection.checkedByListId, 'author-list'));
     setArrayField('assigned', () => checkedList(rowFilterSelection.checkedByListId, 'assigned-list'));
     setArrayField('approver', () => checkedList(rowFilterSelection.checkedByListId, 'approver-list'));
@@ -349,6 +392,17 @@ export function FilterStateProvider({
         overrides['exclude-label'] = selected.join(', ');
       } else {
         delete overrides['exclude-label'];
+      }
+    }
+
+    // Each repo's own rules, as they'll be used: patterns trimmed, blank
+    // lines dropped, a repo without any left out.
+    if (includeField('repo-rules')) {
+      const repoRules = normalizeRepoRules(currentValues.repoRules);
+      if (Object.keys(repoRules).length > 0) {
+        overrides.repoRules = repoRules;
+      } else {
+        delete overrides.repoRules;
       }
     }
 
@@ -424,21 +478,37 @@ export function FilterStateProvider({
     return overrides;
   }, [rowFilterSelection, authorThreadResolutionSelection, changeFilterActorSelection]);
 
-  const persistRunScriptOptions = useCallback(async () => {
-    const existingOverrides = await readUiSessionOverrides();
-    const overrides = buildOverrides(
-      ['repo', 'limit', 'merged-limit', 'jobs', 'pr-numbers', 'open-mode', 'ack-changed', 'show-reason', 'quiet'],
-      existingOverrides,
-    );
-    await writeUiSessionOverrides(overrides);
-  }, [buildOverrides]);
+  // Both read the saved overrides and write them back with these options
+  // changed - not when they can't be read, which would lose the rest, and
+  // not when nothing changed (see writeUiSessionOverrides).
+  // One at a time with any other update of them (serializeOverridesUpdate).
+  const persistRunScriptOptions = useCallback(
+    () =>
+      serializeOverridesUpdate(async () => {
+        const existingOverrides = await readUiSessionOverridesOrNull();
+        if (!existingOverrides) return;
+        const overrides = buildOverrides(
+          ['repo', 'limit', 'merged-limit', 'jobs', 'pr-numbers', 'open-mode', 'ack-changed', 'show-reason', 'quiet'],
+          existingOverrides,
+        );
+        await writeUiSessionOverrides(overrides, { unchangedFrom: existingOverrides });
+      }),
+    [buildOverrides],
+  );
 
-  const persistViewFilterOptions = useCallback(async () => {
-    const existingOverrides = await readUiSessionOverrides();
+  const persistViewFilterOptions = useCallback(() => serializeOverridesUpdate(async () => {
+    const existingOverrides = await readUiSessionOverridesOrNull();
+    if (!existingOverrides) return;
     const overrides = buildOverrides(
       [
-        'scope-mode',
+        'only-needs-attention',
+        'only-open-conversations-with-me',
+        'only-waiting-on-me',
+        'only-threads-to-check',
         'filter-pr-numbers',
+        'repos',
+        'filter-last-activity-from',
+        'filter-last-activity-to',
         'label',
         'exclude-label',
         'author',
@@ -455,6 +525,7 @@ export function FilterStateProvider({
         'attention-author-thread-resolution-allow',
         'attention-author-thread-resolution-deny',
         'merge-commit-rules',
+        'repo-rules',
         'change-filter-ignore-comment-authors',
         'change-filter-ignore-review-authors',
         'change-filter-ignore-commit-patterns',
@@ -470,18 +541,21 @@ export function FilterStateProvider({
     // with/without values don't carry over.
     delete overrides['filter-rally-stories'];
     delete overrides['filter-rally-links'];
-    await writeUiSessionOverrides(overrides);
-  }, [buildOverrides]);
+    // The "View scope" select the "only" checkboxes replaced (restored as
+    // them above).
+    delete overrides['scope-mode'];
+    await writeUiSessionOverrides(overrides, { unchangedFrom: existingOverrides });
+  }), [buildOverrides]);
 
-  // Saves the view/filter options 150ms after `values` or any list
-  // selection changes, whatever caused the change (a field edit, or a
-  // Context-only change such as a filter bar chip's "x" button). This is
-  // the only automatic save path for these fields.
+  // Saves the view/filter options 150ms after `values` (but the search,
+  // valuesToSave) or any list selection changes, whatever caused the change
+  // (a field edit, or a Context-only change such as a filter bar chip's "x"
+  // button). This is the only automatic save path for these fields.
   useDebouncedEffect(
     () => {
       persistViewFilterOptions();
     },
-    [values, rowFilterSelection, authorThreadResolutionSelection, changeFilterActorSelection],
+    [valuesToSave, rowFilterSelection, authorThreadResolutionSelection, changeFilterActorSelection],
     150,
   );
 

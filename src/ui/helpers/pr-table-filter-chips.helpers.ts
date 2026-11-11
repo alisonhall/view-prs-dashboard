@@ -1,10 +1,13 @@
 import { asArray } from "./pr-as-array.helpers.ts";
+import { describeLastActivityRange } from "./pr-last-activity-range.helpers.ts";
 
 // The removable chips above the PR table, one per active filter, each with
 // what clearing it means: reset a field to its default, or uncheck one
 // value in a multi-select list (useTableFilterChips applies it).
 export type FilterChipClear =
   | { kind: "field"; key: string; value: unknown }
+  // Several fields at once (the Last activity range's two dates).
+  | { kind: "fields"; values: Record<string, unknown> }
   | { kind: "list"; listId: string; value: string };
 
 export interface FilterChip {
@@ -14,8 +17,14 @@ export interface FilterChip {
 }
 
 export interface TableFilterChipsInput {
-  scopeMode?: string;
+  onlyNeedsAttention?: boolean;
+  onlyOpenConversationsWithMe?: boolean;
+  onlyWaitingOnMe?: boolean;
+  onlyThreadsToCheck?: boolean;
   filterPrNumbers?: string;
+  repoNames?: string[];
+  filterLastActivityFrom?: string;
+  filterLastActivityTo?: string;
   includeLabels?: string[];
   excludeLabels?: string[];
   authorLogins?: string[];
@@ -27,6 +36,10 @@ export interface TableFilterChipsInput {
   filterPrDifficulty?: string;
   filterStories?: string;
   filterAnalysisOfPr?: string;
+  filterSearch?: string;
+  // A picked person's name (their id, or a login saved before ids), for the
+  // Author/Assigned/Approver chips; the value itself without one.
+  nameOfPerson?: (value: string) => string;
 }
 
 const WITH_WITHOUT_LABELS: Record<string, string> = { with: "with", without: "without" };
@@ -45,16 +58,27 @@ const createPrTableFilterChipsHelpers = () => {
     clear: { kind: "field", key, value: defaultValue },
   });
 
-  const listChips = (prefix: string, listId: string, values: string[] | null | undefined): FilterChip[] =>
+  const listChips = (
+    prefix: string,
+    listId: string,
+    values: string[] | null | undefined,
+    labelOf: (value: string) => string = (value) => value,
+  ): FilterChip[] =>
     asArray(values).map((value) => ({
       id: `${listId}:${value}`,
-      label: `${prefix}: ${value}`,
+      label: `${prefix}: ${labelOf(value)}`,
       clear: { kind: "list", listId, value },
     }));
 
   const buildTableFilterChipsViewModel = ({
-    scopeMode,
+    onlyNeedsAttention,
+    onlyOpenConversationsWithMe,
+    onlyWaitingOnMe,
+    onlyThreadsToCheck,
     filterPrNumbers,
+    repoNames,
+    filterLastActivityFrom,
+    filterLastActivityTo,
     includeLabels,
     excludeLabels,
     authorLogins,
@@ -66,28 +90,55 @@ const createPrTableFilterChipsHelpers = () => {
     filterPrDifficulty,
     filterStories,
     filterAnalysisOfPr,
+    filterSearch,
+    nameOfPerson,
   }: TableFilterChipsInput = {}): FilterChip[] => {
     const chips: FilterChip[] = [];
 
-    if (scopeMode && scopeMode !== "all") {
-      chips.push(fieldChip("scopeMode", `Scope: ${scopeMode}`, "scopeMode", "all"));
+    if (String(filterSearch || "").trim()) {
+      chips.push(fieldChip("filterSearch", `Search: ${String(filterSearch).trim()}`, "filterSearch", ""));
+    }
+
+    if (onlyNeedsAttention) {
+      chips.push(fieldChip("onlyNeedsAttention", "Needs attention", "onlyNeedsAttention", false));
+    }
+    if (onlyOpenConversationsWithMe) {
+      chips.push(fieldChip("onlyOpenConversationsWithMe", "Open conversations with me", "onlyOpenConversationsWithMe", false));
+    }
+    if (onlyWaitingOnMe) {
+      chips.push(fieldChip("onlyWaitingOnMe", "Waiting on me", "onlyWaitingOnMe", false));
+    }
+    if (onlyThreadsToCheck) {
+      chips.push(fieldChip("onlyThreadsToCheck", "Conversations resolved for you", "onlyThreadsToCheck", false));
     }
     if (String(filterPrNumbers || "").trim()) {
       chips.push(
         fieldChip(
           "filterPrNumbers",
-          `PR #: ${String(filterPrNumbers).trim()}`,
+          `PRs: ${String(filterPrNumbers).trim()}`,
           "filterPrNumbers",
           "",
         ),
       );
     }
 
+    chips.push(...listChips("Repo", "repo-list", repoNames));
+
+    // One chip for the range, both dates cleared with it.
+    const lastActivity = describeLastActivityRange(filterLastActivityFrom, filterLastActivityTo);
+    if (lastActivity) {
+      chips.push({
+        id: "filterLastActivity",
+        label: lastActivity,
+        clear: { kind: "fields", values: { filterLastActivityFrom: "", filterLastActivityTo: "" } },
+      });
+    }
+
     chips.push(...listChips("Label", "label-list", includeLabels));
     chips.push(...listChips("Exclude label", "exclude-label-list", excludeLabels));
-    chips.push(...listChips("Author", "author-list", authorLogins));
-    chips.push(...listChips("Assigned", "assigned-list", assignedLogins));
-    chips.push(...listChips("Approver", "approver-list", approverLogins));
+    chips.push(...listChips("Author", "author-list", authorLogins, nameOfPerson));
+    chips.push(...listChips("Assigned", "assigned-list", assignedLogins, nameOfPerson));
+    chips.push(...listChips("Approver", "approver-list", approverLogins, nameOfPerson));
 
     if (alwaysShowInReview) {
       chips.push(

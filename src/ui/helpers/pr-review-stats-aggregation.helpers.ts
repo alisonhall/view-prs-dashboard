@@ -17,6 +17,8 @@ export interface StatsViewState {
   filterMode?: string;
   topN?: number | string;
   minComments?: number | string;
+  // Only these reviewers' activity counts (their logins); none: everyone's.
+  reviewers?: string[];
 }
 
 export interface NormalizedRowMetrics {
@@ -301,6 +303,17 @@ const createPrReviewStatsAggregationHelpers = ({
 
   const buildReviewerStats = (rows: Iterable<PrEntry>, actorsMap: ActorsMap = {}): ReviewerStats => {
     const range = getNormalizedStatsDateRangeSafe();
+    // With reviewers picked, only their comments, reviews and approvals
+    // count, and only the open threads they commented in - so the cards,
+    // like the table, are theirs alone. Keyed as ensureReviewer keys them.
+    const pickedReviewers = new Set(
+      (Array.isArray(statsViewStateSafe.reviewers) ? statsViewStateSafe.reviewers : [])
+        .map((login) => String(login || "").trim())
+        .filter(Boolean),
+    );
+    const isPickedReviewer = (login: unknown) =>
+      pickedReviewers.size === 0 ||
+      pickedReviewers.has(normalizeActorLoginSafe(login) || String(login || "").trim());
     const reviewers = new Map<string, ReviewerStat>();
     const summary: StatsSummary = {
       rows: 0,
@@ -381,24 +394,30 @@ const createPrReviewStatsAggregationHelpers = ({
         (event) =>
           normalizeActorLoginSafe(event?.actor) !==
             String(rowAuthorKey || "").trim() &&
-          isWithinStatsDateRangeSafe(event?.occurredAt, range),
+          isWithinStatsDateRangeSafe(event?.occurredAt, range) &&
+          isPickedReviewer(event?.actor),
       );
       const filteredReviews = asArraySafe(row.reviews).filter(
         (review) =>
           normalizeActorLoginSafe(review?.authorLogin) !==
             String(rowAuthorKey || "").trim() &&
-          isWithinStatsDateRangeSafe(review?.submittedAt, range),
+          isWithinStatsDateRangeSafe(review?.submittedAt, range) &&
+          isPickedReviewer(review?.authorLogin),
       );
-      const filteredApprovals = asArraySafe(metrics.approvals).filter((approval) =>
-        isWithinStatsDateRangeSafe(approval?.approvedAt, range),
+      const filteredApprovals = asArraySafe(metrics.approvals).filter(
+        (approval) =>
+          isWithinStatsDateRangeSafe(approval?.approvedAt, range) &&
+          isPickedReviewer(approval?.login),
       );
       const filteredOpenThreads = asArraySafe(row.reviewThreads).filter((thread) => {
         if (thread?.isResolved === true) {
           return false;
         }
-        const comments = asArraySafe(thread?.comments);
+        const comments = asArraySafe(thread?.comments).filter(
+          (comment) => pickedReviewers.size === 0 || isPickedReviewer(comment?.authorLogin),
+        );
         if (!range.start && !range.end) {
-          return true;
+          return comments.length > 0 || pickedReviewers.size === 0;
         }
         return comments.some((comment) =>
           isWithinStatsDateRangeSafe(comment?.createdAt, range),
@@ -416,7 +435,7 @@ const createPrReviewStatsAggregationHelpers = ({
         filteredReviews.length > 0 ||
         filteredApprovals.length > 0 ||
         filteredOpenThreads.length > 0;
-      if (rowContributes || (!range.start && !range.end)) {
+      if (rowContributes || (!range.start && !range.end && pickedReviewers.size === 0)) {
         summary.rows += 1;
         pushSource(summary.sources.rows, prContext);
       }

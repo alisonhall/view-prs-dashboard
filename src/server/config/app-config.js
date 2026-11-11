@@ -8,6 +8,7 @@
  */
 
 const path = require("path");
+const { resolveDataDir } = require("./data-dir");
 
 /**
  * Creates application configuration.
@@ -19,34 +20,25 @@ const path = require("path");
  * @returns {Object} Configuration object
  */
 function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
+  // The data folder (data-dir.js): every data file's default is in it.
+  // VIEW_PRS_DATA_DIR, else the app's data/. Not read from .env here:
+  // server.js puts .env in the environment (and a test mustn't pick up a
+  // developer's).
+  const viewPrsDataDir = resolveDataDir({ viewPrsDir, env, envFile: null });
+
   // Path helpers
-  const _defaultSchedulerFile = path.join(
-    viewPrsDir,
-    "data/check-open-pr-updates.scheduler.json",
-  );
-  const _defaultDataFile = path.join(
-    viewPrsDir,
-    "data/check-open-pr-updates.data.json",
-  );
-  const _defaultUserStateFile = path.join(
-    viewPrsDir,
-    "data/check-open-pr-updates.user-state.json",
-  );
+  const _defaultSchedulerFile = path.join(viewPrsDataDir, "check-open-pr-updates.scheduler.json");
+  const _defaultDataFile = path.join(viewPrsDataDir, "check-open-pr-updates.data.json");
+  const _defaultUserStateFile = path.join(viewPrsDataDir, "check-open-pr-updates.user-state.json");
   const _defaultAuthorCommentsFile = path.join(
     path.dirname(_defaultUserStateFile),
     "check-open-pr-updates.author-comments.json",
   );
-  const _defaultBackupDir = path.join(viewPrsDir, "data/backups");
-  const _defaultPrDiffDir = path.join(viewPrsDir, "data/pr-diffs");
-  const _defaultActorNameCacheFile = path.join(
-    viewPrsDir,
-    "data/actor-name-cache.json",
-  );
-  const _defaultActorLoginAliasesFile = path.join(
-    viewPrsDir,
-    "data/actor-login-aliases.json",
-  );
-  const _defaultActionLogFile = path.join(viewPrsDir, "data/action-log.json");
+  const _defaultBackupDir = path.join(viewPrsDataDir, "backups");
+  const _defaultPrDiffDir = path.join(viewPrsDataDir, "pr-diffs");
+  const _defaultActorNameCacheFile = path.join(viewPrsDataDir, "actor-name-cache.json");
+  const _defaultActorLoginAliasesFile = path.join(viewPrsDataDir, "actor-login-aliases.json");
+  const _defaultActionLogFile = path.join(viewPrsDataDir, "action-log.json");
 
   // File paths (with env overrides)
   const viewPrsSchedulerFile = env.VIEW_PRS_SCHEDULER_FILE || _defaultSchedulerFile;
@@ -61,25 +53,44 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
   const viewPrsActorLoginAliasesFile =
     env.VIEW_PRS_ACTOR_LOGIN_ALIASES_FILE || _defaultActorLoginAliasesFile;
   const viewPrsActionLogFile = env.VIEW_PRS_ACTION_LOG_FILE || _defaultActionLogFile;
+  // The people (view-prs-actors-storage.js), beside the old name cache it
+  // replaces - so tests' temp cache path brings a temp one.
+  const viewPrsActorsFile =
+    env.VIEW_PRS_ACTORS_FILE || path.join(path.dirname(viewPrsActorNameCacheFile), "actors.json");
 
   const viewPrsPrDetailDir =
     env.VIEW_PRS_PR_DETAIL_DIR || path.join(path.dirname(viewPrsDataFile), "pr-details");
+  // Open PRs' live summary (view-prs-live-summary-helpers.js), beside the
+  // data file it's laid over - so tests' temp data file brings a temp one.
+  const viewPrsLiveSummaryFile =
+    env.VIEW_PRS_LIVE_SUMMARY_FILE ||
+    path.join(path.dirname(viewPrsDataFile), "check-open-pr-updates.live-summary.json");
+  // Which PRs are in view: repo subscriptions and PRs added one by one
+  // (view-prs-sources-storage.js), beside the data file like the above.
+  const viewPrsSourcesFile =
+    env.VIEW_PRS_SOURCES_FILE ||
+    path.join(path.dirname(viewPrsDataFile), "check-open-pr-updates.sources.json");
 
-  // Test environment validation
+  // Test environment validation: the state files mustn't be in the app's
+  // real data folder - its data/, or the one its .env names once moved
+  // (jest.setup.env.js points them, and the data folder, at a temp one).
+  const realDataDirs = [
+    path.resolve(viewPrsDir, "data"),
+    ...(isTestEnv ? [resolveDataDir({ viewPrsDir, env: {} })] : []),
+  ];
+  const isInsideRealDataDir = (filePath) =>
+    realDataDirs.some((realDataDir) => {
+      const relative = path.relative(realDataDir, path.resolve(filePath));
+      return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+    });
   if (isTestEnv) {
-    if (
-      viewPrsDataFile === _defaultDataFile ||
-      viewPrsUserStateFile === _defaultUserStateFile
-    ) {
+    if (isInsideRealDataDir(viewPrsDataFile) || isInsideRealDataDir(viewPrsUserStateFile)) {
       throw new Error(
         "[view-prs] NODE_ENV=test but real production state file paths are in use. " +
         "Set VIEW_PRS_DATA_FILE and VIEW_PRS_USER_STATE_FILE env vars to temp paths.",
       );
     }
-    if (
-      viewPrsActorNameCacheFile === _defaultActorNameCacheFile ||
-      viewPrsActorLoginAliasesFile === _defaultActorLoginAliasesFile
-    ) {
+    if (isInsideRealDataDir(viewPrsActorNameCacheFile) || isInsideRealDataDir(viewPrsActorLoginAliasesFile)) {
       throw new Error(
         "[view-prs] NODE_ENV=test but real actor cache file paths are in use. " +
         "Set VIEW_PRS_ACTOR_NAME_CACHE_FILE and VIEW_PRS_ACTOR_LOGIN_ALIASES_FILE env vars to temp paths.",
@@ -107,13 +118,13 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
   );
   const viewPrsBackfillPidFile =
     env.VIEW_PRS_BACKFILL_PID_FILE ||
-    path.join(viewPrsDir, "data/backfill-missing.pid");
+    path.join(viewPrsDataDir, "backfill-missing.pid");
   const viewPrsBackfillLogFile =
     env.VIEW_PRS_BACKFILL_LOG_FILE ||
-    path.join(viewPrsDir, "data/backfill-missing.log");
+    path.join(viewPrsDataDir, "backfill-missing.log");
   const viewPrsUserDefaultsFile =
     env.VIEW_PRS_USER_DEFAULTS_FILE ||
-    path.join(viewPrsDir, "data/user-defaults.json");
+    path.join(viewPrsDataDir, "user-defaults.json");
 
   // Test environment validation, part 2: no other writable path may resolve
   // into the real data directory either. The checks above only covered the
@@ -125,11 +136,6 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
   // paths (the author-comments default follows the *default* user-state
   // file, not the configured one; the PR-detail dir follows the data file).
   if (isTestEnv) {
-    const realDataDir = path.resolve(viewPrsDir, "data");
-    const isInsideRealDataDir = (filePath) => {
-      const relative = path.relative(realDataDir, path.resolve(filePath));
-      return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
-    };
     const pathsInRealDataDir = Object.entries({
       VIEW_PRS_SCHEDULER_FILE: viewPrsSchedulerFile,
       VIEW_PRS_AUTHOR_COMMENTS_FILE: viewPrsAuthorCommentsFile,
@@ -137,15 +143,18 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
       VIEW_PRS_PR_DIFF_DIR: viewPrsPrDiffDir,
       VIEW_PRS_ACTION_LOG_FILE: viewPrsActionLogFile,
       VIEW_PRS_PR_DETAIL_DIR: viewPrsPrDetailDir,
+      VIEW_PRS_LIVE_SUMMARY_FILE: viewPrsLiveSummaryFile,
+      VIEW_PRS_SOURCES_FILE: viewPrsSourcesFile,
       VIEW_PRS_BACKFILL_PID_FILE: viewPrsBackfillPidFile,
       VIEW_PRS_BACKFILL_LOG_FILE: viewPrsBackfillLogFile,
       VIEW_PRS_USER_DEFAULTS_FILE: viewPrsUserDefaultsFile,
+      VIEW_PRS_ACTORS_FILE: viewPrsActorsFile,
     })
       .filter(([, filePath]) => isInsideRealDataDir(filePath))
       .map(([envName]) => envName);
     if (pathsInRealDataDir.length > 0) {
       throw new Error(
-        `[view-prs] NODE_ENV=test but these writable paths resolve into the real data directory (${realDataDir}): ` +
+        `[view-prs] NODE_ENV=test but these writable paths resolve into the real data directory (${realDataDirs.join(" or ")}): ` +
         `${pathsInRealDataDir.join(", ")}. Set them to temp paths (see jest.setup.env.js).`,
       );
     }
@@ -258,6 +267,15 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
     Number.parseInt(env.VIEW_PRS_EVENTS_MAX_CLIENTS || "25", 10) || 25,
   );
 
+  // How often, while a page is connected to the event stream, the server
+  // checks the data version (the data file, the live summary, the update
+  // queue) and pushes "data-changed" when it moved - so a script run's rows
+  // and each quick check's listing reach the page without its poll.
+  const viewPrsEventsDataWatchIntervalMs = Math.max(
+    500,
+    Number.parseInt(env.VIEW_PRS_EVENTS_DATA_WATCH_INTERVAL_MS || "3000", 10) || 3000,
+  );
+
   // Caps how often the job-events emitter will push a job-agnostic
   // "scheduler" SSE frame (activePrNumbers progress) - incrementActivePrNumber/
   // decrementActivePrNumber fire roughly twice per PR touched by a refresh,
@@ -317,7 +335,10 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
 
   // Optional, absent by default - only present if the user opts in to a
   // custom "More Insights" hook script (see runInsightsHookScript in app.js).
-  const viewPrsInsightsHookScript = env.VIEW_PRS_INSIGHTS_HOOK_SCRIPT || "";
+  // Passed to bash as given, run from the project folder - so a relative
+  // path (local-hooks/insights.sh) is from there, and a Git Bash path
+  // (/d/hooks/insights.sh) or a command on PATH works too.
+  const viewPrsInsightsHookScript = String(env.VIEW_PRS_INSIGHTS_HOOK_SCRIPT || "").trim();
 
   const viewPrsInsightsHookTimeoutMs = Math.max(
     1000,
@@ -343,12 +364,16 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
     viewPrsUiBuildDir,
     viewPrsUiBuildIndexFile,
     viewPrsDataFile,
+    viewPrsLiveSummaryFile,
+    viewPrsSourcesFile,
     viewPrsUserStateFile,
     viewPrsAuthorCommentsFile,
     viewPrsSchedulerFile,
     viewPrsLegacySchedulerFile,
+    viewPrsDataDir,
     viewPrsActorNameCacheFile,
     viewPrsActorLoginAliasesFile,
+    viewPrsActorsFile,
     viewPrsUserDefaultsFile,
     viewPrsBackfillPidFile,
     viewPrsBackfillLogFile,
@@ -376,6 +401,7 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
     viewPrsAckTotalRefreshTimeoutMs,
     viewPrsEventsHeartbeatIntervalMs,
     viewPrsEventsMaxClients,
+    viewPrsEventsDataWatchIntervalMs,
     viewPrsSchedulerStateThrottleMs,
     viewPrsBackfillStatusTimeoutMs,
     viewPrsBackfillActionTimeoutMs,

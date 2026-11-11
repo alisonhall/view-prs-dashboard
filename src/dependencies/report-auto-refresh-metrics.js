@@ -5,8 +5,10 @@
 const fs = require("fs");
 const path = require("path");
 
+const { resolveDataDir } = require("../server/config/data-dir.js");
+
 const projectRoot = path.resolve(__dirname, "..", "..");
-const DEFAULT_ACTION_LOG_FILE = path.join(projectRoot, "data", "action-log.json");
+const DEFAULT_ACTION_LOG_FILE = path.join(resolveDataDir({ viewPrsDir: projectRoot }), "action-log.json");
 
 const percentile = (values, percentileRank) => {
   if (!Array.isArray(values) || values.length === 0) {

@@ -2,6 +2,7 @@
 node_modules
 .npmrc
 data
+data.moved-*
 coverage
 dist
 test-results
@@ -11,3 +12,4 @@ playwright/.cache
 .slingshot
 .claude
 local-hooks
+.env

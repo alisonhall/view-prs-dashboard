@@ -4,10 +4,11 @@ import { createPrActorIdentityRenderHelpers } from '../helpers/pr-actor-identity
 import { createPrActorIdentityStyleHelpers } from '../helpers/pr-actor-identity-style.helpers.ts';
 
 /**
- * Actor-identity resolution for the whole UI: login normalization and
- * aliasing, display names, the viewer's own login, and the viewer/PR-author
- * badge styling. PrDataProvider provides it, wired to the payload's login
- * aliases and current viewer (see its viewerContext memo).
+ * Actor-identity resolution for the whole UI: each login's person (their
+ * key - their id, Settings › People), their logins, display names, the
+ * viewer's own login and key, and the viewer/PR-author badge styling.
+ * PrDataProvider provides it, wired to the payload's people and current
+ * viewer (see its viewerContext memo).
  *
  * The default value (factories called with no arguments, i.e. no known
  * viewer/aliases) is permissive and viewer-unaware, so a component
@@ -15,7 +16,7 @@ import { createPrActorIdentityStyleHelpers } from '../helpers/pr-actor-identity-
  * gets sane behavior with no wrapping required.
  */
 export type ActorIdentityValue = ReturnType<typeof createPrActorIdentityHelpers> &
-  Pick<ReturnType<typeof createPrActorIdentityRenderHelpers>, 'getEffectiveViewerLogin'> &
+  Pick<ReturnType<typeof createPrActorIdentityRenderHelpers>, 'getEffectiveViewerLogin' | 'getEffectiveViewerKey'> &
   ReturnType<typeof createPrActorIdentityStyleHelpers>;
 
 export const defaultActorIdentity: ActorIdentityValue = {

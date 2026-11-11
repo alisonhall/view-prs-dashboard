@@ -3,6 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 const Ajv2020 = require("ajv/dist/2020");
+const { resolveDataDir } = require("../server/config/data-dir.js");
 
 const schemaDir = __dirname;
 const projectRoot = path.resolve(schemaDir, "..", "..");
@@ -18,21 +19,11 @@ const authorCommentsSchemaPath = path.join(
   schemaDir,
   "check-open-pr-updates.author-comments.schema.json",
 );
-const dataPath = path.join(
-  projectRoot,
-  "data",
-  "check-open-pr-updates.data.json",
-);
-const userStatePath = path.join(
-  projectRoot,
-  "data",
-  "check-open-pr-updates.user-state.json",
-);
-const authorCommentsPath = path.join(
-  projectRoot,
-  "data",
-  "check-open-pr-updates.author-comments.json",
-);
+// The data folder's files (data-dir.js).
+const dataDir = resolveDataDir({ viewPrsDir: projectRoot });
+const dataPath = path.join(dataDir, "check-open-pr-updates.data.json");
+const userStatePath = path.join(dataDir, "check-open-pr-updates.user-state.json");
+const authorCommentsPath = path.join(dataDir, "check-open-pr-updates.author-comments.json");
 
 const readJsonFile = (filePath) => {
   const raw = fs.readFileSync(filePath, "utf8");
@@ -148,6 +139,12 @@ const validationPayload = {
     data && Object.prototype.hasOwnProperty.call(data, "lastRun")
       ? data.lastRun
       : null,
+  // Each when present: older data has none of them.
+  ...Object.fromEntries(
+    ["lastFullRun", "lastRunByRepo", "lastFullRunByRepo"]
+      .filter((key) => data && Object.prototype.hasOwnProperty.call(data, key))
+      .map((key) => [key, data[key]]),
+  ),
 };
 
 const userStateValidationPayload = {
@@ -180,6 +177,18 @@ const userStateValidationPayload = {
     typeof userState.flaggedByRepo === "object" &&
     userState.flaggedByRepo !== null
       ? userState.flaggedByRepo
+      : {},
+  ackHistoryByRepo:
+    userState &&
+    typeof userState.ackHistoryByRepo === "object" &&
+    userState.ackHistoryByRepo !== null
+      ? userState.ackHistoryByRepo
+      : {},
+  threadChecksByRepo:
+    userState &&
+    typeof userState.threadChecksByRepo === "object" &&
+    userState.threadChecksByRepo !== null
+      ? userState.threadChecksByRepo
       : {},
 };
 

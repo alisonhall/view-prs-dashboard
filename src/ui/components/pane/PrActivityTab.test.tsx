@@ -7,6 +7,7 @@ import { NowContext } from '../../state/NowContext';
 import { defaultPrInsightsDisplay, PrInsightsDisplayContext } from '../../state/PrInsightsDisplayContext';
 import type { PrActivityEvent, PrData } from '../../types/pr-data.ts';
 import { DEFAULT_ACTIVITY_FILTERS, PrActivityTab, type ActivityFilters } from './PrActivityTab';
+import { buildAckEvents } from '../../helpers/pr-activity-feed.helpers.ts';
 
 const NOW = Date.parse('2026-10-24T18:00:00Z');
 
@@ -153,6 +154,46 @@ describe('PrActivityTab', () => {
     await user.click(run);
     expect(run).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByText('bbbbbbb', { exact: false }).closest('li')).toHaveTextContent('bbbbbbb Wire up store');
+  });
+
+  test("a commit after your review's, dated before you looked, is tagged so in both scopes", async () => {
+    const user = userEvent.setup();
+    const reviewedAt = '2026-10-24T12:00:00Z';
+    const commit = (sha: string, at: string, actor: string) =>
+      event(sha, at, { type: 'commit', channel: 'commit', actor, messageHeadline: `Commit ${sha}` });
+    const pr = basePr(
+      [commit('new1111', '2026-10-24T11:00:00Z', 'bob'), commit('old2222', '2026-10-24T10:00:00Z', 'carol')],
+      { baseline: reviewedAt, commitsAfterReview: ['new1111'] },
+    );
+    render(<Harness pr={pr} lastLookedAt={reviewedAt} />);
+    const tag = (text: string) => screen.getByText(`Commit ${text}`).closest('li')?.querySelector('.pr-activity-tag');
+
+    expect(items()).toHaveLength(1);
+    expect(tag('new1111')).toHaveTextContent(/^Not in your last review: Dated before you last looked/);
+
+    await user.click(screen.getByRole('button', { name: /All/ }));
+    expect(items().map((item) => item.className)).toEqual(['pr-activity-item', 'pr-activity-marker', 'pr-activity-item']);
+    expect(tag('new1111')).toBeInTheDocument();
+    expect(tag('old2222')).toBeNull();
+  });
+
+  test('with more commits than GitHub returns, "All" says how many it shows, under the oldest events', async () => {
+    const user = userEvent.setup();
+    // 243 held: the row's commits leave out merges of main, so the note
+    // doesn't count them.
+    const commits = Array.from({ length: 243 }, (_, i) => ({ oid: `c${i}` }));
+    render(<Harness pr={basePr(events, { commits, commitTotalCount: 389 })} lastLookedAt="2026-10-22T00:00:00Z" />);
+    const note = "This PR has 389 commits, but GitHub returns only the newest 250: the older ones aren't shown.";
+    // "Since I last looked": the missing commits are the oldest.
+    expect(screen.queryByText(note)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /^All/ }));
+    expect(screen.getByText(note)).toBeInTheDocument();
+    expect(dayGroups().at(-1)?.compareDocumentPosition(screen.getByText(note))).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+
+    const types = screen.getByRole('group', { name: 'Event types' });
+    await user.click(within(types).getByRole('button', { name: /Commits/ }));
+    expect(screen.queryByText(note)).not.toBeInTheDocument();
   });
 
   test('a comment shows in full, rendered as markdown; a long one folds until "Show more"', async () => {
@@ -309,5 +350,26 @@ describe('PrActivityTab', () => {
     const summary = screen.getByText('Daily summary').closest('details') as HTMLDetailsElement;
     expect(summary.open).toBe(false);
     expect(within(summary).getByRole('table')).toBeInTheDocument();
+  });
+});
+
+describe('PrActivityTab: your Acks', () => {
+  test('each Ack shows when you acknowledged the PR, the current one marked, with no GitHub link', () => {
+    const ackEvents = buildAckEvents(['2026-10-20T09:00:00Z', '2026-10-22T09:00:00Z'], '2026-10-22T09:00:00Z', 'me');
+    render(
+      <NowContext.Provider value={NOW}>
+        <PrActivityTab
+          pr={basePr([event('c1', '2026-10-21T09:00:00Z', { body: 'In between' })])}
+          lastLookedAt=""
+          ackEvents={ackEvents}
+          filters={DEFAULT_ACTIVITY_FILTERS}
+          onFiltersChange={() => {}}
+          timeZone="UTC"
+        />
+      </NowContext.Provider>,
+    );
+    const lines = items().map((item) => item.querySelector('.pr-activity-line')?.textContent || '');
+    expect(lines).toEqual(['me acknowledged the PR (current Ack)', 'alice commentedView on GitHub', 'me acknowledged the PR']);
+    expect(items()[0]?.querySelector('a')).toBeNull();
   });
 });

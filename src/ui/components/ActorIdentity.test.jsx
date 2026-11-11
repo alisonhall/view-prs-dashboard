@@ -20,6 +20,7 @@ describe('ActorIdentity', () => {
     const actorIdentity = {
       normalizeActorLogin: (value) => String(value || '').trim(),
       getEffectiveViewerLogin: () => 'octocat',
+      getEffectiveViewerKey: () => 'octocat',
       resolveActorDisplayName: (login) => `Display(${login})`,
       buildActorIdentityClassName: ({ identityState, className }) =>
         ['actor-identity', className, identityState.isViewer ? 'actor-identity-viewer' : '']

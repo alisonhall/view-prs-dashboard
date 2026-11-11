@@ -16,7 +16,7 @@
       "type": "object",
       "default": {},
       "patternProperties": {
-        "^[0-9]+$": {
+        "^([^\\s/]+/[^\\s/]+#)?[0-9]+$": {
           "$ref": "#/$defs/notes"
         }
       },
@@ -33,6 +33,42 @@
     },
     "flaggedByRepo": {
       "$ref": "#/$defs/repoBooleanStateMap"
+    },
+    "ackHistoryByRepo": {
+      "description": "Every Ack of a PR, oldest first: repo -> PR number -> times (the current Ack, ackByRepo, is the last; Clear Ack takes it back out, new activity clearing it keeps it)",
+      "type": "object",
+      "default": {},
+      "patternProperties": {
+        "^[^\\s/]+/[^\\s/]+$": {
+          "type": "object",
+          "patternProperties": {
+            "^[0-9]+$": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/isoDateTime" }
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "threadChecksByRepo": {
+      "description": "Conversations you started that someone else resolved, confirmed handled: repo -> PR number -> thread id -> the thread's signature when confirmed",
+      "type": "object",
+      "default": {},
+      "patternProperties": {
+        "^[^\\s/]+/[^\\s/]+$": {
+          "type": "object",
+          "patternProperties": {
+            "^[0-9]+$": {
+              "type": "object",
+              "additionalProperties": { "type": "string" }
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
     }
   },
   "$defs": {

@@ -14,17 +14,16 @@
 const fs = require("fs");
 const path = require("path");
 
+const { resolveDataDir } = require("../server/config/data-dir.js");
+
 const projectRoot = path.resolve(__dirname, "..", "..");
 
-// Always use the real production paths — ignore any test env-var overrides.
-const DATA_FILE = path.join(
-  projectRoot,
-  "data/check-open-pr-updates.data.json",
-);
-const USER_STATE_FILE = path.join(
-  projectRoot,
-  "data/check-open-pr-updates.user-state.json",
-);
+// Always use the real production paths — ignore any test env-var overrides:
+// the data folder your setting names (VIEW_PRS_DATA_DIR in your shell or
+// the app's .env), not a test's file overrides.
+const REAL_DATA_DIR = resolveDataDir({ viewPrsDir: projectRoot });
+const DATA_FILE = path.join(REAL_DATA_DIR, "check-open-pr-updates.data.json");
+const USER_STATE_FILE = path.join(REAL_DATA_DIR, "check-open-pr-updates.user-state.json");
 
 const DATA_REQUIRED_KEYS = ["byPrNumber"];
 const USER_STATE_REQUIRED_KEYS = [

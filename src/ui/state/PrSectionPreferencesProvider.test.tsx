@@ -3,18 +3,22 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AppearanceSection } from '../components/settings/AppearanceSection';
-import { PrSectionPreferencesProvider } from './PrSectionPreferencesProvider';
+import { PR_SECTIONS_STORAGE_KEY } from '../helpers/pr-section-preferences.helpers';
+import { PrSectionPreferencesProvider, usePrSectionPreferences } from './PrSectionPreferencesProvider';
 
 // A stand-in for /view-prs/user-defaults: GET returns `saved` (after
-// `holdGet` resolves, when a test sets it), PUT replaces it.
+// `holdGet` resolves, when a test sets it; a 500 while `getFails`), PUT
+// replaces it.
 let saved: Record<string, unknown>;
 let holdGet: Promise<void> | null;
+let getFails = false;
 const fetchMock = jest.fn(async (_input: string, init?: RequestInit) => {
   if (init?.method === 'PUT') {
     saved = JSON.parse(String(init.body));
     return { ok: true, json: async () => ({}) };
   }
   if (holdGet) await holdGet;
+  if (getFails) return { ok: false, status: 500, json: async () => ({}) };
   const overrides = { ...saved };
   return { ok: true, json: async () => ({ overrides }) };
 });
@@ -33,6 +37,7 @@ describe('Settings › Appearance sections', () => {
   beforeEach(() => {
     saved = { repo: 'owner/repo' };
     holdGet = null;
+    window.localStorage.clear();
     (global as unknown as { fetch: unknown }).fetch = fetchMock;
   });
 
@@ -101,6 +106,28 @@ describe('Settings › Appearance sections', () => {
     await waitFor(() => expect(saved).toEqual({ repo: 'owner/repo' }));
   });
 
+  test("Restore default sections keeps each section's sort, and isn't offered for a sort alone", async () => {
+    const user = userEvent.setup();
+    saved = {
+      repo: 'owner/repo',
+      prSections: { closed: { hidden: true, sort: { by: 'number', direction: 'asc' } }, open: { sort: { by: 'updated', direction: 'desc' } } },
+    };
+    renderSettings();
+    await waitFor(() => expect(showBox('Closed PRs')).not.toBeChecked());
+
+    await user.click(screen.getByRole('button', { name: 'Restore default sections' }));
+
+    await waitFor(() =>
+      expect(saved).toEqual({
+        repo: 'owner/repo',
+        prSections: { closed: { sort: { by: 'number', direction: 'asc' } }, open: { sort: { by: 'updated', direction: 'desc' } } },
+      }),
+    );
+    expect(showBox('Closed PRs')).toBeChecked();
+    // Only sorts left: nothing for it to restore.
+    expect(screen.getByRole('button', { name: 'Restore default sections' })).toBeDisabled();
+  });
+
   test('a choice made before the saved ones arrive is kept', async () => {
     const user = userEvent.setup();
     let release = () => {};
@@ -116,5 +143,99 @@ describe('Settings › Appearance sections', () => {
 
     expect(showBox('Draft PRs')).not.toBeChecked();
     expect(showBox('Flagged')).toBeChecked();
+  });
+});
+
+describe('the browser copy of the section choices', () => {
+  const Probe = () => {
+    const { preferences, isReady } = usePrSectionPreferences();
+    return <output aria-label="Choices">{isReady ? JSON.stringify(preferences) : 'not ready'}</output>;
+  };
+  const renderProbe = () =>
+    render(
+      <PrSectionPreferencesProvider>
+        <Probe />
+        <AppearanceSection />
+      </PrSectionPreferencesProvider>,
+    );
+  const choices = () => screen.getByRole('status', { name: 'Choices' });
+  let release = () => {};
+
+  beforeEach(() => {
+    saved = { prSections: { closed: { hidden: true } } };
+    holdGet = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    window.localStorage.clear();
+    (global as unknown as { fetch: unknown }).fetch = fetchMock;
+  });
+
+  afterEach(() => {
+    fetchMock.mockClear();
+    getFails = false;
+  });
+
+  test("when user-defaults.json can't be read, the copy is kept", async () => {
+    getFails = true;
+    window.localStorage.setItem(PR_SECTIONS_STORAGE_KEY, JSON.stringify({ draft: { hidden: true } }));
+    renderProbe();
+
+    await act(async () => release());
+
+    expect(choices()).toHaveTextContent('{"draft":{"hidden":true}}');
+    expect(JSON.parse(window.localStorage.getItem(PR_SECTIONS_STORAGE_KEY) ?? 'null')).toEqual({ draft: { hidden: true } });
+  });
+
+  test("without a copy, a failed read shows the default sections rather than wait", async () => {
+    getFails = true;
+    renderProbe();
+
+    await act(async () => release());
+
+    expect(choices()).toHaveTextContent('{}');
+    expect(window.localStorage.getItem(PR_SECTIONS_STORAGE_KEY)).toBeNull();
+  });
+
+  test("without one, the choices aren't ready until user-defaults.json is read, and then it's made", async () => {
+    renderProbe();
+    expect(choices()).toHaveTextContent('not ready');
+
+    await act(async () => release());
+
+    expect(choices()).toHaveTextContent('{"closed":{"hidden":true}}');
+    expect(JSON.parse(window.localStorage.getItem(PR_SECTIONS_STORAGE_KEY) ?? 'null')).toEqual({ closed: { hidden: true } });
+  });
+
+  test('with one, the choices are ready at once, then the saved ones replace it', async () => {
+    window.localStorage.setItem(PR_SECTIONS_STORAGE_KEY, JSON.stringify({ draft: { hidden: true } }));
+    renderProbe();
+    expect(choices()).toHaveTextContent('{"draft":{"hidden":true}}');
+
+    await act(async () => release());
+
+    expect(choices()).toHaveTextContent('{"closed":{"hidden":true}}');
+    expect(JSON.parse(window.localStorage.getItem(PR_SECTIONS_STORAGE_KEY) ?? 'null')).toEqual({ closed: { hidden: true } });
+  });
+
+  test('a malformed copy counts as none', async () => {
+    window.localStorage.setItem(PR_SECTIONS_STORAGE_KEY, '{not json');
+    renderProbe();
+    expect(choices()).toHaveTextContent('not ready');
+    await act(async () => release());
+    expect(choices()).toHaveTextContent('{"closed":{"hidden":true}}');
+  });
+
+  test('a change updates the copy too', async () => {
+    const user = userEvent.setup();
+    holdGet = null;
+    renderProbe();
+    await waitFor(() => expect(choices()).toHaveTextContent('{"closed":{"hidden":true}}'));
+
+    await user.click(showBox('Draft PRs'));
+
+    expect(JSON.parse(window.localStorage.getItem(PR_SECTIONS_STORAGE_KEY) ?? 'null')).toEqual({
+      closed: { hidden: true },
+      draft: { hidden: true },
+    });
   });
 });

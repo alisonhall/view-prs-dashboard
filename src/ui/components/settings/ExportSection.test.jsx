@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
 
-const { render, screen, waitFor } = require('@testing-library/react');
+const { act, render, screen, waitFor, within } = require('@testing-library/react');
 const userEvent = require('@testing-library/user-event').default;
 require('@testing-library/jest-dom');
 
@@ -13,7 +13,7 @@ const { PrTableOpenSectionsContext } = require('../../state/PrTableUiStateContex
 // The default is one open section showing PR 11, matching samplePayload.
 const buildTree = ({ initialPayload, selectedRepo, uiState } = {}) => (
   <PrDataProvider initialPayload={initialPayload} initialSelectedRepo={selectedRepo}>
-    <PrTableOpenSectionsContext.Provider value={{ prNumbersInOpenSections: ['11'], openSectionCount: 1, ...uiState }}>
+    <PrTableOpenSectionsContext.Provider value={{ prKeysInOpenSections: ['owner/repo#11'], openSectionCount: 1, ...uiState }}>
       <ExportSection />
     </PrTableOpenSectionsContext.Provider>
   </PrDataProvider>
@@ -72,7 +72,7 @@ describe('ExportSection', () => {
     renderExportSection({
       initialPayload: twoPrPayload,
       selectedRepo: 'owner/repo',
-      uiState: { prNumbersInOpenSections: ['12'], openSectionCount: 1 },
+      uiState: { prKeysInOpenSections: ['owner/repo#12'], openSectionCount: 1 },
     });
     await waitForAllFieldsSelected();
 
@@ -89,7 +89,7 @@ describe('ExportSection', () => {
     renderExportSection({
       initialPayload: twoPrPayload,
       selectedRepo: 'owner/repo',
-      uiState: { prNumbersInOpenSections: [], openSectionCount: 0 },
+      uiState: { prKeysInOpenSections: [], openSectionCount: 0 },
     });
     await waitForAllFieldsSelected();
 
@@ -102,7 +102,7 @@ describe('ExportSection', () => {
     const { rerender } = renderExportSection({
       initialPayload: twoPrPayload,
       selectedRepo: 'owner/repo',
-      uiState: { prNumbersInOpenSections: ['11'], openSectionCount: 1 },
+      uiState: { prKeysInOpenSections: ['owner/repo#11'], openSectionCount: 1 },
     });
     expect(screen.getByText(/Visible PR rows eligible for export: 1\/2/)).toBeInTheDocument();
     expect(screen.getByText(/Expanded PR sections: 1/)).toBeInTheDocument();
@@ -111,11 +111,20 @@ describe('ExportSection', () => {
       buildTree({
         initialPayload: twoPrPayload,
         selectedRepo: 'owner/repo',
-        uiState: { prNumbersInOpenSections: ['11', '12'], openSectionCount: 3 },
+        uiState: { prKeysInOpenSections: ['owner/repo#11', 'owner/repo#12'], openSectionCount: 3 },
       }),
     );
     expect(screen.getByText(/Visible PR rows eligible for export: 2\/2/)).toBeInTheDocument();
     expect(screen.getByText(/Expanded PR sections: 3/)).toBeInTheDocument();
+  });
+
+  test('until an export, the status says whether there is data, and how many visible PRs would export', () => {
+    const { unmount } = renderExportSection({ initialPayload: {}, selectedRepo: 'owner/repo', uiState: { prKeysInOpenSections: [] } });
+    expect(screen.getByRole('region', { name: 'Export status' })).toHaveTextContent('Waiting for data...');
+    unmount();
+
+    renderExportSection({ initialPayload: twoPrPayload, selectedRepo: 'owner/repo' });
+    expect(screen.getByRole('region', { name: 'Export status' })).toHaveTextContent('Ready: 1 visible PR to export.');
   });
 
   // Accessibility naming: the field list, status and preview are findable by
@@ -216,6 +225,34 @@ describe('ExportSection', () => {
     expect(screen.getByText(/"prNumber": "11"/)).toBeInTheDocument();
   });
 
+  test("saving the selection keeps the other settings, and writes nothing when they can't be read (it would lose them)", async () => {
+    const user = userEvent.setup();
+    let readOk = true;
+    global.fetch = jest.fn((url, init = {}) => {
+      const method = String(init.method || 'GET').toUpperCase();
+      if (String(url) === '/view-prs/user-defaults' && method === 'GET') {
+        return Promise.resolve(readOk ? { ok: true, json: async () => ({ overrides: { theme: 'dark' } }) } : { ok: false, json: async () => ({}) });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({ ok: true }) });
+    });
+    const puts = () => global.fetch.mock.calls.filter(([, init]) => String(init?.method).toUpperCase() === 'PUT');
+    renderExportSection({ initialPayload: samplePayload, selectedRepo: 'owner/repo' });
+    await waitFor(() => expect(screen.getAllByRole('checkbox')).toHaveLength(6));
+
+    await user.click(screen.getByRole('button', { name: 'Preview JSON' }));
+    await waitFor(() => expect(puts()).toHaveLength(1));
+    expect(JSON.parse(puts()[0][1].body)).toMatchObject({ theme: 'dark' });
+
+    readOk = false;
+    const reads = () => global.fetch.mock.calls.filter(([, init]) => String(init?.method || 'GET').toUpperCase() === 'GET').length;
+    const readsBefore = reads();
+    await user.click(screen.getByRole('checkbox', { name: /^DATA title$/ }));
+    await user.click(screen.getByRole('button', { name: 'Preview JSON' }));
+    await waitFor(() => expect(reads()).toBeGreaterThan(readsBefore));
+    await act(async () => {});
+    expect(puts()).toHaveLength(1);
+  });
+
   test('given no fields are selected, when Preview JSON is clicked, then a validation error is shown instead of building JSON', async () => {
     const user = userEvent.setup();
     renderExportSection({ initialPayload: samplePayload, selectedRepo: 'owner/repo' });
@@ -278,5 +315,243 @@ describe('ExportSection', () => {
     });
 
     HTMLAnchorElement.prototype.click = originalClick;
+  });
+});
+
+describe('ExportSection profiles', () => {
+  // The user defaults the server keeps: GET returns them, PUT replaces them.
+  let saved;
+  let writesFail;
+  beforeEach(() => {
+    saved = { theme: 'dark' };
+    writesFail = false;
+    global.fetch = jest.fn(async (url, init = {}) => {
+      const method = String(init.method || 'GET').toUpperCase();
+      if (String(url) !== '/view-prs/user-defaults') return { ok: true, json: async () => ({}) };
+      if (method === 'PUT') {
+        if (writesFail) return { ok: false, json: async () => ({}) };
+        saved = JSON.parse(String(init.body));
+        return { ok: true, json: async () => ({ ok: true }) };
+      }
+      return { ok: true, json: async () => ({ overrides: saved }) };
+    });
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  const savedProfiles = () => saved.exportFieldProfiles?.profiles;
+  const profileChip = (name) => within(screen.getByRole('group', { name: 'Export profiles' })).getByRole('button', { name });
+  const checkbox = (name) => screen.getByRole('checkbox', { name });
+  const renderReady = async () => {
+    renderExportSection({ initialPayload: samplePayload, selectedRepo: 'owner/repo' });
+    await waitFor(() => {
+      expect(screen.getAllByRole('checkbox')).toHaveLength(6);
+      screen.getAllByRole('checkbox').forEach((each) => expect(each).toBeChecked());
+    });
+  };
+  const saveAsProfile = async (user, name) => {
+    await user.click(screen.getByRole('button', { name: 'Save as profile' }));
+    await user.type(screen.getByRole('textbox', { name: 'Name for the new profile' }), `${name}{Enter}`);
+  };
+
+  test('"Save as profile" names the chosen fields and saves them with the user defaults, keeping the other settings', async () => {
+    const user = userEvent.setup();
+    await renderReady();
+    await user.click(screen.getByRole('button', { name: 'Select none' }));
+    expect(screen.queryByRole('button', { name: 'Save as profile' })).not.toBeInTheDocument();
+    await user.click(checkbox(/^DATA title$/));
+    await user.click(checkbox(/^USER notesByPrNumber$/));
+
+    await saveAsProfile(user, 'Titles and notes');
+    expect(profileChip('Titles and notes')).toHaveAttribute('aria-pressed', 'true');
+    expect(profileChip('Titles and notes')).toHaveFocus();
+    expect(screen.queryByRole('button', { name: 'Save as profile' })).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(savedProfiles()).toEqual([
+        expect.objectContaining({ name: 'Titles and notes', dataPaths: ['title'], userStatePaths: ['notesByPrNumber'] }),
+      ]),
+    );
+    expect(saved.theme).toBe('dark');
+  });
+
+  test('a profile applies its fields in one click; once they change it shows "(modified)", and Update saves the change into it', async () => {
+    saved.exportFieldProfiles = { profiles: [{ id: 'p1', name: 'Numbers', dataPaths: ['prNumber'], userStatePaths: [] }] };
+    const user = userEvent.setup();
+    await renderReady();
+    await waitFor(() => expect(profileChip('Numbers')).toHaveAttribute('aria-pressed', 'false'));
+
+    await user.click(profileChip('Numbers'));
+    expect(profileChip('Numbers')).toHaveAttribute('aria-pressed', 'true');
+    expect(checkbox(/prNumber/)).toBeChecked();
+    expect(checkbox(/^DATA title$/)).not.toBeChecked();
+    expect(checkbox(/^USER ackByRepo$/)).not.toBeChecked();
+
+    await user.click(checkbox(/^DATA title$/));
+    expect(profileChip('Numbers (modified)')).toHaveAttribute('aria-pressed', 'false');
+    await user.click(screen.getByRole('button', { name: 'Update “Numbers”' }));
+    expect(profileChip('Numbers')).toHaveAttribute('aria-pressed', 'true');
+    await waitFor(() => expect(savedProfiles()?.[0]).toMatchObject({ dataPaths: ['prNumber', 'title'], userStatePaths: [] }));
+  });
+
+  test('the pressed profile clicked again puts back the fields chosen before it, or every field when there were none to go back to', async () => {
+    saved.exportFieldProfiles = { profiles: [{ id: 'p1', name: 'Numbers', dataPaths: ['prNumber'], userStatePaths: [] }] };
+    const user = userEvent.setup();
+    await renderReady();
+    await waitFor(() => expect(profileChip('Numbers')).toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: 'Select none' }));
+    await user.click(checkbox(/^DATA title$/));
+
+    await user.click(profileChip('Numbers'));
+    expect(checkbox(/^DATA title$/)).not.toBeChecked();
+    await user.click(profileChip('Numbers'));
+    expect(profileChip('Numbers')).toHaveAttribute('aria-pressed', 'false');
+    expect(checkbox(/^DATA title$/)).toBeChecked();
+    expect(checkbox(/prNumber/)).not.toBeChecked();
+
+    // Pressed only because its fields were picked by hand: back to all.
+    await user.click(checkbox(/^DATA title$/));
+    await user.click(checkbox(/prNumber/));
+    expect(profileChip('Numbers')).toHaveAttribute('aria-pressed', 'true');
+    await user.click(profileChip('Numbers'));
+    screen.getAllByRole('checkbox').forEach((each) => expect(each).toBeChecked());
+    expect(profileChip('Numbers')).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  test("a profile's field the loaded data doesn't have is listed as such, ticked, and can be unticked", async () => {
+    saved.exportFieldProfiles = { profiles: [{ id: 'p1', name: 'Old', dataPaths: ['title', 'gone'], userStatePaths: [] }] };
+    const user = userEvent.setup();
+    await renderReady();
+    await waitFor(() => expect(profileChip('Old')).toBeInTheDocument());
+    await user.click(profileChip('Old'));
+
+    const missing = checkbox(/^DATA gone · not in the loaded data$/);
+    expect(missing).toBeChecked();
+    await user.click(missing);
+    expect(screen.queryByRole('checkbox', { name: /gone/ })).not.toBeInTheDocument();
+    expect(profileChip('Old (modified)')).toBeInTheDocument();
+  });
+
+  test('Manage export profiles renames and deletes them; Undo puts one back where it was, with focus', async () => {
+    saved.exportFieldProfiles = {
+      profiles: [
+        { id: 'p1', name: 'One', dataPaths: ['prNumber'], userStatePaths: [] },
+        { id: 'p2', name: 'Two', dataPaths: ['title'], userStatePaths: [] },
+      ],
+    };
+    const user = userEvent.setup();
+    await renderReady();
+    await waitFor(() => expect(profileChip('One')).toBeInTheDocument());
+    await user.click(screen.getByText('Manage export profiles'));
+
+    await user.click(screen.getByRole('button', { name: 'Rename One' }));
+    const name = screen.getByRole('textbox', { name: 'New name for One' });
+    await user.clear(name);
+    await user.type(name, 'Numbers{Enter}');
+    expect(screen.getByRole('button', { name: 'Rename Numbers' })).toHaveFocus();
+    await waitFor(() => expect(savedProfiles()?.map((profile) => profile.name)).toEqual(['Numbers', 'Two']));
+
+    await user.click(screen.getByRole('button', { name: 'Delete Numbers' }));
+    expect(screen.getByRole('button', { name: 'Undo deleting Numbers' })).toHaveFocus();
+    await waitFor(() => expect(savedProfiles()?.map((profile) => profile.name)).toEqual(['Two']));
+
+    await user.click(screen.getByRole('button', { name: 'Undo deleting Numbers' }));
+    expect(screen.getByRole('button', { name: 'Rename Numbers' })).toHaveFocus();
+    await waitFor(() => expect(savedProfiles()?.map((profile) => profile.name)).toEqual(['Numbers', 'Two']));
+  });
+
+  test("a profile that can't be saved is taken back off, and that's said", async () => {
+    const user = userEvent.setup();
+    await renderReady();
+    writesFail = true;
+    await saveAsProfile(user, 'Everything');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Couldn’t save your profiles');
+    expect(screen.queryByRole('group', { name: 'Export profiles' })).not.toBeInTheDocument();
+    expect(savedProfiles()).toBeUndefined();
+  });
+});
+
+describe('ExportSection field groups', () => {
+  beforeEach(() => {
+    global.fetch = jest.fn(async (url, init = {}) => {
+      const method = String(init.method || 'GET').toUpperCase();
+      if (String(url) === '/view-prs/user-defaults' && method === 'GET') return { ok: true, json: async () => ({ overrides: {} }) };
+      return { ok: true, json: async () => ({ ok: true }) };
+    });
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  // Data with objects in it: data (reviews, and checks with state and url).
+  const nestedPayload = {
+    byPrNumber: {
+      11: { prNumber: 11, data: { reviews: [], checks: { state: 'SUCCESS', url: 'https://ci/11' } } },
+    },
+    lastRun: { repo: 'owner/repo', updatedAt: '2026-06-16T10:00:00Z' },
+  };
+  const groupCheckbox = (path) => screen.getByRole('checkbox', { name: new RegExp(`^All of ${path.replace('.', '\\.')},`) });
+
+  test('each object is a group, folded until opened, with a checkbox for all of its fields and how many are chosen', async () => {
+    const user = userEvent.setup();
+    renderExportSection({ initialPayload: nestedPayload, selectedRepo: 'owner/repo' });
+    await waitFor(() => expect(groupCheckbox('data')).toBeChecked());
+    expect(groupCheckbox('data')).toHaveAccessibleName('All of data, 3 of 3 chosen');
+    expect(screen.getByRole('checkbox', { name: 'DATA prNumber' })).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: 'DATA data.reviews' })).not.toBeInTheDocument();
+    // Each source is a group under an h3 (the drawer's title is the h2), not
+    // a landmark of its own.
+    expect(screen.getByRole('group', { name: 'Data file 4 of 4 chosen' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 3, name: 'Data file 4 of 4 chosen' })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: /fields/ })).not.toBeInTheDocument();
+
+    // Clicking the group's name opens it, and leaves what's chosen alone.
+    const toggle = screen.getByRole('button', { name: 'Fields in data' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await user.click(screen.getByText('data', { selector: '.export-field-group-label' }));
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(groupCheckbox('data')).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'DATA data.reviews' })).toBeChecked();
+    expect(groupCheckbox('data.checks')).toBeChecked();
+    expect(screen.queryByRole('checkbox', { name: 'DATA data.checks.state' })).not.toBeInTheDocument();
+
+    // Unticking a group unchooses every field in it, however deep.
+    await user.click(groupCheckbox('data'));
+    expect(groupCheckbox('data')).not.toBeChecked();
+    expect(groupCheckbox('data')).toHaveAccessibleName('All of data, 0 of 3 chosen');
+    expect(screen.getByRole('checkbox', { name: 'DATA data.reviews' })).not.toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'DATA prNumber' })).toBeChecked();
+    expect(screen.getByText(/Selected fields: 1 data/)).toBeInTheDocument();
+
+    // One of a group's fields chosen part-ticks it, and the groups it's in.
+    await user.click(screen.getByRole('button', { name: 'Fields in data.checks' }));
+    await user.click(screen.getByRole('checkbox', { name: 'DATA data.checks.url' }));
+    expect(groupCheckbox('data.checks')).toBePartiallyChecked();
+    expect(groupCheckbox('data')).toBePartiallyChecked();
+
+    // A part-ticked group, clicked, chooses all of it.
+    await user.click(groupCheckbox('data'));
+    expect(groupCheckbox('data')).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'DATA data.checks.state' })).toBeChecked();
+  });
+
+  test('a profile applied ticks fields in folded groups too, which the counts show', async () => {
+    const saved = {
+      exportFieldProfiles: { profiles: [{ id: 'p', name: 'Checks', dataPaths: ['data.checks.state'], userStatePaths: [] }] },
+    };
+    global.fetch = jest.fn(async (url, init = {}) => {
+      const method = String(init.method || 'GET').toUpperCase();
+      if (String(url) === '/view-prs/user-defaults' && method === 'GET') return { ok: true, json: async () => ({ overrides: saved }) };
+      return { ok: true, json: async () => ({ ok: true }) };
+    });
+    const user = userEvent.setup();
+    renderExportSection({ initialPayload: nestedPayload, selectedRepo: 'owner/repo' });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Checks' })).toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: 'Checks' }));
+    expect(groupCheckbox('data')).toHaveAccessibleName('All of data, 1 of 3 chosen');
+    expect(groupCheckbox('data')).toBePartiallyChecked();
+    expect(screen.getByRole('checkbox', { name: 'DATA prNumber' })).not.toBeChecked();
   });
 });

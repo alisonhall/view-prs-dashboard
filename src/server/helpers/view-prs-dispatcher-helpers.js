@@ -59,15 +59,20 @@ const createViewPrsDispatcherHelpers = ({
   // call and pass it through here, rather than this function re-reading
   // user-defaults.json itself on every (repo, taskType) pair (3x per repo,
   // every ~5s tick - a real, avoidable disk read multiplied by repo count).
+  //
+  // A repo's `priority` is a boost added to every task type's default
+  // priority (quick check 5, auto refresh 3, merged/closed drain 1), so a
+  // boosted repo's quick checks still go before its full refreshes. It can
+  // be negative, to let a repo's work wait behind the others'.
   const resolveEntryConfig = (repo, taskType, schedulerRepoConfig) => {
     const repoConfig = schedulerRepoConfig?.[repo] || {};
     const intervalKey = `${taskType}IntervalMs`;
     const rawInterval = repoConfig[intervalKey];
     const rawPriority = repoConfig.priority;
     const configuredInterval = Number(rawInterval);
-    const configuredPriority = Number(rawPriority);
+    const configuredBoost = Number(rawPriority);
     const intervalValid = Number.isFinite(configuredInterval) && configuredInterval > 0;
-    const priorityValid = Number.isFinite(configuredPriority) && configuredPriority >= 0;
+    const priorityValid = typeof rawPriority === "number" && Number.isFinite(configuredBoost);
 
     if (rawInterval !== undefined && !intervalValid) {
       console?.warn?.(
@@ -82,10 +87,15 @@ const createViewPrsDispatcherHelpers = ({
 
     return {
       intervalMs: intervalValid ? configuredInterval : defaultIntervalsByTaskType[taskType],
-      priority: priorityValid ? configuredPriority : defaultPriorityByTaskType[taskType],
+      priority: defaultPriorityByTaskType[taskType] + (priorityValid ? configuredBoost : 0),
     };
   };
 
+  // A changed interval applies to the wait already under way: an entry
+  // scheduled by a successful run (nextDueAt = lastFinishedAt + interval)
+  // is rescheduled to lastFinishedAt + the new interval, so shortening the
+  // quick check from 5 minutes to 1 doesn't first wait out the 5. An entry
+  // that's running, bumped, deferred or backing off keeps its time.
   const recomputeEntryConfig = (repo, taskType, schedulerRepoConfig) => {
     const dispatcher = ensureDispatcherState();
     const entry = dispatcher.entries[buildEntryKey(repo, taskType)];
@@ -93,10 +103,31 @@ const createViewPrsDispatcherHelpers = ({
       return null;
     }
     const { intervalMs, priority } = resolveEntryConfig(repo, taskType, schedulerRepoConfig);
+    const lastFinishedMs = entry.lastFinishedAt ? Date.parse(entry.lastFinishedAt) : NaN;
+    if (
+      intervalMs !== entry.intervalMs &&
+      !entry.isRunning &&
+      Number.isFinite(lastFinishedMs) &&
+      Date.parse(entry.nextDueAt) === lastFinishedMs + entry.intervalMs
+    ) {
+      entry.nextDueAt = new Date(lastFinishedMs + intervalMs).toISOString();
+    }
     entry.intervalMs = intervalMs;
     entry.priority = priority;
     return entry;
   };
+
+  // For Settings › Background updates: the repos the dispatcher schedules
+  // and each task type's defaults, which a repo's schedulerRepoConfig
+  // overrides (intervals) or adds to (priority).
+  const getRepoSettingsDefaults = () => ({
+    repos: [...getViewPrsAutoRefreshRepos()],
+    taskTypes: TASK_TYPES.map((taskType) => ({
+      taskType,
+      intervalMs: defaultIntervalsByTaskType[taskType],
+      priority: defaultPriorityByTaskType[taskType],
+    })),
+  });
 
   // Adds any missing (repo, taskType) entries (new repos discovered since
   // the last call) and refreshes every existing entry's priority/interval
@@ -216,16 +247,28 @@ const createViewPrsDispatcherHelpers = ({
     entry.lastStartedAt = new Date(nowMs).toISOString();
   };
 
-  const markEntryFinished = (entry, { nowMs = now(), ok, error = null } = {}) => {
+  // keepSchedule: the run only covered what a bump was for (a refresh of
+  // the PRs a quick check found changed, not the repo's full sweep), so on
+  // success the entry goes back to when it was due before the bump - a
+  // busy repo's fast-follows mustn't keep pushing its sweep back - unless
+  // that time has passed.
+  const markEntryFinished = (entry, { nowMs = now(), ok, error = null, keepSchedule = false } = {}) => {
+    const bumpedFromDueMs = Date.parse(entry.bumpedFromDueAt || "");
     entry.isRunning = false;
     entry.lastFinishedAt = new Date(nowMs).toISOString();
     entry.lastOk = ok;
     entry.lastError = error || null;
     entry.runCount = (entry.runCount || 0) + 1;
+    delete entry.bumpedFromDueAt;
+    delete entry.lastBumpReason;
+    delete entry.bumpReasons;
 
     if (ok) {
       entry.consecutiveFailureCount = 0;
-      entry.nextDueAt = new Date(nowMs + entry.intervalMs).toISOString();
+      entry.nextDueAt =
+        keepSchedule && Number.isFinite(bumpedFromDueMs) && bumpedFromDueMs > nowMs
+          ? new Date(bumpedFromDueMs).toISOString()
+          : new Date(nowMs + entry.intervalMs).toISOString();
       return entry;
     }
 
@@ -265,10 +308,29 @@ const createViewPrsDispatcherHelpers = ({
     if (!entry) {
       return null;
     }
+    // When it was due before the first bump since its last run (a second
+    // bump before it runs mustn't record "now"): see markEntryFinished's
+    // keepSchedule and isBumpedOnlyFor.
+    if (!entry.bumpedFromDueAt) {
+      entry.bumpedFromDueAt = entry.nextDueAt;
+    }
     entry.nextDueAt = new Date(now()).toISOString();
     entry.lastBumpReason = reason;
+    // Every reason since its last run: a manual "run now" followed by a
+    // quick check's bump is still a manual "run now".
+    entry.bumpReasons = [...new Set([...(entry.bumpReasons || []), reason])];
     return entry;
   };
+
+  // Due only because of bumps for this reason - its own time hasn't come,
+  // and nothing else asked for it - so a run of just what they were for
+  // will do.
+  const isBumpedOnlyFor = (entry, reason, { nowMs = now() } = {}) =>
+    Array.isArray(entry?.bumpReasons) &&
+    entry.bumpReasons.length > 0 &&
+    entry.bumpReasons.every((bumpReason) => bumpReason === reason) &&
+    Number.isFinite(Date.parse(entry.bumpedFromDueAt || "")) &&
+    Date.parse(entry.bumpedFromDueAt) > nowMs;
 
   // "circuit-open" takes priority over "due"/"scheduled": an entry whose
   // repo's circuit is open would never actually be selected to run (see
@@ -302,6 +364,10 @@ const createViewPrsDispatcherHelpers = ({
       intervalMs: entry.intervalMs,
       lastFinishedAt: entry.lastFinishedAt,
       lastOk: entry.lastOk,
+      // An auto refresh due only because a quick check found PRs changed:
+      // it refreshes just those ("Update changed PRs" in Activity), not
+      // the repo's full sweep.
+      forChangedPrs: entry.taskType === "autoRefresh" && isBumpedOnlyFor(entry, "quick-check-pending-open", { nowMs }),
     }));
 
     const statusRank = { running: 0, "circuit-open": 1, due: 2, scheduled: 3 };
@@ -320,6 +386,28 @@ const createViewPrsDispatcherHelpers = ({
 
   const isAnyEntryRunning = (taskType) =>
     getAllEntries().some((entry) => entry.taskType === taskType && entry.isRunning);
+
+  // A repo's interval for a task type, as its registry entry has it (its
+  // schedulerRepoConfig override, or the default); null when the repo has
+  // no entry - it isn't updated in the background. Read-only: it doesn't
+  // create the dispatcher state (initializeScheduler's migration checks for
+  // it).
+  const getEntryIntervalMs = (repo, taskType) => {
+    const entry = viewPrsSchedulerState.dispatcher?.entries?.[buildEntryKey(repo, taskType)];
+    return entry && Number.isFinite(entry.intervalMs) ? entry.intervalMs : null;
+  };
+
+  // Every repo with an entry of this task type, and its interval: the repos
+  // checked in the background. Read-only, as getEntryIntervalMs.
+  const getEntryIntervalsByRepo = (taskType) => {
+    const result = {};
+    Object.values(viewPrsSchedulerState.dispatcher?.entries || {}).forEach((entry) => {
+      if (entry?.taskType === taskType && Number.isFinite(entry.intervalMs)) {
+        result[entry.repo] = entry.intervalMs;
+      }
+    });
+    return result;
+  };
 
   const latestFinishedAtAcrossEntries = (taskType) => {
     let latestMs = null;
@@ -445,10 +533,14 @@ const createViewPrsDispatcherHelpers = ({
     markEntryDeferred,
     markEntryFinished,
     bumpEntryUrgent,
+    isBumpedOnlyFor,
     getDispatcherQueueSnapshot,
     isAnyEntryRunning,
+    getEntryIntervalMs,
+    getEntryIntervalsByRepo,
     latestFinishedAtAcrossEntries,
     getPublicStateFields,
+    getRepoSettingsDefaults,
     migrateLegacyPersistedState,
     reserveGhSlots,
     releaseGhSlots,

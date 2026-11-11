@@ -89,6 +89,54 @@ describe("pr data polling helpers", () => {
     }
   });
 
+  // The page keeps the last fingerprint for the tab's life: it was every
+  // row written out, detail and all (190 MB on a large dataset).
+  test("given a row with a lot of data, when computePrDataFingerprint runs, then the fingerprint stays small and still changes with the data", () => {
+    const bigData = { detail: "x".repeat(500000) };
+    const payload = { byPrNumber: { "owner/repo#1": { repo: "owner/repo", section: "open", data: bigData } } };
+    const fingerprint = computePrDataFingerprint(payload);
+
+    expect(fingerprint.length).toBeLessThan(200);
+    expect(
+      computePrDataFingerprint({
+        byPrNumber: { "owner/repo#1": { repo: "owner/repo", section: "open", data: { detail: `${bigData.detail}y` } } },
+      }),
+    ).not.toBe(fingerprint);
+  });
+
+  test("given a getOrCompute cache, when computePrDataManifest runs again with the same entries, then no row is written out again", () => {
+    const cache = new WeakMap();
+    const getOrCompute = (entry, cacheKey, compute) => {
+      let entryCache = cache.get(entry);
+      if (!entryCache) {
+        entryCache = new Map();
+        cache.set(entry, entryCache);
+      }
+      if (!entryCache.has(cacheKey)) {
+        entryCache.set(cacheKey, compute());
+      }
+      return entryCache.get(cacheKey);
+    };
+    const helpers = createPrDataPollingHelpers({ getOrCompute });
+    const payload = {
+      byPrNumber: {
+        1: { repo: "owner/repo", data: { labels: ["a"] } },
+        2: { repo: "owner/repo", data: { labels: ["b"] } },
+      },
+    };
+    const first = helpers.computePrDataManifest(payload);
+
+    const stringifySpy = jest.spyOn(JSON, "stringify");
+    try {
+      expect(helpers.computePrDataManifest(payload)).toEqual(first);
+      helpers.mergeDataDeltaPayload({ basePayload: payload });
+      expect(stringifySpy).not.toHaveBeenCalled();
+    } finally {
+      stringifySpy.mockRestore();
+    }
+    expect(first).toEqual(computePrDataManifest(payload));
+  });
+
   test("computePrDataManifest and getManifestDelta detect changed and removed rows", () => {
     const first = {
       byPrNumber: {
@@ -113,6 +161,31 @@ describe("pr data polling helpers", () => {
       removedPrNumbers: ["2"],
       hasChanges: true,
     });
+  });
+
+  // The page falls back to its own manifest as the previous one, so it must
+  // match the server's, or every row reads as changed.
+  test("computePrDataManifest's row versions match the server's", () => {
+    const { computeViewPrsRowVersion } = require("../../server/helpers/view-prs-data-helpers.js");
+    const entry = {
+      repo: "owner/repo",
+      section: "open",
+      updatedAt: "2026-06-01T10:00:00Z",
+      fetchedAt: "2026-06-01T10:01:00Z",
+      ciFetchedAt: "2026-06-01T10:02:00Z",
+      notes: { otherNotes: "x" },
+      data: { labels: ["a"] },
+    };
+    expect(computePrDataManifest({ byPrNumber: { 5: entry } })["5"].rowVersion).toBe(computeViewPrsRowVersion(entry, "5"));
+  });
+
+  test("the page's row-version hash is the server's, whatever the text", () => {
+    const { hashRowVersion: serverHash } = require("../../server/helpers/view-prs-data-helpers.js");
+    const { hashRowVersion: pageHash } = require("./pr-data-polling.helpers.ts");
+    ["", "a", '{"prNumber":"5"}', "naïve – “quotes” ✓ 🙂 日本語", "x".repeat(100000)].forEach((text) => {
+      expect(pageHash(text)).toBe(serverHash(text));
+    });
+    expect(pageHash("a")).not.toBe(pageHash("b"));
   });
 
   test("computePrDataManifest returns an empty manifest for missing payload data", () => {
@@ -182,6 +255,74 @@ describe("pr data polling helpers", () => {
     expect(merged.scheduler).toEqual({ intervalMinutes: 15 });
     expect(merged.lastRun).toEqual({ updatedAt: "2026-01-01T00:00:00Z" });
     expect(merged.dataManifest).toEqual({ 5: { rowVersion: "manifest-v2" } });
+  });
+
+  test("mergeDataDeltaPayload takes a new lastFullRun, or keeps the one it had", () => {
+    const basePayload = {
+      byPrNumber: {},
+      lastRun: { updatedAt: "2026-01-01T00:00:00Z" },
+      lastFullRun: { updatedAt: "2026-01-01T00:00:00Z" },
+    };
+    // A refresh of a few PRs: lastRun moves, lastFullRun doesn't.
+    const afterFewPrs = mergeDataDeltaPayload({
+      basePayload,
+      deltaByPrNumber: {},
+      nextLastRun: { updatedAt: "2026-01-01T00:05:00Z" },
+    });
+    expect(afterFewPrs.lastRun).toEqual({ updatedAt: "2026-01-01T00:05:00Z" });
+    expect(afterFewPrs.lastFullRun).toEqual({ updatedAt: "2026-01-01T00:00:00Z" });
+
+    const afterFullRun = mergeDataDeltaPayload({
+      basePayload,
+      deltaByPrNumber: {},
+      nextLastFullRun: { updatedAt: "2026-01-01T00:15:00Z" },
+    });
+    expect(afterFullRun.lastFullRun).toEqual({ updatedAt: "2026-01-01T00:15:00Z" });
+  });
+
+  test("mergeDataDeltaPayload takes new per-repo runs, or keeps the ones it had", () => {
+    const { mergeDataDeltaPayload } = createPrDataPollingHelpers();
+    const byRepo = { "acme/api": { repo: "acme/api", updatedAt: "2026-01-01T00:00:00Z" } };
+    const basePayload = { byPrNumber: {}, lastRunByRepo: byRepo, lastFullRunByRepo: byRepo };
+
+    const kept = mergeDataDeltaPayload({ basePayload, deltaByPrNumber: {} });
+    expect(kept.lastFullRunByRepo).toEqual(byRepo);
+
+    const next = { ...byRepo, "acme/web": { repo: "acme/web", updatedAt: "2026-01-01T00:15:00Z" } };
+    const moved = mergeDataDeltaPayload({ basePayload, deltaByPrNumber: {}, nextLastRunByRepo: next, nextLastFullRunByRepo: next });
+    expect(moved.lastRunByRepo).toEqual(next);
+    expect(moved.lastFullRunByRepo).toEqual(next);
+  });
+
+  test("mergeDataDeltaPayload takes the manifest's user state (an Ack cleared by a run), or keeps the stored one", () => {
+    const basePayload = {
+      byPrNumber: {},
+      ackByRepo: { "o/r": { 1: "2026-01-02T00:00:00Z" } },
+      ackHistoryByRepo: { "o/r": { 1: ["2026-01-02T00:00:00Z"] } },
+    };
+    const nextUserState = { ackByRepo: {}, ackHistoryByRepo: basePayload.ackHistoryByRepo };
+
+    const merged = mergeDataDeltaPayload({ basePayload, nextUserState });
+    expect(merged.ackByRepo).toEqual({});
+    expect(merged.ackHistoryByRepo).toEqual(basePayload.ackHistoryByRepo);
+    expect(mergeDataDeltaPayload({ basePayload }).ackByRepo).toEqual(basePayload.ackByRepo);
+    // So the poll renders it.
+    expect(computePrDataMetaFingerprint(merged)).not.toBe(computePrDataMetaFingerprint(basePayload));
+  });
+
+  test("mergeDataDeltaPayload takes the manifest's names and logins (a save in Settings › People), or keeps the stored ones, and the poll renders them", () => {
+    const basePayload = {
+      byPrNumber: {},
+      actorsMap: { ann: "Ann" },
+      actorLoginAliases: {},
+    };
+    const nextActorMaps = { actorsMap: { ann: "Ann Lee", "ann-2": "Ann Lee" }, actorLoginAliases: { "ann-2": "ann" } };
+
+    const merged = mergeDataDeltaPayload({ basePayload, nextActorMaps });
+    expect(merged.actorsMap).toEqual(nextActorMaps.actorsMap);
+    expect(merged.actorLoginAliases).toEqual(nextActorMaps.actorLoginAliases);
+    expect(mergeDataDeltaPayload({ basePayload }).actorsMap).toEqual(basePayload.actorsMap);
+    expect(computePrDataMetaFingerprint(merged)).not.toBe(computePrDataMetaFingerprint(basePayload));
   });
 
   test("computePrDataFingerprint returns an empty string for empty payloads", () => {

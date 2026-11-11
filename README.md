@@ -184,6 +184,7 @@ Script guide:
   - Vite dev server on `http://localhost:3456` (frontend with HMR)
   - Access UI at: `http://localhost:3456`
   - Use this for React/UI development work
+  - The dev server passes the page's `/view-prs` requests to the backend with its own small forwarder (`src/dev/view-prs-api-forwarder.js`), not Vite's `server.proxy`, which sometimes stopped large responses short and left the page waiting for ever (stuck on "Loading…", or no longer updating). The page also gives up on any data request that hasn't fully arrived in 60 seconds, and tries again with its next poll.
 
 - **`npm run start:server-only`**: Backend-only mode for API development
   - Starts only Node.js server on `http://localhost:9000`
@@ -194,6 +195,8 @@ Script guide:
   - Requires backend to be running separately
   - Proxies `/view-prs/*` API calls to backend on port 9000
   - Use for frontend-focused work with backend already running
+
+The backend answers only on this computer (`127.0.0.1`). It has no sign-in, and anyone who can reach it can read your notes and data, start runs, and apply labels on GitHub as your `gh` account. `VIEW_PRS_HOST=0.0.0.0` opens it to your network; `VIEW_PRS_PORT` changes the port. Pages on other websites can't use it through your browser either: a request must be addressed to this computer (`localhost`, `127.0.0.1` or `[::1]`, so a site can't point its own name at it), a change must come from a page on this computer or the server's own address, and only JSON bodies are read. Requests that don't come from a browser page (curl, scripts) aren't affected.
 
 - **`npm run build:ui`**: Production build
   - Compiles React app to optimized static files
@@ -230,7 +233,8 @@ See [Development Servers](#development-servers) section for more details.
 - Development server: `npm start` (runs Node.js backend + Vite dev server with React HMR)
 - Backend only: `npm run start:server-only` (Node.js server without Vite)
 - Interactive page: `src/ui/index.html`
-- Actor login aliases: `data/actor-login-aliases.json`
+- People (names and logins): `data/actors.json`
+- The data folder (`VIEW_PRS_DATA_DIR`, see [Data folder](#data-folder)): `src/server/config/data-dir.js`, `src/script/data-dir.sh`; moving it: `npm run data:move`
 - JSON Schema: `src/schema/check-open-pr-updates.data.schema.json`
 - Author comments schema: `src/schema/check-open-pr-updates.author-comments.schema.json`
 - Persisted data schema: `src/schema/DATA_SCHEMA.md`
@@ -241,6 +245,7 @@ See [Development Servers](#development-servers) section for more details.
 
 - `gh` (GitHub CLI), authenticated (`gh auth login`)
 - Bash shell (on Windows: [Git for Windows](https://git-scm.com/download/win)'s Git Bash, or WSL - there's no bash on `PATH` in a native `cmd.exe`/PowerShell terminal)
+- Node.js: the script computes each PR's row in `src/script/compute-pr-row.js` - one process a row, where that was dozens of `jq` calls (about 6x faster). From the web UI it uses the server's own Node; run standalone, `node` on `PATH`
 
 `jq` is provided automatically by `npm install` (via the `node-jq` dependency, which downloads a real jq binary into `node_modules`) - no manual install needed. `check-open-pr-updates.sh` prefers that bundled binary over a system-wide `jq`, falling back to one on `PATH` only if `node_modules` is missing.
 
@@ -250,26 +255,38 @@ Optional for date formatting fallback:
 
 - `gdate` / GNU `date -d` / macOS `date -j`
 
-## Performance Toggle
+## Data folder
 
-Set `VIEW_PRS_SKIP_UNCHANGED=1` to enable updated-at based row reuse for unchanged open/draft PRs.
+Everything the app keeps - the PR data, your notes and Acks, People, settings, Sources, backups - is in one folder, `data/` in the app by default (this README's `data/...` paths mean that folder). To keep it somewhere else, for backing it up or tracking it in git, set `VIEW_PRS_DATA_DIR` in `.env` (an absolute path, `~/...` for your home folder, or one from the app's folder; spaces are fine, but put a path with a `#` in single quotes, since `.env` takes everything from a `#` on as a comment, and write Windows paths with `/`, since `\n` in double quotes is a new line). If the folder it names doesn't exist while your data is still in `data/`, the server and the CLI won't start (a mistyped path, or one set before moving the data, would otherwise start an empty dashboard there) - create the folder yourself to start with no data. The server, `check-open-pr-updates.sh` (`./run-prs`, `npm run cli-view`), the background backfill and the npm tools all read it; the server logs the folder it uses when it starts. A `VIEW_PRS_DATA_DIR` in the environment wins over `.env`, and the per-file variables (`VIEW_PRS_DATA_FILE`, `VIEW_PRS_ACTORS_FILE`...) still win over the folder.
 
-- Unchanged PR rows are reused from local state when source `updatedAt` matches.
-- Cache reuse is viewer-specific (`viewerLogin` must match), preventing cross-user stale rows.
-- Fresh CI/check and mergeability data is still prefetched each run and merged into cached rows.
-- Fresh viewed-files progress (`viewed/changed`) is also refreshed for open/draft PRs and merged into cached rows.
-- Closed and merged rows reuse the same skip shortcut, but only when the full prefetched source fingerprint still matches, so the table stays fresh without forcing a full recompute.
-- Prefetch and row recompute now prioritize open/draft PRs first; closed/merged prefetch runs in a deferred phase so active review rows update earlier in long runs.
-- This keeps `CHK`/`MRG` values current while reducing full recomputation and API volume.
-
-The UI also polls scheduler state independently of `dataVersion`, so the Activity popover's scheduled jobs update even when the underlying PR data file has not changed.
-
-Example:
+To move an existing folder, stop the server and run:
 
 ```bash
-cd view-prs
-VIEW_PRS_SKIP_UNCHANGED=1 ./run-prs --open none
+npm run data:move -- ~/Documents/view-prs-data --dry-run   # what it would do
+npm run data:move -- ~/Documents/view-prs-data
 ```
+
+It copies the folder (the new one must be new or empty, and not inside the old one; a relative path is from where you run it), checks every file arrived, sets `VIEW_PRS_DATA_DIR` in `.env`, and renames the old folder to `data.moved-<time>` - delete that once the app works from the new one. It won't move while a server using the folder answers on its port (one from another copy of the app, with its own folder, doesn't count) (`VIEW_PRS_PORT` or `PORT`, and `VIEW_PRS_HOST`) or a run holds a lock in the folder, and if a step fails it puts the old folder back and leaves `.env` as it was. A folder inside the app's own gets a reminder to add it to the app's `.gitignore`.
+
+A folder that a sync service (iCloud Drive, Dropbox, OneDrive) keeps works, but the app writes several files a minute and uses lock folders, which those services can sync half-way or duplicate as conflicted copies; git, committed now and then, doesn't have that problem.
+
+The move also puts a `.gitignore` in the new folder, so you can `git init` it and commit what's yours: notes and Acks (`check-open-pr-updates.user-state.json`), Authors comments, People (`actors.json`), settings (`user-defaults.json`) and Sources. It leaves out what's fetched again or changes every minute: the PR data and live summary, PR details and diffs, backups, the scheduler state, the action log, locks, logs and temporary files. Commit while the server is stopped, or at least not mid-save.
+
+## Reusing unchanged rows
+
+A full run (not a run of chosen PRs, or one that acks) reuses a stored row as it is, instead of fetching the PR's details again (about 6 `gh` calls), when the PR hasn't changed on GitHub - its listed `updatedAt` is the row's `sourceUpdatedAt` (since 2026-11-01; before, every PR was fetched every run unless `VIEW_PRS_SKIP_UNCHANGED=1`, and even then reuse rarely happened). The row also has to be:
+
+- for the same section, the same viewer (`viewerLogin`), and the same local state (`localStateKey`: the PR's ack, re-verify and in-review marks, the change filters and merge-commit rules, and a version the script bumps when it changes what it computes) - acking a PR or changing a filter computes its row again;
+- complete (every field a row has);
+- for an **open/draft** PR, fetched in full within `VIEW_PRS_OPEN_REVALIDATE_SECONDS` (default 14400, 4 hours), since CI, mergeability, viewed files and resolved threads change without moving `updatedAt`. A **merged/closed** PR's row is reused for as long as the PR doesn't change. Between those full fetches, the quick check's live summary keeps the collapsed row current, and queues for update any open PR whose number of unresolved threads differs from its row's, so its threads (and the status that depends on them) are refetched within minutes, not hours.
+
+A reused row still takes the listing's title, URL, labels and size, and a reused open/draft row this run's CI and mergeability (one call each). It keeps its `fetchedAt` - it wasn't fetched - so the live summary (see the automatic background refresh) keeps its viewed files and open threads current in between, and its CI and mergeability once listed after this run fetched them (`ciFetchedAt`). A merged/closed PR that has changed is fetched without its viewed files when its stored row was already merged/closed: those counts stand. Its first row after merging or closing fetches them, since files pushed or viewed after the open row was fetched would otherwise never be counted.
+
+`VIEW_PRS_SKIP_UNCHANGED=0` fetches every PR in full. A `Run script` from Tools always does.
+
+The PRs to fetch have their details, review threads, review comments, review links and viewed files fetched in parallel before their rows are computed: about `--jobs` `gh` calls at a time for the open/draft PRs, shared among the `VIEW_PRS_PREFETCH_GROUP_CONCURRENCY` (3) kinds fetched together, and as many again for merged/closed ones alongside. Before 2026-11-01 only the details were: the other four silently fetched nothing, and each was fetched one at a time with its row.
+
+The UI also polls scheduler state independently of `dataVersion`, so the Activity popover's scheduled jobs update even when the underlying PR data file has not changed.
 
 ## Development Servers
 
@@ -351,7 +368,7 @@ Use `backfill-missing-data.js` to find PR rows with schema-missing data and opti
 - Safe with active localhost usage: writes are serialized via the same state-file lock used by `src/script/check-open-pr-updates.sh`.
 - Candidate processing is prioritized by section for faster visible wins: `open` -> `draft` -> `closed` -> `merged`.
 - Backfill refreshes can run with a bounded worker pool (`--concurrency`) while keeping each PR update independent.
-- Before refreshing, it converts notes saved in the old stories format (separate `rallyStories`/`rallyLinks` lists, paired by position) to `stories: [{ name, url }]` in both the user state and data files. Each changed file is written through the server's state storage (its protected-write policy, plus a backup in `data/backups/` named `*.stories-migration.*.bak`) under the same lock as the refresh script. The dashboard's own notes saves don't take that lock, so the file is re-read just before writing and the conversion redone if it changed; it is still safest to run while you aren't saving notes. The conversion covers every note whatever `--repo` is (notes are stored by PR number, not repo). `--dry-run` only reports what would change, and `--migrate-only` skips the refresh. The app reads the old format either way (and any notes save rewrites the whole user state in the new format), so this only tidies the files.
+- Before refreshing, it converts notes saved in the old stories format (separate `rallyStories`/`rallyLinks` lists, paired by position) to `stories: [{ name, url }]` in both the user state and data files. Each changed file is written through the server's state storage (its protected-write policy, plus a backup in `data/backups/` named `*.stories-migration.*.bak`) under the same lock as the refresh script. The dashboard's notes saves take that lock too (before 2026-11-03 they didn't, so the file is still re-read just before writing and the conversion redone if it changed). The conversion covers every note whatever `--repo` is (notes are stored by repo and PR number - see `DATA_SCHEMA.md`). `--dry-run` only reports what would change, and `--migrate-only` skips the refresh. The app reads the old format either way (and any notes save rewrites the whole user state in the new format), so this only tidies the files.
 - `--data`/`--user-state`/`--schema`/`--script`/`--backup-dir` override paths are relative to the current directory.
 
 Common commands:
@@ -403,60 +420,84 @@ Then open:
 - `http://localhost:9000/view-prs/index.html`
 - `http://localhost:9000/health/deps` (dependency health)
 
-The page has three views, chosen by the tabs in the app header: `Pull requests` (the filter bar, the PR table in sections, and the detail pane docked beside it), `Review stats` and `Authors`. The header also shows the repo (or how many repos the table holds), the latest status, when the data was last updated, `Quick check all`, `Activity` (a popover of background jobs) and `Settings` (a drawer with running the script, the rules, backfill, the action log, actor names and export).
+The page has three views, chosen by the tabs in the app header: `Pull requests` (the filter bar, the PR table in sections, and the detail pane docked beside it), `Review stats` and `Authors`. The header also shows the repo (or how many repos the table holds), the latest status, when the data was last updated, `Activity` (a popover of background jobs), `Tools` (a drawer of things to do: running the script and the quick checks, backfill, export and the action log) and `Settings` (a drawer of choices kept: sources, background updates, the rules, people and appearance).
+
+Which repos and PRs the background refresh covers is kept in `data/check-open-pr-updates.sources.json` (`VIEW_PRS_SOURCES_FILE`): repo **subscriptions** - a repo's recent PRs, or only listed PR numbers - and PRs added one by one. The repos it fetches in full are those subscribed to their recent PRs, plus any in `VIEW_PRS_AUTO_REPOS` (comma-separated, read at each check), falling back to `VIEW_PRS_REPO` only before the file exists (so unsubscribing the last repo doesn't bring it back). The file is created the first time it's needed, subscribing every repo the dashboard already had rows for, so nothing changes when it appears; after that, a repo with stored rows isn't fetched in full just for having them. A full manual "Run script" of a repo subscribes it (a run of chosen PRs doesn't). An unreadable file is kept beside it (`.unreadable-<time>`). Once the file has been created, a marker beside it (`.seeded`) stops it being seeded again: a file deleted or set aside later starts empty, rather than subscribing every repo with rows again (those of PRs added one by one included) - and records that it did (`lost`, with where an unreadable one was kept) until the next change, so Settings › Sources can say why every row is hidden.
+
+**Add PR** in the header adds a PR by its URL (`https://github.com/owner/repo/pull/123`, any page of it, or `owner/repo#123`) from any repo, a GitHub Enterprise one included, without subscribing to the rest of that repo (`POST /view-prs/tracked-prs` with `{ url }`; `DELETE` with `{ repo, number }` stops tracking one, leaving its row; `GET /view-prs/sources` lists them). The server checks `gh` finds it, then fetches it - waiting for its repo's run if one is in progress - and answers with whether that worked (`fetched`), or, after 25 seconds, that it's still going (`fetched: null`, 202). PRs added this way, and a `numbers` subscription's, are refreshed on their own (the script's `--prs`; quick checks look them up with `--quick-check-numbers`), never with a full run of their repo, while they're open or merged/closed within the last 30 days; in a repo also subscribed to its recent PRs, each full run is followed by a run of those it didn't refresh (too old for its listings). A run of chosen PRs that fetched some of them counts as done, with the ones it couldn't fetch (deleted, or no longer visible) logged - so one gone PR doesn't fail every run of its repo and trip its circuit breaker; one that fetched none still fails. A repo on a GitHub Enterprise host is fetched with `GH_HOST` set to it - its runs, quick checks, live summary, diffs, labels and backfill alike (only the actor-name and viewer lookups, which aren't a repo's, stay on github.com) (rows are still keyed `owner/repo#number`, so two hosts' repos of the same name would share rows). `POST /view-prs/run`'s `prNumber` takes several, comma-separated, as one run of them (`--prs`).
+
+**Settings › Sources** lists the subscriptions - each following its repo's recent PRs, or only listed PR numbers - and the PRs added one by one, with a mark on any its last run couldn't fetch (deleted, or no longer visible to `gh`; saved with the scheduler state as `unreachablePrSince`, so a restart keeps them, until a run fetches the PR or it's removed). There you can subscribe to a repo, change what a subscription follows, unsubscribe, or remove an added PR (`PUT`/`DELETE /view-prs/subscriptions` with `{ repo, mode, numbers }` / `{ repo }`). The page shows only the rows of repos in view: those fetched in full (subscribed to their recent PRs, or in `VIEW_PRS_AUTO_REPOS` - listed there as fixed, as unsubscribing can't hide them), and each PR added one by one or listed by a subscription. Unsubscribing hides a repo's rows - they stay stored, notes and all, and come back if it's subscribed again - but not PRs added from it by URL. A manual run of chosen PRs in a repo that isn't subscribed adds them, so their rows stay in view. Until the sources file exists, every row shows, and the section still offers to subscribe (which creates it). Subscription repos must be names GitHub could have (letters, digits, `.`, `_`, `-`, not leading). The repo fields (Run & check's options for Run script, and the subscribe form) suggest the repos the page knows of. Beside each repo followed for its recent PRs, `Fetch older merged PRs` fetches up to 30 of its latest 100 merged PRs that aren't stored yet - the background updates only fetch recently merged ones (`POST /view-prs/merged/request-more` with `{ repo, count, scanLimit }`, refused for a repo whose rows wouldn't all show). The Activity popover lists it while it runs and once it's done. It replaced the page's `Request more` button, which fetched them for whichever repo the last run was of. Each repo, and each PR added one by one, has `Timing…`, which opens Settings › Background updates at its repo: one schedule per repo, shared by every PR followed from it.
 
 When localhost is running, the server starts an automatic background refresh for `view-prs` data, driven by a single per-repo-aware dispatcher (replacing three independent timers) so open PRs get checked often and cheaply while merged/closed PRs don't pay for a full re-fetch unless something actually changed:
 
-- **Quick check** (every 5 minutes per repo, configurable via `VIEW_PRS_QUICK_CHECK_INTERVAL_MS`): a cheap listing-only pass (`check-open-pr-updates.sh --quick-check`) that compares each PR's GitHub `updatedAt` against the cached value - no comments/reviews/CI/diff fetching. Because it always re-lists every currently-open PR from GitHub (not just ones already tracked), a brand-new PR is detected the same way a changed one is - there's no cached row to match against, so it's reported pending. When an **open/draft** PR looks changed (or new), a targeted full refresh for just that repo fires immediately (a "fast-follow") instead of waiting for the next full-sweep timer. When a **merged/closed** PR looks changed, it now gets the exact same immediate fast-follow treatment (fixed - previously it only sat flagged until the merged/closed drain's own, actually *longer*, 30-minute interval).
+- **Quick check** (every 5 minutes per repo, configurable via `VIEW_PRS_QUICK_CHECK_INTERVAL_MS`): a cheap listing-only pass (`check-open-pr-updates.sh --quick-check`) that compares each PR's GitHub `updatedAt` against the cached value - no comments/reviews/CI/diff fetching. Because it always re-lists every currently-open PR from GitHub (not just ones already tracked), a brand-new PR is detected the same way a changed one is - there's no cached row to match against, so it's reported pending. When an **open/draft** PR looks changed (or new), the repo's auto refresh runs immediately (a "fast-follow") instead of waiting for the next full-sweep timer - and, unless the full sweep is due anyway, it refreshes only the PRs the quick check queued (`check-open-pr-updates.sh --prs`, open and merged/closed alike), then puts the full sweep back to its time, so a busy repo's fast-follows don't keep pushing the sweep back. When a **merged/closed** PR looks changed, it gets the same immediate treatment through the merged/closed drain. A repo with more than 25 PRs queued gets its full refresh instead (each PR in a run of chosen PRs is looked up on its own; past that, listing them is cheaper). Only the PRs refreshed leave the queue, so one queued while a refresh ran stays queued. A fast-follow whose queue emptied before it ran (a manual run refreshed the repo, say) does nothing. And it only refreshes queued PRs when quick checks are all that asked for it: a manual "run now" from the Activity popover stays a full refresh even if a quick check bumps the same repo before it runs.
   - A quick check does nothing if a full auto refresh for the same repo is already running, to avoid overlapping GitHub API calls. If that happens, it's retried immediately once that refresh finishes, rather than waiting for the next 5-minute tick - otherwise, for a slow multi-repo sweep, detecting a new or changed PR could take noticeably longer than the quick check's interval would suggest.
-  - `Last skip` on the quick check's row in the Activity popover (and `lastQuickCheckSkipReason` in the scheduler API) shows why the most recent quick check didn't run, if it didn't - useful for spotting exactly this kind of delay.
-- **Merged/closed drain** (every 30 minutes per repo, configurable via `VIEW_PRS_MERGED_FULL_SWEEP_INTERVAL_MS`): batches whatever the quick check queued for merged/closed PRs into a full refresh. If nothing was queued, it does nothing - no full fetch runs.
-- **Full sweep** (every 15 minutes per repo, configurable via `VIEW_PRS_AUTO_INTERVAL_MS`): runs regardless of the quick check, as a safety net.
-- Any of the above skips if a manual `Run script` action completed in the previous 15 minutes.
-- Each repo's cadence/priority can be overridden individually via a `schedulerRepoConfig` key in the existing `/view-prs/user-defaults` JSON blob (`PUT` the whole object, merging your own change in - a `PUT` replaces the file, it doesn't merge for you), e.g. `{"schedulerRepoConfig": {"owner/repo": {"priority": 8, "quickCheckIntervalMs": 120000}}}`. There's no settings form for this yet; the Activity popover's "Dispatcher queue" section shows each repo's effective priority/cadence read-only. All of the above - and every repo configured - shares one global ceiling on concurrent `gh` processes (`VIEW_PRS_DISPATCHER_GH_PROCESS_BUDGET`, default `8`), so a burst of due work across many repos degrades gracefully (spilling into the next ~5s tick, `VIEW_PRS_DISPATCHER_TICK_INTERVAL_MS`) instead of spawning unboundedly many `gh` calls at once.
+  - A skipped quick check shows under the Activity popover's `Just finished`, with why (and `lastQuickCheckSkipReason` in the scheduler API) - useful for spotting exactly this kind of delay.
+- **Live summary** (with each quick check): one paginated GraphQL listing of the repo's open PRs (`gh api graphql`, 25 a page, newest created first - an order that can't change while the pages are read) with what a collapsed table row shows - title, labels, draft state, CI state, mergeability, viewed files, open threads, size, assignees and requested reviewers. It's saved in `data/check-open-pr-updates.live-summary.json` (`VIEW_PRS_LIVE_SUMMARY_FILE`) and laid over the rows when the server reads them, so these stay current between full refreshes - including what GitHub changes without moving a PR's `updatedAt` (CI finishing, mergeability as the target branch moves, files marked viewed, threads resolved), which the quick check can't see. A listing only replaces a row's values when it's newer than the row's last full refresh (each row's `fetchedAt`, when the script wrote it). Open/draft rows get `data.live` (whether GitHub has activity the full refresh hasn't fetched yet, or the PR is no longer open - the latter only from a complete listing, not one stopped at its 500-PR limit); when each repo was listed, and its last listing error, are in the data meta (`dataMeta.liveSummary`). A failed listing keeps the last good one and is logged; it doesn't fail the quick check. A quick check of entered PR numbers doesn't list. `VIEW_PRS_DISABLE_LIVE_SUMMARY=1` turns it off (the test setups do). The data version the page polls includes the listing and the PRs queued for update, so both reach the page on its next poll. It includes your user state too, and the manifest carries its Acks, flags and confirmations, so an Ack a run clears (or one made in another tab) reaches the page without a full reload.
+- **Merged/closed drain** (every 30 minutes per repo, configurable via `VIEW_PRS_MERGED_FULL_SWEEP_INTERVAL_MS`): refreshes whatever the quick check queued for merged/closed PRs - just those PRs (`--prs`), or the whole repo when more than 25 are queued. If nothing was queued, it does nothing - no fetch runs.
+- **Full sweep** (every 15 minutes per repo, configurable via `VIEW_PRS_AUTO_INTERVAL_MS`): runs regardless of the quick check, as a safety net. It fetches only the PRs that changed (and open ones not fetched in full for 4 hours), reusing the other rows - see [Reusing unchanged rows](#reusing-unchanged-rows).
+- A repo's full refresh (the sweep, or a fast-follow or drain with too many PRs queued) waits if a manual `Run script` of that whole repo completed in the previous 15 minutes (`manualFullRunAtByRepo` in the scheduler state; a run with no repo counts for every repo). A refresh of just the queued PRs doesn't wait - they changed since - and nor does another repo's. A manual run of one PR doesn't start the wait, and takes that PR off the queue. (Before 2026-10-31 any manual run, even of one PR, held off every automatic refresh in every repo.)
+- A quick check of entered PR numbers settles only those: the ones it finds unchanged leave the queue, and the repo's other queued PRs stay.
+- Settings › `Background updates` sets each repo's cadence and priority. It lists every repo in Settings › Sources first, each saying how it's followed (`From your sources: its recent PRs`, `2 PRs added one by one`...) - and why one isn't checked: a repo whose PRs followed by number were all merged or closed over 30 days ago - then any other repo the server checks, then any with saved settings but no checks (those wait). Which repos the server checks is asked again whenever the sources change, so a repo just subscribed to shows (before 2026-11-09 it listed only the repos checked when the section first opened). Leave a field empty for its default; a change is saved once typing pauses or the field is left - not a keystroke at a time, so "1" on the way to "15" never schedules a check - and applies on the dispatcher's next tick, a few seconds, without a restart. A saved value outside the form's range (a hand-edited file) is shown as still applying, not as an error. They're saved in `user-defaults.json` as `schedulerRepoConfig`, only what differs from the defaults, e.g. `{"schedulerRepoConfig": {"owner/repo": {"priority": 2, "quickCheckIntervalMs": 120000}}}`:
+  - `quickCheckIntervalMs`, `autoRefreshIntervalMs`, `mergedDrainIntervalMs` replace that check's interval for the repo (the form takes minutes, at least 1). A changed interval also applies to the wait already under way: shortening the quick check from 5 minutes to 1 doesn't first wait out the 5.
+  - `priority` is a boost (a whole number, -10 to 10 in the form) added to each check's default priority - quick check 5, auto refresh 3, merged/closed drain 1 - so a boosted repo's work goes ahead of other repos' when several are due, and its quick checks still go before its full refreshes. A negative boost lets a repo wait behind the others. (Before 2026-10-31 `priority` replaced all three defaults; a saved value now reads as a boost.)
+  - A repo that's saved but no longer checked is listed too, so its settings can be removed.
+  - The defaults and the checked repos come from `GET /view-prs/dispatcher/settings`. The Activity popover's `Up next` shows each task's effective priority on hover. All of the above - and every repo configured - shares one global ceiling on concurrent `gh` processes (`VIEW_PRS_DISPATCHER_GH_PROCESS_BUDGET`, default `8`), so a burst of due work across many repos degrades gracefully (spilling into the next ~5s tick, `VIEW_PRS_DISPATCHER_TICK_INTERVAL_MS`) instead of spawning unboundedly many `gh` calls at once.
 - On successful full refresh, `check-open-pr-updates.data.json` is updated and the UI detects the new run and rerenders automatically.
-- While a run is in progress, PR rows currently being refreshed show a small spinner beside the PR number link without forcing a full table rerender.
-- A PR flagged by the quick check but not yet picked up by a full refresh shows an `Update queued` badge in its STATUS cell.
+- While a run is in progress, a PR's row shows the circular arrow beside its number only while that PR is being fetched (the script's per-PR progress markers), and a grey clock while a run of chosen PRs (an update of changed PRs, the drain, a Run script of chosen PRs) hasn't reached it yet - each row on its own, without a full table rerender. Your own actions on a row (Ack, a label, `↻ Update`, a bulk Ack or label) do the same. The server sends them as `activePrNumbers` and `queuedPrNumbers`, `{ repo, prNumber }` pairs. (Before 2026-11-05 no background run's arrows reached the page - they were dropped as not being plain numbers - and a full refresh marked the repo's 15 latest merged PRs busy for its whole run.)
+- A PR flagged by the quick check but not yet picked up by a full refresh shows `Details updating` under its title (see [Freshness](#freshness)).
 - During long runs, open/draft PR indicators and data refreshes are intentionally prioritized ahead of closed/merged work so the most actionable rows settle first.
 - When auto refresh includes multiple repos, refreshes run with bounded repo concurrency (default `2`), configurable via `VIEW_PRS_AUTO_REPO_CONCURRENCY`.
 - A merged PR's diff is fetched once and never re-fetched afterward - the diff cache fingerprint for merged PRs depends only on the (immutable) commit set, not on `updatedAt`, so later metadata-only changes (a new comment, a label edit) never trigger a redundant diff re-download.
 
-An **Activity** button in the app header (with a count of running jobs and queued bulk chunks) opens a popover under it showing all of this background activity in one place. Esc, its close button, a click or Tab outside it, or scrolling the page closes it:
+An **Activity** button in the app header opens a popover under it showing all of this activity in one place, by what you want to know. The button counts what's running or queued (jobs, bulk chunks and your requests - not the page's own data loads), and turns red with a `!` while there's a problem. Its close button, Esc, or a click or Tab outside it closes it; scrolling the page doesn't (it stays where it is in the window - as do the header's other popovers, Add PR and Shortcuts, and the table's legend):
 
-- **Scheduled background jobs** (auto refresh, quick check, merged/closed drain) - pushed live over Server-Sent-Events (`GET /view-prs/events`), not polled. Per-job-type status (running/idle, last result), not ordering - a quick check that's blocked by an in-progress auto refresh shows "Waiting on auto refresh" rather than a queue position. Any PRs quick-check has flagged as changed but the merged/closed drain hasn't picked up yet show as "Update queued" on that row.
-- **Dispatcher queue** - the per-repo-aware dispatcher's own real, ordered task list (one entry per repo per job type), shown in the exact order it'll actually run: running first, then due (highest priority first), then scheduled (soonest first). Also where each repo's effective priority/cadence (including any `schedulerRepoConfig` override) is visible.
-- **Backfill** and **in-flight requests from this browser tab** - both still polled (every 5s and 1s respectively), shown in the popover as-is.
-- **Bulk Ack/Clear or Apply-label queue** - the other real ordered queue: a batch larger than 5 PRs is split into chunks run a few at a time, and the popover shows each chunk's real position and outcome (including a chunk that failed, distinct from one that succeeded).
-- If the live connection drops, the popover shows its own status (reconnecting/offline).
+- **Problems**, at the top and only when there are some: repos paused by their circuit breaker after repeated failures (with `Reset`), live updates disconnected or stale, and backfill status that couldn't be read.
+- **Now**: everything running, whoever started it - background jobs (full refresh, update changed PRs, quick check, merged/closed drain) with the repos they're working on, your requests from this tab, bulk Ack/Clear or Apply-label batches (`chunk 2 of 4`; a batch larger than 5 PRs runs in chunks a few at a time), and backfill. Each says `Background` or `You` (`Quick check`, `Quick check all` and `Full refresh now`, and an added PR's fetch - `Fetch added PR` - are yours), how far it's got - `12 of 30 PRs` when its PRs are known (a refresh of chosen PRs, `Fetch older merged PRs`, an Ack's refreshes, a Run script of chosen PRs), `3 PRs so far` when they aren't (a full refresh or Run script), `1 of 2 repos` for a quick check - and how long it's run; a request running longer than usual turns amber, then red. The server keeps the list of what's running (`tasks` in the scheduler state, each with its kind, repos, done and total, and start), so every tab sees everything, including requests made from another tab. The page's own data load only shows once it's slow. It's all pushed live over Server-Sent-Events (`GET /view-prs/events`), not polled.
+- **Up next**: the dispatcher's queue in the order it'll run - due tasks first (highest priority first), then scheduled ones (`in 6m`), each with `Run now` - plus a quick check waiting for a refresh, and the PRs a quick check queued for the merged/closed drain. A repo's auto refresh due only because a quick check found PRs changed is `Update changed PRs` (it refreshes just those); otherwise it's its `Full refresh` (the dispatcher's queue says which, as `forChangedPrs`). A task's priority (including any `schedulerRepoConfig` boost) is in its tooltip.
+- **Just finished**: background jobs (with the error when one failed, and why when one was skipped) and your requests, newest first - the last 8; `Action log` opens Tools › Action log for the rest, and each item's `Log` opens it at that item's entry (of its kind, logged nearest its time; the filters hiding it are cleared, and it's unfolded) - or says the log hasn't got it, for a run with nothing to do. An auto refresh's job events say which it was (`kind`: `autoRefresh`, `changedPrs`, `mergedQueueDrain` or `addPr` - the drain's refresh isn't listed apart from the drain).
+- **What these are**, folded at the bottom: what each kind of activity does, and what it doesn't update - a quick check, for instance, keeps open PRs' title, labels, checks, mergeability and the like current from its listing, but not comments, reviews, commits or the diff, which wait for the update it queues. Each item's name says the same on hover.
 
-The 30s PR-data poll itself isn't fully retired - it's the only mechanism that catches a change made from a *different* browser tab or user, which has no push hook. But ack, apply-label, a manual "Run script", and "Request more merged PRs" each push a lightweight signal the moment they've actually written data, so every other open tab refreshes immediately instead of waiting out that poll's own interval; it remains as a slower fallback for anything outside those four actions.
+The popover was reorganised on 2026-11-05 from seven sections (scheduled jobs, dispatcher queue, circuit breaker, bulk queue, backfill, in-flight requests, recent activity).
+
+PR data changes are pushed too. While a page is connected, the server checks the data version (the data file, the live summary, the update queue, your user state, the sources file and the PRs that couldn't be fetched) every few seconds and sends a `data-changed` event when it moved, so a script run's rows, each quick check's listing and the PRs it queues reach the page within seconds; ack, apply-label, a manual "Run script" and "Request more merged PRs" also send one the moment they've written. The page then fetches only the changed rows (one fetch at a time, however many events arrive), and checks for changes each time the connection opens - including the first, once the page's data has loaded, since the server only pushes what changes after that. Its PR-data poll stays as a safety net: every 5 minutes while the connection is open, every 30s while it isn't. (Before 2026-11-01 only those four actions pushed, and the page otherwise polled every 30s.)
 
 Optional tuning via env vars:
 
-- `VIEW_PRS_EVENTS_HEARTBEAT_INTERVAL_MS` (default `25000`): how often a keep-alive comment is written to an idle `/view-prs/events` connection.
+- `VIEW_PRS_EVENTS_HEARTBEAT_INTERVAL_MS` (default `25000`): how often a `heartbeat` event is sent on an idle `/view-prs/events` connection. The page says "Live updates may be stale" after a minute without any event, so keep this well under `60000`. (Before 2026-11-10 it was an SSE comment, which the page never sees, so every quiet minute between background runs showed that warning.)
 - `VIEW_PRS_EVENTS_MAX_CLIENTS` (default `25`): how many concurrent `/view-prs/events` connections are accepted before a further one gets a 503.
+- `VIEW_PRS_EVENTS_DATA_WATCH_INTERVAL_MS` (default `3000`, at least `500`): how often the server checks the data version for `data-changed` while a page is connected. It doesn't check while none is.
 - `VIEW_PRS_SCHEDULER_STATE_THROTTLE_MS` (default `250`): caps how often a per-PR progress update (during a refresh) actually pushes an SSE frame - set to `0` to disable throttling entirely.
 - `VIEW_PRS_DISPATCHER_GH_PROCESS_BUDGET` (default `8`): the dispatcher's single ceiling on total concurrent `gh` processes across every repo/job-type it runs at once.
 - `VIEW_PRS_DISPATCHER_TICK_INTERVAL_MS` (default `5000`): how often the dispatcher re-checks what's due. An urgency bump (a quick check finding a real change) isn't affected by this - it triggers an immediate tick regardless.
 
-Use the Settings drawer's Run & check and Script options to run `src/script/check-open-pr-updates.sh` with common update modifiers (`--repo`, `--pr`, `--label`, `--exclude-label`, `--author`, `--limit`, `--merged-limit`, `--jobs`, `--open`, ack/in-review options, and reason/quiet toggles), and view results directly in the page.
+Use the Tools drawer's Run & check (with its options for Run script) to run `src/script/check-open-pr-updates.sh` with common update modifiers (`--repo`, `--pr`, `--label`, `--exclude-label`, `--author`, `--limit`, `--merged-limit`, `--jobs`, `--open`, ack/in-review options, and reason/quiet toggles), and view results directly in the page.
 
 UI filter behavior:
 
-- The filter bar above the PR table holds the filters that choose which PRs show. Its header always shows: a `Filters` button (with how many filters are applied) that opens the controls, `Showing N of M PRs`, and a chip per applied filter - its `×` clears that one - with `Clear all`. It opens as you left it (remembered per browser); closed the first time.
-- The controls are in three groups: `Rows` (`View scope`, `PR numbers`, `Always show PRs in review`), `Labels and people` (`Labels`, `Excluded labels`, `Authors`, `Assigned to`, `Approved by`) and `Your notes` (the custom metadata filters below).
+- The filter bar above the PR table holds the filters that choose which PRs show. Its header always shows: a `Filters` button (with how many filters are applied) that opens the controls, the search box, `Showing N of M PRs`, and a chip per applied filter - its `×` clears that one - with `Clear all`. It opens as you left it (remembered per browser); closed the first time.
+- The controls are in four groups: `Rows` (`PRs`, `Repos`, `Last activity`, `Only PRs that need attention`, `Always show PRs in review`), `Labels and people` (`Labels`, `Excluded labels`, `Authors`, `Assigned to`, `Approved by`), `Your notes` (the custom metadata filters below) and `Conversations` (`Open conversations with me`, `Waiting on me`, `Resolved for you to check`) - then `Manage saved views` (below).
+- Saved views: under the header, a chip per saved view applies its filters in one click - every filter in the bar, the search included, set to the view's (those it doesn't have cleared); the view whose filters are applied is pressed, and clicking it again clears them. Its filters show on hover. `Save as view` names the applied filters while no view has them (another view's name can't be reused, whatever its case). Once you change a filter after applying a view (and no other view has the filters you end up with), it shows `(modified)` with `Update "name"` to save the change into it. `Manage saved views`, at the end of the open bar, lists each view with what it filters on, and `Rename`, `Update to applied filters` and `Delete`; a deleted view can be put back where it was with `Undo`, until you delete another. Until you save one, three starter views are offered - `Needs attention`, `Waiting on me` and `Resolved for you to check` - kept, renamed or deleted like any other once you change the views. The views are saved in `user-defaults.json` (`savedFilterViews`), so every browser has them: a change applies to the views as saved at that moment, so it doesn't undo one made in another browser, and the page reads them again whenever its window regains focus. While `user-defaults.json` can't be read, no views show (one saved then would be lost). A change that can't be saved is undone on the page, which says so, so the views shown are always the ones saved.
+- `Search PRs`, beside the `Filters` button, shows the PRs with every word you type - in any order and case - somewhere in their title, author (login or name), branch names, or your notes (comments and their authors, other notes, difficulty, stories' names and URLs, analysis). It works with the other filters (a PR you've marked in review still shows with `Always show PRs in review`, and so does one picked by number in `PRs`). When a word is only in something the row doesn't show, the row says where ("Matches in branch, comments"). `Escape` clears it. Unlike the filters, a search isn't saved: a reload starts without one.
 - Filters affect only what is shown in local views; changing one updates the table at once from existing JSON, without new GitHub CLI requests. They're saved to `view-prs/data/user-defaults.json` and restored on reload.
-- `View scope` includes `All stored rows`, `Last run rows`, `Needs attention rows`, and `Needs attention or interacted rows`.
+- `Only PRs that need attention` narrows every section to the PRs with the warning icon (Settings › Attention rules decide which). `Open conversations with me` narrows them to PRs with an unresolved conversation you started or replied in (the Review column's speech bubble), and `Waiting on me` to those where such a conversation's latest comment is someone else's or mentions you (the filled bubble, and the Conversations tab's `Waiting on me`). `Resolved for you to check` narrows them to PRs with a conversation you started that someone else resolved, until you confirm it (see the Conversations tab below). With several checked, a PR has to match them all. PRs picked by number in `PRs`, and PRs marked in review with `Always show PRs in review`, show whatever they say. They replaced the `View scope` select (2026-11-05): a saved `Needs attention rows` or `Needs attention or interacted rows` scope comes back as the first, `Conversations resolved for you to check` as the second, and `Last run rows` as neither.
+- Each filter has a line under it saying what it does; the label and people lists say it at the top when open.
+- `Legend`, above the table beside `Detail pane`, explains what each column's icons and cues mean.
+- `PRs` takes PR numbers (`912`: that PR in any repo), PRs by repo (`acme/api#921`) or by URL (any page of it; a GitHub Enterprise one too), and repos (`acme/web`, or its URL), comma- or space-separated; repo names match whatever their case. The PRs it names show whatever the checkboxes and the other filters say; a repo filters like the rest, and with a number picks that repo's PR (`acme/api 12`).
+- `Repos` is a checkbox dropdown of every repo with a stored PR: it shows the PRs in any of the repos ticked (whatever their case). Saved as `repos` in `user-defaults.json` (`repo` is Run & check's repo).
+- `Last activity` (`From` and `To`) shows the PRs last active in that range: when anything last happened on the PR on GitHub - its updated time, which moves with a comment, review, push or label, or its merge or close if later (as the `Updated` sort). Both days count in full, in your browser's time zone. An empty `From` or `To` puts no limit on that side, so `From` alone is "since", `To` alone "up to". With a limit, a PR without any of those times doesn't show. A `From` after the `To` matches nothing, and says so. One chip shows the range (`Last activity: Nov 1, 2026 – Nov 10, 2026`, `from Nov 1, 2026`, `until Nov 10, 2026`); its `×` clears both dates. Saved as `filter-last-activity-from` and `filter-last-activity-to`.
+- Like the label and people lists, `Repos` and `Last activity` don't apply to PRs named in `PRs`.
 - `Labels` and `Excluded labels` are checkbox dropdowns populated from labels found on currently loaded stored PR rows for the active repo view.
-- The `Authors` dropdown displays resolved real names (from `actorsMap`) instead of raw GitHub logins.
-- `data/actor-login-aliases.json` can map a current or replacement login to a canonical login when the same person appears under multiple GitHub identities. Example: `{"7c7240971101674017d4597caddf24_uhg": "mthom486_uhg"}`.
-- When an actor login alias exists, author filters, assigned-user filters, approver filters, author insights, reviewer statistics, and manual author comments treat the aliased login and canonical login as the same person.
+- The `Authors` dropdown displays resolved real names (from `actorsMap`) instead of raw GitHub logins. As in the Authors view's picker, people with a PR updated in the last 30 days (by anyone) come first, newest first, under "Recent PRs", then "Everyone else" by name.
+- A dropdown of more than 8 options (here or in Settings) opens on a `Search` box: typing narrows it to options whose name (or login) has the text, ignoring case, keeping what's ticked. `Escape` clears it, then closes the dropdown; closing it clears it too.
+- A person can have more than one GitHub login (Settings › `People`): author filters, assigned-user filters, approver filters, author insights, reviewer statistics, and manual author comments treat all of a person's logins as one person.
 - The `Assigned to` dropdown filters rows to PRs assigned to any selected user.
 - The `Approved by` dropdown filters rows to PRs that have at least one approval from any selected user. Options are populated from `metrics.approvals` data on stored PR rows.
 - Each list opens by clicking it and closes by clicking it again or anywhere outside; it says how many of its options are selected.
+- A ticked value no loaded PR has - an author with no open PRs in a saved view, a label from another repo - stays ticked, so the filter keeps applying (showing no PRs for it rather than all of them), and is listed at the end of its dropdown as `name · no PRs loaded` so you can untick it. Saved selections apply as soon as the page loads, before the data has.
 - Retrieved/stored JSON data remains complete so filters can be adjusted later without refetching.
 - `Run script` is the primary update operation for refreshing PR data.
-- When `PR numbers` is set, it matches against all stored rows and ignores the selected `View scope` value and `Excluded labels` values.
+- When `PR numbers` is set, it matches against all stored rows and ignores `Only PRs that need attention`, `Resolved for you to check` and `Excluded labels`.
 
 Custom Metadata Filters:
 
@@ -520,7 +561,7 @@ The UI features **smart accordion groups** that appear above lifecycle sections 
 - **My Open & Draft PRs**: your own open and draft PRs (expanded by default)
 - **Assigned to Me**: open and draft PRs you're assigned to (expanded by default)
 - **Me as Reviewer**: someone else's open and draft PRs where your review is currently requested (expanded by default). Named for the role rather than "review requested", because some projects add reviewers automatically, so it isn't always a to-do. GitHub usually drops the request once you submit a review, so the PR leaves this section then.
-  - These three compare logins with your actor login aliases resolved; they stay empty when your login isn't known.
+  - These three compare people, so any of your logins (Settings › `People`) counts; they stay empty when your login isn't known.
   - A review requested from a team you're in doesn't count: the stored data records requested people, not teams' members.
 - **💬 Open PRs I'm Involved In**: PRs where viewer has participated (collapsed by default)
   - Purpose: Personal reference for active PRs you're engaged with
@@ -599,7 +640,7 @@ Needs Attention configuration:
   - whether closed/merged rows should be eligible for attention
   - draft-specific toggles for CHANGED and NO_ACTIVITY attention
   - PR-author thread-resolution policy (`allow-all`, `allow-only`, `deny-only`)
-  - actor-based allow/deny lists for thread starters (from Settings › `Actor names`); a saved login stays picked even when the loaded data has no such actor, listed by its login
+  - allow/deny lists of people who start threads (Settings › `People`): each pick is a person, saved as their id, and covers every login of theirs; a saved login stays picked even when the loaded data has no such person, listed by its login (an id whose person was removed from People says so)
 
 Default values:
 
@@ -634,11 +675,13 @@ Merge commits:
 Change Detection Filters:
 
 - The Settings drawer's `Change detection` section configures what activity should NOT trigger CHANGED status.
-- These filters are saved to `view-prs/data/user-defaults.json` under `changeFilters`.
+- These filters are saved to `view-prs/data/user-defaults.json` under `changeFilters`. The two author lists hold people (Settings › `People`): each saved as their id (`actor:dependabot`), which check-open-pr-updates.sh turns into every login `actors.json` lists for them (`VIEW_PRS_ACTORS_FILE`, else `$DATA_DIR/actors.json`) - an id it can't find is left out, and a login saved before ids is used as it is.
 - Supported filter types:
-  - **Ignore comments from these authors**: Filters out general discussion comments (conversation messages, bot notifications, questions, updates) from specified GitHub logins. Use this to ignore informational messages that don't require action.
+  - **Ignore comments from these authors**: Filters out general discussion comments (conversation messages, bot notifications, questions, updates), and review-thread replies on your own PRs, from specified GitHub logins. Use this to ignore informational messages that don't require action.
   - **Ignore reviews from these authors**: Filters out formal code review submissions (created via "Review changes" button with approval/change request states) from specified GitHub logins. Use this to ignore optional reviewers whose approval isn't required.
+  - Both lists match a login whatever its case, and a bot's with or without `[bot]` or `app/` (`github-actions[bot]` matches `github-actions`, as GitHub names it in a PR's comments). Before 2026-11-10 they matched exactly, so a bot listed with `[bot]` still flagged PRs, and review-thread replies weren't filtered.
   - **Ignore commits matching patterns**: Filters out commits whose message headline matches specified regex patterns (one per line). Use this to ignore non-code changes like documentation updates (`^docs:`), test-only commits (`^test:`), or dependency updates (`^chore: update dependencies`).
+- A commit is new when it was pushed after your last activity (or Ack), whenever it was made: an open PR's commits are matched to the pushes to its branch (GitHub's repository activity, `repos/<owner>/<repo>/activity?ref=<branch>`, one call per PR fetched, none for a fork's PR; the newest 100 pushes). Where that history doesn't reach - a fork's PR, commits from before the oldest push returned, the commits below the one a force-push pushed (after amending the last commit, the others were pushed long before; a rebase or amend gives the commits it rewrites a new date), a GitHub Enterprise server without the API (asked once a run) - a commit is new when it's dated after your last activity, or comes after the commit the PR was at when a run first saw that activity (`viewerSeenHead` in the row), or after the one your latest review was on unless you've commented or committed since. Before 2026-11-10 the history wasn't used, and commits pushed after your review stayed "new" (and the PR in Needs attention) however often you commented.
 - Built-in filters:
   - **Approved reviews are always ignored** (cannot be disabled)
   - **Merge commits** never count (see "Merge commits" above)
@@ -684,15 +727,18 @@ Scope mode behavior:
 
 Insights behavior notes:
 
-- The app header shows the app's name and the repo the table shows (or how many, when the stored rows span several - the list on hover), the views (`Pull requests`, `Review stats`, `Authors`; ←/→ move between them), the latest action's result (a row's Ack, a run, a backfill... - its first line, all of it on hover and in Settings › Run & check), how long ago the data was updated (`Updated 5m ago`, the exact time on hover, marked once it's a day old), `Quick check all`, `Activity` (see below), `Settings` and a link to this README.
+- The app header shows the app's name and the repo the table shows (or how many, when the stored rows span several - the list on hover), the views (`Pull requests`, `Review stats`, `Authors`; ←/→ move between them), the latest action's result (a row's Ack, a run, a backfill... - its first line, all of it on hover and in Tools › Run & check), how long since the repos were checked (`Checked 3m ago`, each repo and the last run on hover, marked when one is stale or failing - see [Freshness](#freshness); `Updated 5m ago`, from the last run, before any repo has been checked), `Activity` (see below), `Tools`, `Settings` and a link to this README. The quick checks you start yourself are in Tools › `Run & check` (see below).
 - A row's chevron (`Show summary for PR #N`) opens a short summary under it: why it needs attention with a status line (checks, conflicts, approvals, viewed files), the three latest activity events, and the two most recently active open conversations. Any number of rows can be open at once.
-- The detail pane, docked to the right of the table, shows the selected PR: a header (title and GitHub link, author, branch with a copy button, previous/next, and close - which hides the pane until a row is clicked), its actions (Update, Ack, In review, Flagged, Add label, JSON), and tabs - Overview (grouped as Review / People / Changes, with Approval risk and Data freshness collapsible), Activity, Conversations (with the open count) and Notes (marked while unsaved), plus Custom insights when the insights hook returns something. The last tab picked stays for the next PR.
-  - Select a PR by clicking anywhere on its row that isn't a control (clicking the PR in the pane again closes the pane, like its close button; a click also shows the pane if it was hidden), with ↑/↓ while focus is in the table, or with its summary's `Show details`. Esc clears the selection.
+  - What's new since you last looked (your last activity or Ack, whichever is later - as the Activity tab's `Since I last looked`) is counted: a change's reasons are one line, e.g. `Since you acked on Nov 2: 2 commits · 1 review (changes requested by Sam)` (reasons the counts don't say, like unanswered threads, stay as they are), and the activity column becomes `New since you acked on Nov 2` with the newest three of those events, plus `See all N in Activity` when there are more - the pane's Activity tab, on `Since I last looked`.
+- The detail pane, docked to the right of the table, shows the selected PR: a header (title and GitHub link, author, branch with a copy button, previous/next, and close - which hides the pane until a row is clicked), its actions (Update, Ack, In review, Flagged, Add label, JSON), and tabs - Overview (grouped as Review / People / Changes, with Approval risk and Data freshness collapsible; Review says when `You last looked` and whether that was your Ack or your last activity, and who's requesting changes now - reviewers whose latest verdict requested changes), Activity, Conversations (with the open count) and Notes (marked while unsaved), plus Custom insights when the insights hook returns something. The last tab picked stays for the next PR.
+  - Select a PR by clicking anywhere on its row that isn't a control (clicking the PR in the pane again closes the pane, like its close button; a click also shows the pane if it was hidden), with ↑/↓ (or j/k) while focus is in the table, or with its summary's `Show details`. Esc clears the selection, and `a` Acks the selected PR - or undoes its Ack - from its row, as its `Ack` button does (whose tooltip says so).
   - Leaving a PR with unsaved notes (another selection, previous/next, closing or hiding the pane) asks first.
   - The `Detail pane` button above the table shows or hides it; the choice is saved in the browser. While it's docked the table keeps every column, narrower, with cells taking two lines where they need to; the pane stays in view as you scroll. Opening or closing the pane keeps the row you clicked (or the selected one) where it is on screen while the table reflows around it; a PR shown in several sections keeps the copy you clicked.
   - Each row's PR number (its link) starts the cell's first line, followed by its labels, with the title under them, so the number is in the same place on every row. `Size` shows `+added −deleted`, each count kept whole (the line breaks between them); counts of 10,000 or more are shortened (`+12k`, `+1.2M`), with the exact numbers on hover.
+  - Near the end of the list the docked pane gets shorter (its contents scroll inside it) instead of being pushed up with the list's end, so its header - close, previous/next - stays in the window.
   - Below 900px wide it opens as an overlay drawer instead (Esc or the backdrop closes it).
   - `View in table` and the `Auto update paused` chips select the PR; a chip also opens its Notes tab.
+  - Used from Review stats or Authors, a bar stuck to the top of the window over the table says which PR and view (`PR #12, from Authors`) with `Back to Authors`: it shows that view again as you left it - the same author, dates and open rows, scrolled where you were, with the focus on the `View in table` you clicked. Showing another view by its tab, or the bar's `Dismiss`, forgets it.
 - An open section's header (its name and count) and, under it, its table's column headers stay at the top of the window while you scroll through its rows, below the `Auto update paused` banner when that's showing. In a window too narrow for the table, the section scrolls sideways instead and only its name stays.
 - Open summaries, the selection and the pane's tab stay as they are across automatic data refresh rerenders.
 - Open inner insight groups (for example the Activity tab's `Daily summary`) also stay open across rerenders.
@@ -702,21 +748,44 @@ Insights behavior notes:
 - Polling failures now show a persistent warning snackbar that includes `Last successful check` and `Last error at` timestamps.
 - The polling warning snackbar is automatically cleared after a successful poll.
 - The detail pane's Activity tab lists the PR's events grouped by day, newest first: who did what (approved, requested changes, commented, pushed a commit, merged the PR...), when (the full time on hover), a link to GitHub, and the comment or review text in full - long ones fold behind `Show more`. One person's run of commits on a day is one line that expands to list them. The PR author's name and yours are styled.
-  - `Since I last looked` shows only what happened after your last activity on the PR or your last Ack, whichever is later, with a button to show the earlier events; `All` shows everything, with a divider where the events you'd already seen begin. Without either time, only `All` applies.
+  - Your Acks show among the events (your name, then `acknowledged the PR`; the current one adds `(current Ack)`), each at its time - including ones a later change cleared.
+  - `Since I last looked` shows only what happened after your last activity on the PR or your last Ack (current or since cleared by a change), whichever is later, with a button to show the earlier events; `All` shows everything, with a divider where the events you'd already seen begin. Without either time, only `All` applies.
+  - A commit dated before you last looked but after the one your latest review was on is new too (see below), but its date puts it among the older events, below the divider: it stays by its date, tagged `Not in your last review`, which says why on hover. A run of one person's commits is all tagged or none. The row's summary under the table tags it the same way among its new events.
   - Chips filter by event type (Commits, Reviews, Comments, PR events), each showing its count. The scope and types stay as picked for the next PR.
+  - GitHub returns a PR's newest 250 commits at most. For a PR with more, the row keeps how many it has (`commitTotalCount`, from the same query), and `All` ends with `This PR has 389 commits, but GitHub returns only the newest 250: the older ones aren't shown.`
   - The daily summary table (below) is a collapsed group at the end.
 - The Activity tab suppresses duplicate `review (COMMENTED)` items when the same event content is already represented by a thread or top-level comment item.
 - The detail pane's Conversations tab lists the PR's review threads, grouped by file (in line order, threads not on a file last). Each group collapses.
-  - A summary line counts the unresolved threads, those waiting on you, and any resolved by the wrong person.
-  - Chips filter to `Unresolved` (the default, which includes threads resolved by the wrong person), `Waiting on me` (unresolved threads you started or replied in whose latest comment is by someone else or mentions you; only shown when your login is known; without it, `Unresolved` applies) or `All`. Each shows its count, and the choice is kept per PR. A note says how many threads the filter hides, with a `Show all` link.
+  - A summary line counts the unresolved threads, those waiting on you, any resolved by the wrong person, and any resolved for you to check.
+  - Chips filter to `Unresolved` (the default, which includes threads resolved by the wrong person and those resolved for you to check), `Waiting on me` (unresolved threads you started or replied in whose latest comment is by someone else or mentions you; only shown when your login is known; without it, `Unresolved` applies), `To check` (below; shown once a thread was resolved for you) or `All`. Each shows its count, and the choice is kept per PR. A note says how many threads the filter hides, with a `Show all` link.
   - Each thread is one line: who started it, the start of its first comment, its line, its state, the number of replies, and `outdated`/`Pending` where they apply. It expands to show every comment as markdown, who resolved it, and a link to it on GitHub.
   - `Next unresolved` opens and focuses each thread `Unresolved` shows (so those resolved by the wrong person too) in turn, opening its file group and switching from `Waiting on me` to `Unresolved` if that filter would hide it.
   - Threads the PR author resolved against the thread-resolution rule (Settings › Attention rules) are flagged, with an explanation when opened.
+  - Conversations resolved for you: a thread you started that someone else resolved is marked `to check` until you confirm it was handled - for when others may resolve your threads (say, on high-priority PRs) once they've checked. Opened, it says who resolved it (and warns when it was the PR author, who shouldn't), whether the code it was on has changed since (GitHub's `outdated`), and whether the resolver replied, with a `Confirm handled` button (and `Undo`). Confirmations are kept in the user state (`threadChecksByRepo`); a new reply, or the thread resolved again by someone else, asks again. The Review column shows `N to check` on the PR's row, and the `View scope` filter can list just these PRs.
   - Top-level PR comments and review summaries are collapsed groups at the end.
 - Review events only show a `View` link when the URL points to a specific anchor, not just the PR root.
 - Rows with pending thread comments show a `Pending comments: N` chip in the title cell and a `Needs attention` icon.
 - `Open conversations with me` counts unresolved conversations where you participated (started or commented).
   - If viewer identity cannot be determined, it safely falls back to total open conversations and omits `with me` wording.
+
+**Keyboard shortcuts.** The header's `Shortcuts`, or `?` from anywhere but a field or a modal (Tools, Settings, a dialog), lists them; opened with `?`, Esc puts the focus back where you were.
+
+- Anywhere:
+  - `?`: Show or hide this list (not while typing in a field, or with Tools, Settings or another dialog open).
+  - `Esc`: Close the open popover, drawer or dialog.
+- Tabs, with focus on them (the views, the detail pane's, the Tools and Settings drawers' sections):
+  - `← / →`: Show the tab before or after (↑ / ↓ for the drawers' sections down the left).
+  - `Home / End`: Show the first or last tab.
+- The PR table, with focus in it:
+  - `↑ / ↓` or `j / k`: Select the PR above or below.
+  - `a`: Ack the selected PR, or undo its Ack, with focus in its row.
+  - `Esc`: Clear the selection.
+- Search boxes (Search PRs, a long list's Search):
+  - `Esc`: Clear what's typed; in a list with nothing typed, close the list.
+- Pickers and menus (Author, More actions):
+  - `↑ / ↓`: Move through the options.
+  - `Enter`: Choose the option.
+  - `Esc`: Close without choosing.
 
 ### Custom insights hook
 
@@ -726,7 +795,7 @@ To enable it:
 
 1. Write an executable script (any language with a shebang, or a compiled binary) that reads a single JSON argument and prints HTML on stdout.
 2. Keep it out of the repo, or under the gitignored `local-hooks/` directory if you'd rather keep it alongside the checkout.
-3. Set `VIEW_PRS_INSIGHTS_HOOK_SCRIPT` to its absolute path before starting the server. Optionally set `VIEW_PRS_INSIGHTS_HOOK_TIMEOUT_MS` (default `10000`) to bound how long it's allowed to run.
+3. Set `VIEW_PRS_INSIGHTS_HOOK_SCRIPT` to its path - absolute (a Git Bash path like `/d/hooks/insights.sh` works), or relative to the project folder - in an optional `.env` file in the project folder (copy `.env.example`; `.env` is gitignored), which the server reads when it starts, so no start command needs changing. Without a `.env`, the server starts as usual with the hook off. Optionally set `VIEW_PRS_INSIGHTS_HOOK_TIMEOUT_MS` (default `10000`) to bound how long it's allowed to run. A variable already set in your shell wins over `.env`; restart the server after changing it.
 
 The script receives one JSON-encoded argument shaped like:
 
@@ -762,34 +831,47 @@ In the UI table, `TITLE` text is shown without embedded `[CHK:...]` and `[MRG:..
 
 The UI includes:
 
-- A `Settings` drawer, opened from the app header (Esc, its close button or the backdrop closes it). Its sections are down the left (↑/↓ move between them; in a narrow window they're a row across the top, with ←/→): `Run & check` (the latest status message, `Trigger auto run`, the PR numbers with the run buttons below, applying a label, and the latest request output), `Attention rules` (the Needs Attention rules; the thread starters list shows for the policy that uses it), `Merge commits` (the headline patterns and logins that mark a merge commit), `Change detection` (the comment/review authors and commit patterns to ignore), `Script options` (repo, limits, parallel jobs, open mode, ack/reason/quiet), `Backfill` (the background backfill's status, Start/Stop/Refresh status, and its log), `Action log` (the server's log of actions), `Actor names`, `Export` and `Appearance` (the theme: Light, Dark, or System to follow your computer's setting, Light to start; and which PR table sections show and which start open). Backfill loads its status at page load and again each time its section opens; Action log, Actor names and Export load the first time their section opens (Action log and Actor names reload each time it opens again).
+- Two drawers, opened from the app header (Esc, the close button or the backdrop closes one): `Tools`, for things to do or look at, and `Settings`, for choices kept until changed (split 2026-11-09; until then Settings held both). Each has its sections down the left (↑/↓ move between them; in a narrow window they're a row across the top, with ←/→), and opens at the section it last showed. Every section, and every option in it, says what it does under it (an option's text is its description, so screen readers read it too).
+  - `Tools`: `Run & check` (the latest status message, `Full refresh now` - the background full refresh of every followed repo, started now; it was `Trigger auto run` - `Quick check` - `Quick check open and latest merged`, what the background quick check covers: a cheap listing of each repo's open PRs and latest merged ones, as a full refresh lists them, and the PRs added one by one; and `Quick check all`, every stored row, older merged and closed ones too, one call per PR (it was in the app header until 2026-11-08) - the PR numbers with the run buttons below (its `Quick check` checks the PR numbers typed, or does what `Quick check open and latest merged` does when there are none), `Options for Run script` folded under them (repo, limits, parallel jobs, open mode, ack/reason/quiet - Settings' `Script options` until 2026-11-09), applying a label, and the latest request output), `Backfill` (the background backfill's status, Start/Stop/Refresh status, and its log), `Export` and `Action log` (the server's log, newest first: what you did, and the background runs - each quick check, each full refresh, update of changed PRs and drain, and each skip that kept one from happening, not one that found nothing to do. One line each - when, what, `You` or `Background`, OK/Failed/Skipped, its repos, what it did or why it failed or skipped, and how long it took - with the rest folded under it, filtered by kind, outcome (`Failed or skipped` together), who and repo. The server keeps your newest 500 entries and the newest 1,000 background ones apart, so a few days of quick checks can't push out your actions).
+  - `Settings`, its sections under three headings: PRs followed - `Sources` and `Background updates` (how often each check runs per repo: `Quick check`, `Full refresh` - it was `Auto refresh` there - and `Merged/closed drain`); Rules - `Attention rules` (the Needs Attention rules; the thread starters list shows for the policy that uses it), `Change detection` (the comment/review authors and commit patterns to ignore), `Merge commits` (the headline patterns and logins that mark a merge commit) and `People` (a row per person: their name and logins); Display - `Appearance` (the theme: Light, Dark, or System to follow your computer's setting, Light to start; which PR table sections show and which start open; and grouping rows by repo).
+  - Rules for one repo (2026-11-10): `Attention rules`, `Change detection` and `Merge commits` start with `Rules for` - `All repos`, or a repo (those with stored PRs, and any with rules of their own, marked `(has its own rules)`). Four groups can differ per repo, as different repos tag and assign PRs differently, need more or less of your attention, and have their own conventions: the Needs Attention rules (NO_ACTIVITY handling and the five toggles), thread resolution (the policy and its allow/deny lists), the commit patterns to ignore, and the merge commit headline patterns. On a repo, each of those says whether it follows the rules for every repo (shown, greyed out) or has its own, with `Give <repo> its own` - starting as every repo's - and `Use the rules for every repo`; on `All repos`, each says `Can differ per repo` and which repos have their own. The rest - the comment/review authors to ignore, the merge-commit logins, and People - are the same for every repo (someone who never appears in a repo makes no difference there), and say so on a repo. A repo's own rules replace every repo's for that group, rather than adding to them, so one can drop a pattern that's wrong for it; a list emptied is kept (no commit ignored, no headline a merge). They're saved in `user-defaults.json` as `repoRules`, keyed by repo (`{ "acme/api": { "attention": {...}, "threadResolution": { "mode", "allow", "deny" }, "mergeCommitHeadlinePatterns": [...], "ignoreCommitPatterns": [...] } }`), its name matched whatever the case. The page follows each PR's repo's rules (Needs Attention, the Who column and detail pane's merge commits, the Conversations tab's thread policy); check-open-pr-updates.sh uses the two pattern lists of the repo it runs on (CHANGED: a change to a repo's patterns makes its next run compute its rows again, as a change to every repo's does). Which repo the drawer is on isn't saved: it opens on every repo's rules.
+  - Backfill loads its status at page load and again each time its section opens; Background updates, Action log, People and Export load the first time their section opens (Action log and People reload each time it opens again - People not over unsaved edits).
 - `Run script` (full run to refresh PR data)
   - PR number input accepts numeric IDs separated by commas, whitespace, or mixed delimiters
   - request payload maps form values as: `author` falls back to an empty string when no author is selected, and checkbox fields (`ackChanged`, `showReason`, `quiet`) are sent as booleans
 - `Apply ack only` (ack updates only)
-- `Apply clear only` (clear updates only)
-- `Apply label` (applies an existing GitHub label to the PR number(s) in the same `pr-numbers` field the Ack buttons use)
+- `Undo ack` (undoes the Acks of the PRs in `PR number(s)`, as if they were never made)
+- `PR number(s)`: a row's checkbox in the table adds its PR here and takes it out again (the checkboxes show what's in the field, typed numbers too); `Clear`, beside it, empties it, unticking them all
+- `Apply label` (applies an existing GitHub label to the PR number(s) in the same `pr-numbers` field the Ack buttons use). Under it, a line says which PRs that is (`Applies to 2 PRs: #912, #921.`, the first 8 then `and N more`), or how to pick some when there are none
   - the label dropdown is populated from `GET /view-prs/labels` for the currently selected repo; only labels already defined on the repo (via `gh label list`) can be chosen - there is no free-text/create-new-label input
   - `Reload labels` reloads the dropdown for the current repo
 - a row's More menu (`More actions for PR #N`) › `Add label` applies an existing label to just that PR (excludes labels already on the row)
 - `Apply filters (local)` (updates visible rows and persisted defaults without calling `/view-prs/run`)
-- Settings › `Export` to build and export JSON from currently visible PR rows
-- Settings › `Actor names` to view and edit both display-name mappings and canonical login aliases
+- Tools › `Export` to build and export JSON from currently visible PR rows
 - Settings › `Appearance` to pick the theme. It's saved in `user-defaults.json` as `theme` (so it stays after the browser is closed, and in another browser), with a copy in the browser that sets it before the page first draws
-- Settings › `Appearance` › Sections to hide PR table sections and choose which open when the page loads, saved in `user-defaults.json` as `prSections` (only what differs from the defaults). A hidden section isn't in the pane's previous/next or in Export; `View in table` for a PR that's only in hidden sections shows it in the detail pane. The filter bar's `Showing N of M PRs` adds how many of them are only in hidden sections. With every section hidden, the table says so and links to the setting. Changing a section's open-on-load choice also opens or closes it now, unless you've opened or closed it yourself since the page loaded
-  - display-name mappings are stored in `view-prs/data/actor-name-cache.json`
-  - login aliases are stored in `view-prs/data/actor-login-aliases.json`
-  - when `/view-prs/data` encounters a previously unseen non-empty `authorLogin/login`, that login is automatically added to the actor-name cache (using the best available display name)
-  - display-name entries load from `GET /view-prs/actor-name-cache` and save with `PUT /view-prs/actor-name-cache`
-  - login alias entries load from `GET /view-prs/actor-login-aliases` and save with `PUT /view-prs/actor-login-aliases`
-  - if either JSON file is missing, it is created automatically on first read
-  - writes that would clear all display-name mappings or all login aliases are rejected to prevent deleting all configured mappings
-  - login alias rows must include both an alias login and a canonical login, and the two values must differ
+- Each section with more than one PR has a sort menu at the end of its table's header row (the arrows in the `Actions` header): PR number or last updated, plus the date merged or closed in the Merged and Closed sections, and the order. Merged sorts by date merged and Closed by date closed by default; every other section by PR number, newest first. A choice other than the default is saved with the section's preferences (`prSections` in `user-defaults.json`, as `{ "sort": { "by", "direction" } }`). With grouping by repo, the sort applies within each repo. `Restore default sections` (Settings › Appearance) leaves the sorts as they are.
+- While you are working in a section (the pointer over it or a tooltip it opened, keyboard focus in it, or its row open in the detail pane), a refresh does not re-sort its rows, so a row does not move out from under you. New rows still go where the sort puts them, and rows that leave the section are removed. If the sort would now give a different order, the `Actions` header shows `Re-sort`. Otherwise the sort applies again a moment after you leave the section. Choosing another sort applies at once.
+- With rows from more than one repo in view, each row says its repo before its number: the name alone (`web` for `acme/web`, in full on hover), or the full `owner/repo` when repos from different owners share a name. A long one is cut short rather than pushing the number onto a line of its own. Settings › `Appearance` › `Group rows by repo` (saved as `prRowsGroupByRepo`) puts each section's rows under a heading per repo, A-Z, keeping their order within it, and then the rows don't each say their repo - the pane's previous/next follows that order.
+- Settings › `Appearance` › Sections to hide PR table sections and choose which open when the page loads, saved in `user-defaults.json` as `prSections` (only what differs from the defaults). A hidden section isn't in the pane's previous/next or in Export; `View in table` for a PR that's only in hidden sections shows it in the detail pane. The filter bar's `Showing N of M PRs` adds how many of them are only in hidden sections. With every section hidden, the table says so and links to the setting. Changing a section's open-on-load choice also opens or closes it now, unless you've opened or closed it yourself since the page loaded. A copy in the browser lets the table draw with the choices straight away; without one (a new browser), the table waits for `user-defaults.json` to be read, so a hidden section never flashes up while the page loads (if it can't be read, the copy stays, or the default sections show). A setting is never saved when `user-defaults.json` can't be read first, since every save writes the whole file back
+- Settings › `Background updates` to set how often each repo's background checks run and its priority (see the automatic background refresh above)
+- Settings › `People`: everyone the app knows, a row each - the name to show, and every GitHub login that's them (the first is their main one). Replaced `Actor names` (2026-11-09), whose two lists - display names and login aliases - are moved over the first time the people are read: each alias joins the login it pointed to, and every other login is a person of its own (a name that was just the login again isn't kept). The old files are left as they were.
+  - stored in `view-prs/data/actors.json` (`VIEW_PRS_ACTORS_FILE`; beside the old name cache by default): `{ "version": 1, "actors": [{ "id": "actor:alice", "name": "Alice Smith", "logins": ["alice", "alice-work"] }] }`. A person's id is made once, from their first login, and kept however their logins change; it can never be a login (GitHub's have no `:`)
+  - when `/view-prs/data` sees a login no one has, a person is added for it, named as the data names them, else as GitHub does (`gh api users/<login>`). A person already there is never changed, so a name set in Settings stays - except to take a commit author named as they are (below)
+  - each login has a field of its own, with `+ Add login` and an `×` to remove one - not one field split on commas, which broke apart a value with a comma in it (2026-11-10; until then, every save split such a value in two, and the data then added it back as someone new)
+  - a commit author is a name or email that commits are listed under because GitHub didn't link them to an account (made with an email it doesn't know): the script records it as the commit's actor, and People adds it like a login, labelled `Commit author (no GitHub account)` - a value with a space, comma or `@`, which a GitHub login never has. One named exactly as one person (ignoring case and extra spaces) joins them, whether it's new or was added before as someone of its own (its id moves to them, as in a merge). With no one, or two people, of that name it stays someone of its own, to add to the person it is by hand; a row with a commit author whose name you've changed is left as it is
+  - merging two people (one row given the other's login, the other row removed) records the removed one's id as moved to the one kept (`movedIds` in `actors.json`, `actorIdMoves` in `/view-prs/data`), so what was picked or kept under it - filters, saved views, rules, the change-detection lists check-open-pr-updates.sh reads, the Authors view's comments - becomes theirs; an id that's someone's again moves no longer
+  - `GET /view-prs/actors` lists them and `PUT /view-prs/actors` (`{ actors: [...] }`) replaces them all. A save is refused when a login is in two people (ignoring case), when a person has no login, or when it would leave no one
+  - edits stay on the page until `Save`; `Undo changes` puts back what's saved, and `Find` narrows the rows by name or login
+  - while `actors.json` isn't valid JSON (a bad hand edit), no one is listed or added - the data still loads - and Settings › People says so; a save there keeps a copy of the old file beside it (`actors.json.unreadable-<time>`) before starting it again. A write that fails while adding people seen in the data doesn't fail the data read
+  - a login the data spells in another case than a person's (`AHall` for `ahall`) counts as that person's
+  - a save here, or someone new added, reaches open pages with their next poll: `actors.json` counts toward the data version, and `/view-prs/data-manifest` carries the names and logins (`actorMaps`) - before, they only changed with a reload
+  - the page groups people by id (2026-11-09; until then by each person's main login): the author, assignee and approver filters, Review stats, the Authors view, the thread-resolution and change-detection lists, and saved views all pick a person by id, so renaming a person or changing their logins keeps what's picked. A login saved before ids is read as its person's id once the people load, and saved that way from then on; a saved view saved with logins is the one applied when its people are. `/view-prs/data` sends `actors` (each id and its logins) and `actorsMap` (each id's name, or the id when there's none - the page then shows the PR data's name, else the main login). Avatars, @-mentions and the conversations' checks (who started a thread, whether it waits on you) still compare GitHub's logins, the conversations with the login you're signed in as; elsewhere "you" is any of your logins
+  - the Authors view's comments are kept under the person's id (`check-open-pr-updates.author-comments.json`); comments kept under any of their logins before are theirs, and move to the id the next time any comment is saved
 - a row's Actions: `Ack` as a button, and in its More menu `Mark in review` / `Remove from in review`, `Flag` / `Remove flag` and `Update PR` (saved at once); whether a PR is in review or flagged shows as an icon in its Signals column
 - per-row Notes editor saved to `check-open-pr-updates.user-state.json` via `POST /view-prs/notes`
   - note `createdAt`/`updatedAt` values are normalized to UTC second precision (`YYYY-MM-DDTHH:mm:ssZ`) so persisted user-state remains schema-valid
 - The `Authors` view's manual comments editor, saved to `check-open-pr-updates.author-comments.json` via `GET/POST/PUT /view-prs/author-comments`
-- PR-number-column relative `↻ ... ago` indicators are based on the latest successfully rendered run timestamp (`lastRun.updatedAt`), not per-row stale timestamps.
+- how current each row is, and when each repo was last checked (see [Freshness](#freshness))
 - `YOUR LAST ACTIVITY` / `MERGED AT` date cells show five small gray indicator boxes per row for saved notes fields (custom comments, other notes, PR difficulty, stories, analysis); boxes are filled when data exists and outlined when empty, and the difficulty box displays the saved numeric level when present
 - per-row `View PR JSON details` modal with four expanded-by-default sections:
   - `Data File Entry`
@@ -803,9 +885,10 @@ The UI includes:
   - keyboard and modal-accessibility behaviors: Escape closes the dialog, backdrop click closes the dialog, and Tab/Shift+Tab keep focus cycling within the dialog while open
 - each modal section (`Data File Entry`, `PR Detail File`, `User State Entry`, `PR Diff`) has its own internal scrollbar for large payloads
 
-Export behavior (Settings › `Export`):
+Export behavior (Tools › `Export`):
 
 - Field picker supports mixed data-file and user-state fields in any combination.
+- The fields are listed under `Data file` and `User state`, each with how many are chosen, as nested lists: each object in the data (`data`, `notesByPrNumber`) is a group, folded until you open it, with a checkbox for all of its fields - ticked when every one is chosen, part-ticked when some are - and how many are chosen (`12 of 34`). A group holding only one other group shows as one row (`a.b`). A field that's a plain value in some PRs and an object in others (`notesByPrNumber` for a PR without notes) is in its group as `(as one value)`: choosing it exports the whole object.
 - Export scope uses what is currently visible in `PR data`:
   - applies active local filter values,
   - includes only PR rows inside expanded sections (`Open PRs`, `Draft PRs`, `Closed PRs`, `Latest Merged PRs`),
@@ -815,6 +898,8 @@ Export behavior (Settings › `Export`):
   - `Copy JSON` writes payload to clipboard,
   - `Download JSON` saves payload as a local `.json` file.
 - Export field selections are persisted in `data/user-defaults.json` when using `Preview JSON`, `Copy JSON`, or `Download JSON`, and re-applied when the Export section is rebuilt.
+- Export profiles: a chip per profile, above the field controls, chooses its fields in one click (its fields show on hover); the profile whose fields are chosen is pressed, and clicking it again puts back the fields chosen before you applied it (or every field, when there were none to go back to). `Save as profile` names the chosen fields while no profile has them (another profile's name can't be reused, whatever its case). Once you change a field after applying a profile, it shows `(modified)` with `Update "name"` to save the change into it. `Manage export profiles`, below the export buttons, lists each profile with its fields, and `Rename`, `Update to chosen fields` and `Delete`; a deleted profile can be put back where it was with `Undo`, until you delete another. Profiles are saved in `user-defaults.json` (`exportFieldProfiles`) and kept as the filter bar's saved views are: the same in every browser, read again when the window regains focus, a change applied to the profiles as saved then, and one that can't be saved undone on the page, which says so.
+- A chosen field the loaded data doesn't have (from a profile, or the saved choice) is listed after the rest as `name · not in the loaded data`, so it can be unticked.
 
 The detail pane's Notes tab holds your own notes on the PR:
 
@@ -851,6 +936,7 @@ The page calls:
 - `GET /view-prs/labels?repo=<owner/name>` (list a repo's existing GitHub labels, for the label picker)
 - `POST /view-prs/labels/apply` (apply an existing GitHub label to one or more PR numbers)
 - `POST /view-prs/notes` (persist notes for a specific PR)
+  - Like the server's other user-state writes (conversation confirmations), it reads and writes the file under the script's user-state lock (`check-open-pr-updates.user-state.lock`, `USER_STATE_LOCK_DIR`), so a script run's Ack change and a save can't overwrite each other. It waits up to 3 seconds for the lock, and passes over one more than a minute old (left by a script that stopped early).
 - `GET /view-prs/author-comments?authorLogin=<login>` (fetch manual comments for selected author)
 - `POST /view-prs/author-comments` (create a manual author comment)
 - `PUT /view-prs/author-comments` (edit an existing manual author comment)
@@ -859,9 +945,10 @@ The page calls:
 - `PUT /view-prs/user-defaults` (save persisted default filter/visibility/attention overrides)
 - `GET /view-prs/data` (load persisted data for display)
 - `GET /view-prs/data-meta` (lightweight data-version polling)
-- `GET /view-prs/data-manifest` (per-PR row-version manifest for selective polling)
+- `GET /view-prs/data-manifest` (per-PR row-version manifest for selective polling, with the user state's Acks, Ack history, flags and confirmations)
 - `POST /view-prs/data-delta` (retrieve only changed PR rows by PR number)
 - `GET /view-prs/scheduler` (scheduler state, including `activePrNumbers` for per-PR in-progress indicators)
+- `GET /view-prs/dispatcher/settings` (the repos checked in the background, and each check's default interval and priority, for Settings › Background updates)
   - The same per-row spinner also lights up while a user-initiated Ack, Clear, `↻ Update`, or `+ Label` request is in flight for that PR (independent of the scheduler's own `activePrNumbers`), and clears once that request settles (success, failure, or error) - so a row stays visibly busy for exactly as long as its own request takes.
   - Also includes `quickCheckIntervalMinutes`, `mergedFullSweepIntervalMinutes`, `lastQuickCheckAt`, `lastQuickCheckError`, `lastMergedDrainAt`, `pendingOpenCount`, and `pendingMergedClosedCount` for the two-tier scheduler described above.
 
@@ -956,7 +1043,24 @@ The Activity column shows how long ago, in two short lines:
 - **Author**: the PR author's last activity - their latest event in the PR's activity (a commit, comment, review...), the same events the detail pane's Activity tab lists. `–` when none is recorded.
 - **You**: your own last activity on the PR (the `baseline` field), shown only when you have any.
 
-The tooltip has both exact times, when the PR merged or closed, and when it was last checked for updates. The ages are underlined (dotted) when an open PR's last check is stale.
+The tooltip has both exact times, when the PR merged or closed, and how current the row is (see [Freshness](#freshness)). The ages are underlined (dotted) when an open PR is stale, and dimmed while its details are behind GitHub.
+
+### Freshness
+
+An open or draft PR's row has two ages, both in its Activity tooltip:
+
+- **Summary confirmed**: what the collapsed row shows - title, labels, size, CI, mergeability, viewed files, open conversations - as of its repo's latest live summary (the listing with each quick check, every 5 minutes by default), or the last run that refreshed it when that's newer or the PR wasn't listed: a full fetch, or a full run that reused the row (it takes the listing's title, labels and size and fetches the CI; when that CI fetch fails, the run doesn't count).
+- **Details fetched**: reviews, approvals and activity, from its last full fetch (`fetchedAt`).
+
+It's **stale** - the Activity ages underlined (dotted), "Stale" in the tooltip - when its summary hasn't been confirmed for about two of its repo's quick-check intervals (plus a minute), or its repo's last listing failed. A repo with no background updates isn't checked, so its rows say `Not checked automatically` instead of going stale. A repo whose background updates are paused after repeated failures (its circuit breaker) says until when, instead of just "not confirmed recently". The interval is each repo's own, whether or not it's listed (with the live summary off, say). Merged and closed rows only change when GitHub says they did, so they're never stale; their tooltip has when their details were fetched.
+
+While GitHub has activity newer than the row's details, or the quick check has queued the PR, the row shows `Details updating` under its title and its Activity ages are dimmed: its summary is current, its reviews, approvals and activity update when the queued refresh runs. A PR that a complete listing no longer has (merged or closed since) shows `No longer open` - and the quick check queues it as a merged/closed change, so it's fetched again within a minute or two whenever it merged (the quick check's own listing of merged PRs only reaches back a few days of merges) - until its refresh moves it. One that can't be fetched (access to it lost, say) leaves the queue after its failed run, and is queued again only after 6 hours, so it doesn't fail every run of its repo.
+
+A row whose last refresh failed shows `Couldn't refresh · data from 2h ago` under its title (the age of its last full fetch), with why on hover - the error, when, and since when its repo's refreshes have been failing - and `Retry`, which updates just that PR (as its menu's `Update PR`; disabled while it's being fetched). That's a row not fetched since its repo's last refresh failed that the refresh would have fetched - an open or draft PR queued for an update (changed on GitHub), or not fetched in full for 4 hours (the script's default `VIEW_PRS_OPEN_REVALIDATE_SECONDS`); the rest it would have left as they were, so they aren't out of date - or one of the PRs a refresh of chosen PRs failed on. A PR added on its own that couldn't be fetched (deleted, or no longer visible to `gh`) shows `Couldn't fetch` instead. It goes once the row is fetched again. The server keeps each repo's last failed refresh until one works (`refreshFailureByRepo`, saved with the scheduler state; a refresh of chosen PRs clears just those) and sends it, with the PRs that couldn't be fetched, in the live scheduler state (`refreshFailures`, `unreachablePrs`), so rows change without a reload.
+
+The header's status pill measures each repo shown against its own schedule (its quick check's interval in Settings › Background updates): with one repo it says when it was checked (`Checked 3m ago`); with several, `Checked on schedule` while none is overdue, else the one that is (`acme/api checked 2h ago`, or `acme/api check failing` / `acme/api paused`, as its last check can be recent) or how many (`2 repos overdue`) - so a repo checked hourly doesn't look late beside ones checked every 5 minutes (until 2026-11-10 it showed the least recently checked repo's time, whatever its schedule). A repo is overdue when it hasn't been checked within about twice its interval, or its check is failing. On hover: each repo's time and schedule (`checked 40m ago · every 1h`) - or its failure - and the last run. It takes the attention tone only for an overdue repo (not for an old full run, while the repos are checked on schedule), and says when a repo's background updates are paused. A repo with no background updates (an old listing from when it had them) is listed as not checked automatically, and doesn't count. Before any repo has been listed, it shows the last run (`Updated 5m ago`).
+
+An automatic update says so in the header's status line once per new run (`Auto-updated from latest run at ...`); other pushed changes, which come every few seconds during a run, leave the status line with the result of your last action.
 
 ## Troubleshooting
 
@@ -966,6 +1070,8 @@ The tooltip has both exact times, when the PR merged or closed, and when it was 
   - Run `gh auth login`, then confirm with `gh auth status`.
 - `jq is required`
   - Install `jq`, then verify with `jq --version`.
+- `node is required`
+  - The script computes rows with Node (`src/script/compute-pr-row.js`): run standalone, it uses `node` from `PATH` (verify with `node --version`), or the one `VIEW_PRS_NODE` names. Runs from the web UI use the server's own Node.
 - `Permission denied` when running scripts
   - Run `chmod +x run-prs src/script/check-open-pr-updates.sh` from `view-prs`.
 - `npm start --help` shows npm help instead of script help
@@ -985,10 +1091,17 @@ The tooltip has both exact times, when the PR merged or closed, and when it was 
 
 ### Debugging flaky runs
 
-If shell tests fail intermittently, rerun with retries enabled:
+The script's shell tests (`src/script/integration-tests/check-open-pr-updates.test.sh`) run in Jest, one group of test functions per test, spread over three files so they run in parallel (`check-open-pr-updates.sh-tests*.test.js`; the full-run group alone takes about 4.5 minutes). A failing group shows the end of the script's output. They run the script with `bash` (on Linux `sh` is often dash, which can't run it), use the bundled jq, and keep everything they write in a temporary folder, removed afterwards. To run them directly, or just some groups:
 
 ```bash
-TEST_RETRIES=2 bash view-prs/src/script/tests/check-open-pr-updates.test.sh
+bash src/script/integration-tests/check-open-pr-updates.test.sh
+ONLY_TESTS="run_compute_state_tests run_quick_check_tests" bash src/script/integration-tests/check-open-pr-updates.test.sh
+```
+
+If they fail intermittently, rerun with retries enabled:
+
+```bash
+TEST_RETRIES=2 bash src/script/integration-tests/check-open-pr-updates.test.sh
 ```
 
 `TEST_RETRIES=N` performs up to `N+1` total attempts and prints run context when an attempt fails.
@@ -1001,6 +1114,8 @@ bash view-prs/src/script/check-open-pr-updates.sh --open none --quiet
 ```
 
 The log includes startup args, parsed settings, cache counters, summary totals, and any trapped command error with line number.
+
+Background runs' entries are `job/quickCheck` (a quick check), `job/<job>` with `skipped: true` (a skip, with its `reason`), and `auto-refresh` (a full refresh, an update of changed PRs, the drain's refresh, or an added PR's fetch), each with `kind` (Activity's) and `origin` (`background` or `you`).
 
 For `auto-refresh` action-log entries, `detail` now also includes timing metrics:
 
@@ -1071,11 +1186,14 @@ When status is `CHANGED`, optional reason tags can be shown inline:
   - `unanswered-thread`
   - `thread-reply`
   - `comment`
+  - `review` (`CHANGES_REQUESTED`, or `COMMENTED` with a body - not approvals, nor the empty review GitHub wraps each inline comment in, which the thread reasons cover)
   - `commit`
 - For PRs authored by others:
   - `comment`
   - `review` (non-approval reviews such as `COMMENTED` or `CHANGES_REQUESTED`)
   - `commit` (non-merge commits)
+
+A commit counts as new when it's dated after your baseline, or comes after the commit your latest review was on - a commit's date is when it was made, not pushed, so one made before your review and pushed after it still shows. After an acknowledgment, only the date counts.
 
 ## Approval column behavior
 
@@ -1114,13 +1232,14 @@ Acknowledgments let you move the baseline forward so already-seen changes stop s
 - Store location: `view-prs/data/check-open-pr-updates.user-state.json` under `ackByRepo`
 - Locking is used to avoid concurrent write corruption.
 - Acks are namespaced per repo.
-- An ack is automatically cleared the moment a PR shows new external activity (a comment/review/commit) after the ack timestamp - the row's status flips to `CHANGED` with the real reason (e.g. `comment`), and the Ack button reverts from "Ack'd" back to "Ack". This does not set the same `reverifyByRepo` flag the manual `--ack-clear`/"Ack'd" button click does, since the row is already `CHANGED` for a real reason.
+- An ack is automatically cleared the moment a PR shows new external activity (a comment/review/commit) after the ack timestamp - the row's status flips to `CHANGED` with the real reason (e.g. `comment`), and the Ack button reverts from "Ack'd" back to "Ack".
+- Every Ack is also kept, with its time, under `ackHistoryByRepo`, and shows in the PR's Activity tab (your name, then `acknowledged the PR`; the current one adds `(current Ack)`). Clicking "Ack'd" (or `--ack-clear`) undoes the Ack as if it had never been made: it goes from the history too, and the row is judged as it was before (before 2026-11-05 it also marked the row `CHANGED` with the reason `ack-cleared` until the next Ack, and rows marked then still are); one cleared by new activity stays in the history - it can't be cleared with the button any more, since it's no longer the current Ack - so you can see you'd checked the PR before it changed. The Activity tab's `Since I last looked` counts from your latest Ack, current or not.
 
 ### Ack commands
 
 - `--ack <numbers>`: mark one or more PRs as acknowledged
   - supports comma-separated (`--ack 912,921`) or repeated flags (`--ack 912 --ack 921`)
-- `--ack-clear <numbers>`: clear ack for one or more PRs
+- `--ack-clear <numbers>`: undo the current ack of one or more PRs, as if it had never been made
 - `--in-review <numbers>`: mark one or more PRs as in-review (a manual, UI-only flag - it controls the `In Review` smart group and row checkbox state, and does not change `STATUS` or the Needs Attention icon)
 - `--in-review-clear <numbers>`: clear in-review toggle for one or more PRs
 - `--flagged <numbers>`: mark one or more PRs as flagged
@@ -1135,9 +1254,9 @@ Applies an existing GitHub label (never a newly typed one) to one or more PRs di
 - `GET /view-prs/labels?repo=<owner/name>` lists every label currently defined in the repo's GitHub Labels settings (via `gh label list`), including labels not yet applied to any PR.
 - `POST /view-prs/labels/apply` with `{ repo, label, prNumbers }` (`prNumbers` is a comma-separated string, same shape as the Ack endpoints) applies the label to each PR number, then fetches just that PR's current label set (`gh pr view --json labels`) and patches it directly into the stored `data.labels` field for that entry.
   - Deliberately does NOT reuse `/view-prs/ack`'s targeted-refresh pattern (re-running `check-open-pr-updates.sh --pr <n>`), since a full refresh also re-fetches comments, reviews, file diffs, and review threads - for a PR with a lot of history (especially merged PRs) that can take minutes, leaving the just-applied label invisible until it finishes or the next scheduled auto-refresh catches up. The direct label-only patch stays fast regardless of a PR's size.
-  - The patch acquires the same lock directory (`check-open-pr-updates.data.lock`) the shell script's `acquire_pr_state_lock`/`release_pr_state_lock` use for `check-open-pr-updates.data.json`, so it can't interleave its read-modify-write with a concurrent script run.
+  - The patch acquires the same lock directory (`check-open-pr-updates.data.lock`) the shell script's `acquire_pr_state_lock`/`release_pr_state_lock` use for `check-open-pr-updates.data.json`, so it can't interleave its read-modify-write with a concurrent script run. It passes over one more than a minute old (the script holds it for one row's write, so that one was left by a run killed mid-write) rather than failing until the next run recovers it.
 - Per-PR failures (invalid PR number, `gh` error, no matching stored entry) are collected into `applyErrors`/`refreshErrors` in the response rather than failing the whole request; PRs that did succeed are still applied and reflected in `prData`.
-- Both the per-row `+ Label` dropdown and the Settings drawer's `Apply label` control (Run & check) call this same endpoint.
+- Both the per-row `+ Label` dropdown and the Tools drawer's `Apply label` control (Run & check) call this same endpoint.
 
 ## Local PR state file
 
@@ -1149,11 +1268,11 @@ The script now persists retrieved/calculated PR state to a local JSON file next 
 
 Behavior:
 
-- Data is grouped by PR number under `byPrNumber`.
+- Data is grouped by repo and PR number under `byPrNumber` (`owner/repo#123`: two repos can each have a PR #123; before 2026-11-02 rows were keyed by the bare number, and one replaced the other - see `DATA_SCHEMA.md`).
 - Each run updates (upserts) entries for PRs processed in that run.
 - PR IDs not processed in a run are **not removed** from the file.
 - Display filters do not trim what is stored in this file.
-- Open, draft, and merged rows are recomputed on each run by default so activity/comments/conversation details and derived metrics stay current. See [Performance Toggle](#performance-toggle) (`VIEW_PRS_SKIP_UNCHANGED`) to re-enable per-row cache reuse within a full run - this is separate from the `--quick-check` listing pass described in [Usage](#usage), which only ever compares `updatedAt` to decide whether a PR needs a full run *at all*.
+- A full run reuses the rows of PRs that haven't changed on GitHub, and fetches the rest; open/draft rows are fetched in full again at least every 4 hours. See [Reusing unchanged rows](#reusing-unchanged-rows) - this is separate from the `--quick-check` listing pass described in [Usage](#usage), which only ever compares `updatedAt` to decide whether a PR needs a full run *at all*.
 
 Top-level structure:
 
@@ -1170,12 +1289,34 @@ Additional notes:
 - `activityTimeline` now collapses only consecutive runs of the same actor and activity type, so interruptions by another person or another type of event are preserved.
 - `reviewThreads`, `commentEvents`, and `activityEvents` keep the richer raw history needed for later analytics and reviewer-behavior views.
 - **Activity Timeline filtering**: The daily summary on the detail pane's Activity tab displays all dates with activity, and omits weekend dates (Sat-Sun) without activity. A run of consecutive weekdays (Mon-Fri) without activity is consolidated into one "No activity for N days" row (with the date range) instead of a dash row per day; an isolated single no-activity weekday still shows its own dash ("-") row. This reduces visual clutter while maintaining visibility of business-week activity patterns.
-- The `Review stats` view has its own controls (`Sort by`, `Filter`, `Min comments`, `Top reviewers`) to rank and focus reviewer activity. Reviewer names are resolved using `actorsMap` display names. The statistics view features prominent graph cards:
+- The `Review stats` view has its own controls (`Sort by`, `Show` - all reviewers or those with risky approvals, high-risk approvals or useful-comment signals - `Minimum comments`, `Reviewers to list`, the dates and `Reviewers`) to rank and focus reviewer activity. `Reviewers` (`Everyone` until you pick) lists everyone with activity in the dates, by name: with people picked, only their comments, reviews and approvals count - the cards, charts, trend note and table - and someone picked with no activity in the dates stays listed (`erin · no activity in the dates`) to unpick. Like the other controls, it isn't saved across reloads. Each reviewer shows with an avatar and their `actorsMap` display name (the login on hover). The table scrolls sideways when it's wider than the window, the Reviewer column staying put. `Columns`, above it, picks the columns: Thread comments, Resolved thread comments and Sources start hidden, and the choice is saved in `user-defaults.json` (as `reviewStatsColumns`, only what differs from that). The statistics view features prominent graph cards:
   - **Metric totals**: Comments, reviews, and approvals from visible table rows (clickable to sort table)
   - **Activity over time per author**: Sparkline bars showing daily review/comment activity trends for the top 6 reviewers across the last 31 days (helps identify contributor patterns and periods of high engagement)
   - **Top reviewers by comments/approvals/signals**: Stacked bar composition charts with click-to-sort interactivity
   - Source rows in the statistics view include a `View in table` button that switches to the Pull requests view, scrolls to the matching PR, and shows it in the detail pane.
-- The `Authors` view shows per-PR review notes grouped by author. The author filter dropdown and metadata cards use resolved real names from `actorsMap`. PR cards in the Authors view include a `View in table` button with the same navigation behavior.
+  - `Start date` begins three months back. When the table lists no one, its one row says why: no reviewer activity in the dates (`No reviewer activity since Aug 6, 2026.`, with `Clear dates`), or `Show` and `Minimum comments` hiding the reviewers who have some (`No reviewers with risky approvals and at least 3 comments.`, with `Show all reviewers`), or the reviewers picked having none (`No activity from the 2 reviewers picked since Aug 6, 2026.`, with `Show everyone`).
+  - **How Review stats counts.** Each card's label and each column heading says this on hover and focus (dotted underline). Everything counts only what falls between `Start date` and `End date`, and with `Reviewers` picked, only their comments, reviews and approvals.
+    - Cards:
+      - `PRs`: Stored PRs the numbers come from: with dates set, those with a comment, review, approval or open review thread in them; with no dates, every stored PR. With Reviewers picked, only the PRs they commented on, reviewed or approved, or have an open review thread they commented in.
+      - `Comments on others' PRs`: Comments on PRs by anyone but the PR's author, top-level and in review threads.
+      - `Approvals`: Approvals of PRs. Risky: the PR got a comment, review, change request or commit after the approval. High-risk: a change request after it, or 3 or more of those.
+      - `Comment usefulness`: Signs that comments on others' PRs were acted on, one point each: the comment's thread was resolved, the PR's author committed after it, and did so within 24 hours - up to 3 per comment.
+    - Columns:
+      - `Reviewer`: Anyone who commented on, reviewed or approved someone else's PR.
+      - `Comments`: Their comments on others' PRs, top-level and in review threads.
+      - `Thread comments`: Of those, the ones in review threads (on lines of code).
+      - `Reviews`: Reviews they submitted on others' PRs, whatever the outcome: approved, commented, changes requested or dismissed.
+      - `Approvals`: Their reviews that approved.
+      - `Risky approvals`: Their approvals after which the PR got a comment, review, change request or commit.
+      - `High-risk approvals`: Their approvals followed by a change request, or by 3 or more comments, reviews, change requests and commits.
+      - `Useful comment signals`: Their comments' points, one each: the thread was resolved, the PR's author committed after it, and within 24 hours - up to 3 per comment.
+      - `Comments → author commit`: Their comments the PR's author committed after.
+      - `Resolved thread comments`: Their comments in review threads that are now resolved.
+      - `PRs touched`: Others' PRs they commented on, reviewed or approved.
+      - `Sources`: The PRs behind their numbers.
+- The `Authors` view shows per-PR review notes grouped by author. The author filter dropdown and metadata cards use resolved real names from `actorsMap`. Each PR in the Authors view is two lines: its state (open, draft, closed or merged), number and title linking to GitHub, and when it was merged, closed or updated; then the table's signals with their tooltips (status, approvals, checks, open conversations, viewed files) and `View in table`. The comment box and a comment's edit form use the app's fields (`New comment`, `Sentiment`) and buttons.
+  - `Author` is a text box that narrows its list to what's typed (a name or a login). The list puts the authors with a PR updated in the last 30 days (by anyone) first, newest first, under `Recent PRs`, then `Everyone else` by name; Up and Down move through it, Enter picks, and Escape closes it without a change. Opening the view shows the author of the most recently updated PR.
+  - Under it, the chosen author's avatar, name and login, then how many of their stored PRs are open and merged and how many comments you've saved about them.
 - The page-level and per-PR insights now show usefulness and approval-risk signals (for example, comments followed by author commits and high-risk approvals).
 
 ## Modifier options
@@ -1190,7 +1331,7 @@ Additional notes:
     --merged-limit <number>  Max closed/merged PRs to show per section (overrides default day-based mode)
     --jobs <number>          Parallel workers for API prefetch (default: 6)
     --ack <numbers>          Mark PR number(s) as acknowledged (comma-separated or repeat flag)
-    --ack-clear <numbers>    Clear acknowledgment for PR number(s)
+    --ack-clear <numbers>    Undo the acknowledgment of PR number(s), as if never made
   --in-review <numbers>    Mark PR number(s) as in-review (UI-only flag; does not change STATUS)
   --in-review-clear <numbers> Clear in-review toggle for PR number(s)
   --flagged <numbers>      Mark PR number(s) as flagged
@@ -1205,8 +1346,12 @@ Additional notes:
     --open <mode>            Browser behavior: all | changed | none (default: all)
     --quick-check            List PRs and report which changed (by updatedAt) without
                               fetching full details/diffs; prints JSON to stdout and exits
+    --prs <numbers>          Fully refresh exactly these PR number(s), comma-separated,
+                              looked up directly in whatever state they're in
 -h, --help                   Show this help
 ```
+
+A run of chosen PRs (`-p/--pr` or `--prs`) keeps each existing row's `updatedAt` and the data file's `lastFullRun`, so it still says when the last full run was. `lastRun` is still every run's, so the header's "Updated N minutes ago" counts them. Each repo also has its own, `lastRunByRepo` and `lastFullRunByRepo` - several repos' runs take turns, and the global ones are only the latest repo's. Every row also records when it was written (`fetchedAt`). A run that writes rows backs the data file up once, before its first row, in `data/backups/` (before 2026-11-01, once for every row, so a large run filled the 50 kept with copies from that run alone); a quick check takes none. The newest 50 backups are kept (`STATE_BACKUP_RETENTION`), and beyond them the newest of each day until 7 days have one (`STATE_BACKUP_DAILY_DAYS`): with a run every few minutes, the 50 alone would cover only the last few hours. `--prs` refreshes the PRs it can fetch, then fails, naming the rest, if any couldn't be fetched - so the server keeps those queued rather than treat them as refreshed. A PR whose details or review threads can't be fetched (after retries) keeps its stored row as it was, rather than being written without them: a run of chosen PRs then fails naming it, as above, and a full run says which PRs it kept and still succeeds. (Before 2026-11-02 a failed thread request read as no threads, so the row lost them until a later fetch.)
 
 ## Common examples
 

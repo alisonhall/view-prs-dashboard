@@ -13,8 +13,7 @@ const {
   createBackfillActionResponse,
   createBackfillLogResponse,
   createActionLogResponse,
-  createActorNameCacheResponse,
-  createActorLoginAliasesResponse,
+  createActorsResponse,
   createAuthorCommentsResponse,
   createDiffResponse,
   createAckResponse,
@@ -163,31 +162,17 @@ describe("API response fixtures", () => {
     });
   });
 
-  describe("createActorNameCacheResponse", () => {
-    test("given entries, when creating response, then includes count", () => {
-      const entries = { user1: "User One", user2: "User Two" };
-      const response = createActorNameCacheResponse(entries);
+  describe("createActorsResponse", () => {
+    test("given people, when creating response, then returns them", () => {
+      const actors = [{ id: "actor:user1", name: "User One", logins: ["user1", "user1-alt"] }];
+      const response = createActorsResponse(actors);
 
       expect(response.ok).toBe(true);
-      expect(response.entries).toEqual(entries);
-      expect(response.count).toBe(2);
+      expect(response.actors).toEqual(actors);
     });
 
-    test("given empty entries, when creating response, then count is zero", () => {
-      const response = createActorNameCacheResponse();
-
-      expect(response.count).toBe(0);
-    });
-  });
-
-  describe("createActorLoginAliasesResponse", () => {
-    test("given alias entries, when creating response, then includes count", () => {
-      const entries = { alias1: "user1", alias2: "user2" };
-      const response = createActorLoginAliasesResponse(entries);
-
-      expect(response.ok).toBe(true);
-      expect(response.entries).toEqual(entries);
-      expect(response.count).toBe(2);
+    test("given no people, when creating response, then returns an empty list", () => {
+      expect(createActorsResponse().actors).toEqual([]);
     });
   });
 

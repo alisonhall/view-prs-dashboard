@@ -32,6 +32,11 @@ const escapeHtml = (text: string): string =>
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 
+// The fail-closed fallback: the text escaped, in a box that keeps its line
+// breaks (.md-plain; the rendered HTML's own boxes don't, or the line
+// breaks between its blocks would show as gaps).
+const asPlainText = (text: string): string => `<div class="md-plain">${escapeHtml(text)}</div>`;
+
 const createPrMarkdownRenderHelpers = () => {
   const replaceExpiredGithubImages = (html: string): string => {
     // Replace entire <img ...> tags where src is from known expiring/private GitHub attachment hosts.
@@ -48,15 +53,16 @@ const createPrMarkdownRenderHelpers = () => {
     const sanitizer = window.DOMPurify;
     const marked = window.marked;
     if (!marked || typeof sanitizer?.sanitize !== "function") {
-      return escapeHtml(text);
+      return asPlainText(text);
     }
 
     let html: string;
     try {
-      html = marked.parse(text);
+      // As GitHub renders a comment: a line break in a paragraph is one.
+      html = marked.parse(text, { breaks: true, gfm: true });
     } catch (error) {
       console.warn("Failed to render markdown", error);
-      return escapeHtml(text);
+      return asPlainText(text);
     }
     // Placeholders go in after sanitizing: they're a fixed trusted string,
     // and their class would otherwise be stripped.

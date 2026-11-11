@@ -22,14 +22,6 @@ const createViewPrsDataRouteValidationHelpers = ({ isObject, sendErrorStatus }) 
     return body;
   };
 
-  const validateNonEmptyMappings = ({ entries, res, errorMessage }) => {
-    if (Object.keys(entries).length === 0) {
-      writeBadRequest({ res, error: errorMessage });
-      return false;
-    }
-    return true;
-  };
-
   const validateDataDeltaRequest = ({ body, res }) => {
     if (!isObject(body) || !Array.isArray(body.prNumbers)) {
       writeBadRequest({
@@ -43,7 +35,6 @@ const createViewPrsDataRouteValidationHelpers = ({ isObject, sendErrorStatus }) 
 
   return {
     validateJsonObjectBody,
-    validateNonEmptyMappings,
     validateDataDeltaRequest,
   };
 };

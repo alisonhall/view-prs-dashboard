@@ -7,6 +7,7 @@ import { useActorIdentity } from './ActorIdentityContext';
 import { useDebouncedValue } from './useDebouncedValue';
 import type { FilterValues } from './filterValuesStore';
 import { createPrScopeSelectionHelpers } from '../helpers/pr-scope-selection.helpers.ts';
+import { createPrOpenConversationCountHelpers } from '../helpers/pr-open-conversation-count.helpers.ts';
 import { createPrRowFilteringHelpers } from '../helpers/pr-row-filtering.helpers.ts';
 import { createPrRowMatchFiltersHelpers } from '../helpers/pr-row-match-filters.helpers.ts';
 import {
@@ -20,7 +21,8 @@ import { asArray } from '../helpers/pr-as-array.helpers.ts';
 import { extractRowLabelNames, normalizeFilterToken } from '../helpers/pr-filter-label-extraction.helpers.ts';
 import { getManualNotesFieldSummary } from '../helpers/pr-manual-notes-summary.helpers.ts';
 import { createEntryDerivedCache, type EntryDerivedCache } from '../helpers/pr-entry-derived-cache.helpers.ts';
-import type { PrData } from '../types/pr-data.ts';
+import { countThreadsToCheck, threadConfirmationsFor } from '../helpers/pr-review-threads.helpers.ts';
+import type { PrData, PrEntry } from '../types/pr-data.ts';
 
 const { formatIsoDatetime } = createPrFormattingHelpers();
 
@@ -34,16 +36,21 @@ const isInReviewEnabled = (row: PrData): boolean => {
 };
 
 // How long the PR-number filter waits after typing. Exported so
-// useAppliedFilterSummary.tsx and useTableFilterChips.tsx debounce their
-// display of it the same way; otherwise their text would disagree with the
-// (debounced) table while typing.
+// useTableFilterChips.tsx debounces its display of it the same way;
+// otherwise its chip would disagree with the (debounced) table while typing.
 export const FILTER_PR_NUMBERS_DEBOUNCE_MS = 150;
+// The search box waits the same, for the same reasons (and so the rows
+// aren't all matched again on every keystroke).
+export const FILTER_SEARCH_DEBOUNCE_MS = 150;
 
 // Used when there's no <FilterStateProvider> ancestor at all (e.g.
 // integration-tests/index.html.test.js's isolated PrTableApp mount, which
 // deliberately never mounts one).
 const DEFAULT_FILTER_STATE_VALUES: FilterValues = {
-  scopeMode: 'all',
+  onlyNeedsAttention: false,
+  onlyOpenConversationsWithMe: false,
+  onlyWaitingOnMe: false,
+  onlyThreadsToCheck: false,
   filterPrNumbers: '',
   alwaysShowInReview: false,
   filterCustomComments: '',
@@ -61,17 +68,14 @@ const DEFAULT_FILTER_STATE_VALUES: FilterValues = {
  * stable-children reconciliation-bailout bug NeedsAttentionProvider.tsx
  * had to work around (see its comment).
  *
- * Composes the pure row-filtering helpers (resolveScopedRows/
+ * Composes the pure row-filtering helpers (narrowRows/
  * buildRowFilterCriteria/applyRowUiFilters/rowMatchesUiFilters), with the
  * actor-identity pieces (collectAssignedUsers/collectApproversFromRow/
  * getPreferredActorKey) from useActorIdentity() and attentionConfig/
- * entryNeedsAttention/entryHasYourLastActivity from useNeedsAttention().
+ * entryNeedsAttention from useNeedsAttention().
  * Per-entry results are cached across renders (createEntryDerivedCache).
  *
- * Returns `{ visiblePrNumbers, scopeLabel }`: `scopeLabel` (e.g. "all
- * stored rows"/"needs attention rows") falls out of the same scope pass and
- * feeds the "Applied filters" text (useAppliedFilterSummary.tsx calls this
- * same hook rather than re-deriving scope).
+ * `filterSearch` (the search box) is debounced the same way.
  *
  * `filterPrNumbers` is debounced (FILTER_PR_NUMBERS_DEBOUNCE_MS) so typing
  * a PR number doesn't re-filter on every keystroke and flicker through
@@ -86,10 +90,11 @@ export function useFilteredPrRows(): VisiblePrNumbersResult {
   const { payload } = usePrData();
   const filterState = useContext(FilterStateContext);
   const values = filterState?.values || DEFAULT_FILTER_STATE_VALUES;
-  const { attentionConfig, entryNeedsAttention, entryHasYourLastActivity } = useNeedsAttention();
+  const { attentionConfig, entryNeedsAttention } = useNeedsAttention();
   const { checkedByListId } = useRowFilterSelection();
-  const { normalizeActorLogin, resolveActorDisplayName, getPreferredActorKey } = useActorIdentity();
+  const { normalizeActorLogin, resolveActorDisplayName, getPreferredActorKey, getEffectiveViewerLogin } = useActorIdentity();
   const debouncedFilterPrNumbers = useDebouncedValue(values.filterPrNumbers, FILTER_PR_NUMBERS_DEBOUNCE_MS);
+  const debouncedSearch = useDebouncedValue(values.filterSearch, FILTER_SEARCH_DEBOUNCE_MS);
 
   const cacheRef = useRef<EntryDerivedCache | null>(null);
   if (!cacheRef.current) {
@@ -98,10 +103,41 @@ export function useFilteredPrRows(): VisiblePrNumbersResult {
   // Set just above and never replaced.
   const cache = cacheRef.current;
 
+  const threadChecksByRepo = payload?.threadChecksByRepo;
+  const actorsMap = payload?.actorsMap;
   const helpers = useMemo(() => {
-    const { resolveScopedRows, normalizeSelectedScope } = createPrScopeSelectionHelpers({
+    // The Review column's conversations: with a known viewer, those they
+    // took part in (the speech bubble), and those waiting on them (filled).
+    // Counted once per row for both checkboxes, until the rows or the
+    // viewer lookup (which remakes these helpers) change.
+    const { getOpenConversationCountWithMe } = createPrOpenConversationCountHelpers({ getEffectiveViewerLogin, asArray });
+    const conversationCounts = new WeakMap<PrEntry, { count: number; waitingCount: number }>();
+    const conversationsWithMe = (entry: PrEntry) => {
+      let counts = conversationCounts.get(entry);
+      if (!counts) {
+        const conversations = getOpenConversationCountWithMe(entry?.data);
+        counts = conversations.isViewerSpecific ? conversations : { count: 0, waitingCount: 0 };
+        conversationCounts.set(entry, counts);
+      }
+      return counts;
+    };
+    const { narrowRows } = createPrScopeSelectionHelpers({
       entryNeedsAttention,
-      entryHasYourLastActivity,
+      isInReviewEnabled,
+      entryHasOpenConversationsWithMe: (entry) => conversationsWithMe(entry).count > 0,
+      entryHasConversationWaitingOnMe: (entry) => conversationsWithMe(entry).waitingCount > 0,
+      entryHasThreadsToCheck: (entry) => {
+        const pr = entry?.data || {};
+        return (
+          countThreadsToCheck(
+            pr,
+            String(getEffectiveViewerLogin(pr) || ''),
+            // A login as GitHub gives it: the threads' comments compare with it.
+            String(pr?.authorLogin || pr?.author || ''),
+            threadConfirmationsFor(threadChecksByRepo, entry?.repo, entry?.prNumber),
+          ) > 0
+        );
+      },
     });
     const { collectAssignedUsers } = createPrAssignedUsersHelpers({
       asArray,
@@ -122,6 +158,10 @@ export function useFilteredPrRows(): VisiblePrNumbersResult {
       normalizeFilterToken,
       getManualNotesFieldSummary,
       isInReviewEnabled,
+      // None for a PR without an author: not the resolver's "unknown",
+      // which a search for "no" would find.
+      getAuthorDisplayName: (row) =>
+        row?.authorLogin || row?.author ? resolveActorDisplayName(row?.authorLogin, actorsMap || {}, row?.author) : '',
     });
     const { buildRowFilterCriteria, applyRowUiFilters } = createPrRowFilteringHelpers({
       rowMatchesUiFilters,
@@ -129,46 +169,75 @@ export function useFilteredPrRows(): VisiblePrNumbersResult {
       getOrComputeLatest: cache.getOrComputeLatest,
     });
     return createPrVisiblePrNumbersHelpers({
-      resolveScopedRows,
-      normalizeSelectedScope,
+      narrowRows,
       buildRowFilterCriteria,
       applyRowUiFilters,
     });
   }, [
     cache,
     entryNeedsAttention,
-    entryHasYourLastActivity,
     normalizeActorLogin,
     resolveActorDisplayName,
     getPreferredActorKey,
+    getEffectiveViewerLogin,
+    threadChecksByRepo,
+    actorsMap,
   ]);
 
   return useMemo(
     () =>
       helpers.computeVisiblePrNumbers({
         payload,
-        scopeMode: values.scopeMode,
+        onlyNeedsAttention: Boolean(values.onlyNeedsAttention),
+        onlyOpenConversationsWithMe: Boolean(values.onlyOpenConversationsWithMe),
+        onlyWaitingOnMe: Boolean(values.onlyWaitingOnMe),
+        onlyThreadsToCheck: Boolean(values.onlyThreadsToCheck),
         filterPrNumbersRaw: debouncedFilterPrNumbers,
         attentionConfig,
         rowFilterSelections: {
+          repoNames: Array.from(checkedByListId['repo-list'] || []),
           includeLabels: Array.from(checkedByListId['label-list'] || []),
           excludeLabels: Array.from(checkedByListId['exclude-label-list'] || []),
           authorLogins: Array.from(checkedByListId['author-list'] || []),
           assignedLogins: Array.from(checkedByListId['assigned-list'] || []),
           approverLogins: Array.from(checkedByListId['approver-list'] || []),
         },
+        lastActivityFrom: values.filterLastActivityFrom,
+        lastActivityTo: values.filterLastActivityTo,
         alwaysShowInReview: values.alwaysShowInReview,
         customComments: values.filterCustomComments,
         otherNotes: values.filterOtherNotes,
         prDifficulty: values.filterPrDifficulty,
         stories: values.filterStories,
         analysisOfPr: values.filterAnalysisOfPr,
+        search: debouncedSearch,
       }),
-    [helpers, payload, values, attentionConfig, checkedByListId, debouncedFilterPrNumbers],
+    [helpers, payload, values, attentionConfig, checkedByListId, debouncedFilterPrNumbers, debouncedSearch],
   );
 }
 
-// PrTableApp's entry point: just the visible PR numbers.
-export function useVisiblePrNumbers(): string[] {
-  return useFilteredPrRows().visiblePrNumbers;
+// PrTableApp's entry point: the visible rows' repo-and-number keys, and
+// the search's words - each the same array while its contents are the
+// same. The filtering runs again on every keystroke in a debounced field
+// (it reads all the values), giving new arrays of the same keys; PrTableApp
+// would rebuild and re-sort every section for them, and rows reading the
+// words (SearchTermsContext) would all render again.
+export function useVisiblePrKeys(): { visiblePrKeys: string[]; searchTerms: string[] } {
+  const { visiblePrKeys, searchTerms } = useFilteredPrRows();
+  const stableVisiblePrKeys = useSameArray(visiblePrKeys);
+  const stableSearchTerms = useSameArray(searchTerms);
+  return { visiblePrKeys: stableVisiblePrKeys, searchTerms: stableSearchTerms };
+}
+
+// The last array given while each one given has the same items in order.
+function useSameArray<T>(items: T[]): T[] {
+  const ref = useRef(items);
+  const previous = ref.current;
+  if (
+    previous !== items &&
+    (!Array.isArray(previous) || !Array.isArray(items) || previous.length !== items.length || items.some((item, index) => !Object.is(item, previous[index])))
+  ) {
+    ref.current = items;
+  }
+  return ref.current;
 }

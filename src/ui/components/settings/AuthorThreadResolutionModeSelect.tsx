@@ -1,4 +1,4 @@
-import { useFilterState } from '../../state/FilterStateContext';
+import { useRuleField } from '../../state/useRuleField';
 
 /**
  * Attention rules' "PR author thread resolution policy": whether a PR's
@@ -8,13 +8,14 @@ import { useFilterState } from '../../state/FilterStateContext';
  * by useAuthorThreadResolutionPolicy (the Conversations tab).
  */
 export function AuthorThreadResolutionModeSelect() {
-  const { values, setValue } = useFilterState();
+  // Every repo's, or the repo's own (Settings › Rules for a repo).
+  const { value, setValue } = useRuleField('attentionAuthorThreadResolutionMode');
   return (
     <select
       id="attention-author-thread-resolution-mode"
       name="attentionAuthorThreadResolutionMode"
-      value={String(values.attentionAuthorThreadResolutionMode ?? 'allow-all')}
-      onChange={(event) => setValue('attentionAuthorThreadResolutionMode', event.target.value)}
+      value={String(value ?? 'allow-all')}
+      onChange={(event) => setValue(event.target.value)}
     >
       <option value="allow-all">Allow PR authors to resolve all own-PR threads</option>
       <option value="allow-only">Allow only for selected thread starters</option>

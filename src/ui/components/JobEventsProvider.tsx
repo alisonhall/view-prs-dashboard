@@ -19,7 +19,6 @@ const {
   setConnectionState,
   applyJobEventsSnapshot,
   applyJobEvent,
-  extractSchedulerSummary,
 } = createPrJobEventsHelpers();
 
 // A job/scheduler frame, or a "data-changed" frame (which carries `type`).
@@ -32,25 +31,27 @@ type JobEventsFrame = JobEventEnvelope & { type?: string };
  * A Provider (not a bare hook) deliberately - so exactly one EventSource
  * exists for the page however many consumers read it.
  *
- * On every frame it receives (snapshot/job/scheduler/data-changed), it calls
+ * Any frame - a `heartbeat` (every 25s) too - says the connection is alive:
+ * `isStale` is a minute without one. On every other frame (snapshot/job/
+ * scheduler/data-changed), it calls
  * RequestActivityProvider's renderSchedulerStatus with the bundled
  * scheduler object, which keeps the per-row progress indicator and the
- * request-activity badges current. And on an autoRefresh/mergedQueueDrain
- * "finish" job event, OR a "data-changed" event (fired by ack/apply-label/
- * manual-run/request-more once one of those routes actually wrote to the
- * stored PR data file), it calls PrDataContext's pollForDataChanges
- * immediately rather than waiting for that poll's own next tick - the
- * interval itself stays as a slower safety net, since not every possible
- * write path is instrumented (e.g. anything that bypasses these routes
- * entirely would still rely on it).
+ * request-activity badges current. And on an autoRefresh/mergedQueueDrain/
+ * quickCheck "finish" job event, OR a "data-changed" event (fired by ack/
+ * apply-label/manual-run/request-more once one of those routes actually
+ * wrote to the stored PR data file, and by the server's data watcher when
+ * the data version moves), it calls PrDataContext's pollForDataChanges
+ * immediately - one at a time - rather than waiting for that poll's own
+ * next tick, and on each connection's snapshot (the server only pushes
+ * changes from when a connection opens). The interval itself stays as a
+ * slower safety net (PrDataPolling slows it while this connection is open).
  */
 export function JobEventsProvider({ children }: { children?: ReactNode }) {
   // Reads PrDataContext directly (not the throwing usePrData() hook) so
   // this still works without a <PrDataProvider> ancestor - this
   // component's own existing test file mounts it standalone, and payload
-  // is only used below as an optional seed (see the schedulerSummary
-  // useMemo's own comment), never required for this Provider's main job
-  // (owning the EventSource connection).
+  // only tells it when the data has first loaded, never required for this
+  // Provider's main job (owning the EventSource connection).
   const prDataContext = useContext(PrDataContext);
   const payload = prDataContext?.payload;
   // Ref, not an effect dependency: the SSE effect below must not tear down
@@ -64,8 +65,24 @@ export function JobEventsProvider({ children }: { children?: ReactNode }) {
   renderSchedulerStatusRef.current = useRequestActivity().renderSchedulerStatus;
   const [jobEventsState, setJobEventsState] = useState<JobEventsState>(getInitialJobEventsState);
   const [isStale, setIsStale] = useState(false);
-  const lastEventAtRef = useRef<string | null>(null);
-  lastEventAtRef.current = jobEventsState.lastEventAt;
+  // The first snapshot's poll waits for the page's first data load: a poll
+  // before it would load all the data a second time.
+  const isPayloadLoaded = Boolean(payload?.ok);
+  const isPayloadLoadedRef = useRef(isPayloadLoaded);
+  isPayloadLoadedRef.current = isPayloadLoaded;
+  const pollWhenLoadedRef = useRef(false);
+  const requestDataPollRef = useRef<(() => void) | null>(null);
+  // When this page last received any frame - heartbeats too, which say the
+  // connection is alive though nothing changed - by its own clock (a
+  // frame's `at` is the server's, which can differ from this computer's).
+  // What staleness is judged by.
+  const lastFrameReceivedAtRef = useRef<number | null>(null);
+  const noteFrameReceived = () => {
+    lastFrameReceivedAtRef.current = Date.now();
+    setIsStale(false);
+  };
+  const noteFrameReceivedRef = useRef(noteFrameReceived);
+  noteFrameReceivedRef.current = noteFrameReceived;
 
   useEffect(() => {
     if (typeof window.EventSource !== 'function') {
@@ -78,11 +95,40 @@ export function JobEventsProvider({ children }: { children?: ReactNode }) {
     let reconnectDelayMs = RECONNECT_BASE_DELAY_MS;
     let stopped = false;
 
+    // One data poll at a time: frames can come every few seconds during a
+    // run (the server's data watcher), and a poll can take longer than that.
+    // A request while one's running runs once more after it.
+    let isPolling = false;
+    let pollAgain = false;
+    const requestDataPoll = () => {
+      if (isPolling) {
+        pollAgain = true;
+        return;
+      }
+      isPolling = true;
+      Promise.resolve(pollForDataChangesRef.current?.())
+        .catch(() => {})
+        .finally(() => {
+          isPolling = false;
+          if (pollAgain && !stopped) {
+            pollAgain = false;
+            requestDataPoll();
+          }
+        });
+    };
+    requestDataPollRef.current = requestDataPoll;
+
     const applySchedulerSideEffects = (scheduler: SchedulerSnapshot | undefined) => {
       renderSchedulerStatusRef.current?.(scheduler);
     };
 
+    // Only says the connection is alive (see lastFrameReceivedAtRef).
+    const handleHeartbeat = () => {
+      noteFrameReceivedRef.current();
+    };
+
     const handleSnapshot = (event: MessageEvent) => {
+      noteFrameReceivedRef.current();
       let payload: { scheduler?: SchedulerSnapshot; at?: string };
       try {
         payload = JSON.parse(event.data);
@@ -91,9 +137,17 @@ export function JobEventsProvider({ children }: { children?: ReactNode }) {
       }
       setJobEventsState((previous) => applyJobEventsSnapshot(previous, payload));
       applySchedulerSideEffects(payload?.scheduler);
+      // Whatever changed before this connection opened wasn't pushed: while
+      // disconnected, or, on the first one, since the page's data load began.
+      if (isPayloadLoadedRef.current) {
+        requestDataPoll();
+      } else {
+        pollWhenLoadedRef.current = true;
+      }
     };
 
     const handleJobOrSchedulerFrame = (event: MessageEvent) => {
+      noteFrameReceivedRef.current();
       let envelope: JobEventsFrame;
       try {
         envelope = JSON.parse(event.data);
@@ -105,15 +159,16 @@ export function JobEventsProvider({ children }: { children?: ReactNode }) {
 
       const isDataWritingJobFinish =
         envelope?.phase === 'finish' &&
-        (envelope?.job === 'autoRefresh' || envelope?.job === 'mergedQueueDrain');
+        (envelope?.job === 'autoRefresh' || envelope?.job === 'mergedQueueDrain' || envelope?.job === 'quickCheck');
       // "data-changed" is emitted by ack/apply-label/manual-run/request-more
       // once one of those routes has actually written to the stored PR data
       // file - the requesting tab already has its own fresh result from that
       // route's own response, so this is specifically for every *other*
-      // connected tab.
+      // connected tab - and by the server's data watcher whenever the data
+      // version moves (a script run's rows, a quick check's listing).
       const isDataChangedEvent = envelope?.type === 'data-changed';
       if (isDataWritingJobFinish || isDataChangedEvent) {
-        pollForDataChangesRef.current?.();
+        requestDataPoll();
       }
     };
 
@@ -132,6 +187,7 @@ export function JobEventsProvider({ children }: { children?: ReactNode }) {
       eventSource.addEventListener('job', handleJobOrSchedulerFrame);
       eventSource.addEventListener('scheduler', handleJobOrSchedulerFrame);
       eventSource.addEventListener('data-changed', handleJobOrSchedulerFrame);
+      eventSource.addEventListener('heartbeat', handleHeartbeat);
 
       eventSource.onerror = () => {
         if (stopped) {
@@ -158,6 +214,7 @@ export function JobEventsProvider({ children }: { children?: ReactNode }) {
 
     return () => {
       stopped = true;
+      requestDataPollRef.current = null;
       if (reconnectTimer) {
         clearTimeout(reconnectTimer);
       }
@@ -170,42 +227,26 @@ export function JobEventsProvider({ children }: { children?: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (isPayloadLoaded && pollWhenLoadedRef.current) {
+      pollWhenLoadedRef.current = false;
+      requestDataPollRef.current?.();
+    }
+  }, [isPayloadLoaded]);
+
+  useEffect(() => {
+    // The server sends a heartbeat every 25s (VIEW_PRS_EVENTS_HEARTBEAT_INTERVAL_MS),
+    // so a minute without any frame means the connection isn't delivering.
     const watchdog = setInterval(() => {
-      const lastEventAt = lastEventAtRef.current;
-      if (!lastEventAt) {
+      const lastReceivedAt = lastFrameReceivedAtRef.current;
+      if (lastReceivedAt === null) {
         return;
       }
-      const elapsedMs = Date.now() - Date.parse(lastEventAt);
-      setIsStale(elapsedMs > STALENESS_THRESHOLD_MS);
+      setIsStale(Date.now() - lastReceivedAt > STALENESS_THRESHOLD_MS);
     }, STALENESS_CHECK_INTERVAL_MS);
     return () => clearInterval(watchdog);
   }, []);
 
-  // schedulerSummary's own default value (getInitialJobEventsState) is a
-  // hardcoded placeholder ({ intervalMinutes: 15, lastAutoRunAt: null,
-  // ... }), not real data - on a fresh page load, before this
-  // connection's first real 'snapshot' event arrives, consumers would
-  // otherwise briefly see that placeholder instead of whatever's actually
-  // true (e.g. "Last auto: -" even if an auto run genuinely happened
-  // recently). payload.scheduler (PrDataProvider's own state, already
-  // populated from the very first /view-prs/data fetch - the exact same
-  // server-side getViewPrsSchedulerPublicState() this connection's own
-  // scheduler frames carry) already has the real values immediately, so
-  // prefer it as a fallback until lastSnapshotAt confirms this connection
-  // has delivered real data of its own - from then on, the live
-  // SSE-tracked value is preferred (fresher between polls, the whole
-  // point of this connection existing).
-  const schedulerSummary = useMemo(() => {
-    if (jobEventsState.lastSnapshotAt) {
-      return jobEventsState.schedulerSummary;
-    }
-    return extractSchedulerSummary(payload?.scheduler as SchedulerSnapshot | undefined, jobEventsState.schedulerSummary);
-  }, [jobEventsState.lastSnapshotAt, jobEventsState.schedulerSummary, payload]);
-
-  const value = useMemo<JobEventsValue>(
-    () => ({ ...jobEventsState, schedulerSummary, isStale }),
-    [jobEventsState, schedulerSummary, isStale],
-  );
+  const value = useMemo<JobEventsValue>(() => ({ ...jobEventsState, isStale }), [jobEventsState, isStale]);
 
   return <JobEventsContext.Provider value={value}>{children}</JobEventsContext.Provider>;
 }

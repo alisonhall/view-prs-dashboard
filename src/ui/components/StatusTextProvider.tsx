@@ -4,7 +4,7 @@ import { INITIAL_STATUS_TEXT, StatusTextContext } from '../state/StatusTextConte
 /**
  * Owns the status message's text: the latest action's result or progress.
  * The app header shows its first line once something has reported (so it's
- * seen), and the Settings drawer's Run & check shows it whole (`#status`,
+ * seen), and the Tools drawer's Run & check shows it whole (`#status`,
  * RunCheckSection).
  *
  * Mounted wrapping `<AppShell />` in react-app.tsx, outside AppShell's

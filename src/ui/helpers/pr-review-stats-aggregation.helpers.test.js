@@ -184,6 +184,65 @@ describe("review stats aggregation helpers", () => {
     expect(result.reviewerRows[0].resolvedThreadComments).toBe(1);
   });
 
+  describe("with reviewers picked", () => {
+    const row = (prNumber, overrides) => ({
+      prNumber,
+      data: { number: prNumber, title: `PR ${prNumber}`, authorLogin: "pr-author", ...overrides },
+    });
+    const rows = [
+      row("1", {
+        commentEvents: [
+          { actor: "carol", channel: "thread", occurredAt: "2026-07-10T12:00:00Z" },
+          { actor: "dave", channel: "top-level", occurredAt: "2026-07-10T13:00:00Z" },
+        ],
+        reviews: [{ authorLogin: "Dave", submittedAt: "2026-07-11T00:00:00Z", state: "APPROVED" }],
+        metrics: { approvals: [{ login: "dave", approvedAt: "2026-07-11T00:00:00Z", riskyApproval: true }] },
+        reviewThreads: [
+          { isResolved: false, comments: [{ authorLogin: "carol", createdAt: "2026-07-10T12:00:00Z" }] },
+          { isResolved: false, comments: [{ authorLogin: "dave", createdAt: "2026-07-10T12:30:00Z" }] },
+        ],
+      }),
+      // Only Dave here.
+      row("2", { commentEvents: [{ actor: "dave", channel: "thread", occurredAt: "2026-07-12T12:00:00Z" }] }),
+    ];
+
+    test("only their comments, reviews, approvals and threads count, in the cards as in the table", () => {
+      const { buildReviewerStats } = createHelpers({ statsViewState: { reviewers: ["carol"] } });
+
+      const { summary, reviewerRows } = buildReviewerStats(rows, {});
+
+      expect(reviewerRows.map((reviewer) => reviewer.login)).toEqual(["carol"]);
+      expect(summary.commentsOnOthersPrs).toBe(1);
+      expect(summary.approvals).toBe(0);
+      expect(summary.riskyApprovals).toBe(0);
+      expect(summary.openConversations).toBe(1);
+      expect(summary.rows).toBe(1);
+      expect(summary.sources.rows.map((source) => source.prNumber)).toEqual(["1"]);
+    });
+
+    test("a login matches whatever its case, as reviewers are keyed", () => {
+      const { buildReviewerStats } = createHelpers({ statsViewState: { reviewers: ["dave"] } });
+
+      const { summary, reviewerRows } = buildReviewerStats(rows, {});
+
+      expect(reviewerRows).toHaveLength(1);
+      expect(reviewerRows[0]).toMatchObject({ login: "dave", comments: 2, reviews: 1, riskyApprovals: 1, prCount: 2 });
+      expect(summary.rows).toBe(2);
+    });
+
+    test("with no dates, the PRs card counts only PRs they took part in, not every stored PR", () => {
+      const { buildReviewerStats } = createHelpers({
+        statsViewState: { reviewers: ["carol"] },
+        getNormalizedStatsDateRange: () => ({ start: "", end: "", startDate: "", endDate: "" }),
+      });
+
+      const { summary } = buildReviewerStats(rows, {});
+
+      expect(summary.rows).toBe(1);
+      expect(summary.openConversations).toBe(1);
+    });
+  });
+
   test("given no explicit date range and no reviewer events, when building reviewer stats, then row summary still counts baseline rows", () => {
     const { buildReviewerStats } = createHelpers({
       getNormalizedStatsDateRange: () => ({

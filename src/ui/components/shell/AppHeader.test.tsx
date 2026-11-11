@@ -7,23 +7,23 @@ import { TabStateProvider } from '../TabStateProvider';
 import { StatusTextProvider } from '../StatusTextProvider';
 import { useStatusText } from '../../state/StatusTextContext';
 import type { PrDataPayload } from '../../types/pr-data.ts';
-import { AppHeader, type AppHeaderProps } from './AppHeader';
-import { SettingsDrawerProvider, useSettingsDrawer } from '../../state/SettingsDrawerContext';
+import { AppHeader } from './AppHeader';
+import { SettingsDrawerProvider, useOpenDrawer } from '../../state/SettingsDrawerContext';
 
-let settingsOpen = false;
+let openDrawer: string | null = null;
 function SettingsProbe() {
-  settingsOpen = useSettingsDrawer().isOpen;
+  openDrawer = useOpenDrawer();
   return null;
 }
 
 const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
 const loaded = (lastRun: PrDataPayload['lastRun']): PrDataPayload => ({ ok: true, byPrNumber: {}, lastRun });
 
-const renderHeader = (payload: PrDataPayload = loaded({ repo: 'octocat/hello-world', updatedAt: minutesAgo(5) }), props: Partial<AppHeaderProps> = {}) =>
+const renderHeader = (payload: PrDataPayload = loaded({ repo: 'octocat/hello-world', updatedAt: minutesAgo(5) })) =>
   render(
     <PrDataProvider initialPayload={payload}>
       <TabStateProvider>
-        <AppHeader onQuickCheckAll={async () => undefined} {...props} />
+        <AppHeader />
       </TabStateProvider>
     </PrDataProvider>,
   );
@@ -104,6 +104,70 @@ describe('AppHeader', () => {
       expect(screen.getByText('Updated 1d ago')).toHaveAttribute('data-tone', 'attention');
     });
 
+    test("once the repos shown are checked, says they're on schedule, with each repo and the last run on hover", () => {
+      renderHeader({
+        ...loaded({ repo: 'o/a', updatedAt: minutesAgo(30) }),
+        byPrNumber: { 1: { repo: 'o/a', prNumber: '1' }, 2: { repo: 'o/b', prNumber: '2' } },
+        dataMeta: {
+          dataVersion: 'v1',
+          liveSummary: {
+            'o/a': { checkedAt: minutesAgo(1), quickCheckIntervalMs: 5 * 60_000 },
+            'o/b': { checkedAt: minutesAgo(3), quickCheckIntervalMs: 5 * 60_000 },
+          },
+        },
+      });
+      const pill = screen.getByText('Checked on schedule');
+      expect(pill.getAttribute('title')?.split('\n')).toEqual([
+        expect.stringMatching(/^o\/a: checked 1m ago .* · every 5m$/),
+        expect.stringMatching(/^o\/b: checked 3m ago .* · every 5m$/),
+        expect.stringMatching(/^Last run 30m ago/),
+      ]);
+      expect(pill).not.toHaveAttribute('data-tone');
+    });
+
+    // The checks keep the data current: a full run long ago is in the
+    // title, but "Checked on schedule" isn't flagged for it.
+    test("an old full run doesn't flag it while every repo is checked on schedule", () => {
+      renderHeader({
+        ...loaded({ repo: 'o/a', updatedAt: minutesAgo(3 * 24 * 60) }),
+        byPrNumber: { 1: { repo: 'o/a', prNumber: '1' }, 2: { repo: 'o/b', prNumber: '2' } },
+        dataMeta: {
+          dataVersion: 'v1',
+          liveSummary: {
+            'o/a': { checkedAt: minutesAgo(1), quickCheckIntervalMs: 5 * 60_000 },
+            'o/b': { checkedAt: minutesAgo(50), quickCheckIntervalMs: 60 * 60_000 },
+          },
+        },
+      });
+      expect(screen.getByText('Checked on schedule')).not.toHaveAttribute('data-tone');
+    });
+
+    test('names the one repo overdue on its own schedule, flagged', () => {
+      renderHeader({
+        ...loaded({ repo: 'o/a', updatedAt: minutesAgo(30) }),
+        byPrNumber: { 1: { repo: 'o/a', prNumber: '1' }, 2: { repo: 'o/b', prNumber: '2' } },
+        dataMeta: {
+          dataVersion: 'v1',
+          liveSummary: {
+            'o/a': { checkedAt: minutesAgo(1), quickCheckIntervalMs: 5 * 60_000 },
+            'o/b': { checkedAt: minutesAgo(30), quickCheckIntervalMs: 5 * 60_000 },
+          },
+        },
+      });
+      expect(screen.getByText('o/b checked 30m ago')).toHaveAttribute('data-tone', 'attention');
+    });
+
+    test("marks a repo whose check is failing", () => {
+      renderHeader({
+        ...loaded({ repo: 'o/a', updatedAt: minutesAgo(30) }),
+        byPrNumber: { 1: { repo: 'o/a', prNumber: '1' } },
+        dataMeta: { liveSummary: { 'o/a': { checkedAt: minutesAgo(2), lastError: 'rate limited', lastErrorAt: minutesAgo(1) } } },
+      });
+      const pill = screen.getByText('Checked 2m ago');
+      expect(pill).toHaveAttribute('data-tone', 'attention');
+      expect(pill).toHaveAttribute('title', expect.stringContaining('failing (rate limited)'));
+    });
+
     test('before the first load, and before any run', () => {
       const { unmount } = renderHeader({});
       expect(screen.getByText('Loading…')).toBeInTheDocument();
@@ -123,7 +187,7 @@ describe('AppHeader', () => {
       <PrDataProvider initialPayload={loaded(null)}>
         <StatusTextProvider>
           <StatusSetter />
-          <AppHeader onQuickCheckAll={async () => undefined} />
+          <AppHeader />
         </StatusTextProvider>
       </PrDataProvider>,
     );
@@ -136,30 +200,31 @@ describe('AppHeader', () => {
     expect(status).toHaveAttribute('title', 'Ack only completed\nPR #1: acked');
   });
 
-  test('Settings opens the Settings drawer', async () => {
+  test.each([
+    ['Tools', 'tools'],
+    ['Settings', 'settings'],
+  ])('%s opens its own drawer, and says it is open (the other button does not)', async (name, drawer) => {
     const user = userEvent.setup();
     render(
       <PrDataProvider initialPayload={loaded(null)}>
         <SettingsDrawerProvider>
-          <AppHeader onQuickCheckAll={async () => undefined} />
+          <AppHeader />
           <SettingsProbe />
         </SettingsDrawerProvider>
       </PrDataProvider>,
     );
-    const settings = screen.getByRole('button', { name: 'Settings' });
-    expect(settings).toHaveAttribute('aria-haspopup', 'dialog');
-    expect(settings).toHaveAttribute('aria-expanded', 'false');
-    await user.click(settings);
-    expect(settingsOpen).toBe(true);
-    expect(settings).toHaveAttribute('aria-expanded', 'true');
+    const button = screen.getByRole('button', { name });
+    const other = screen.getByRole('button', { name: name === 'Tools' ? 'Settings' : 'Tools' });
+    expect(button).toHaveAttribute('aria-haspopup', 'dialog');
+    expect(button).toHaveAttribute('aria-expanded', 'false');
+    await user.click(button);
+    expect(openDrawer).toBe(drawer);
+    expect(button).toHaveAttribute('aria-expanded', 'true');
+    expect(other).toHaveAttribute('aria-expanded', 'false');
   });
 
-  test('Quick check all runs the check and shows what it found', async () => {
-    const user = userEvent.setup();
-    const onQuickCheckAll = jest.fn(async () => ({ label: '2 updates found' }));
-    renderHeader(undefined, { onQuickCheckAll });
-    await user.click(screen.getByRole('button', { name: 'Quick check all' }));
-    expect(onQuickCheckAll).toHaveBeenCalledTimes(1);
-    expect(await screen.findByRole('button', { name: '2 updates found' })).toBeInTheDocument();
+  test('has no quick check of its own: those are in Tools › Run & check', () => {
+    renderHeader();
+    expect(within(screen.getByRole('banner')).queryByRole('button', { name: /quick check/i })).not.toBeInTheDocument();
   });
 });

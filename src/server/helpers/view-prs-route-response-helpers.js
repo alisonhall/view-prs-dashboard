@@ -28,15 +28,6 @@ const createViewPrsRouteResponseHelpers = () => {
 
   const sendOk = ({ res, payload = {} }) => res.status(200).json({ ok: true, ...payload });
 
-  const sendEntries = ({ res, entries }) =>
-    sendOk({
-      res,
-      payload: {
-        entries,
-        count: Object.keys(entries).length,
-      },
-    });
-
   const sendInternalError = ({ res, error, fallbackMessage }) =>
     res.status(500).json({
       ok: false,
@@ -50,7 +41,6 @@ const createViewPrsRouteResponseHelpers = () => {
     sendRouteResult,
     sendErrorStatus,
     sendOk,
-    sendEntries,
     sendInternalError,
   };
 };

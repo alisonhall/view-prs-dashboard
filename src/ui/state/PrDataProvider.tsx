@@ -13,6 +13,7 @@ import { createPrViewerContextHelpers } from '../helpers/pr-viewer-context.helpe
 import { inferViewerLoginFromPage } from '../helpers/pr-viewer-login-inference.helpers.ts';
 import { createPrDataPollingOrchestrationHelpers } from '../helpers/pr-data-polling-orchestration.helpers.ts';
 import { createPrDataPollingHelpers } from '../helpers/pr-data-polling.helpers.ts';
+import { createSerialRunner } from '../helpers/pr-serial-run.helpers.ts';
 import { createEntryDerivedCache } from '../helpers/pr-entry-derived-cache.helpers.ts';
 import { createPrStoredDataLoadHelpers } from '../helpers/pr-stored-data-load.helpers.ts';
 import { createPrRepoRunContextHelpers } from '../helpers/pr-repo-run-context.helpers.ts';
@@ -27,6 +28,12 @@ import { PrDataActionsContext, type PrDataActionsValue } from './PrDataActionsCo
 import { useBackfillStatusActions } from './BackfillStatusContext';
 import { useFilterFieldActions } from './FilterStateContext';
 import type { PrDataPayload, PrManifest } from '../types/pr-data.ts';
+import { createFetchWithTimeout } from '../helpers/fetch-with-timeout.helpers.ts';
+
+// The data loads and polls give up on an answer that stalls part way (see
+// fetch-with-timeout.helpers.ts): the next poll tries again, where waiting
+// would stop the page updating. The global fetch is looked up per call.
+const fetchWithTimeout = createFetchWithTimeout((input, init) => fetch(input, init));
 
 // pollForDataChanges' bookkeeping (see trackingRef below): which polling
 // endpoints the server supports, what was last seen and rendered, and the
@@ -273,9 +280,9 @@ export function PrDataProvider({
     [recordRenderedPayload, resolveRepoFilter, setPendingAutoRenderPayload, showPayload, updateBackfillStatusFromPayload],
   );
 
-  const pollForDataChanges = useMemo(() => {
+  const pollOnce = useMemo(() => {
     const helpers = createPrDataPollingOrchestrationHelpers({
-      fetchFn: (input, init) => fetch(input, init),
+      fetchFn: fetchWithTimeout,
       documentRef: typeof document !== 'undefined' ? document : null,
       computePrDataManifest: pollingHelpers.computePrDataManifest,
       getManifestDelta: pollingHelpers.getManifestDelta,
@@ -370,6 +377,15 @@ export function PrDataProvider({
     getPendingAutoRenderPayload,
     setPendingAutoRenderPayload,
   ]);
+  // One poll at a time: <PrDataPolling />'s interval and the server's
+  // data-changed events (JobEventsProvider) each call this, and two polls at
+  // once could finish out of order - an older poll's rows and data version
+  // replacing a newer one's (an Ack just made flicking back). A call while
+  // one runs gets one more poll after it. Stable across renders, so the
+  // guard holds while pollOnce is rebuilt.
+  const pollOnceRef = useRef(pollOnce);
+  pollOnceRef.current = pollOnce;
+  const [pollForDataChanges] = useState(() => createSerialRunner(() => pollOnceRef.current()));
 
   // Skipped unless a backfill is running and no backfill action is pending
   // (BackfillStatusProvider's flags).
@@ -387,7 +403,7 @@ export function PrDataProvider({
 
   const loadStoredData = useMemo(() => {
     const helpers = createPrStoredDataLoadHelpers({
-      fetch: (input) => fetch(input),
+      fetch: (input) => fetchWithTimeout(input),
       beginRequestActivity,
       setLastSeenDataVersion: (value) => {
         trackingRef.current.lastSeenDataVersion = value;
@@ -427,6 +443,15 @@ export function PrDataProvider({
     }
     hasStartedInitialLoadRef.current = true;
     loadStoredData('').catch((error) => {
+      // A poll loaded the data while this load stalled (it gives up after
+      // FETCH_TIMEOUT_MS; polls don't wait for it): nothing failed that
+      // the page shows.
+      if (getLatestStoredPayload()) {
+        return;
+      }
+      // Up until the next poll that works, which loads the data in its
+      // place and hides this (markPollSuccess).
+      trackingRef.current.hasActivePollWarning = true;
       setStatusText('Failed to load stored data');
       renderRequestActivity();
       setOutputText(String(error));
@@ -437,7 +462,7 @@ export function PrDataProvider({
       );
       showError(title, detail, 0);
     });
-  }, [loadOnMount, loadStoredData, setStatusText, renderRequestActivity, setOutputText, showError]);
+  }, [loadOnMount, loadStoredData, getLatestStoredPayload, setStatusText, renderRequestActivity, setOutputText, showError]);
 
   const setPayload = useCallback<PrDataValue['setPayload']>((newPayload) => {
     setState((previous) => ({ ...previous, payload: newPayload }));
@@ -493,30 +518,26 @@ export function PrDataProvider({
     ],
   );
 
-  // The viewer's login aliases and login, derived from the payload; the
-  // actor identity functions below are built from them.
+  // The people (indexed) and the viewer's login, derived from the payload;
+  // the actor identity functions below are built from them.
   const viewerContext = useMemo(() => {
-    const { normalizeActorLoginAliases, normalizeActorLogin } = createPrActorIdentityHelpers();
-    const { deriveViewerContext } = createPrViewerContextHelpers({
-      normalizeActorLoginAliases,
-      normalizeActorLogin,
-      inferViewerLoginFromPage,
-    });
+    const { deriveViewerContext } = createPrViewerContextHelpers({ inferViewerLoginFromPage });
     const allEntries = Object.values(state.payload?.byPrNumber || {});
     return deriveViewerContext({ payload: state.payload, allEntries });
   }, [state.payload]);
 
   const actorIdentity = useMemo<ActorIdentityValue>(() => {
     const identityHelpers = createPrActorIdentityHelpers({
-      getActorLoginAliases: () => viewerContext.currentActorLoginAliases,
+      getActorIndex: () => viewerContext.currentActorIndex,
     });
-    const { getEffectiveViewerLogin } = createPrActorIdentityRenderHelpers({
+    const { getEffectiveViewerLogin, getEffectiveViewerKey } = createPrActorIdentityRenderHelpers({
       normalizeActorLogin: identityHelpers.normalizeActorLogin,
       getCurrentViewerLogin: () => viewerContext.currentViewerLogin,
     });
     return {
       ...identityHelpers,
       getEffectiveViewerLogin,
+      getEffectiveViewerKey,
       ...createPrActorIdentityStyleHelpers(),
     };
   }, [viewerContext]);

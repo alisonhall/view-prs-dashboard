@@ -11,7 +11,10 @@ import { DEFAULT_MERGE_COMMIT_RULES, formatRuleLines } from '../helpers/pr-merge
  */
 export function buildFilterStateInitialValues(): FilterValues {
   const initialValues: FilterValues = {
-    scopeMode: 'all',
+    onlyNeedsAttention: false,
+    onlyOpenConversationsWithMe: false,
+    onlyWaitingOnMe: false,
+    onlyThreadsToCheck: false,
     alwaysShowInReview: false,
     attentionNoActivityMode: 'all',
     openMode: 'none',

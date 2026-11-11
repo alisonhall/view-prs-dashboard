@@ -1,5 +1,5 @@
 /**
- * The Settings drawer's "Export" (UI_REDESIGN_PLAN.md, phase 9b): the
+ * The Tools drawer's "Export" (UI_REDESIGN_PLAN.md, phase 9b): the
  * field catalog, field selection (saved to user-defaults), and Preview /
  * Copy / Download of the export JSON. Lazy-loaded, mounting the first time
  * the section is opened; it then stays mounted, keeping the selection.
@@ -18,6 +18,16 @@
  * (or the saved-selection restore below) adds them - no previous-selection
  * reconciliation dance needed.
  *
+ * Export profiles (export-field-profiles.helpers.ts) name a set of chosen
+ * fields, one click each, kept in the user defaults by useSavedItemsStore
+ * as the filter bar's saved views are. A chosen field the loaded data
+ * doesn't have (from a profile, or the saved choice) is listed after the
+ * rest, so it can be unticked.
+ *
+ * The fields are listed by source (data file, user state) as nested lists
+ * (ExportFieldTree): a group per object in the data, folded until opened,
+ * with a checkbox for all of its fields.
+ *
  * @module components/settings/ExportSection
  */
 
@@ -27,16 +37,34 @@ import { usePrTableOpenSections } from '../../state/PrTableUiStateContext';
 import { safeJsonStringify } from '../../helpers/pr-ui-render-utils.helpers.ts';
 import { createPrExportHelpers, type ExportPayload, type ExportPayloadSource } from '../../helpers/pr-export.helpers.ts';
 import { getPerPrUserStateFromPayload } from '../../helpers/pr-per-pr-user-state.helpers.ts';
+import { createPrUiOptionPersistenceHelpers, serializeOverridesUpdate } from '../../helpers/pr-ui-option-persistence.helpers.ts';
+import {
+  EXPORT_FIELD_PROFILES_KEY,
+  countFields,
+  describeExportFields,
+  isSameFields,
+  readExportFieldProfiles,
+  toExportFieldProfilesValue,
+  type ExportFieldProfile,
+  type ExportFields,
+} from '../../helpers/export-field-profiles.helpers.ts';
+import { getActiveAndModifiedIds, makeItemId } from '../../helpers/saved-items.helpers.ts';
+import { useSavedItemsStore } from '../../state/useSavedItemsStore';
+import { SavedItemsBar, SavedItemsManager } from '../ui/SavedItems';
+import { buildFieldTree } from '../../helpers/export-field-tree.helpers.ts';
+import { ExportFieldTree, fieldId, type FieldSource } from './ExportFieldTree';
+import { Button } from '../ui/Button';
 
 const { getFieldCatalog, buildExportPayload } = createPrExportHelpers({ getPerPrUserStateFromPayload });
+const { readUiSessionOverridesOrNull, writeUiSessionOverrides } = createPrUiOptionPersistenceHelpers({
+  fetch: (input, init) => fetch(input, init),
+});
 
 const EXPORT_DATA_FIELDS_OVERRIDE_KEY = 'export-data-fields';
 const EXPORT_USER_STATE_FIELDS_OVERRIDE_KEY = 'export-user-state-fields';
 
-type FieldSource = 'data' | 'user-state';
 type Overrides = Record<string, unknown>;
 
-const fieldId = (source: FieldSource, path: string) => `${source}:${path}`;
 
 const readUserDefaults = async (): Promise<Overrides> => {
   try {
@@ -50,16 +78,34 @@ const readUserDefaults = async (): Promise<Overrides> => {
   }
 };
 
-const writeUserDefaults = async (overrides: Overrides): Promise<void> => {
-  try {
-    await fetch('/view-prs/user-defaults', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(overrides || {}),
-    });
-  } catch (_error) {
-    // Best effort only, same as every other UI-option-override write in this app.
-  }
+// Saves the chosen fields, keeping every other setting: one at a time with
+// the other saves of user-defaults.json, and not when it can't be read
+// (writing back only these would lose the rest). An empty list is kept:
+// it means none of that source's fields.
+const saveFieldSelection = (dataPaths: string[], userStatePaths: string[]): Promise<void> =>
+  serializeOverridesUpdate(async () => {
+    const existing = await readUiSessionOverridesOrNull();
+    if (!existing) return;
+    await writeUiSessionOverrides(
+      { ...existing, [EXPORT_DATA_FIELDS_OVERRIDE_KEY]: dataPaths, [EXPORT_USER_STATE_FIELDS_OVERRIDE_KEY]: userStatePaths },
+      { unchangedFrom: existing, preserveEmptyArrayKeys: [EXPORT_DATA_FIELDS_OVERRIDE_KEY, EXPORT_USER_STATE_FIELDS_OVERRIDE_KEY] },
+    );
+  });
+
+// The chosen field ids (fieldId) as each source's paths.
+const toFields = (ids: ReadonlySet<string> | null): ExportFields => {
+  const dataPaths: string[] = [];
+  const userStatePaths: string[] = [];
+  (ids || new Set<string>()).forEach((id) => {
+    const [source, ...rest] = id.split(':');
+    const path = rest.join(':');
+    if (source === 'user-state') {
+      userStatePaths.push(path);
+    } else if (source === 'data') {
+      dataPaths.push(path);
+    }
+  });
+  return { dataPaths, userStatePaths };
 };
 
 const formatExportDownloadFileName = (payload: ExportPayloadSource, selectedRepo: string) => {
@@ -80,13 +126,26 @@ const describeCount = (verb: string, exportPayload: ExportPayload) =>
 
 export function ExportSection() {
   const { payload, selectedRepo } = usePrData();
-  const { prNumbersInOpenSections, openSectionCount } = usePrTableOpenSections();
+  const { prKeysInOpenSections, openSectionCount } = usePrTableOpenSections();
   const [selectedFieldIds, setSelectedFieldIds] = useState<Set<string> | null>(null); // null until initialized
-  const [status, setStatus] = useState('Waiting for data...');
+  // The last Preview, Copy or Download's outcome; until one, whether
+  // there's data to export (statusText below).
+  const [status, setStatus] = useState('');
   const [preview, setPreview] = useState('Run Preview JSON to inspect the export payload.');
   const initializedRef = useRef(false);
+  const profiles = useSavedItemsStore<ExportFieldProfile>({
+    key: EXPORT_FIELD_PROFILES_KEY,
+    read: readExportFieldProfiles,
+    toValue: toExportFieldProfilesValue,
+  });
+  // The profile last applied or saved, for "(modified)".
+  const [appliedProfileId, setAppliedProfileId] = useState('');
+  // The fields chosen before the profile last applied (see unapplyProfile).
+  const fieldsBeforeProfileRef = useRef<{ profileId: string; ids: Set<string> } | null>(null);
 
   const catalog = useMemo(() => getFieldCatalog(payload), [payload]);
+  const dataTree = useMemo(() => buildFieldTree(catalog.dataPaths), [catalog]);
+  const userStateTree = useMemo(() => buildFieldTree(catalog.userStatePaths), [catalog]);
 
   // Initialize the selection exactly once, from saved user-defaults if
   // present, otherwise "everything selected" (the same default the vanilla
@@ -146,6 +205,15 @@ export function ExportSection() {
     });
   };
 
+  const setFieldsChecked = (source: FieldSource, paths: readonly string[], checked: boolean) => {
+    initializedRef.current = true;
+    setSelectedFieldIds((previous) => {
+      const next = new Set(previous || []);
+      paths.forEach((path) => (checked ? next.add(fieldId(source, path)) : next.delete(fieldId(source, path))));
+      return next;
+    });
+  };
+
   const setSelectionByPredicate = (predicate: (source: FieldSource, path: string) => boolean) => {
     initializedRef.current = true;
     setSelectedFieldIds(
@@ -160,29 +228,11 @@ export function ExportSection() {
     );
   };
 
-  const getSelectedPaths = () => {
-    const dataPaths: string[] = [];
-    const userStatePaths: string[] = [];
-    (selectedFieldIds || new Set<string>()).forEach((id) => {
-      const [source, ...rest] = id.split(':');
-      const path = rest.join(':');
-      if (source === 'user-state') {
-        userStatePaths.push(path);
-      } else if (source === 'data') {
-        dataPaths.push(path);
-      }
-    });
-    return { dataPaths, userStatePaths };
-  };
+  const getSelectedPaths = (): ExportFields => toFields(selectedFieldIds);
 
   const persistSelection = async () => {
     const selected = getSelectedPaths();
-    const existingOverrides = await readUserDefaults();
-    await writeUserDefaults({
-      ...existingOverrides,
-      [EXPORT_DATA_FIELDS_OVERRIDE_KEY]: selected.dataPaths,
-      [EXPORT_USER_STATE_FIELDS_OVERRIDE_KEY]: selected.userStatePaths,
-    });
+    await saveFieldSelection(selected.dataPaths, selected.userStatePaths);
     return selected;
   };
 
@@ -194,7 +244,7 @@ export function ExportSection() {
 
     const exportPayload = buildExportPayload({
       payload,
-      visiblePrNumbers: prNumbersInOpenSections,
+      visiblePrKeys: prKeysInOpenSections,
       selectedDataPaths: selected.dataPaths,
       selectedUserStatePaths: selected.userStatePaths,
     });
@@ -255,14 +305,79 @@ export function ExportSection() {
   };
 
   const selected = getSelectedPaths();
+  const { activeId: activeProfileId, modifiedId: modifiedProfileId } = getActiveAndModifiedIds(
+    profiles.items,
+    appliedProfileId,
+    (profile) => isSameFields(profile, selected),
+    countFields(selected) > 0,
+  );
+
+  // A pressed profile clicked again puts back the fields chosen before it
+  // was applied, or every field when there's no such choice to go back to.
+  const unapplyProfile = (profile: ExportFieldProfile) => {
+    const saved = fieldsBeforeProfileRef.current;
+    const before = saved?.profileId === profile.id ? saved.ids : null;
+    fieldsBeforeProfileRef.current = null;
+    setAppliedProfileId('');
+    const beforeFields = toFields(before);
+    if (before && countFields(beforeFields) > 0 && !isSameFields(beforeFields, profile)) {
+      initializedRef.current = true;
+      setSelectedFieldIds(new Set(before));
+    } else {
+      setSelectionByPredicate(() => true);
+    }
+  };
+
+  const applyProfile = (profile: ExportFieldProfile, pressed: boolean) => {
+    if (pressed) {
+      unapplyProfile(profile);
+      return;
+    }
+    fieldsBeforeProfileRef.current = { profileId: profile.id, ids: new Set(selectedFieldIds || []) };
+    initializedRef.current = true;
+    setSelectedFieldIds(
+      new Set([
+        ...profile.dataPaths.map((path) => fieldId('data', path)),
+        ...profile.userStatePaths.map((path) => fieldId('user-state', path)),
+      ]),
+    );
+    setAppliedProfileId(profile.id);
+  };
+
+  const saveProfile = (name: string) => {
+    const profile: ExportFieldProfile = { id: makeItemId('profile'), name: name.trim(), ...selected };
+    profiles.add(profile);
+    setAppliedProfileId(profile.id);
+    return profile.id;
+  };
+
+  const updateProfile = (id: string) => {
+    profiles.edit(id, selected);
+    setAppliedProfileId(id);
+  };
+
+  const removeProfile = (id: string) => {
+    profiles.remove(id);
+    if (appliedProfileId === id) setAppliedProfileId('');
+  };
+
+  // Chosen fields the loaded data doesn't have.
+  const missingDataPaths = selected.dataPaths.filter((path) => !catalog.dataPaths.includes(path));
+  const missingUserStatePaths = selected.userStatePaths.filter((path) => !catalog.userStatePaths.includes(path));
+
   const totalVisibleCount = Object.keys(payload?.byPrNumber || {}).length;
+  const statusText =
+    status ||
+    (totalVisibleCount === 0
+      ? 'Waiting for data...'
+      : `Ready: ${prKeysInOpenSections.length} visible PR${prKeysInOpenSections.length === 1 ? '' : 's'} to export.`);
   const summaryText = [
     `Selected fields: ${selected.dataPaths.length} data + ${selected.userStatePaths.length} user state`,
-    `Visible PR rows eligible for export: ${prNumbersInOpenSections.length}/${totalVisibleCount}`,
+    `Visible PR rows eligible for export: ${prKeysInOpenSections.length}/${totalVisibleCount}`,
     `Expanded PR sections: ${openSectionCount}`,
   ].join('\n');
 
-  const renderFieldOption = (source: FieldSource, path: string) => (
+  const renderMissingField = (source: FieldSource, path: string) => (
     <label className="export-field-option" key={fieldId(source, path)}>
       <input
         type="checkbox"
@@ -275,6 +390,7 @@ export function ExportSection() {
       <span>
         <span className="export-field-option-source">{source === 'user-state' ? 'USER' : 'DATA'}</span>
         {path}
+        <span className="export-field-option-missing"> · not in the loaded data</span>
       </span>
     </label>
   );
@@ -284,21 +400,28 @@ export function ExportSection() {
       <p className="subtle-copy">
         Choose PR fields from data and user state, then export only rows currently visible in the table and only sections currently expanded.
       </p>
-      <pre className="management-filter-summary">{summaryText}</pre>
+      <pre className="export-summary">{summaryText}</pre>
+
+      <SavedItemsBar
+        className="export-profiles"
+        items={profiles.items}
+        activeId={activeProfileId}
+        modifiedId={modifiedProfileId}
+        saveFailed={profiles.saveFailed}
+        label="Export profiles"
+        noun="profile"
+        describe={describeExportFields}
+        onApply={applyProfile}
+        canSave={countFields(selected) > 0 && !activeProfileId}
+        onSave={saveProfile}
+        onUpdate={updateProfile}
+      />
 
       <div className="export-field-controls form-actions">
-        <button type="button" onClick={() => setSelectionByPredicate(() => true)}>
-          Select all
-        </button>
-        <button type="button" onClick={() => setSelectionByPredicate(() => false)}>
-          Select none
-        </button>
-        <button type="button" onClick={() => setSelectionByPredicate((source) => source === 'data')}>
-          Data only
-        </button>
-        <button type="button" onClick={() => setSelectionByPredicate((source) => source === 'user-state')}>
-          User state only
-        </button>
+        <Button onClick={() => setSelectionByPredicate(() => true)}>Select all</Button>
+        <Button onClick={() => setSelectionByPredicate(() => false)}>Select none</Button>
+        <Button onClick={() => setSelectionByPredicate((source) => source === 'data')}>Data only</Button>
+        <Button onClick={() => setSelectionByPredicate((source) => source === 'user-state')}>User state only</Button>
       </div>
 
       <div className="export-field-list" id="export-field-list" role="group" aria-label="Export fields">
@@ -306,24 +429,75 @@ export function ExportSection() {
           <p className="stats-empty">No exportable fields found in current payload.</p>
         ) : (
           <>
-            {catalog.dataPaths.map((path) => renderFieldOption('data', path))}
-            {catalog.userStatePaths.map((path) => renderFieldOption('user-state', path))}
+            {([
+              ['data', 'Data file', catalog.dataPaths, dataTree],
+              ['user-state', 'User state', catalog.userStatePaths, userStateTree],
+            ] as const).map(
+              ([source, heading, paths, tree]) =>
+                paths.length > 0 && (
+                  <div
+                    key={source}
+                    className="export-field-source"
+                    role="group"
+                    aria-labelledby={`export-field-source-${source}`}
+                  >
+                    <h3 className="export-field-source-heading" id={`export-field-source-${source}`}>
+                      {heading}{' '}
+                      <span className="export-field-group-count">
+                        {paths.filter((path) => isSelected(source, path)).length} of {paths.length} chosen
+                      </span>
+                    </h3>
+                    <div className="export-field-tree-items">
+                      <ExportFieldTree
+                        source={source}
+                        nodes={tree}
+                        isSelected={(path) => isSelected(source, path)}
+                        onToggle={(path) => toggleField(source, path)}
+                        onSetMany={(many, checked) => setFieldsChecked(source, many, checked)}
+                      />
+                    </div>
+                  </div>
+                ),
+            )}
+            {missingDataPaths.length + missingUserStatePaths.length > 0 && (
+              <div className="export-field-source" role="group" aria-labelledby="export-field-source-missing">
+                <h3 className="export-field-source-heading" id="export-field-source-missing">
+                  Not in the loaded data
+                </h3>
+                <div className="export-field-tree-items">
+                  {missingDataPaths.map((path) => renderMissingField('data', path))}
+                  {missingUserStatePaths.map((path) => renderMissingField('user-state', path))}
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>
 
       <div className="form-actions export-actions">
-        <button type="button" onClick={() => void handlePreview()}>
-          Preview JSON
-        </button>
-        <button type="button" onClick={() => void handleCopy()}>
-          Copy JSON
-        </button>
-        <button type="button" onClick={() => void handleDownload()}>
-          Download JSON
-        </button>
+        <Button onClick={() => void handlePreview()}>Preview JSON</Button>
+        <Button onClick={() => void handleCopy()}>Copy JSON</Button>
+        <Button onClick={() => void handleDownload()}>Download JSON</Button>
       </div>
-      <pre className="scheduler-details" role="region" aria-label="Export status">{status}</pre>
+      <pre className="scheduler-details" role="region" aria-label="Export status">{statusText}</pre>
+      {profiles.items && (
+        <details className="advanced-options section-card low-emphasis-card export-profiles-manager">
+          <summary>Manage export profiles</summary>
+          <SavedItemsManager
+            items={profiles.items}
+            noun="profile"
+            describe={describeExportFields}
+            updateLabel="Update to chosen fields"
+            updateAriaLabel={(profile) => `Update ${profile.name} to the chosen fields`}
+            canUpdate={(profile) => countFields(selected) > 0 && !isSameFields(profile, selected)}
+            emptyHint="None yet. Choose some fields, then use Save as profile above."
+            onRename={profiles.rename}
+            onUpdate={updateProfile}
+            onDelete={removeProfile}
+            onRestore={profiles.restore}
+          />
+        </details>
+      )}
       <details className="advanced-options section-card low-emphasis-card" open>
         <summary>Export preview</summary>
         <pre id="export-preview" role="region" aria-label="Export preview">{preview}</pre>

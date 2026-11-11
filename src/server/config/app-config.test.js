@@ -30,10 +30,10 @@ describe("App Configuration", () => {
       // POSIX strings (which fail on Windows).
       expect(config.viewPrsDir).toBe(viewPrsDir);
       expect(config.viewPrsDataFile).toBe(
-        path.join(viewPrsDir, "data/check-open-pr-updates.data.json"),
+        path.resolve(viewPrsDir, "data/check-open-pr-updates.data.json"),
       );
       expect(config.viewPrsUserStateFile).toBe(
-        path.join(viewPrsDir, "data/check-open-pr-updates.user-state.json"),
+        path.resolve(viewPrsDir, "data/check-open-pr-updates.user-state.json"),
       );
       expect(config.viewPrsAutoIntervalMs).toBe(15 * 60 * 1000);
       expect(config.requiredCommands).toEqual(["bash", "gh", "jq"]);
@@ -163,6 +163,29 @@ describe("App Configuration", () => {
       );
     });
 
+    test("When test env and a path is in the data folder the app's .env names, Then throws", () => {
+      // Arrange - a real data folder moved out of the app (npm run data:move)
+      const fs = require("fs");
+      const os = require("os");
+      const viewPrsDir = fs.mkdtempSync(path.join(os.tmpdir(), "view-prs-config-"));
+      const movedDataDir = path.join(viewPrsDir, "..", `${path.basename(viewPrsDir)}-data`);
+      fs.writeFileSync(path.join(viewPrsDir, ".env"), `VIEW_PRS_DATA_DIR=${movedDataDir}\n`, "utf8");
+      const env = {
+        VIEW_PRS_DATA_FILE: path.join(movedDataDir, "check-open-pr-updates.data.json"),
+        VIEW_PRS_USER_STATE_FILE: "/tmp/state.json",
+        VIEW_PRS_ACTOR_NAME_CACHE_FILE: "/tmp/cache.json",
+        VIEW_PRS_ACTOR_LOGIN_ALIASES_FILE: "/tmp/aliases.json",
+        ...OTHER_WRITABLE_TEMP_PATHS,
+      };
+
+      try {
+        // Act & Assert
+        expect(() => createAppConfig({ viewPrsDir, env, isTestEnv: true })).toThrow(/real production state file paths/);
+      } finally {
+        fs.rmSync(viewPrsDir, { recursive: true, force: true });
+      }
+    });
+
     test("When test env with all overrides, Then succeeds", () => {
       // Arrange
       const viewPrsDir = "/test/view-prs";
@@ -180,6 +203,20 @@ describe("App Configuration", () => {
       // Assert
       expect(config.viewPrsDataFile).toBe("/tmp/data.json");
       expect(config.viewPrsActorNameCacheFile).toBe("/tmp/cache.json");
+    });
+
+    // Bash runs it from the project folder and resolves it itself; Node's
+    // path.resolve would turn a Git Bash path into D:\d\hooks\... on Windows.
+    test("When the insights hook script is set, Then it's passed to bash as given; unset is empty", () => {
+      const viewPrsDir = "/test/view-prs";
+      const hookFor = (value) =>
+        createAppConfig({ viewPrsDir, env: { VIEW_PRS_INSIGHTS_HOOK_SCRIPT: value } })
+          .viewPrsInsightsHookScript;
+
+      expect(hookFor("local-hooks/insights.sh")).toBe("local-hooks/insights.sh");
+      expect(hookFor(" /d/hooks/insights.sh ")).toBe("/d/hooks/insights.sh");
+      expect(hookFor("my-hook")).toBe("my-hook");
+      expect(createAppConfig({ viewPrsDir, env: {} }).viewPrsInsightsHookScript).toBe("");
     });
 
     test("When timeout env vars provided, Then parses and validates", () => {
@@ -316,7 +353,7 @@ describe("App Configuration", () => {
         path.join("src", "backfill"),
       );
       expect(config.viewPrsBackfillPidFile).toBe(
-        path.join(viewPrsDir, "data/backfill-missing.pid"),
+        path.resolve(viewPrsDir, "data/backfill-missing.pid"),
       );
     });
 

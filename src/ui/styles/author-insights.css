@@ -1,92 +1,121 @@
 /* The Authors view (AuthorInsights*). Moved from index.css (phase 10-1). */
 
-.author-insights-panel {
-  border: 1px solid var(--color-border-strong);
-  border-radius: 10px;
-  padding: 12px;
-  background: var(--color-surface-inset);
-  margin-bottom: 12px;
-}
-
-.author-insights-controls {
-  margin-bottom: 12px;
-}
-
 .author-insights-label {
-  display: grid;
-  gap: 4px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--color-text-muted);
-  max-width: 320px;
+  width: 320px;
+  max-width: 100%;
 }
 
-.author-insights-select {
-  height: 34px;
-  border: 1px solid var(--color-border-strong);
-  border-radius: 8px;
-  padding: 0 10px;
-  font-size: 14px;
-  box-sizing: border-box;
-  background: var(--color-surface);
-  color: var(--color-text);
-}
-
+/* The selected author: avatar, name and login, then their counts. */
 .author-insights-selected {
-  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.author-insights-selected-text {
+  min-width: 0;
+}
+
+.author-insights-selected-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: var(--space-2);
+  margin: 0;
+  font-size: var(--font-size-lg);
   font-weight: 600;
   color: var(--color-text);
-  margin-bottom: 12px;
+  overflow-wrap: anywhere;
+}
+
+.author-insights-selected-you {
+  font-weight: 400;
+  color: var(--color-text-muted);
+}
+
+.author-insights-selected-login {
+  font-size: var(--font-size-md);
+  font-weight: 400;
+  color: var(--color-text-muted);
+}
+
+.author-insights-selected-counts {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--font-size-md);
+  color: var(--color-text-muted);
+}
+
+.author-insights-selected-counts li + li::before {
+  content: "\00b7";
+  margin: 0 var(--space-2);
 }
 
 .author-insights-section {
-  margin-top: 12px;
+  margin-top: var(--space-4);
 }
 
 .author-insights-section h3 {
-  margin: 0 0 10px;
-  font-size: 14px;
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-size-base);
+  font-weight: 600;
   color: var(--color-text);
 }
 
 .author-insights-list {
   display: grid;
-  gap: 10px;
+  gap: var(--space-2);
 }
 
 .author-insights-item {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border-strong);
-  border-radius: 8px;
-  padding: 10px 12px;
   display: grid;
   gap: 6px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
 }
 
-.author-insights-link {
+/* A PR (AuthorInsightsPrRow): its state, title and date; then the
+   table's signals and View in table. */
+.author-pr-row {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.author-pr-row-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  min-width: 0;
+}
+
+.author-pr-row-title {
+  min-width: 0;
+  font-size: var(--font-size-md);
   font-weight: 600;
   color: var(--color-accent-text);
   text-decoration: none;
+  overflow-wrap: anywhere;
 }
 
-.author-insights-link:hover {
+.author-pr-row-title:hover {
   text-decoration: underline;
 }
 
-.author-insights-table-link {
-  background: var(--color-surface-inset);
-  border: 1px solid var(--color-border-strong);
-  border-radius: 6px;
-  padding: 4px 8px;
-  font-size: 12px;
-  color: var(--color-accent-text);
-  cursor: pointer;
-  white-space: nowrap;
+.author-pr-row-date {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
 }
 
-.author-insights-table-link:hover {
-  background: var(--color-surface-hover);
-  border-color: var(--color-border-emphasis);
+.author-pr-row-view {
+  margin-left: auto;
 }
 
 .author-insights-meta {
@@ -94,7 +123,7 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   color: var(--color-text-muted);
 }
 
@@ -141,69 +170,33 @@
 }
 
 .author-insights-body {
-  font-size: 13px;
+  font-size: var(--font-size-md);
   color: var(--color-text);
   white-space: pre-wrap;
 }
 
+/* The comment box and a comment's edit form: the shared field and
+   button styles (ui.css). */
 .author-insights-comment-form {
   display: grid;
-  gap: 8px;
-  margin-bottom: 10px;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
 }
 
-.author-insights-comment-textarea {
-  width: 100%;
+.ui-field .author-insights-comment-textarea {
   min-height: 72px;
-  border: 1px solid var(--color-border-strong);
-  border-radius: 8px;
-  padding: 8px 10px;
-  font-size: 13px;
-  box-sizing: border-box;
-  background: var(--color-surface);
-  color: var(--color-text);
 }
 
 .author-insights-comment-controls {
   display: flex;
-  align-items: center;
-  gap: 8px;
   flex-wrap: wrap;
-}
-
-.author-insights-comment-sentiment {
-  height: 32px;
-  border: 1px solid var(--color-border-strong);
-  border-radius: 6px;
-  padding: 0 8px;
-  font-size: 12px;
-  background: var(--color-surface);
-  color: var(--color-text);
-}
-
-.author-insights-comment-save,
-.author-insights-comment-edit,
-.author-insights-comment-cancel {
-  height: 32px;
-  border: 1px solid var(--color-border-strong);
-  border-radius: 6px;
-  padding: 0 10px;
-  font-size: 12px;
-  background: var(--color-surface);
-  color: var(--color-accent-text);
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.author-insights-comment-save:hover,
-.author-insights-comment-edit:hover,
-.author-insights-comment-cancel:hover {
-  background: var(--color-accent-subtle);
-  border-color: var(--color-accent);
+  align-items: flex-end;
+  gap: var(--space-2);
 }
 
 .author-insights-comment-status {
-  font-size: 12px;
+  align-self: center;
+  font-size: var(--font-size-sm);
   color: var(--color-text-muted);
 }
 

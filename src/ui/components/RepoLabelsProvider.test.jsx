@@ -115,7 +115,7 @@ describe('RepoLabelsProvider + ApplyLabelSelect/PrActionsCell wiring', () => {
 
     // Before the fetch resolves (opening the menu takes long enough for it
     // to finish, so only the Run tab select can show this state).
-    expect(document.getElementById('apply-label-select')).toHaveDisplayValue('No labels found for this repo');
+    expect(document.getElementById('apply-label-select')).toHaveDisplayValue('Loading labels…');
 
     await waitFor(() => {
       const runFilterSelect = document.getElementById('apply-label-select');
@@ -176,10 +176,46 @@ describe('RepoLabelsProvider + ApplyLabelSelect/PrActionsCell wiring', () => {
     );
 
     await waitFor(() => expect(labelsFetchCalls().length).toBe(1));
-    expect(document.getElementById('apply-label-select')).toHaveDisplayValue('No labels found for this repo');
+    // A request that answered: the repo has none.
+    await waitFor(() => expect(document.getElementById('apply-label-select')).toHaveDisplayValue('No labels found for this repo'));
   });
 
-  test('given the fetch rejects, when rendering, then it falls back to no labels rather than throwing', async () => {
+  test("a row's labels that couldn't load offer a retry, which keeps the menu open and shows them once they come", async () => {
+    const user = userEvent.setup();
+    let labelsFail = true;
+    global.fetch = jest.fn((url) => {
+      if (String(url).startsWith('/view-prs/labels')) {
+        return labelsFail
+          ? Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({ ok: false, error: 'gh failed' }) })
+          : Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, labels: [{ name: 'bug' }, { name: 'docs' }] }) });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, overrides: {} }) });
+    });
+
+    render(
+      <TestProviders initialSelectedRepo="owner/repo">
+        <table>
+          <tbody>
+            <tr>
+              <PrActionsCell pr={{ number: '7', labels: ['docs'] }} repo="other/repo" isFlagged={false} isInReview={false} />
+            </tr>
+          </tbody>
+        </table>
+      </TestProviders>,
+    );
+
+    const group = await openRowAddLabelGroup(user, '7');
+    const retry = await within(group).findByRole('menuitem', { name: "Couldn't load labels - retry" });
+
+    labelsFail = false;
+    await user.click(retry);
+
+    expect(screen.getByRole('menu', { name: 'More actions for PR #7' })).toBeInTheDocument();
+    await waitFor(() => expect(labelNames(screen.getByRole('group', { name: 'Add label' }))).toEqual(['bug']));
+    expect(screen.getAllByRole('menuitem')[0]).toHaveFocus();
+  });
+
+  test('given the fetch rejects, when rendering, then it says the labels could not load, not that the repo has none', async () => {
     global.fetch = jest.fn(() => Promise.reject(new Error('network down')));
 
     render(
@@ -189,7 +225,95 @@ describe('RepoLabelsProvider + ApplyLabelSelect/PrActionsCell wiring', () => {
     );
 
     await waitFor(() => expect(fetch).toHaveBeenCalled());
-    expect(document.getElementById('apply-label-select')).toHaveDisplayValue('No labels found for this repo');
+    await waitFor(() =>
+      expect(document.getElementById('apply-label-select')).toHaveDisplayValue("Couldn't load labels - try Reload labels"),
+    );
+  });
+
+  test("given another repo, then the last repo's labels aren't offered for it - not while loading, nor when its request fails", async () => {
+    let releaseOther;
+    global.fetch = jest.fn((url) => {
+      const text = String(url);
+      if (text.startsWith('/view-prs/labels?repo=owner%2Frepo')) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, labels: [{ name: 'bug' }] }) });
+      }
+      if (text.startsWith('/view-prs/labels')) {
+        return new Promise((resolve) => {
+          releaseOther = () => resolve({ ok: false, status: 500, json: () => Promise.resolve({ ok: false, error: 'boom' }) });
+        });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, overrides: {} }) });
+    });
+    let refresh;
+    function Refresher() {
+      ({ refresh } = useRepoLabels());
+      return null;
+    }
+    const select = () => document.getElementById('apply-label-select');
+
+    render(
+      <TestProviders initialSelectedRepo="owner/repo">
+        <ApplyLabelSelect />
+        <Refresher />
+      </TestProviders>,
+    );
+    await waitFor(() => expect(select()).toHaveDisplayValue('Choose a label...'));
+
+    let switching;
+    act(() => {
+      switching = refresh('owner/other');
+    });
+    expect(select()).toHaveDisplayValue('Loading labels…');
+    expect(select().options).toHaveLength(1);
+    await act(async () => {
+      releaseOther();
+      await switching;
+    });
+    expect(select()).toHaveDisplayValue("Couldn't load labels - try Reload labels");
+    expect(select().options).toHaveLength(1);
+
+    // Back to the first repo: its labels at once, from before.
+    act(() => {
+      switching = refresh('owner/repo');
+    });
+    expect(Array.from(select().options).map((option) => option.value)).toEqual(['', 'bug']);
+    await act(async () => {
+      await switching;
+    });
+  });
+
+  test('given the server answers with an error, when rendering, then it says so too, and a reload that works lists the labels', async () => {
+    let fail = true;
+    global.fetch = jest.fn((url) =>
+      String(url).startsWith('/view-prs/labels')
+        ? Promise.resolve(
+            fail
+              ? { ok: false, status: 500, json: () => Promise.resolve({ ok: false, error: 'gh: not logged in' }) }
+              : { ok: true, json: () => Promise.resolve({ ok: true, labels: [{ name: 'bug' }] }) },
+          )
+        : Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, overrides: {} }) }),
+    );
+    let refresh;
+    function Refresher() {
+      ({ refresh } = useRepoLabels());
+      return null;
+    }
+
+    render(
+      <TestProviders initialSelectedRepo="owner/repo">
+        <ApplyLabelSelect />
+        <Refresher />
+      </TestProviders>,
+    );
+    await waitFor(() =>
+      expect(document.getElementById('apply-label-select')).toHaveDisplayValue("Couldn't load labels - try Reload labels"),
+    );
+
+    fail = false;
+    await act(async () => {
+      await refresh();
+    });
+    expect(document.getElementById('apply-label-select')).toHaveDisplayValue('Choose a label...');
   });
 });
 
@@ -377,5 +501,45 @@ describe('RepoLabelsProvider refresh() dedup/fallback rules', () => {
       await Promise.resolve();
     });
     expect(labelsFetchCalls()).toEqual([]);
+  });
+
+  // A row's labels are its own repo's: a PR from another repo can't take
+  // the current repo's.
+  // Fetched when its menu first opens, not as the row renders: a table of
+  // many repos would otherwise fetch every repo's labels on load.
+  test("given a row from another repo than the current one, when its menu opens, then it fetches and lists that repo's labels", async () => {
+    const user = userEvent.setup();
+    global.fetch = jest.fn((url) => {
+      const text = String(url);
+      if (text.startsWith('/view-prs/labels')) {
+        const labels = text.includes('other%2Flib') ? [{ name: 'lib-only' }] : [{ name: 'bug' }];
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, labels }) });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, overrides: {} }) });
+    });
+
+    render(
+      <TestProviders initialSelectedRepo="owner/repo">
+        <table>
+          <tbody>
+            <tr>
+              <PrActionsCell pr={{ number: '5' }} repo="other/lib" isFlagged={false} isInReview={false} />
+            </tr>
+          </tbody>
+        </table>
+      </TestProviders>,
+    );
+
+    // The current repo's (the Provider's own fetch), and not the row's yet.
+    await waitFor(() => {
+      expect(labelsFetchCalls().map(([url]) => url)).toEqual(['/view-prs/labels?repo=owner%2Frepo']);
+    });
+
+    const rowGroup = await openRowAddLabelGroup(user, '5');
+    await waitFor(() => expect(labelNames(rowGroup)).toEqual(['lib-only']));
+    expect(labelsFetchCalls().map(([url]) => url)).toEqual([
+      '/view-prs/labels?repo=owner%2Frepo',
+      '/view-prs/labels?repo=other%2Flib',
+    ]);
   });
 });

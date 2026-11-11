@@ -8,6 +8,12 @@
  * Activity, Actions - all of them, with the detail pane docked too (its
  * cells then take two lines where they need to; pr-table.css).
  *
+ * With Settings › Appearance's "Group rows by repo", rows from more than
+ * one repo go in a body per repo, under its heading (groupRowsByRepo). The
+ * Actions header holds the section's sort (PrSectionSortMenu), and
+ * "Re-sort" when the rows are held in an order the sort no longer gives
+ * (useHeldSectionOrder).
+ *
  * The detail pane's keyboard selection, while focus is in the table (on
  * any row control, not while typing or when the key was already used):
  * - ↑/↓ select the row with focus, or move from the selected row to the
@@ -22,6 +28,10 @@ import type { PrEntry } from '../types/pr-data.ts';
 import { PrRow, type PrRowHandlers } from './PrRow';
 import { buildActivePrKey, buildExpandedInsightsKey } from './pr-row-keys';
 import { useTooltipController } from './ui/Tooltip';
+import { usePrSectionPreferences } from '../state/PrSectionPreferencesProvider';
+import { groupRowsByRepo } from '../helpers/pr-repo-grouping.helpers.ts';
+import { RowRepoNamesContext } from '../state/RowRepoNamesContext';
+import { PrSectionSortMenu } from './PrSectionSortMenu';
 
 import type { ActorsMap } from '../helpers/pr-actor-identity.helpers.ts';
 type PrFlags = { isFlagged: boolean; isInReview: boolean; isAcknowledged: boolean };
@@ -68,6 +78,11 @@ export interface PrTableProps extends PrRowHandlers {
   getAttentionReasons?: (entry: PrEntry) => string[];
   activePrNumbers?: string[];
   queuedPrNumbers?: string[];
+  // The rows are held where they were while you work in the section, and
+  // its sort would now order them differently: the Actions header offers
+  // "Re-sort" (onResort) in place of its label.
+  orderChanged?: boolean;
+  onResort?: () => void;
 }
 
 const NO_FLAGS: PrFlags = { isFlagged: false, isInReview: false, isAcknowledged: false };
@@ -92,6 +107,8 @@ export function PrTable({
   getAttentionReasons,
   activePrNumbers,
   queuedPrNumbers,
+  orderChanged = false,
+  onResort,
   ...handlers
 }: PrTableProps) {
   useTooltipController();
@@ -105,12 +122,29 @@ export function PrTable({
       onClearSelection?.();
       return;
     }
-    const delta = event.key === 'ArrowDown' ? 1 : event.key === 'ArrowUp' ? -1 : 0;
-    const focusedRow = (event.target as Element).closest('tr.pr-row');
+    // Letters only on their own (Ctrl+A and the like keep their meaning),
+    // whatever the case: Caps Lock or Shift give "A".
+    const plainKey = event.ctrlKey || event.metaKey || event.altKey ? '' : event.key.length === 1 ? event.key.toLowerCase() : '';
+    const focusedRow = (event.target as Element).closest<HTMLTableRowElement>('tr.pr-row');
+    const keyOf = (row: HTMLTableRowElement) => buildActivePrKey(row.dataset.prNumber ?? '', row.dataset.repo);
+    // a: Ack the selected PR (or undo it), as its row's Ack button does -
+    // only from its own row, so a stray key can't ack a PR you're not on.
+    if (plainKey === 'a') {
+      if (!focusedRow || !selectedPrKey || keyOf(focusedRow) !== selectedPrKey) return;
+      event.preventDefault();
+      // Held down, it would Ack and undo over and over.
+      if (event.repeat) return;
+      const prNumber = focusedRow.dataset.prNumber ?? '';
+      const rowRepo = focusedRow.dataset.repo || repo;
+      const { isAcknowledged } = getPrFlags ? getPrFlags(prNumber, rowRepo) : NO_FLAGS;
+      handlers.onAckAction?.(prNumber, isAcknowledged, rowRepo);
+      return;
+    }
+    // j/k as ↓/↑.
+    const delta = event.key === 'ArrowDown' || plainKey === 'j' ? 1 : event.key === 'ArrowUp' || plainKey === 'k' ? -1 : 0;
     if (!delta || !focusedRow || !tableRef.current) return;
     event.preventDefault();
     const rows = Array.from(tableRef.current.querySelectorAll<HTMLTableRowElement>('tbody > tr.pr-row'));
-    const keyOf = (row: HTMLTableRowElement) => buildActivePrKey(row.dataset.prNumber ?? '', row.dataset.repo);
     const focusedIndex = rows.indexOf(focusedRow as HTMLTableRowElement);
     const fromSelected = keyOf(focusedRow as HTMLTableRowElement) === selectedPrKey;
     const target = fromSelected ? rows[Math.min(Math.max(focusedIndex + delta, 0), rows.length - 1)] : focusedRow as HTMLTableRowElement;
@@ -123,6 +157,46 @@ export function PrTable({
   // Composite "repo::prNumber" keys: PR numbers are only unique within a repo.
   const activeKeys = new Set((activePrNumbers || []).map(String));
   const queuedKeys = new Set((queuedPrNumbers || []).map(String));
+  // Settings › Appearance's "Group rows by repo": with rows from more than
+  // one, each repo's (in their order) under a heading, repos A-Z.
+  const { groupByRepo } = usePrSectionPreferences();
+  const groups = groupRowsByRepo(prs, groupByRepo);
+
+  const renderRow = (entry: PrEntry) => {
+    const data = entry.data || {};
+    const rowRepo = entry.repo || repo;
+    const activeKey = buildActivePrKey(data.number ?? '', entry.repo);
+    // Plain values, not objects/arrays, so the memoized row only
+    // re-renders when one actually changes.
+    const flags = getPrFlags ? getPrFlags(data.number, entry.repo) : NO_FLAGS;
+    const attentionReasons = (getAttentionReasons ? getAttentionReasons(entry) : NO_REASONS).join('\n');
+    const rowKey = buildExpandedInsightsKey(sectionKey, entry.repo, data.number ?? '');
+    return (
+      <PrRow
+        // PR numbers are only unique within a repo.
+        key={`${entry.repo || ''}:${data.number}`}
+        entry={entry}
+        pr={data}
+        // Each row's own repo: rows from other repos render too, and
+        // links/actions must target that repo.
+        repo={rowRepo}
+        sectionKey={sectionKey}
+        isSmartGroup={isSmartGroup}
+        lifecycleSection={entry.section || lifecycleSection}
+        actorsMap={actorsMap}
+        isExpanded={expandedInsights[rowKey] ?? false}
+        isSelected={Boolean(selectedPrKey) && buildActivePrKey(data.number ?? '', rowRepo) === selectedPrKey}
+        isFlagged={flags.isFlagged}
+        isInReview={flags.isInReview}
+        isAcknowledged={flags.isAcknowledged}
+        attentionReasons={attentionReasons}
+        isActive={activeKeys.has(activeKey)}
+        isQueued={queuedKeys.has(activeKey)}
+        columnCount={columns.length}
+        {...handlers}
+      />
+    );
+  };
 
   return (
     <table ref={tableRef} className="pr-table" aria-label={label || undefined} onKeyDown={handleKeyDown}>
@@ -134,7 +208,14 @@ export function PrTable({
       <thead>
         <tr>
           {columns.map((column) => (
-            <th key={column.key} scope="col" className={`pr-head-${column.key}`}>
+            <th
+              key={column.key}
+              scope="col"
+              className={`pr-head-${column.key}`}
+              // Its name stays "Actions" with the sort menu in it: a header's
+              // name is read out with every cell of its column.
+              aria-label={column.key === 'actions' && prs.length > 1 ? column.label : undefined}
+            >
               {column.hideLabel ? (
                 <span className="ui-visually-hidden">{column.label}</span>
               ) : column.fullLabel ? (
@@ -146,6 +227,36 @@ export function PrTable({
                   </span>
                   <span className="ui-visually-hidden">{column.fullLabel}</span>
                 </>
+              ) : column.key === 'actions' && prs.length > 1 ? (
+                // The section's sort, at the row's end: only where there's
+                // an order to choose.
+                <span className="pr-head-actions-content">
+                  {/* Said once when the order changes: the button alone
+                      would go unnoticed moving through the rows. */}
+                  <span className="ui-visually-hidden" role="status">
+                    {orderChanged && onResort ? `${label || sectionKey}: order changed - Re-sort is in the Actions header` : ''}
+                  </span>
+                  {orderChanged && onResort ? (
+                    <button
+                      type="button"
+                      className="pr-head-resort"
+                      data-tip="Order changed while you were working here - re-sort"
+                      data-tip-on="hover"
+                      onClick={(event) => {
+                        // It goes once the sort applies: focus stays in the
+                        // section, on the sort menu beside it.
+                        event.currentTarget.parentElement?.querySelector<HTMLElement>('button[aria-haspopup="menu"]')?.focus();
+                        onResort();
+                      }}
+                    >
+                      <span aria-hidden="true">Re-sort</span>
+                      <span className="ui-visually-hidden">Order changed - re-sort {label || sectionKey}</span>
+                    </button>
+                  ) : (
+                    column.label
+                  )}
+                  <PrSectionSortMenu sectionKey={sectionKey} sectionTitle={label || sectionKey} />
+                </span>
               ) : (
                 column.label
               )}
@@ -153,43 +264,26 @@ export function PrTable({
           ))}
         </tr>
       </thead>
-      <tbody>
-        {prs.map((entry) => {
-          const data = entry.data || {};
-          const rowRepo = entry.repo || repo;
-          const activeKey = buildActivePrKey(data.number ?? '', entry.repo);
-          // Plain values, not objects/arrays, so the memoized row only
-          // re-renders when one actually changes.
-          const flags = getPrFlags ? getPrFlags(data.number, entry.repo) : NO_FLAGS;
-          const attentionReasons = (getAttentionReasons ? getAttentionReasons(entry) : NO_REASONS).join('\n');
-          const rowKey = buildExpandedInsightsKey(sectionKey, entry.repo, data.number ?? '');
-          return (
-            <PrRow
-              // PR numbers are only unique within a repo.
-              key={`${entry.repo || ''}:${data.number}`}
-              entry={entry}
-              pr={data}
-              // Each row's own repo: rows from other repos render too, and
-              // links/actions must target that repo.
-              repo={rowRepo}
-              sectionKey={sectionKey}
-              isSmartGroup={isSmartGroup}
-              lifecycleSection={entry.section || lifecycleSection}
-              actorsMap={actorsMap}
-              isExpanded={expandedInsights[rowKey] ?? false}
-              isSelected={Boolean(selectedPrKey) && buildActivePrKey(data.number ?? '', rowRepo) === selectedPrKey}
-              isFlagged={flags.isFlagged}
-              isInReview={flags.isInReview}
-              isAcknowledged={flags.isAcknowledged}
-              attentionReasons={attentionReasons}
-              isActive={activeKeys.has(activeKey)}
-              isQueued={queuedKeys.has(activeKey)}
-              columnCount={columns.length}
-              {...handlers}
-            />
-          );
-        })}
-      </tbody>
+      {groups.map(({ repo: groupRepo, rows }) =>
+        groupRepo ? (
+          // A body per repo, headed by it - so its rows don't each say it.
+          <RowRepoNamesContext.Provider key={`group:${groupRepo}`} value={null}>
+            <tbody className="pr-repo-group">
+              <tr className="pr-repo-group-row">
+                <th scope="rowgroup" colSpan={columns.length}>
+                  {groupRepo}
+                  <span className="pr-repo-group-count">
+                    {rows.length} PR{rows.length === 1 ? '' : 's'}
+                  </span>
+                </th>
+              </tr>
+              {rows.map((entry) => renderRow(entry))}
+            </tbody>
+          </RowRepoNamesContext.Provider>
+        ) : (
+          <tbody key="rows">{rows.map((entry) => renderRow(entry))}</tbody>
+        ),
+      )}
     </table>
   );
 }

@@ -1,6 +1,7 @@
 import { useChangeFilterActorSelection } from '../../state/ChangeFilterActorSelectionContext';
 import { IgnoreCommitPatternsTextarea } from './IgnoreCommitPatternsTextarea';
 import { SettingsListDropdown } from './SettingsListDropdown';
+import { RepoRuleGroup, RulesScopePicker, SameForEveryRepoNote } from './RepoRulesScope';
 import { IGNORE_COMMENT_AUTHORS_LIST, IGNORE_REVIEW_AUTHORS_LIST } from './settings-fields';
 
 /**
@@ -12,11 +13,14 @@ export function ChangeDetectionSection() {
   const selection = useChangeFilterActorSelection();
   return (
     <div className="settings-section">
+      <RulesScopePicker />
       <div className="settings-group">
-        <p className="subtle-copy">
-          Configure what activity should NOT trigger CHANGED status. Use this to filter out automated notifications or non-blocking
-          feedback.
+        <p className="settings-hint">
+          Activity that shouldn&apos;t mark a PR CHANGED, such as bots&apos; notifications or optional reviewers&apos; feedback. It
+          applies each time a PR is fetched (an update after a quick check, a full refresh, Run script); a stored PR keeps its
+          status until then.
         </p>
+        <SameForEveryRepoNote />
         <div className="settings-field">
           <SettingsListDropdown list={IGNORE_COMMENT_AUTHORS_LIST} selection={selection} />
           <p className="subtle-copy">
@@ -31,6 +35,7 @@ export function ChangeDetectionSection() {
             changes&quot; button). Use this to ignore optional reviewers whose approval isn&apos;t required.
           </p>
         </div>
+        <RepoRuleGroup group="ignoreCommitPatterns">
         <div className="settings-field">
           <label htmlFor="change-filter-ignore-commit-patterns">Ignore commits matching patterns (regex, one per line)</label>
           <IgnoreCommitPatternsTextarea />
@@ -39,6 +44,7 @@ export function ChangeDetectionSection() {
             test-only commits).
           </p>
         </div>
+        </RepoRuleGroup>
         <p className="subtle-copy">
           <strong>Note:</strong> Approved reviews are always ignored (built-in behavior).
         </p>

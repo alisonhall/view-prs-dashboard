@@ -1,3 +1,5 @@
+import type { RepoRulesByRepo } from '../helpers/repo-rules.helpers.ts';
+
 /**
  * A tiny external store holding FilterStateProvider's field values, with
  * per-key subscriptions - the shape `useSyncExternalStore` wants (and what
@@ -33,14 +35,28 @@ export interface FilterValues {
   showReason?: boolean;
   quiet?: boolean;
   // Row filters
-  scopeMode?: string;
+  // "Only PRs that need attention", and Conversations' "Open conversations
+  // with me", "Waiting on me" and "Resolved for you to check". The first
+  // and last replaced the "View scope" select (its saved "scope-mode"
+  // becomes them: FilterStateProvider's restore).
+  onlyNeedsAttention?: boolean;
+  onlyOpenConversationsWithMe?: boolean;
+  onlyWaitingOnMe?: boolean;
+  onlyThreadsToCheck?: boolean;
   filterPrNumbers?: string;
+  // The Last activity range: date inputs' values ("2026-11-03"), "" for no
+  // limit on that side (pr-last-activity-range.helpers.ts).
+  filterLastActivityFrom?: string;
+  filterLastActivityTo?: string;
   alwaysShowInReview?: boolean;
   filterCustomComments?: string;
   filterOtherNotes?: string;
   filterPrDifficulty?: string;
   filterStories?: string;
   filterAnalysisOfPr?: string;
+  // The search box: not saved (FILTER_STATE_FIELD_MAP leaves it out), as
+  // a search is for now.
+  filterSearch?: string;
   // Settings' attention, merge-commit and change-detection rules
   attentionNoActivityMode?: string;
   attentionIncludePendingComments?: boolean;
@@ -51,6 +67,9 @@ export interface FilterValues {
   // "Merge commits" rules, one entry per line (pr-merge-commit-rules.helpers.ts)
   mergeCommitHeadlinePatterns?: string;
   mergeCommitLogins?: string;
+  // Each repo's own versions of some of these rules (repo-rules.helpers.ts),
+  // saved as user-defaults.json's repoRules.
+  repoRules?: RepoRulesByRepo;
   [key: string]: unknown;
 }
 

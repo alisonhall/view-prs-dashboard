@@ -93,6 +93,9 @@ describe("route behavior", () => {
   let actorLoginAliasesFilePath;
   let actorLoginAliasesFileExisted;
   let originalActorLoginAliasesRaw;
+  let actorsFilePath;
+  let actorsFileExisted;
+  let originalActorsRaw;
   let actionLogFilePath;
   let actionLogFileExisted;
   let originalActionLogRaw;
@@ -127,6 +130,10 @@ describe("route behavior", () => {
       ? fs.readFileSync(actorLoginAliasesFilePath, "utf8")
       : "";
 
+    actorsFilePath = appModule.viewPrsActorsFile;
+    actorsFileExisted = fs.existsSync(actorsFilePath);
+    originalActorsRaw = actorsFileExisted ? fs.readFileSync(actorsFilePath, "utf8") : "";
+
     actionLogFilePath = appModule.viewPrsActionLogFile;
     actionLogFileExisted = fs.existsSync(actionLogFilePath);
     originalActionLogRaw = actionLogFileExisted
@@ -138,6 +145,7 @@ describe("route behavior", () => {
     fs.rmSync(authorCommentsFilePath, { force: true });
     fs.rmSync(actorNameCacheFilePath, { force: true });
     fs.rmSync(actorLoginAliasesFilePath, { force: true });
+    fs.rmSync(actorsFilePath, { force: true });
     fs.rmSync(actionLogFilePath, { force: true });
 
     const app = createViewPrsApp();
@@ -194,6 +202,12 @@ describe("route behavior", () => {
             );
           } else {
             fs.rmSync(actorLoginAliasesFilePath, { force: true });
+          }
+
+          if (actorsFileExisted) {
+            fs.writeFileSync(actorsFilePath, originalActorsRaw, "utf8");
+          } else {
+            fs.rmSync(actorsFilePath, { force: true });
           }
 
           if (actionLogFileExisted) {
@@ -290,14 +304,13 @@ describe("route behavior", () => {
   });
 
   test("given an aliased author login, when author comments are created and read across both logins, then they share one canonical author identity", async () => {
-    fs.mkdirSync(path.dirname(actorLoginAliasesFilePath), { recursive: true });
+    fs.mkdirSync(path.dirname(actorsFilePath), { recursive: true });
     fs.writeFileSync(
-      actorLoginAliasesFilePath,
-      JSON.stringify(
-        { "7c7240971101674017d4597caddf24_uhg": "mthom486_uhg" },
-        null,
-        2,
-      ),
+      actorsFilePath,
+      JSON.stringify({
+        version: 1,
+        actors: [{ id: "actor:mthom486_uhg", name: "", logins: ["mthom486_uhg", "7c7240971101674017d4597caddf24_uhg"] }],
+      }),
       "utf8",
     );
 
@@ -309,14 +322,15 @@ describe("route behavior", () => {
 
     expect(createResult.response.status).toBe(200);
     expect(createResult.payload.ok).toBe(true);
-    expect(createResult.payload.authorLogin).toBe("mthom486_uhg");
+    // Kept under the person's id, whichever login it came with.
+    expect(createResult.payload.authorLogin).toBe("actor:mthom486_uhg");
 
     const readCanonical = await requestJson(
       server,
       "/author-comments?authorLogin=mthom486_uhg",
     );
     expect(readCanonical.response.status).toBe(200);
-    expect(readCanonical.payload.authorLogin).toBe("mthom486_uhg");
+    expect(readCanonical.payload.authorLogin).toBe("actor:mthom486_uhg");
     expect(readCanonical.payload.comments.some((comment) => comment.note === "Merged alias author comment")).toBe(true);
 
     const readAlias = await requestJson(
@@ -324,8 +338,62 @@ describe("route behavior", () => {
       "/author-comments?authorLogin=7c7240971101674017d4597caddf24_uhg",
     );
     expect(readAlias.response.status).toBe(200);
-    expect(readAlias.payload.authorLogin).toBe("mthom486_uhg");
+    expect(readAlias.payload.authorLogin).toBe("actor:mthom486_uhg");
     expect(readAlias.payload.comments.some((comment) => comment.note === "Merged alias author comment")).toBe(true);
+
+    // The page asks by the person's id.
+    const readById = await requestJson(server, "/author-comments?authorLogin=actor%3Amthom486_uhg");
+    expect(readById.payload.comments.some((comment) => comment.note === "Merged alias author comment")).toBe(true);
+  });
+
+  test("given two people merged in Settings › People, when the removed one's id is asked for, then it's the other's: their comments and the payload say so", async () => {
+    const address = server.address();
+    const put = (actors) =>
+      fetch(`http://127.0.0.1:${address.port}/actors`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ actors }),
+      });
+    await put([
+      { id: "actor:merge_main", name: "Main", logins: ["merge_main"] },
+      { id: "actor:merge_alt", name: "", logins: ["merge_alt"] },
+    ]);
+    await postJson(server, "/author-comments", { authorLogin: "actor:merge_alt", note: "Under the alt person", sentiment: "neutral" });
+
+    // Merge: the alt login joins the main person, whose row stays; the alt row goes.
+    await put([{ id: "actor:merge_main", name: "Main", logins: ["merge_main", "merge_alt"] }]);
+
+    const { payload } = await requestJson(server, "/author-comments?authorLogin=actor%3Amerge_main");
+    expect(payload.comments.map((comment) => comment.note)).toContain("Under the alt person");
+    const { payload: byOldId } = await requestJson(server, "/author-comments?authorLogin=actor%3Amerge_alt");
+    expect(byOldId.authorLogin).toBe("actor:merge_main");
+    await withDataFile({ 10007: { data: { number: 10007, repo: "owner/repo", authorLogin: "merge_main" } } }, async () => {
+      const { payload: manifest } = await requestJson(server, "/data-manifest");
+      expect(manifest.actorMaps.actorIdMoves).toMatchObject({ "actor:merge_alt": "actor:merge_main" });
+    });
+  });
+
+  test("given comments kept under a login before ids, when the person's id is asked for, then they're theirs", async () => {
+    fs.writeFileSync(
+      actorsFilePath,
+      JSON.stringify({ version: 1, actors: [{ id: "actor:old_keyed", name: "", logins: ["old_keyed", "old_keyed_alt"] }] }),
+      "utf8",
+    );
+    fs.writeFileSync(
+      authorCommentsFilePath,
+      JSON.stringify({
+        byAuthorLogin: {
+          old_keyed: { comments: [{ id: "c-old-1", note: "Kept under the main login", sentiment: "neutral", createdAt: "2026-01-01T00:00:00Z" }] },
+          old_keyed_alt: { comments: [{ id: "c-old-2", note: "Kept under another login", sentiment: "neutral", createdAt: "2026-01-02T00:00:00Z" }] },
+        },
+      }),
+      "utf8",
+    );
+
+    const { response, payload } = await requestJson(server, "/author-comments?authorLogin=actor%3Aold_keyed");
+
+    expect(response.status).toBe(200);
+    expect(payload.comments.map((comment) => comment.note)).toEqual(["Kept under the main login", "Kept under another login"]);
   });
 
   test("updates saved author comments via PUT /author-comments", async () => {
@@ -788,6 +856,14 @@ describe("route behavior", () => {
     }
   });
 
+  // npm run data:move asks it, and won't move the folder while it answers.
+  test("GET /health says it's this app, and its data folder", async () => {
+    const { response, payload } = await requestJson(server, "/health");
+
+    expect(response.status).toBe(200);
+    expect(payload).toEqual({ app: "view-prs", dataDir: appModule.viewPrsDataDir });
+  });
+
   test("returns 503 and the missing list when GET /health/deps is requested and a dependency is absent", async () => {
     const originalDeps = appModule.getDependencyStatus;
     const originalAuth = appModule.isGhAuthenticated;
@@ -941,7 +1017,8 @@ describe("route behavior", () => {
         appModule.viewPrsSchedulerState.dispatcher.entries[
           "acme-org/repo-config-test::autoRefresh"
         ];
-      expect(entry.priority).toBe(9);
+      // The boost adds to auto refresh's default priority, 3.
+      expect(entry.priority).toBe(3 + 9);
       expect(entry.intervalMs).toBe(60000);
     } finally {
       if (savedAutoRepos === undefined) {
@@ -950,6 +1027,29 @@ describe("route behavior", () => {
         process.env.VIEW_PRS_AUTO_REPOS = savedAutoRepos;
       }
       appModule.viewPrsSchedulerState.dispatcher = { entries: {}, reservedGhSlots: 0 };
+    }
+  });
+
+  test("GET /view-prs/dispatcher/settings lists the scheduled repos and each task type's defaults", async () => {
+    const savedAutoRepos = process.env.VIEW_PRS_AUTO_REPOS;
+    process.env.VIEW_PRS_AUTO_REPOS = "acme-org/settings-a,acme-org/settings-b";
+    try {
+      const { response, payload } = await requestJson(server, "/view-prs/dispatcher/settings");
+      expect(response.status).toBe(200);
+      expect(payload.ok).toBe(true);
+      expect(payload.repos).toEqual(expect.arrayContaining(["acme-org/settings-a", "acme-org/settings-b"]));
+      expect(payload.taskTypes.map((entry) => [entry.taskType, entry.priority])).toEqual([
+        ["quickCheck", 5],
+        ["autoRefresh", 3],
+        ["mergedDrain", 1],
+      ]);
+      payload.taskTypes.forEach((entry) => expect(entry.intervalMs).toBeGreaterThan(0));
+    } finally {
+      if (savedAutoRepos === undefined) {
+        delete process.env.VIEW_PRS_AUTO_REPOS;
+      } else {
+        process.env.VIEW_PRS_AUTO_REPOS = savedAutoRepos;
+      }
     }
   });
 
@@ -968,356 +1068,184 @@ describe("route behavior", () => {
     expect(putPayload.ok).toBe(false);
   });
 
-  test("given actor-name-cache file is missing, when GET /actor-name-cache is requested, then the file is created and an empty map is returned", async () => {
-    fs.rmSync(actorNameCacheFilePath, { force: true });
-
-    const { response, payload } = await requestJson(server, "/actor-name-cache");
-
-    expect(response.status).toBe(200);
-    expect(payload.ok).toBe(true);
-    expect(payload.entries).toEqual({});
-    expect(payload.count).toBe(0);
-    expect(fs.existsSync(actorNameCacheFilePath)).toBe(true);
-  });
-
-  test("given actor-name-cache contains entries, when GET /actor-name-cache is requested, then persisted mappings are returned", async () => {
-    fs.mkdirSync(path.dirname(actorNameCacheFilePath), { recursive: true });
-    fs.writeFileSync(
-      actorNameCacheFilePath,
-      JSON.stringify({ "ahall236_uhg": "Alison Hall" }, null, 2),
-      "utf8",
-    );
-
-    const { response, payload } = await requestJson(server, "/actor-name-cache");
-
-    expect(response.status).toBe(200);
-    expect(payload.ok).toBe(true);
-    expect(payload.entries).toEqual({ ahall236_uhg: "Alison Hall" });
-    expect(payload.count).toBe(1);
-  });
-
-  test("given actor-name-cache is missing and /data contains a new author login, when GET /data is requested, then the login is added to actor-name-cache", async () => {
+  // A /data read with this data in place (the file put back after).
+  const withDataFile = async (byPrNumber, run) => {
     const dataFilePath = appModule.viewPrsDataFile;
     const dataFileExisted = fs.existsSync(dataFilePath);
-    const originalDataRaw = dataFileExisted
-      ? fs.readFileSync(dataFilePath, "utf8")
-      : "";
-
+    const originalDataRaw = dataFileExisted ? fs.readFileSync(dataFilePath, "utf8") : "";
     try {
-      fs.rmSync(actorNameCacheFilePath, { force: true });
       fs.mkdirSync(path.dirname(dataFilePath), { recursive: true });
-      fs.writeFileSync(
-        dataFilePath,
-        JSON.stringify(
-          {
-            byPrNumber: {
-              "9999": {
-                data: {
-                  number: 9999,
-                  repo: "owner/repo",
-                  authorLogin: "new_author_login",
-                  author: "New Author",
-                },
-              },
-            },
-            lastRun: "2026-07-07T00:00:00.000Z",
-          },
-          null,
-          2,
-        ),
-        "utf8",
-      );
-
-      const { response } = await requestJson(server, "/data");
-
-      expect(response.status).toBe(200);
-      expect(fs.existsSync(actorNameCacheFilePath)).toBe(true);
-
-      const savedCache = JSON.parse(fs.readFileSync(actorNameCacheFilePath, "utf8"));
-      expect(savedCache.new_author_login).toBe("New Author");
+      fs.writeFileSync(dataFilePath, JSON.stringify({ byPrNumber, lastRun: "2026-07-07T00:00:00.000Z" }, null, 2), "utf8");
+      await run();
     } finally {
       if (dataFileExisted) {
-        fs.mkdirSync(path.dirname(dataFilePath), { recursive: true });
         fs.writeFileSync(dataFilePath, originalDataRaw, "utf8");
       } else {
         fs.rmSync(dataFilePath, { force: true });
       }
     }
-  });
-
-  test("given actor-name-cache is missing and /data includes authorLogin without a display name, when GET /data is requested, then actor-name-cache stores the login as the fallback name", async () => {
-    const dataFilePath = appModule.viewPrsDataFile;
-    const dataFileExisted = fs.existsSync(dataFilePath);
-    const originalDataRaw = dataFileExisted
-      ? fs.readFileSync(dataFilePath, "utf8")
-      : "";
-
-    try {
-      fs.rmSync(actorNameCacheFilePath, { force: true });
-      fs.mkdirSync(path.dirname(dataFilePath), { recursive: true });
-      fs.writeFileSync(
-        dataFilePath,
-        JSON.stringify(
-          {
-            byPrNumber: {
-              "10001": {
-                data: {
-                  number: 10001,
-                  repo: "owner/repo",
-                  authorLogin: "fallback_login_only_10001",
-                },
-              },
-            },
-            lastRun: "2026-07-07T00:00:00.000Z",
-          },
-          null,
-          2,
-        ),
-        "utf8",
-      );
-
-      const { response } = await requestJson(server, "/data");
-
-      expect(response.status).toBe(200);
-      expect(fs.existsSync(actorNameCacheFilePath)).toBe(true);
-
-      const savedCache = JSON.parse(fs.readFileSync(actorNameCacheFilePath, "utf8"));
-      expect(savedCache.fallback_login_only_10001).toBe(
-        "fallback_login_only_10001",
-      );
-    } finally {
-      if (dataFileExisted) {
-        fs.mkdirSync(path.dirname(dataFilePath), { recursive: true });
-        fs.writeFileSync(dataFilePath, originalDataRaw, "utf8");
-      } else {
-        fs.rmSync(dataFilePath, { force: true });
-      }
-    }
-  });
-
-  test("given /data includes unknown and valid author logins, when GET /data is requested, then actor-name-cache skips unknown and persists only valid logins", async () => {
-    const dataFilePath = appModule.viewPrsDataFile;
-    const dataFileExisted = fs.existsSync(dataFilePath);
-    const originalDataRaw = dataFileExisted
-      ? fs.readFileSync(dataFilePath, "utf8")
-      : "";
-
-    try {
-      fs.rmSync(actorNameCacheFilePath, { force: true });
-      fs.mkdirSync(path.dirname(dataFilePath), { recursive: true });
-      fs.writeFileSync(
-        dataFilePath,
-        JSON.stringify(
-          {
-            byPrNumber: {
-              "10002": {
-                data: {
-                  number: 10002,
-                  repo: "owner/repo",
-                  authorLogin: "unknown",
-                  author: "Unknown Person",
-                },
-              },
-              "10003": {
-                data: {
-                  number: 10003,
-                  repo: "owner/repo",
-                  authorLogin: "known_login_10003",
-                  author: "Known Person",
-                },
-              },
-            },
-            lastRun: "2026-07-07T00:00:00.000Z",
-          },
-          null,
-          2,
-        ),
-        "utf8",
-      );
-
-      const { response } = await requestJson(server, "/data");
-
-      expect(response.status).toBe(200);
-      expect(fs.existsSync(actorNameCacheFilePath)).toBe(true);
-
-      const savedCache = JSON.parse(fs.readFileSync(actorNameCacheFilePath, "utf8"));
-      expect(savedCache.known_login_10003).toBe("Known Person");
-      expect(savedCache).not.toHaveProperty("unknown");
-    } finally {
-      if (dataFileExisted) {
-        fs.mkdirSync(path.dirname(dataFilePath), { recursive: true });
-        fs.writeFileSync(dataFilePath, originalDataRaw, "utf8");
-      } else {
-        fs.rmSync(dataFilePath, { force: true });
-      }
-    }
-  });
-
-  test("given actor-name-cache already contains a login mapping, when GET /data sees the same login without a display name, then the existing mapping is preserved", async () => {
-    const dataFilePath = appModule.viewPrsDataFile;
-    const dataFileExisted = fs.existsSync(dataFilePath);
-    const originalDataRaw = dataFileExisted
-      ? fs.readFileSync(dataFilePath, "utf8")
-      : "";
-
-    try {
-      fs.mkdirSync(path.dirname(actorNameCacheFilePath), { recursive: true });
-      fs.writeFileSync(
-        actorNameCacheFilePath,
-        JSON.stringify({ preserved_login_10004: "Preserved Name" }, null, 2),
-        "utf8",
-      );
-
-      fs.mkdirSync(path.dirname(dataFilePath), { recursive: true });
-      fs.writeFileSync(
-        dataFilePath,
-        JSON.stringify(
-          {
-            byPrNumber: {
-              "10004": {
-                data: {
-                  number: 10004,
-                  repo: "owner/repo",
-                  authorLogin: "preserved_login_10004",
-                },
-              },
-            },
-            lastRun: "2026-07-07T00:00:00.000Z",
-          },
-          null,
-          2,
-        ),
-        "utf8",
-      );
-
-      const { response } = await requestJson(server, "/data");
-
-      expect(response.status).toBe(200);
-
-      const savedCache = JSON.parse(fs.readFileSync(actorNameCacheFilePath, "utf8"));
-      expect(savedCache.preserved_login_10004).toBe("Preserved Name");
-    } finally {
-      if (dataFileExisted) {
-        fs.mkdirSync(path.dirname(dataFilePath), { recursive: true });
-        fs.writeFileSync(dataFilePath, originalDataRaw, "utf8");
-      } else {
-        fs.rmSync(dataFilePath, { force: true });
-      }
-    }
-  });
-
-  test("given a non-empty actor-name-cache payload, when PUT /actor-name-cache is requested, then mappings are persisted", async () => {
+  };
+  const savedActors = () => JSON.parse(fs.readFileSync(actorsFilePath, "utf8")).actors;
+  const putActors = async (body) => {
     const address = server.address();
-    const putResponse = await fetch(
-      `http://127.0.0.1:${address.port}/actor-name-cache`,
-      {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ahall236_uhg: "Alison Hall",
-          reviewer1: "Reviewer One",
-        }),
+    const response = await fetch(`http://127.0.0.1:${address.port}/actors`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return { response, payload: await response.json() };
+  };
+
+  test("given no actors file, when GET /actors is requested, then the people are moved over from the old name cache and aliases, and saved", async () => {
+    fs.rmSync(actorsFilePath, { force: true });
+    fs.writeFileSync(actorNameCacheFilePath, JSON.stringify({ ahall236_uhg: "Alison Hall", other: "other" }), "utf8");
+    fs.writeFileSync(actorLoginAliasesFilePath, JSON.stringify({ alison_alt: "ahall236_uhg" }), "utf8");
+    try {
+      const { response, payload } = await requestJson(server, "/actors");
+
+      expect(response.status).toBe(200);
+      expect(payload.actors).toEqual([
+        { id: "actor:ahall236_uhg", name: "Alison Hall", logins: ["ahall236_uhg", "alison_alt"] },
+        { id: "actor:other", name: "", logins: ["other"] },
+      ]);
+      expect(savedActors()).toEqual(payload.actors);
+    } finally {
+      fs.rmSync(actorNameCacheFilePath, { force: true });
+      fs.rmSync(actorLoginAliasesFilePath, { force: true });
+    }
+  });
+
+  test("given a new login in the data, when GET /data is requested, then a person is added for it, named as the data names them", async () => {
+    await putActors({ actors: [{ name: "Someone", logins: ["someone"] }] });
+    await withDataFile(
+      { 9999: { data: { number: 9999, repo: "owner/repo", authorLogin: "new_author_login", author: "New Author" } } },
+      async () => {
+        const { response, payload } = await requestJson(server, "/data");
+        expect(response.status).toBe(200);
+        expect(savedActors()).toContainEqual({ id: "actor:new_author_login", name: "New Author", logins: ["new_author_login"] });
+        expect(payload.actorsMap["actor:new_author_login"]).toBe("New Author");
+        expect(payload.actors).toContainEqual({ id: "actor:new_author_login", name: "New Author", logins: ["new_author_login"] });
       },
     );
-    const putPayload = await putResponse.json();
+  });
 
-    expect(putResponse.status).toBe(200);
-    expect(putPayload.ok).toBe(true);
-    expect(putPayload.count).toBe(2);
+  test("given 'unknown' and a GitHub bot in the data, when GET /data is requested, then 'unknown' isn't added and the bot is named as GitHub names it", async () => {
+    await putActors({ actors: [{ name: "Someone", logins: ["someone"] }] });
+    await withDataFile(
+      {
+        10002: { data: { number: 10002, repo: "owner/repo", authorLogin: "unknown", author: "Unknown Person" } },
+        10003: { data: { number: 10003, repo: "owner/repo", authorLogin: "copilot-pull-request-reviewer" } },
+      },
+      async () => {
+        await requestJson(server, "/data");
+        expect(savedActors().flatMap((actor) => actor.logins)).not.toContain("unknown");
+        // GitHub's own name for it, without asking gh.
+        expect(savedActors()).toContainEqual({
+          id: "actor:copilot-pull-request-reviewer",
+          name: "Copilot",
+          logins: ["copilot-pull-request-reviewer"],
+        });
+      },
+    );
+  });
 
-    const saved = JSON.parse(fs.readFileSync(actorNameCacheFilePath, "utf8"));
-    expect(saved).toEqual({
-      ahall236_uhg: "Alison Hall",
-      reviewer1: "Reviewer One",
+  test("given a person already named, when GET /data sees one of their logins (in another case) under another name, then the person is kept as they are", async () => {
+    await putActors({ actors: [{ id: "actor:keep", name: "Preserved Name", logins: ["preserved_login", "preserved_alt"] }] });
+    await withDataFile(
+      { 10004: { data: { number: 10004, repo: "owner/repo", authorLogin: "PRESERVED_ALT", author: "Other Name" } } },
+      async () => {
+        const { payload } = await requestJson(server, "/data");
+        expect(savedActors()).toEqual([{ id: "actor:keep", name: "Preserved Name", logins: ["preserved_login", "preserved_alt"] }]);
+        expect(payload.actorsMap).toEqual({ "actor:keep": "Preserved Name" });
+        expect(payload.actors).toEqual([{ id: "actor:keep", name: "Preserved Name", logins: ["preserved_login", "preserved_alt"] }]);
+      },
+    );
+  });
+
+  test("given an unreadable actors file, when GET /data and GET /actors are requested, then the data still loads, the file is left as it is, and /actors says it's unreadable", async () => {
+    fs.writeFileSync(actorsFilePath, "{ not json", "utf8");
+    try {
+      await withDataFile(
+        { 10005: { data: { number: 10005, repo: "owner/repo", authorLogin: "someone_new", author: "Someone New" } } },
+        async () => {
+          const { response } = await requestJson(server, "/data");
+          expect(response.status).toBe(200);
+          expect(fs.readFileSync(actorsFilePath, "utf8")).toBe("{ not json");
+          const { payload } = await requestJson(server, "/actors");
+          expect(payload).toMatchObject({ ok: true, actors: [], unreadable: true });
+        },
+      );
+    } finally {
+      fs.rmSync(actorsFilePath, { force: true });
+    }
+  });
+
+  test("given people, when PUT /actors is requested, then they're saved and returned, ids kept and made where missing", async () => {
+    const { response, payload } = await putActors({
+      actors: [
+        { id: "actor:alison", name: "Alison Hall", logins: ["ahall236_uhg", "alison_alt"] },
+        { name: "Reviewer One", logins: ["reviewer1"] },
+      ],
+    });
+
+    expect(response.status).toBe(200);
+    expect(payload.actors).toEqual([
+      { id: "actor:alison", name: "Alison Hall", logins: ["ahall236_uhg", "alison_alt"] },
+      { id: "actor:reviewer1", name: "Reviewer One", logins: ["reviewer1"] },
+    ]);
+    expect(savedActors()).toEqual(payload.actors);
+    const { payload: listed } = await requestJson(server, "/actors");
+    expect(listed.actors).toEqual(payload.actors);
+  });
+
+  test("given a save in Settings › People, when the page polls, then the data version moves and the manifest carries the new names", async () => {
+    await putActors({ actors: [{ id: "actor:ann", name: "Ann", logins: ["ann"] }] });
+    await withDataFile({ 10006: { data: { number: 10006, repo: "owner/repo", authorLogin: "ann" } } }, async () => {
+      // Settle what the first read adds, then compare.
+      await requestJson(server, "/data-manifest");
+      const before = (await requestJson(server, "/data-meta")).payload.dataVersion;
+      // A file's mtime can repeat within a tick: make the size differ too.
+      await putActors({ actors: [{ id: "actor:ann", name: "Ann Lee-Smith", logins: ["ann", "ann-2"] }] });
+
+      expect((await requestJson(server, "/data-meta")).payload.dataVersion).not.toBe(before);
+      const { payload } = await requestJson(server, "/data-manifest");
+      expect(payload.actorMaps.actorsMap).toMatchObject({ "actor:ann": "Ann Lee-Smith" });
+      expect(payload.actorMaps.actors).toEqual([{ id: "actor:ann", name: "Ann Lee-Smith", logins: ["ann", "ann-2"] }]);
     });
   });
 
-  test("given an empty actor-name-cache payload, when PUT /actor-name-cache is requested, then clearing all mappings is blocked", async () => {
-    const address = server.address();
-    const putResponse = await fetch(
-      `http://127.0.0.1:${address.port}/actor-name-cache`,
-      {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      },
-    );
-    const putPayload = await putResponse.json();
-
-    expect(putResponse.status).toBe(400);
-    expect(putPayload.ok).toBe(false);
-    expect(String(putPayload.error || "")).toContain("Clearing all mappings is blocked");
-  });
-
-  test("given actor-login-aliases file is missing, when GET /actor-login-aliases is requested, then the file is created and an empty map is returned", async () => {
-    fs.rmSync(actorLoginAliasesFilePath, { force: true });
-
-    const { response, payload } = await requestJson(server, "/actor-login-aliases");
-
-    expect(response.status).toBe(200);
-    expect(payload.ok).toBe(true);
-    expect(payload.entries).toEqual({});
-    expect(payload.count).toBe(0);
-    expect(fs.existsSync(actorLoginAliasesFilePath)).toBe(true);
-  });
-
-  test("given actor-login-aliases contains entries, when GET /actor-login-aliases is requested, then persisted mappings are returned", async () => {
-    fs.mkdirSync(path.dirname(actorLoginAliasesFilePath), { recursive: true });
-    fs.writeFileSync(
-      actorLoginAliasesFilePath,
-      JSON.stringify({ alias_user: "canonical_user" }, null, 2),
-      "utf8",
-    );
-
-    const { response, payload } = await requestJson(server, "/actor-login-aliases");
-
-    expect(response.status).toBe(200);
-    expect(payload.ok).toBe(true);
-    expect(payload.entries).toEqual({ alias_user: "canonical_user" });
-    expect(payload.count).toBe(1);
-  });
-
-  test("given a non-empty actor-login-aliases payload, when PUT /actor-login-aliases is requested, then mappings are persisted", async () => {
-    const address = server.address();
-    const putResponse = await fetch(
-      `http://127.0.0.1:${address.port}/actor-login-aliases`,
-      {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          alias_user: "canonical_user",
-          alias_user_two: "canonical_user_two",
-        }),
-      },
-    );
-    const putPayload = await putResponse.json();
-
-    expect(putResponse.status).toBe(200);
-    expect(putPayload.ok).toBe(true);
-    expect(putPayload.count).toBe(2);
-
-    const saved = JSON.parse(fs.readFileSync(actorLoginAliasesFilePath, "utf8"));
-    expect(saved).toEqual({
-      alias_user: "canonical_user",
-      alias_user_two: "canonical_user_two",
+  test("given a login in two people, when PUT /actors is requested, then it's refused, naming both, and nothing changes", async () => {
+    await putActors({ actors: [{ name: "Ann", logins: ["ann"] }] });
+    const { response, payload } = await putActors({
+      actors: [
+        { name: "Ann", logins: ["ann"] },
+        { name: "Bob", logins: ["bob", "Ann"] },
+      ],
     });
+
+    expect(response.status).toBe(400);
+    expect(payload.error).toBe("Ann is in two people: Ann and Bob.");
+    expect(savedActors().map((actor) => actor.name)).toEqual(["Ann"]);
   });
 
-  test("given an empty actor-login-aliases payload, when PUT /actor-login-aliases is requested, then clearing all mappings is blocked", async () => {
+  test("given no one, when PUT /actors is requested, then clearing everyone is blocked", async () => {
+    const { response, payload } = await putActors({ actors: [] });
+
+    expect(response.status).toBe(400);
+    expect(payload.ok).toBe(false);
+    expect(String(payload.error || "")).toContain("Clearing everyone is blocked");
+  });
+
+  test("the old name cache and alias routes are gone: a save to either isn't handled", async () => {
     const address = server.address();
-    const putResponse = await fetch(
-      `http://127.0.0.1:${address.port}/actor-login-aliases`,
-      {
+    for (const route of ["/actor-name-cache", "/actor-login-aliases"]) {
+      const response = await fetch(`http://127.0.0.1:${address.port}${route}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      },
-    );
-    const putPayload = await putResponse.json();
-
-    expect(putResponse.status).toBe(400);
-    expect(putPayload.ok).toBe(false);
-    expect(String(putPayload.error || "")).toContain("Clearing all mappings is blocked");
+        body: JSON.stringify({ someone: "Someone" }),
+      });
+      expect(response.status).toBe(404);
+    }
   });
 
   test("returns backfill status when GET /backfill is requested", async () => {
@@ -1513,9 +1441,11 @@ describe("route behavior", () => {
     ]);
     const originalRun = appModule.runViewPrsScript;
     const scriptCalls = [];
+    const tasksSeen = [];
     appModule.runViewPrsScript = async (commandArgs) => {
       const repoIndex = commandArgs.indexOf("--repo");
       scriptCalls.push(repoIndex >= 0 ? commandArgs[repoIndex + 1] : null);
+      tasksSeen.push(...appModule.getViewPrsSchedulerPublicState().tasks);
       return { stdout: "", stderr: "" };
     };
     try {
@@ -1532,6 +1462,8 @@ describe("route behavior", () => {
       await new Promise((resolve) => setImmediate(resolve));
       expect(scriptCalls).toContain("owner/repo-run-auto-free");
       expect(scriptCalls).not.toContain("owner/repo-run-auto-busy");
+      // Activity says you started it.
+      expect(tasksSeen).toContainEqual(expect.objectContaining({ kind: "autoRefresh", origin: "you" }));
     } finally {
       appModule.runViewPrsScript = originalRun;
       appModule.viewPrsSchedulerState.isAutoRunInProgress = false;
@@ -1576,10 +1508,14 @@ describe("route behavior", () => {
     const originalRun = appModule.runViewPrsScript;
     const originalAutoRepos = process.env.VIEW_PRS_AUTO_REPOS;
     process.env.VIEW_PRS_AUTO_REPOS = "owner/repo-quick-check-route";
-    appModule.runViewPrsScript = async () => ({
-      stdout: JSON.stringify({ pendingOpen: ["901", "902"], pendingMergedClosed: ["903"] }),
-      stderr: "",
-    });
+    const tasksSeen = [];
+    appModule.runViewPrsScript = async () => {
+      tasksSeen.push(...appModule.getViewPrsSchedulerPublicState().tasks);
+      return {
+        stdout: JSON.stringify({ pendingOpen: ["901", "902"], pendingMergedClosed: ["903"] }),
+        stderr: "",
+      };
+    };
     try {
       const { response, payload } = await postJson(server, "/quick-check", {});
 
@@ -1590,6 +1526,8 @@ describe("route behavior", () => {
       expect(payload.reposChecked).toContain("owner/repo-quick-check-route");
       expect(payload.reposFailed).toEqual([]);
       expect(payload).toHaveProperty("lastQuickCheckAt");
+      // Activity says you started it.
+      expect(tasksSeen).toContainEqual(expect.objectContaining({ kind: "quickCheck", origin: "you" }));
     } finally {
       appModule.runViewPrsScript = originalRun;
       if (originalAutoRepos === undefined) {
@@ -2365,6 +2303,46 @@ describe("route behavior", () => {
       expect(updated.byPrNumber["703"].data.labels).toEqual(["bug"]);
     } finally {
       appModule.runViewPrsBashCommand = originalBash;
+      if (dataFileExisted) {
+        fs.writeFileSync(dataFilePath, originalDataRaw, "utf8");
+      } else {
+        fs.rmSync(dataFilePath, { force: true });
+      }
+    }
+  });
+
+  test("POST /labels/apply still patches the stored labels past a PR-data lock left by a killed script run (over a minute old), and leaves it", async () => {
+    const dataFilePath = appModule.viewPrsDataFile;
+    const lockDir = dataFilePath.replace(/\.json$/, ".lock");
+    const dataFileExisted = fs.existsSync(dataFilePath);
+    const originalDataRaw = dataFileExisted ? fs.readFileSync(dataFilePath, "utf8") : "";
+    const originalBash = appModule.runViewPrsBashCommand;
+
+    fs.mkdirSync(path.dirname(dataFilePath), { recursive: true });
+    fs.writeFileSync(
+      dataFilePath,
+      JSON.stringify({ byPrNumber: { 704: { repo: "owner/repo", data: { number: 704, labels: [] } } }, lastRun: null }),
+      "utf8",
+    );
+    fs.mkdirSync(lockDir, { recursive: true });
+    const old = new Date(Date.now() - 5 * 60 * 1000);
+    fs.utimesSync(lockDir, old, old);
+    appModule.runViewPrsBashCommand = async (bashArgs) =>
+      String(bashArgs?.[1] || "").includes("gh pr view")
+        ? { stdout: JSON.stringify(["bug"]), stderr: "" }
+        : { stdout: "", stderr: "" };
+
+    try {
+      const { response, payload } = await postJson(server, "/labels/apply", { repo: "owner/repo", label: "bug", prNumbers: "704" });
+
+      expect(response.status).toBe(200);
+      expect(payload.refreshErrors).toEqual([]);
+      expect(JSON.parse(fs.readFileSync(dataFilePath, "utf8")).byPrNumber["704"].data.labels).toEqual(["bug"]);
+      // Not this patch's to remove: the script recovers it.
+      expect(fs.existsSync(lockDir)).toBe(true);
+    } finally {
+      appModule.runViewPrsBashCommand = originalBash;
+      fs.rmSync(lockDir, { recursive: true, force: true });
       if (dataFileExisted) {
         fs.writeFileSync(dataFilePath, originalDataRaw, "utf8");
       } else {

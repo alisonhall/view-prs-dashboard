@@ -108,6 +108,9 @@ function mountApp(container: HTMLElement) {
                                         <AuthorInsightsDraftsProvider>
                                           <AutoRenderBlockingSync />
                                           <JobEventsProvider>
+                                            {/* Inside the event stream's Provider: its poll slows
+                                                while the stream pushes data changes. */}
+                                            <PrDataPolling dataPollMs={readDataPollMsOverride(window.location.search)} />
                                             <FilterOptionsProvider>
                                               {/* Every multi-select list's selection (the filter
                                                   bar's and the Settings drawer's), kept in step
@@ -125,7 +128,6 @@ function mountApp(container: HTMLElement) {
                                     </SettingsDrawerProvider>
                                   </PrTableUiStateProvider>
                                 </NotesDirtyProvider>
-                                <PrDataPolling dataPollMs={readDataPollMsOverride(window.location.search)} />
                               </PrDataProvider>
                             </AutoRenderBlockingProvider>
                           </SnackbarProvider>

@@ -5,87 +5,42 @@ const {
 } = require("./pr-viewer-context.helpers.ts");
 
 describe("pr viewer context helpers", () => {
-  test("given payload viewer login and aliases, when deriving viewer context, then payload viewer login and aliases are normalized", () => {
-    const normalizeActorLoginAliases = jest.fn((aliases) => aliases);
-    const normalizeActorLogin = jest.fn((login) => String(login).toLowerCase());
+  test("given a payload viewer login and people, when deriving the viewer context, then the people are indexed and the login lower-cased", () => {
     const inferViewerLoginFromPage = jest.fn(() => "fallback-login");
-    const { deriveViewerContext } = createPrViewerContextHelpers({
-      normalizeActorLoginAliases,
-      normalizeActorLogin,
-      inferViewerLoginFromPage,
-    });
+    const { deriveViewerContext } = createPrViewerContextHelpers({ inferViewerLoginFromPage });
 
     const result = deriveViewerContext({
       payload: {
-        actorLoginAliases: { me: ["me-login"] },
-        viewerLogin: "Viewer.Login",
+        actors: [{ id: "actor:viewer", name: "Vee", logins: ["Viewer.Login", "viewer-alt"] }],
+        viewerLogin: " Viewer.Login ",
       },
       allEntries: [{ data: { viewerLogin: "row-login" } }],
     });
 
-    expect(result).toEqual({
-      currentActorLoginAliases: { me: ["me-login"] },
-      currentViewerLogin: "viewer.login",
-    });
-    expect(normalizeActorLoginAliases).toHaveBeenCalledWith({
-      me: ["me-login"],
-    });
-    expect(normalizeActorLogin).toHaveBeenCalledWith("Viewer.Login");
+    expect(result.currentViewerLogin).toBe("viewer.login");
+    expect(result.currentActorIndex.idByLoginKey.get("viewer.login")).toBe("actor:viewer");
+    expect(result.currentActorIndex.idByLoginKey.get("viewer-alt")).toBe("actor:viewer");
+    expect(result.currentActorIndex.loginsById.get("actor:viewer")).toEqual(["Viewer.Login", "viewer-alt"]);
     expect(inferViewerLoginFromPage).not.toHaveBeenCalled();
   });
 
   test("given missing payload viewer login, when deriving viewer context, then viewer login falls back to row viewer login", () => {
-    const { deriveViewerContext } = createPrViewerContextHelpers({
-      normalizeActorLoginAliases: (aliases) => aliases,
-      normalizeActorLogin: (login) => String(login || ""),
-      inferViewerLoginFromPage: () => "page-login",
-    });
+    const { deriveViewerContext } = createPrViewerContextHelpers({ inferViewerLoginFromPage: () => "page-login" });
 
     const result = deriveViewerContext({
-      payload: {
-        actorLoginAliases: {},
-      },
-      allEntries: [
-        { data: {} },
-        { data: { viewerLogin: "row-login" } },
-      ],
+      payload: {},
+      allEntries: [{ data: {} }, { data: { viewerLogin: "row-login" } }],
     });
 
     expect(result.currentViewerLogin).toBe("row-login");
   });
 
   test("given missing payload and row viewer logins, when deriving viewer context, then viewer login falls back to page inference", () => {
-    const { deriveViewerContext } = createPrViewerContextHelpers({
-      normalizeActorLoginAliases: (aliases) => aliases,
-      normalizeActorLogin: (login) => String(login || ""),
-      inferViewerLoginFromPage: () => "page-login",
-    });
+    const { deriveViewerContext } = createPrViewerContextHelpers({ inferViewerLoginFromPage: () => "Page-Login" });
 
-    const result = deriveViewerContext({
-      payload: {
-        actorLoginAliases: {},
-      },
-      allEntries: [{ data: {} }],
-    });
+    const result = deriveViewerContext({ payload: null, allEntries: [] });
 
     expect(result.currentViewerLogin).toBe("page-login");
-  });
-
-  test("given missing entries array, when deriving viewer context, then defaults are used", () => {
-    const { deriveViewerContext } = createPrViewerContextHelpers({
-      normalizeActorLoginAliases: () => ({}),
-      normalizeActorLogin: () => "",
-      inferViewerLoginFromPage: () => "",
-    });
-
-    const result = deriveViewerContext({
-      payload: {},
-      allEntries: null,
-    });
-
-    expect(result).toEqual({
-      currentActorLoginAliases: {},
-      currentViewerLogin: "",
-    });
+    expect(result.currentActorIndex.idByLoginKey.size).toBe(0);
   });
 });

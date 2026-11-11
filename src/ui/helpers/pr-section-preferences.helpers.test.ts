@@ -4,6 +4,7 @@ import {
   isPrSectionHidden,
   normalizePrSectionPreferences,
   PR_SECTION_CATALOG,
+  prSectionSort,
   prSectionStartsOpen,
   withPrSectionPreference,
 } from './pr-section-preferences.helpers';
@@ -47,5 +48,25 @@ describe('PR section preferences', () => {
     // Back to the defaults: nothing left to save.
     const shown = withPrSectionPreference(openToo, 'closed', { hidden: false });
     expect(withPrSectionPreference(shown, 'closed', { open: false })).toEqual({});
+  });
+
+  test("keeps a section's sort when it's one the section offers and not its default", () => {
+    expect(
+      normalizePrSectionPreferences({
+        merged: { sort: { by: 'number', direction: 'asc' } },
+        open: { sort: { by: 'number', direction: 'desc' } },
+        flagged: { sort: { by: 'merged', direction: 'desc' } },
+        draft: { sort: { by: 'sideways', direction: 'desc' } },
+      }),
+    ).toEqual({ merged: { sort: { by: 'number', direction: 'asc' } } });
+  });
+
+  test("a section sorts by the saved choice, else its default, and choosing the default saves nothing", () => {
+    const sorted = withPrSectionPreference({ closed: { hidden: true } }, 'open', { sort: { by: 'updated', direction: 'asc' } });
+    expect(prSectionSort(sorted, 'open')).toEqual({ by: 'updated', direction: 'asc' });
+    expect(prSectionSort(sorted, 'merged')).toEqual({ by: 'merged', direction: 'desc' });
+    expect(sorted.closed).toEqual({ hidden: true });
+
+    expect(withPrSectionPreference(sorted, 'open', { sort: { by: 'number', direction: 'desc' } })).toEqual({ closed: { hidden: true } });
   });
 });

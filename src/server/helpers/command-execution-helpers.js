@@ -10,6 +10,18 @@
 const fs = require("fs");
 const path = require("path");
 
+// What went wrong, for a log or the page: an Error's message, or for a
+// command's failure (runViewPrsCommand's and runViewPrsScript's rejections,
+// { error, stderr, ... }) its error and the last line it wrote to stderr -
+// gh's own reason - rather than "[object Object]".
+const describeFailure = (failure) => {
+  if (typeof failure === "string") return failure;
+  if (typeof failure?.message === "string" && failure.message) return failure.message;
+  const reason = String(failure?.error?.message || "").trim();
+  const lastStderrLine = String(failure?.stderr || "").trim().split(/\r?\n/).pop().trim();
+  return [reason, lastStderrLine].filter(Boolean).join(": ") || "Unknown error";
+};
+
 /**
  * Creates command execution helper functions.
  * 
@@ -94,6 +106,7 @@ function createCommandExecutionHelpers({
    * @param {number} [maxBufferBytes=10*1024*1024] - Max buffer size
    * @param {Object} [options={}] - Execution options
    * @param {number} [options.timeoutMs] - Timeout in milliseconds
+   * @param {Object} [options.env] - Additional environment variables
    * @returns {Promise<{stdout: string, stderr: string}>} Command output
    */
   const runViewPrsCommand = (
@@ -121,6 +134,8 @@ function createCommandExecutionHelpers({
         env: {
           ...process.env,
           GH_PAGER: "cat",
+          // GH_HOST for a GitHub Enterprise repo, say.
+          ...(options?.env || {}),
         },
       });
 
@@ -300,6 +315,11 @@ function createCommandExecutionHelpers({
         stdio: ["ignore", "pipe", "pipe"],
         env: {
           ...process.env,
+          // The script computes rows with this Node (it needn't be on
+          // PATH); forward slashes so Git Bash runs it on Windows.
+          ...(typeof process.execPath === "string" && process.execPath
+            ? { VIEW_PRS_NODE: process.execPath.replace(/\\/g, "/") }
+            : {}),
           ...(options?.env || {}),
         },
       });
@@ -766,4 +786,4 @@ function createCommandExecutionHelpers({
   };
 }
 
-module.exports = { createCommandExecutionHelpers };
+module.exports = { createCommandExecutionHelpers, describeFailure };

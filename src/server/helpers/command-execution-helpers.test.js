@@ -1,4 +1,21 @@
-const { createCommandExecutionHelpers } = require("./command-execution-helpers");
+const { createCommandExecutionHelpers, describeFailure } = require("./command-execution-helpers");
+
+describe("describeFailure", () => {
+  test("an Error's message, a string as it is", () => {
+    expect(describeFailure(new Error("boom"))).toBe("boom");
+    expect(describeFailure("plain")).toBe("plain");
+  });
+
+  test("a command's failure: its error and the last line it wrote to stderr", () => {
+    expect(
+      describeFailure({ error: new Error("Command exited with code 1"), stderr: "working...\nHTTP 404: Not Found\n" }),
+    ).toBe("Command exited with code 1: HTTP 404: Not Found");
+    expect(describeFailure({ error: new Error("Command timed out after 5s"), stderr: "" })).toBe("Command timed out after 5s");
+    expect(describeFailure({ stderr: "gh: not logged in" })).toBe("gh: not logged in");
+    expect(describeFailure({})).toBe("Unknown error");
+    expect(describeFailure(null)).toBe("Unknown error");
+  });
+});
 
 describe("Command Execution Helpers", () => {
   let mockSpawn;
@@ -316,6 +333,28 @@ describe("Command Execution Helpers", () => {
           env: expect.objectContaining({
             VIEW_PRS_PROGRESS_MARKERS: "1", // Defaults to "1" when trackSchedulerPrProgress is true
           }),
+        }),
+      );
+    });
+  });
+
+  describe("Given the server's own Node", () => {
+    test("When a script runs, Then it gets that Node's path, with forward slashes", async () => {
+      let closeHandler;
+      mockChild.on.mockImplementation((event, handler) => {
+        if (event === "close") closeHandler = handler;
+      });
+      mockProcess.execPath = "C:\\Users\\me\\fnm\\node.exe";
+
+      const promise = commandHelpers.runViewPrsScript(["test.sh"]);
+      closeHandler(0, null);
+      await promise;
+
+      expect(mockSpawn).toHaveBeenCalledWith(
+        "bash",
+        ["test.sh"],
+        expect.objectContaining({
+          env: expect.objectContaining({ VIEW_PRS_NODE: "C:/Users/me/fnm/node.exe" }),
         }),
       );
     });

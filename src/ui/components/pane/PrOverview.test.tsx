@@ -5,10 +5,18 @@ import { PrInsightsDisplayContext, defaultPrInsightsDisplay, type PrInsightsDisp
 import type { PrData, PrEntry } from '../../types/pr-data.ts';
 import { PrOverview } from './PrOverview';
 
-const renderOverview = (pr: PrData, { entry = {}, display = {} }: { entry?: PrEntry; display?: Partial<PrInsightsDisplayValue> } = {}) =>
+const renderOverview = (
+  pr: PrData,
+  {
+    entry = {},
+    display = {},
+    lastLookedAt,
+    lastAckedAt,
+  }: { entry?: PrEntry; display?: Partial<PrInsightsDisplayValue>; lastLookedAt?: string; lastAckedAt?: string } = {},
+) =>
   render(
     <PrInsightsDisplayContext.Provider value={{ ...defaultPrInsightsDisplay, ...display }}>
-      <PrOverview entry={entry} pr={pr} actorsMap={{}} />
+      <PrOverview entry={entry} pr={pr} actorsMap={{ sam: 'Sam Lee' }} lastLookedAt={lastLookedAt} lastAckedAt={lastAckedAt} />
     </PrInsightsDisplayContext.Provider>,
   );
 
@@ -38,9 +46,38 @@ describe('PrOverview', () => {
     expect(Object.keys(groupRows('People'))).toEqual(['Approvers', 'Reviewers', 'Assigned']);
     expect(groupRows('Changes')).toMatchObject({
       'Source branch': 'feature/x',
-      'Merged to': 'main',
+      'Target branch': 'main',
       'Lines changed': '2 files changed, +3 additions, -1 deletions (4 lines changed)',
     });
+  });
+
+  test('says when you last looked, and whether that was your Ack or your last activity', () => {
+    const { unmount } = renderOverview({ number: '1' }, { lastLookedAt: '2026-01-02T03:04:05Z', lastAckedAt: '2026-01-02T03:04:05Z' });
+    expect(groupRows('Review')['You last looked']).toMatch(/\(your Ack\)$/);
+    unmount();
+
+    const second = renderOverview({ number: '1' }, { lastLookedAt: '2026-01-02T03:04:05Z', lastAckedAt: '2026-01-01T00:00:00Z' });
+    expect(groupRows('Review')['You last looked']).toMatch(/\(your last activity\)$/);
+    second.unmount();
+
+    renderOverview({ number: '1' });
+    expect(groupRows('Review')).not.toHaveProperty('You last looked');
+  });
+
+  test("names who's requesting changes now, only when anyone is", () => {
+    const { unmount } = renderOverview({
+      number: '1',
+      reviews: [
+        { authorLogin: 'sam', state: 'CHANGES_REQUESTED', submittedAt: '2026-01-02T00:00:00Z' },
+        { authorLogin: 'ann', state: 'CHANGES_REQUESTED', submittedAt: '2026-01-01T00:00:00Z' },
+        { authorLogin: 'ann', state: 'APPROVED', submittedAt: '2026-01-03T00:00:00Z' },
+      ],
+    });
+    expect(groupRows('Review')['Changes requested by']).toBe('Sam Lee');
+    unmount();
+
+    renderOverview({ number: '1', reviews: [{ authorLogin: 'ann', state: 'APPROVED', submittedAt: '2026-01-03T00:00:00Z' }] });
+    expect(groupRows('Review')).not.toHaveProperty('Changes requested by');
   });
 
   test('reads CHK and MRG from the title markers when the fields are missing', () => {
@@ -48,12 +85,26 @@ describe('PrOverview', () => {
     expect(groupRows('Review')).toMatchObject({ 'CHK state': 'FAIL', Mergeability: 'NO' });
   });
 
-  test('keeps Data freshness in a collapsed group, with the check time from the entry', () => {
-    renderOverview({ number: '1', sourceUpdatedAt: '2026-01-02T03:04:05Z' }, { entry: { updatedAt: '2026-01-03T00:00:00Z' } });
+  test('keeps Data freshness in a collapsed group, with when the details were fetched from the entry', () => {
+    renderOverview({ number: '1', sourceUpdatedAt: '2026-01-02T03:04:05Z' }, { entry: { section: 'merged', updatedAt: '2026-01-03T00:00:00Z' } });
     const freshness = screen.getByText('Data freshness').closest('details') as HTMLDetailsElement;
     expect(freshness.open).toBe(false);
-    expect(within(freshness).getByText('Last checked for updates')).toBeInTheDocument();
+    expect(within(freshness).getByText('Details fetched')).toBeInTheDocument();
+    // Only an open PR's summary is confirmed by its repo's checks.
+    expect(within(freshness).queryByText('Summary confirmed')).not.toBeInTheDocument();
     expect(within(freshness).getByText('Latest data timestamp')).toHaveAttribute('title', expect.stringContaining('source PR data'));
+  });
+
+  test("an open PR's Data freshness has when its summary was confirmed, marked stale when it's old", () => {
+    renderOverview(
+      { number: '1', live: { stillOpen: true, detailsBehind: true } },
+      { entry: { section: 'open', fetchedAt: '2026-01-03T00:00:00Z' } },
+    );
+    const freshness = screen.getByText('Data freshness').closest('details') as HTMLDetailsElement;
+    // Each key and value is a grid item of its own.
+    const rowValue = (label: string) => within(freshness).getByText(label).nextElementSibling?.textContent ?? '';
+    expect(rowValue('Summary confirmed')).toMatch(/\(stale\)$/);
+    expect(rowValue('Details fetched')).toMatch(/\(GitHub has newer activity\)$/);
   });
 
   test('shows Approval risk details only when there are approvals', () => {
@@ -67,7 +118,7 @@ describe('PrOverview', () => {
   });
 
   test('given viewer-specific open conversations, when rendering, then the label says so', () => {
-    renderOverview({ number: '1' }, { display: { getOpenConversationCountWithMe: () => ({ count: 2, isViewerSpecific: true }) } });
+    renderOverview({ number: '1' }, { display: { getOpenConversationCountWithMe: () => ({ count: 2, isViewerSpecific: true, waitingCount: 0 }) } });
     expect(groupRows('Review')['Open conversations with me']).toBe('2');
   });
 

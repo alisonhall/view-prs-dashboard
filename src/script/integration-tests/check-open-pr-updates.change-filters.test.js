@@ -1,4 +1,5 @@
 const { execFileSync } = require("child_process");
+const { computePrRow, countExternalCommits } = require("../compute-pr-row");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
@@ -29,6 +30,85 @@ describe("change filter configuration loading", () => {
     expect(result).toContain("comments=bot1,bot2");
     expect(result).toContain("reviews=optional-reviewer");
     expect(result).toContain("patterns=^docs:|^test:");
+  });
+
+  // Settings › Rules for a repo (repoRules in user-defaults.json): the repo
+  // a run is on uses its own pattern lists.
+  describe("a repo's own pattern lists (repoRules)", () => {
+    const loadFor = (repo) => {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "view-prs-repo-rules-"));
+      fs.writeFileSync(
+        path.join(tempDir, "user-defaults.json"),
+        JSON.stringify({
+          changeFilters: { ignoreCommitPatterns: ["^docs:"], ignoreCommentsFromAuthors: ["bot1"] },
+          mergeCommitRules: { headlinePatterns: ["^Merge\\b"], logins: ["merge-bot"] },
+          repoRules: {
+            "Acme/Api": { ignoreCommitPatterns: ["^chore\\(release\\)", ""], mergeCommitHeadlinePatterns: ["^Sync"] },
+            "acme/quiet": { ignoreCommitPatterns: [] },
+          },
+        }),
+      );
+      return runShell(
+        `unset VIEW_PRS_ACTORS_FILE; source "${scriptPath}"; DATA_DIR="${tempDir.replace(/\\/g, "/")}"; REPO='${repo}'; load_change_filter_config; echo "ignore=$CHANGE_FILTER_IGNORE_COMMIT_PATTERNS|merge=$MERGE_COMMIT_HEADLINE_PATTERNS_JSON|logins=$MERGE_COMMIT_LOGINS_JSON|comments=$CHANGE_FILTER_IGNORE_COMMENT_AUTHORS"`,
+      );
+    };
+
+    test("a repo with its own uses them (its name matched whatever the case); the people lists and merge logins stay every repo's", () => {
+      expect(loadFor("acme/api")).toBe('ignore=^chore\\(release\\)|merge=["^Sync"]|logins=["merge-bot"]|comments=bot1');
+    });
+
+    test("one saved empty is kept: no commit ignored; a repo without its own uses every repo's", () => {
+      expect(loadFor("acme/quiet")).toBe('ignore=|merge=["^Merge\\\\b"]|logins=["merge-bot"]|comments=bot1');
+      expect(loadFor("acme/other")).toBe('ignore=^docs:|merge=["^Merge\\\\b"]|logins=["merge-bot"]|comments=bot1');
+    });
+  });
+
+  describe("people saved by id (Settings › People)", () => {
+    const loadWith = ({ actors }) => {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "view-prs-change-filters-"));
+      fs.writeFileSync(
+        path.join(tempDir, "user-defaults.json"),
+        JSON.stringify({
+          changeFilters: {
+            ignoreCommentsFromAuthors: ["actor:bots", "plain-login", "actor:gone"],
+            ignoreReviewsFromAuthors: ["actor:bots"],
+          },
+        }),
+      );
+      if (actors !== undefined) fs.writeFileSync(path.join(tempDir, "actors.json"), actors);
+      return runShell(
+        `unset VIEW_PRS_ACTORS_FILE; source "${scriptPath}"; DATA_DIR="${tempDir.replace(/\\/g, "/")}"; load_change_filter_config; echo "comments=$CHANGE_FILTER_IGNORE_COMMENT_AUTHORS|reviews=$CHANGE_FILTER_IGNORE_REVIEW_AUTHORS"`,
+      );
+    };
+
+    test("an id becomes every login actors.json lists for that person; a login stays; an id no one has is left out", () => {
+      const actors = JSON.stringify({ version: 1, actors: [{ id: "actor:bots", name: "Bots", logins: ["bot-a", "bot-b[bot]"] }] });
+      expect(loadWith({ actors })).toBe("comments=bot-a,bot-b[bot],plain-login|reviews=bot-a,bot-b[bot]");
+    });
+
+    test("an id merged into another person (movedIds) becomes that person's logins", () => {
+      const actors = JSON.stringify({
+        version: 1,
+        actors: [{ id: "actor:all-bots", name: "Bots", logins: ["bot-a", "bot-c"] }],
+        movedIds: { "actor:bots": "actor:all-bots" },
+      });
+      expect(loadWith({ actors })).toBe("comments=bot-a,bot-c,plain-login|reviews=bot-a,bot-c");
+    });
+
+    // A commit author's name or email (Settings › People) writes no comment
+    // or review, and its comma would split it into other logins here.
+    test("a person's commit-author names and emails are left out: only their GitHub logins count", () => {
+      const actors = JSON.stringify({
+        version: 1,
+        actors: [{ id: "actor:bots", name: "Kandal, Vipul", logins: ["vkandal", "Kandal, Vipul", "vipul@corp.example", "Vipul Kandal"] }],
+      });
+      expect(loadWith({ actors })).toBe("comments=vkandal,plain-login|reviews=vkandal");
+    });
+
+    test("without actors.json, or with one that isn't JSON, ids are left out and logins kept", () => {
+      expect(loadWith({})).toBe("comments=plain-login|reviews=");
+      expect(loadWith({ actors: "{ not json" })).toBe("comments=plain-login|reviews=");
+    });
   });
 
   test("given user-defaults.json without changeFilters, when load_change_filter_config is called, then filter variables are empty", () => {
@@ -139,23 +219,71 @@ describe("change filter application in jq queries", () => {
   });
 });
 
+// ROADMAP: PRs flagged by a comment from an author on the ignore lists.
+describe("the ignore lists, in a row's computation", () => {
+  const rowWith = ({ author = "alice", detail = {}, ignoreCommentAuthors = "", ignoreReviewAuthors = "", threads = [] }) =>
+    computePrRow({
+      pr: { number: 1, author: { login: author } },
+      viewerLogin: "me",
+      detail: { comments: [{ author: { login: "me" }, createdAt: "2026-03-01T09:00:00Z" }], ...detail },
+      threads,
+      ignoreCommentAuthors,
+      ignoreReviewAuthors,
+      viewedFilesStats: { changedFiles: 0, viewedFiles: 0 },
+    }).row;
+
+  test("match a login whatever its case, and a bot's with or without [bot]", () => {
+    // GitHub's GraphQL names the bot "github-actions"; the list says it as REST does.
+    const comments = [
+      { author: { login: "me" }, createdAt: "2026-03-01T09:00:00Z" },
+      { author: { login: "github-actions" }, createdAt: "2026-03-01T10:00:00Z" },
+      { author: { login: "Renovate-Bot" }, createdAt: "2026-03-01T11:00:00Z" },
+    ];
+    expect(rowWith({ detail: { comments }, ignoreCommentAuthors: "github-actions[bot],renovate-bot" }).status).toBe("NO_CHANGE");
+    expect(rowWith({ detail: { comments }, ignoreCommentAuthors: "github-actions[bot]" }).reason).toBe("comment");
+    // gh's name for a bot PR author.
+    expect(rowWith({ detail: { comments }, ignoreCommentAuthors: "app/github-actions,renovate-bot" }).status).toBe("NO_CHANGE");
+
+    const reviews = [{ author: { login: "copilot-pull-request-reviewer" }, state: "COMMENTED", submittedAt: "2026-03-01T10:00:00Z" }];
+    expect(rowWith({ detail: { reviews }, ignoreReviewAuthors: "Copilot-Pull-Request-Reviewer[bot]" }).status).toBe("NO_CHANGE");
+    expect(rowWith({ detail: { reviews } }).reason).toBe("review");
+  });
+
+  test("the comment list covers review-thread replies on the viewer's own PR", () => {
+    const threads = [
+      {
+        isResolved: false,
+        comments: [
+          { authorLogin: "me", createdAt: "2026-03-01T09:00:00Z" },
+          { authorLogin: "coderabbitai", createdAt: "2026-03-01T10:00:00Z" },
+        ],
+      },
+    ];
+    expect(rowWith({ author: "me", threads }).reason).toBe("unanswered-thread|thread-reply");
+    expect(rowWith({ author: "me", threads, ignoreCommentAuthors: "coderabbitai[bot]" }).status).toBe("NO_CHANGE");
+  });
+});
+
 // A temp directory the tests write JSON into with Node rather than a bash
 // heredoc (on Windows the command line passed to bash -c loses backslashes,
 // e.g. in a ^Merge\b pattern), as a forward-slash path bash and jq accept.
 const makeTempDir = () => fs.mkdtempSync(path.join(os.tmpdir(), "change-filters-")).split(path.sep).join("/");
 const writeJson = (dir, name, value) => fs.writeFileSync(path.join(dir, name), JSON.stringify(value));
 
-// The script's own count_external_commits (sourced, not a copy of its jq),
-// with the config load_change_filter_config reads from user-defaults.json.
+// The config the script reads from user-defaults.json
+// (load_change_filter_config, sourced) - passed to each row's computation as
+// compute_pr_state_json does - counted by compute-pr-row.js.
 const countCommits = ({ commits, userDefaults, since = "" }) => {
   const tempDir = makeTempDir();
-  writeJson(tempDir, "detail.json", { commits });
   if (userDefaults) {
     writeJson(tempDir, "user-defaults.json", userDefaults);
   }
-  return runShell(
-    `source "${scriptPath}"; DATA_DIR="${tempDir}"; VIEWER_LOGIN="viewer"; load_change_filter_config; count_external_commits "$(cat "${tempDir}/detail.json")" "${since}"`,
+  const settings = JSON.parse(
+    runShell(
+      `source "${scriptPath}"; DATA_DIR="${tempDir}"; load_change_filter_config; jq -n --arg ignoreCommitPatterns "$CHANGE_FILTER_IGNORE_COMMIT_PATTERNS" --argjson mergeHeadlinePatterns "$MERGE_COMMIT_HEADLINE_PATTERNS_JSON" --argjson mergeLogins "$MERGE_COMMIT_LOGINS_JSON" '$ARGS.named'`,
+    ),
   );
+  return String(countExternalCommits({ commits }, { viewerLogin: "viewer", since, ...settings }));
 };
 
 const commit = (login, messageHeadline, committedDate = "2024-01-15T10:00:00Z") => ({
@@ -164,7 +292,7 @@ const commit = (login, messageHeadline, committedDate = "2024-01-15T10:00:00Z") 
   messageHeadline,
 });
 
-describe("count_external_commits (merge commit rules and ignore patterns)", () => {
+describe("counting external commits (merge commit rules and ignore patterns)", () => {
   test("given the default rules, when counting, then any 'Merge ...' headline (any case) and the viewer's own commits are left out", () => {
     const count = countCommits({
       commits: [

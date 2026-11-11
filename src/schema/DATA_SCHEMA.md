@@ -24,7 +24,7 @@ Source of truth for writes:
 ```json
 {
   "byPrNumber": {
-    "923": {
+    "owner/name#923": {
       "prNumber": "923",
       "repo": "owner/name",
       "section": "open",
@@ -44,10 +44,11 @@ Source of truth for writes:
 
 | Field | Type | Required | Written by | Notes |
 | --- | --- | --- | --- | --- |
-| `byPrNumber` | object | yes | retrieval | PR rows keyed by PR number string |
-| `lastRun` | object or null | no | retrieval | Last retrieval run metadata |
+| `byPrNumber` | object | yes | retrieval | PR rows keyed by `repo#number` (e.g. `owner/name#923`) - see below |
+| `lastRun` | object or null | no | retrieval | The last retrieval run of any kind, including a run of chosen PRs |
+| `lastFullRun` | object or null | no | retrieval | The last full run (of a whole repo): a run of chosen PRs (`-p/--pr`, `--prs`) leaves it. `Last run rows` shows the rows with its `updatedAt`. Missing in data from before 2026-10-31, where the server reports `lastRun` as it |
 
-### `lastRun`
+### `lastRun` and `lastFullRun`
 
 | Field | Type |
 | --- | --- |
@@ -56,14 +57,18 @@ Source of truth for writes:
 
 ## `byPrNumber` entry schema
 
-Each `byPrNumber[prNumber]` value is an object with this shape:
+Rows are keyed by repo and number - `owner/name#923` - since two repos can each have a PR #923. Before 2026-11-02 they were keyed by the bare number, so such PRs replaced each other's rows; the script moves a bare-number row to its repo's key at the start of each run (`ensure_pr_state_store`; an existing repo key, the newer row, wins), and the server reads either kind. A row without a `repo` keeps its number. Look a row up by its `repo` and `prNumber`, not by the number alone.
+
+Each `byPrNumber[key]` value is an object with this shape:
 
 | Field | Type | Required | Written by | Notes |
 | --- | --- | --- | --- | --- |
 | `prNumber` | string | yes | retrieval | Duplicates the map key |
 | `repo` | string | yes | retrieval | `owner/name` |
 | `section` | string | yes | retrieval | One of `open`, `draft`, `merged` |
-| `updatedAt` | string | yes | retrieval | Run timestamp |
+| `updatedAt` | string | yes | retrieval | Run timestamp (the run's start, the same for every row it writes). A run of chosen PRs (`-p/--pr`, `--prs`) keeps an existing row's, and gives a row it adds `lastFullRun`'s, so it marks the last full run's rows (`Last run rows`) |
+| `fetchedAt` | string | no | retrieval | When this row's details were last fetched from GitHub (ISO-8601 UTC); missing on rows written before 2026-10-31. A full run that reuses the row unchanged keeps it; an open/draft row is fetched again once it's `VIEW_PRS_OPEN_REVALIDATE_SECONDS` old. The live summary only replaces a row's values when listed after this (or after `updatedAt` without it) |
+| `ciFetchedAt` | string | no | retrieval | When this row's CI and mergeability were last fetched: as `fetchedAt` for a fetched row, and moved on by a full run that reuses an open row (which still fetches its CI); missing on rows written before 2026-11-01. The live summary only replaces `checkState`/`mergeState` when listed after this |
 | `rowOrder` | number | yes | retrieval | Preserved across later upserts once first set |
 | `data` | object | yes | retrieval | Current PR snapshot and derived metrics |
 
@@ -81,7 +86,8 @@ The `data` object is written by `compute_pr_state_json()` during retrieval.
 | `url` | string | yes | PR URL |
 | `mergedAt` | string | yes | ISO timestamp or empty string |
 | `sourceUpdatedAt` | string | yes | Head/source branch updated timestamp |
-| `sourceFingerprint` | string | no | Cached source fingerprint token (for example `fp:v2:sha256:<hex>`) used to detect unchanged rows |
+| `sourceFingerprint` | string | no | Digest of the fetched inputs the row was computed from (for example `fp:v2:sha256:<hex>`); not used to reuse rows since 2026-11-01 |
+| `localStateKey` | string | no | The local state the row's status was computed from: the checksum of the change filters, merge-commit rules and a row-format version, then the PR's ack timestamp, re-verify and in-review marks, separated by vertical bars (a single checksum before 2026-11-01). A full run reuses the row only while it matches, with the same `sourceUpdatedAt`; missing on rows computed before 2026-11-01 |
 | `detailRef` | object | no | Optional pointer to externalized heavy PR detail payload (for future split storage) |
 | `sourceBranch` | string | yes | PR head branch |
 | `targetBranch` | string | yes | PR base branch |
@@ -389,6 +395,58 @@ All count fields are numbers.
 | `estimatedTotalConversations` | number |
 | `estimatedOpenConversations` | number |
 
+## Live summary (separate file, laid over the rows when read)
+
+`view-prs/data/check-open-pr-updates.live-summary.json` (`VIEW_PRS_LIVE_SUMMARY_FILE`) is written only by the server (`src/server/helpers/view-prs-live-summary-helpers.js`), from a GraphQL listing of each repo's open PRs run with every quick check. It isn't part of the data file; the server lays it over open and draft rows when it reads them, so `/view-prs/data` and the delta routes return rows with it applied.
+
+```json
+{
+  "byRepo": {
+    "owner/name": {
+      "checkedAt": "2026-10-31T10:05:00.000Z",
+      "complete": true,
+      "lastError": null,
+      "lastErrorAt": null,
+      "prs": {
+        "923": {
+          "number": "923",
+          "title": "...",
+          "url": "...",
+          "isDraft": false,
+          "updatedAt": "2026-10-31T10:00:00Z",
+          "labels": ["backend"],
+          "additions": "40",
+          "deletions": "3",
+          "changedFiles": "2",
+          "viewedFiles": "1",
+          "checkState": "PASS",
+          "mergeState": "YES",
+          "assignees": [{ "login": "...", "name": "..." }],
+          "requestedReviewers": [{ "login": "...", "name": "..." }],
+          "openConversationCount": "1"
+        }
+      }
+    }
+  }
+}
+```
+
+- `checkedAt` is the last successful listing; a failed one keeps the previous `prs` and sets `lastError`/`lastErrorAt`. `complete` is false when the listing stopped at its page limit (500 PRs) before the last open PR. It's read in pages of 25, newest created first: creation order can't change while the pages are read (in update order, a PR updated meanwhile was skipped).
+- Each repo's `checkedAt`, `complete`, `lastError` and `lastErrorAt` are also in the data meta (`dataMeta.liveSummary`, from `/view-prs/data-meta` and with the data), rather than on each row, so a listing that changes nothing for a row leaves that row unchanged. The data meta adds `quickCheckIntervalMs`: the repo's quick-check interval (its `schedulerRepoConfig` override or the default), `null` when it has no quick check scheduled (its rows then read as not checked automatically, rather than stale). The page marks an open row stale from it (see README's freshness).
+- The data meta's `backgroundUpdates` lists every repo checked in the background, listed or not (the live summary can be off, or not have run yet): `{ "owner/repo": { "quickCheckIntervalMs": 300000, "pausedUntil": null } }`. `pausedUntil` is when its circuit breaker closes again while it's open after repeated failures, `null` otherwise. A repo missing from it isn't checked in the background. The page prefers it to `liveSummary`'s `quickCheckIntervalMs`, which older servers sent alone.
+- Values use the data file's shapes. `viewedFiles` and `openConversationCount` are `null` when the listing's first page of files or threads didn't hold them all (or, for conversations, the PR has no threads, where the script estimates from comments); `mergeState` is `null` while GitHub reports `UNKNOWN`. A `null` leaves the row's own value.
+- When `checkedAt` is newer than the row's `fetchedAt` (or `updatedAt` without it), these replace the row's `title`, `url`, `labels`, `additions`, `deletions`, `changedFilesCount`, `viewedFilesCount`, `viewedFilesSummary`, `checkState`, `mergeState`, `titleDisplay`, `assignees`, `requestedReviewers` and `openConversationCount`, and `isDraft` sets the row's `section` (`open`/`draft`) - except `checkState` and `mergeState` (and the markers in `titleDisplay`), which it only replaces when also newer than the row's `ciFetchedAt`. Everything else comes only from a full refresh.
+
+An open/draft row of a listed repo gets `data.live`:
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `updatedAt` | string | GitHub's `updatedAt` for the PR when listed; absent when not listed |
+| `detailsBehind` | boolean | GitHub's `updatedAt` is later than the row's `sourceUpdatedAt`: activity a full refresh hasn't fetched; absent when not listed |
+| `stillOpen` | boolean | `true` when listed; `false` (the only field then) when a complete listing after the row was written didn't include it (merged or closed since) |
+
+A row not in a listing that's older than it, or incomplete, gets no `data.live`.
+
 ## User-state schema (separate file)
 
 User-authored fields are persisted in `view-prs/data/check-open-pr-updates.user-state.json` and validated by `view-prs/check-open-pr-updates.user-state.schema.json`.
@@ -397,13 +455,15 @@ Top-level user-state fields:
 
 | Field | Type | Notes |
 | --- | --- | --- |
-| `notesByPrNumber` | object | Per-PR notes keyed by PR number |
+| `notesByPrNumber` | object | Per-PR notes keyed by `repo#number`, as the data file's rows (bare-number keys from before 2026-11-02 move to their PR's repo key when the data is read: the repo of the row with that number - the last run's repo when several repos have one - or the last run's repo when none does) |
 | `ackByRepo` | object | Repo-scoped ack timestamps |
+| `ackHistoryByRepo` | object | Optional. Every Ack of a PR, oldest first: repo -> PR number -> times. The current Ack (`ackByRepo`) is the last; Clear Ack takes it back out, new activity clearing it keeps it |
 | `reverifyByRepo` | object | Repo-scoped reverify flags |
 | `inReviewByRepo` | object | Repo-scoped in-review flags |
 | `flaggedByRepo` | object | Repo-scoped flagged toggles |
+| `threadChecksByRepo` | object | Optional. Conversations you started that someone else resolved, confirmed handled: repo -> PR number -> thread id -> the thread's signature when confirmed (who resolved it, how many submitted comments, the last one's id); a confirmation holds while that's unchanged |
 
-`notesByPrNumber[prNumber]` shape:
+`notesByPrNumber[key]` shape:
 
 | Field | Type | Required |
 | --- | --- | --- |

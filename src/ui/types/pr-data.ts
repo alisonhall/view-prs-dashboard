@@ -183,6 +183,10 @@ export interface PrData {
   // Set by the server (app.js) on a PR whose change was detected but whose
   // full details are still queued to refresh; not in the data file.
   updatePending?: boolean;
+  // Set by the server on an open/draft row its repo's live summary listed
+  // (or, complete, no longer lists); not in the data file (DATA_SCHEMA.md,
+  // live summary).
+  live?: PrLiveState;
   sourceBranch?: string;
   targetBranch?: string;
   // "YES" / "NO", and the approvals count as a digits-only string.
@@ -196,6 +200,17 @@ export interface PrData {
   // The viewer's own last activity on the PR (README: "Your last
   // activity"); "" or "-" when there is none.
   baseline?: string;
+  // The commits new since the baseline though dated before it (a commit's
+  // date is when it was made, not pushed): pushed after it, by the branch's
+  // push history; else after the commit the PR was at when a run first saw
+  // the baseline, or after the one the viewer's latest review was on.
+  commitsAfterReview?: string[];
+  // The commit the PR was at when a run first saw the baseline (`at`), for
+  // the commits pushed after it on a PR without push history.
+  viewerSeenHead?: { at: string; oid: string };
+  // How many commits the PR has, only when that's more than `commits`
+  // holds: GitHub returns the newest 250 at most.
+  commitTotalCount?: number;
   url?: string;
   author?: string;
   authorLogin?: string;
@@ -231,6 +246,18 @@ export interface PrData {
   changedFilesCount?: string | number;
 }
 
+// An open/draft row's place in its repo's latest live summary (the
+// server's GraphQL listing with each quick check).
+export interface PrLiveState {
+  // GitHub's updatedAt for the PR when listed.
+  updatedAt?: string;
+  // GitHub has activity the row's full refresh hasn't fetched yet.
+  detailsBehind?: boolean;
+  // false: a complete listing after the row's refresh didn't have it
+  // (merged or closed since).
+  stillOpen?: boolean;
+}
+
 // One entry of the data file's top-level `byPrNumber` map ($defs.byPrEntry):
 // the PR's data plus where it came from.
 export interface PrEntry {
@@ -239,21 +266,36 @@ export interface PrEntry {
   section?: "open" | "draft" | "closed" | "merged";
   updatedAt?: string;
   rowOrder?: number | string;
+  // When the script last fetched the row's details, and its CI and
+  // mergeability (a run reusing an unchanged open row fetches only those);
+  // missing on older rows.
+  fetchedAt?: string;
+  ciFetchedAt?: string;
   data?: PrData;
   // Copied from the user state onto the entry by the server when it builds
   // the /view-prs/data payload (app.js); not stored in the data file.
   notes?: PrNotes;
 }
 
-// The data file's top-level `lastRun` record (the last script run).
+// The data file's top-level `lastRun` (the last script run of any kind)
+// and `lastFullRun` (the last run of a whole repo) records.
 export interface LastRun {
   repo?: string;
   updatedAt?: string;
 }
 
-// repo -> PR number -> value (PrDataPayload's ackByRepo/flaggedByRepo/
-// inReviewByRepo).
+// repo -> PR number -> value (PrDataPayload's ackByRepo/reverifyByRepo/
+// flaggedByRepo/inReviewByRepo).
 export type PrFlagsByRepo = Record<string, Record<string, string | boolean | undefined> | undefined>;
+
+// A person (data/actors.json): an id that's never a login ("actor:alice"),
+// the name to show (empty for none), and every login that's them - the
+// first their main one.
+export interface PrPerson {
+  id: string;
+  name: string;
+  logins: string[];
+}
 
 // The /view-prs/data response: the data file plus the server's additions.
 // Only the fields converted code reads are listed.
@@ -262,20 +304,104 @@ export interface PrDataPayload {
   error?: string;
   byPrNumber?: Record<string, PrEntry>;
   lastRun?: LastRun | null;
-  dataMeta?: { dataVersion?: string } | null;
+  // Which rows "Last run rows" shows: those with its updatedAt. A run of
+  // chosen PRs (a fast-follow, the refresh after an Ack) moves lastRun but
+  // not this.
+  lastFullRun?: LastRun | null;
+  // Each repo's: the global ones above are only the latest repo's.
+  lastRunByRepo?: Record<string, LastRun | undefined>;
+  lastFullRunByRepo?: Record<string, LastRun | undefined>;
+  dataMeta?: PrDataMeta | null;
   scheduler?: unknown;
-  // Login -> display name for every actor seen (ActorsMap).
+  // Each person's id -> their name, or the id itself when they have none
+  // (ActorsMap).
   actorsMap?: Record<string, string | undefined>;
-  // The configured viewer login and login aliases (see deriveViewerContext).
+  // The people (Settings › People): each one's id and logins.
+  actors?: PrPerson[];
+  // A person removed while another kept one of their logins (merged in
+  // Settings › People): their old id -> the other's, so picks under it
+  // still mean them.
+  actorIdMoves?: Record<string, string>;
+  // The configured viewer login (see deriveViewerContext).
   viewerLogin?: string;
-  actorLoginAliases?: unknown;
   // Per-PR row versions, for polling deltas (see PrManifest).
   dataManifest?: PrManifest;
   // The user state's per-repo maps, repo -> PR number -> value: ack
   // values are strings, flagged/in review are booleans.
   ackByRepo?: PrFlagsByRepo;
+  reverifyByRepo?: PrFlagsByRepo;
   flaggedByRepo?: PrFlagsByRepo;
   inReviewByRepo?: PrFlagsByRepo;
+  // Every Ack of a PR, oldest first: repo -> PR number -> times. The
+  // current Ack (ackByRepo) is the last; Clear Ack takes it back out, new
+  // activity clearing it keeps it.
+  ackHistoryByRepo?: Record<string, Record<string, string[] | undefined> | undefined>;
+  // Threads you confirmed were handled after someone else resolved them:
+  // repo -> PR number -> thread id -> the thread's signature then
+  // (threadCheckSignature).
+  threadChecksByRepo?: ThreadChecksByRepo;
+}
+
+export type ThreadChecksByRepo = Record<string, Record<string, Record<string, string | undefined> | undefined> | undefined>;
+
+// A repo's live summary state (dataMeta.liveSummary): when its open PRs
+// were last listed, the last failure, and how often it's listed (null when
+// it isn't checked in the background).
+export interface RepoLiveSummaryMeta {
+  checkedAt?: string | null;
+  complete?: boolean;
+  lastError?: string | null;
+  lastErrorAt?: string | null;
+  quickCheckIntervalMs?: number | null;
+}
+
+// A repo checked in the background: its quick check's interval, and until
+// when its background updates are paused (its circuit breaker is open
+// after repeated failures; null when not).
+export interface RepoBackgroundUpdatesMeta {
+  quickCheckIntervalMs?: number | null;
+  pausedUntil?: string | null;
+}
+
+export interface PrDataMeta {
+  dataVersion?: string;
+  liveSummary?: Record<string, RepoLiveSummaryMeta | undefined>;
+  // Every repo checked in the background (listed or not); a repo missing
+  // from it isn't. Absent from older servers.
+  backgroundUpdates?: Record<string, RepoBackgroundUpdatesMeta | undefined>;
+  // Which repos and PRs are in view (the server's sources file); null
+  // before it's seeded, absent from older servers.
+  sources?: PrSources | null;
+}
+
+// A repo followed as a whole: its recent PRs, or only the numbers listed.
+export interface PrSubscription {
+  repo: string;
+  mode: 'recent' | 'numbers';
+  numbers?: string[];
+  host?: string;
+}
+
+// A PR added on its own, by URL.
+export interface PrTrackedPr {
+  repo: string;
+  number: string;
+  url?: string;
+  host?: string;
+  addedAt?: string;
+}
+
+export interface PrSources {
+  subscriptions: PrSubscription[];
+  trackedPrs: PrTrackedPr[];
+  // PRs fetched on their own that their last run couldn't fetch:
+  // "repo#number" => since when.
+  unreachable?: Record<string, string>;
+  // Repos VIEW_PRS_AUTO_REPOS fetches in full whatever the file says.
+  envRepos?: string[];
+  // When it started empty because the file was lost, and where an
+  // unreadable one was kept: until the next change.
+  lost?: { at: string; asidePath?: string };
 }
 
 // What polling compares to find changed PRs: per PR, a version string of

@@ -64,7 +64,6 @@ describe("exported API surface", () => {
     "readViewPrsAuthorComments",
     "mergeMissingPerRepoMap",
     "migrateLegacyViewPrsUserState",
-    "addActorName",
     "writeJsonFileBestEffort",
     "normalizeDisplayName",
     "resolveActorNameFromGitHub",
@@ -1107,7 +1106,7 @@ describe("pure helper behavior", () => {
     try {
       const result = app.readViewPrsData();
 
-      expect(result.byPrNumber["999"]).toMatchObject({
+      expect(result.byPrNumber["owner/repo#999"]).toMatchObject({
         prNumber: "999",
         repo: "owner/repo",
         section: "merged",
@@ -1199,7 +1198,7 @@ describe("pure helper behavior", () => {
     try {
       const result = app.readViewPrsData();
 
-      expect(result.byPrNumber["777"]).toMatchObject({
+      expect(result.byPrNumber["owner/repo#777"]).toMatchObject({
         prNumber: "777",
         repo: "owner/repo",
         section: "merged",

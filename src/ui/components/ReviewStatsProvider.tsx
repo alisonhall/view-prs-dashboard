@@ -1,4 +1,6 @@
 import { useMemo, type ReactNode } from 'react';
+import type { PrEntry } from '../types/pr-data.ts';
+import type { ActorsMap } from '../helpers/pr-actor-identity.helpers.ts';
 import { buildActivityTrendNote, ReviewStatsContext, type ReviewStatsValue } from '../state/ReviewStatsContext';
 import { useActorIdentity } from '../state/ActorIdentityContext';
 import { usePrData } from '../state/PrDataContext';
@@ -66,6 +68,27 @@ export function ReviewStatsProvider({ children }: { children?: ReactNode }) {
       statsViewState,
     });
 
+    // Everyone with activity in the dates, whoever's picked: the
+    // Reviewers list's options.
+    const { buildReviewerStats: buildEveryReviewerStats } = createPrReviewStatsAggregationHelpers({
+      toCount,
+      asArray,
+      getNormalizedStatsDateRange,
+      normalizeActorLogin,
+      getPreferredActorKey,
+      formatTitleWithIcons,
+      isWithinStatsDateRange,
+      resolveActorDisplayName,
+      statsViewState: { ...statsViewState, reviewers: [] },
+    });
+    const listReviewers = (rows: Iterable<PrEntry>, actorsMap: ActorsMap = {}) =>
+      buildEveryReviewerStats(rows, actorsMap)
+        .reviewerRows.map(({ login, name }) => ({ login, name: String(name || login) }))
+        .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+
+    const pickedReviewers = new Set(asArray(statsViewState?.reviewers).map((login) => String(login || '').trim()).filter(Boolean));
+    const isIncludedReviewer = (login: string) => pickedReviewers.size === 0 || pickedReviewers.has(login);
+
     const { getTimelineDateKeys, bucketTimelineChartData } = createPrReviewStatsDateBucketingHelpers({
       getNormalizedStatsDateRange,
     });
@@ -81,6 +104,7 @@ export function ReviewStatsProvider({ children }: { children?: ReactNode }) {
       isWithinStatsDateRange,
       resolveActorDisplayName,
       getTimelineDateKeys,
+      isIncludedReviewer,
     });
 
     return {
@@ -89,6 +113,7 @@ export function ReviewStatsProvider({ children }: { children?: ReactNode }) {
       normalizeRowMetrics,
       buildReviewerStats,
       applyStatsControls,
+      listReviewers,
       getNormalizedStatsDateRange,
       renderActivityTrendNote: (rows, actorsMap = {}) =>
         buildActivityTrendNote(aggregateReviewerActivityTimeline(rows, actorsMap, getNormalizedStatsDateRange())),

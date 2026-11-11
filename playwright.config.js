@@ -65,6 +65,9 @@ const isolatedEnv = {
   // ($VIEW_PRS_DIR/data, i.e. the real production data/ directory) no
   // matter what the VIEW_PRS_* vars above are set to.
   DATA_DIR: tempDir,
+  // The server's data folder setting, likewise (a shell's or .env's
+  // would otherwise win over DATA_DIR).
+  VIEW_PRS_DATA_DIR: tempDir,
   VIEW_PRS_SCHEDULER_FILE: path.join(tempDir, "scheduler.json"),
   VIEW_PRS_ACTION_LOG_FILE: path.join(tempDir, "action-log.json"),
   VIEW_PRS_AUTHOR_COMMENTS_FILE: path.join(tempDir, "author-comments.json"),
@@ -77,6 +80,8 @@ const isolatedEnv = {
   VIEW_PRS_BACKFILL_PID_FILE: path.join(tempDir, "backfill-missing.pid"),
   VIEW_PRS_BACKFILL_LOG_FILE: path.join(tempDir, "backfill-missing.log"),
   VIEW_PRS_DISABLE_SCHEDULER_STARTUP: "1",
+  // A quick check would otherwise list PRs with a real `gh api graphql`.
+  VIEW_PRS_DISABLE_LIVE_SUMMARY: "1",
 };
 
 module.exports = defineConfig({

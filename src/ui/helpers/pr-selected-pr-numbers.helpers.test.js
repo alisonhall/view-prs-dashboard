@@ -1,4 +1,5 @@
 const {
+  describeApplyLabelTargets,
   getSelectedPrNumbersFromInput,
   toggleSelectedPrNumber,
 } = require("./pr-selected-pr-numbers.helpers.ts");
@@ -38,6 +39,19 @@ describe("pr selected pr numbers helpers", () => {
 
     test("given a non-numeric PR number, when toggling, then the input is returned unchanged", () => {
       expect(toggleSelectedPrNumber("101,102", "abc", true)).toBe("101,102");
+    });
+  });
+
+  describe("describeApplyLabelTargets", () => {
+    test("says which PRs Apply label will label, one or several, and how to pick some when there are none", () => {
+      expect(describeApplyLabelTargets([])).toBe('No PRs to apply it to yet: tick rows in the table, or type their numbers in "PR number(s)" above.');
+      expect(describeApplyLabelTargets(["912"])).toBe("Applies to 1 PR: #912.");
+      expect(describeApplyLabelTargets(["912", "921"])).toBe("Applies to 2 PRs: #912, #921.");
+    });
+
+    test("lists the first 8, then how many more", () => {
+      const numbers = Array.from({ length: 11 }, (_, i) => String(100 + i));
+      expect(describeApplyLabelTargets(numbers)).toBe("Applies to 11 PRs: #100, #101, #102, #103, #104, #105, #106, #107 and 3 more.");
     });
   });
 });

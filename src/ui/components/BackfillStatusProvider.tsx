@@ -40,7 +40,7 @@ const { getBackfillStatusViewModel, getBackfillStateKey, formatBackfillLogMessag
  * render-time read of `isBackfillRunning`).
  *
  * It doesn't need the `#backfill-badges`/`#backfill-details` nodes to
- * exist to hold its state; the Settings drawer's BackfillSection renders
+ * exist to hold its state; the Tools drawer's BackfillSection renders
  * the state into them.
  */
 export function BackfillStatusProvider({ children }: { children?: ReactNode }) {
@@ -54,6 +54,7 @@ export function BackfillStatusProvider({ children }: { children?: ReactNode }) {
   const [backfillDetailsText, setBackfillDetailsText] = useState(DEFAULT_BACKFILL_DETAILS_TEXT);
   const [backfillLogText, setBackfillLogText] = useState(DEFAULT_BACKFILL_LOG_TEXT);
   const [backfillLogUpdateTick, setBackfillLogUpdateTick] = useState(0);
+  const [hasBackfillStatusError, setHasBackfillStatusError] = useState(false);
 
   const isBackfillRunningRef = useRef(isBackfillRunning);
   const isBackfillActionPendingRef = useRef(isBackfillActionPending);
@@ -104,6 +105,7 @@ export function BackfillStatusProvider({ children }: { children?: ReactNode }) {
       });
 
       setBackfillBadges({ badges: viewModel.badges });
+      setHasBackfillStatusError(backfill.ok === false);
       setBackfillDetailsText(viewModel.detailsText);
       setBackfillButtonState(viewModel.buttonState);
       setIsBackfillRunning(viewModel.isBackfillRunning);
@@ -156,11 +158,13 @@ export function BackfillStatusProvider({ children }: { children?: ReactNode }) {
       backfillDetailsText,
       backfillLogText,
       backfillLogUpdateTick,
+      hasBackfillStatusError,
       isBackfillRunning,
       isBackfillActionPending,
       supportsBackfillLogPolling,
     }),
     [
+      hasBackfillStatusError,
       backfillButtonState,
       backfillBadges,
       backfillDetailsText,

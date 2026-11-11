@@ -2,6 +2,7 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { PrActivityEvent, PrData } from '../../types/pr-data.ts';
 import type { ActorsMap } from '../../helpers/pr-actor-identity.helpers.ts';
 import { ActorIdentity } from '../ActorIdentity';
+import { NotInReviewTag } from '../NotInReviewTag';
 import { ActivityEventDescription } from '../insights/ActivityEventDescription';
 import { ActivityTimelineSummary } from '../insights/ActivityTimelineSummary';
 import { Button } from '../ui/Button';
@@ -16,6 +17,8 @@ import {
   buildActivityFeed,
   describeDay,
   formatTimeOfDay,
+  newCommitOidsFor,
+  withAckEvents,
   type ActivityKind,
   type ActivityScope,
   type FeedItem,
@@ -34,6 +37,10 @@ const { formatIsoDatetime } = createPrFormattingHelpers();
  *   long ones fold. One person's run of commits is one line that expands.
  * - In "All", a divider where the events you've already seen begin; in
  *   "Since I last looked", a button to show those earlier events.
+ * - In "All", under the oldest events, a note when the PR has more commits
+ *   than GitHub returns (250).
+ * - Commits after the one your latest review was on but dated before you
+ *   last looked stay by their date, tagged "Not in your last review".
  * - The daily summary table, collapsed, below.
  *
  * The filters stay as picked for the next PR (the pane holds them).
@@ -56,6 +63,8 @@ export interface PrActivityTabProps {
   pr: PrData;
   actorsMap?: ActorsMap;
   lastLookedAt: string;
+  // Your Acks of the PR (buildAckEvents), shown among its events.
+  ackEvents?: PrActivityEvent[];
   filters: ActivityFilters;
   onFiltersChange: (filters: ActivityFilters) => void;
   // Day headings and times use this zone; the browser's when omitted.
@@ -75,6 +84,7 @@ const iconFor = (event: PrActivityEvent): { icon: IconName; tone: Tone } => {
   if (state === 'CHANGES_REQUESTED') return { icon: 'alert', tone: 'attention' };
   if (type === 'merged') return { icon: 'merge', tone: 'done' };
   if (type === 'closed') return { icon: 'prClosed', tone: 'danger' };
+  if (type === 'ack') return { icon: 'check', tone: 'success' };
   return { icon: KIND_META[activityKindOf(event)].icon, tone: 'muted' };
 };
 
@@ -128,7 +138,7 @@ function Body({ text, markdown }: { text: string; markdown: boolean }) {
       {markdown ? (
         <div
           ref={textRef}
-          className="pr-activity-text"
+          className="pr-activity-text pr-markdown"
           data-folded={folded ? 'true' : undefined}
           dangerouslySetInnerHTML={{ __html: renderMarkdownAsHtml(text) }}
         />
@@ -146,7 +156,19 @@ function Body({ text, markdown }: { text: string; markdown: boolean }) {
   );
 }
 
-function EventItem({ event, pr, actorsMap, timeZone }: { event: PrActivityEvent; pr: PrData; actorsMap?: ActorsMap; timeZone?: string }) {
+function EventItem({
+  event,
+  pr,
+  actorsMap,
+  timeZone,
+  notInReview,
+}: {
+  event: PrActivityEvent;
+  pr: PrData;
+  actorsMap?: ActorsMap;
+  timeZone?: string;
+  notInReview?: boolean;
+}) {
   const { normalizePrRootUrl } = usePrInsightsDisplay();
   const { icon, tone } = iconFor(event);
   const isCommit = activityKindOf(event) === 'commit';
@@ -159,7 +181,9 @@ function EventItem({ event, pr, actorsMap, timeZone }: { event: PrActivityEvent;
   const prUrl = String(pr?.url || '').trim();
   const isReview = event?.channel === 'review';
   const directIsPrRoot = Boolean(directUrl) && normalizePrRootUrl(directUrl) === normalizePrRootUrl(prUrl) && !directUrl.includes('#');
-  const linkUrl = directUrl ? (directIsPrRoot && isReview ? '' : directUrl) : isReview ? '' : prUrl;
+  // Your Acks happened here, not on GitHub: no link.
+  const linkUrl =
+    event?.type === 'ack' ? '' : directUrl ? (directIsPrRoot && isReview ? '' : directUrl) : isReview ? '' : prUrl;
 
   return (
     <li className="pr-activity-item" data-kind={activityKindOf(event)}>
@@ -169,6 +193,7 @@ function EventItem({ event, pr, actorsMap, timeZone }: { event: PrActivityEvent;
       <div className="pr-activity-main">
         <p className="pr-activity-line">
           <ActivityEventDescription event={event} row={pr} actorsMap={actorsMap} />
+          {notInReview && <NotInReviewTag />}
           {linkUrl && (
             <a className="pr-activity-link" href={linkUrl} target="_blank" rel="noopener noreferrer">
               View<span className="ui-visually-hidden"> on GitHub</span>
@@ -187,7 +212,21 @@ function EventItem({ event, pr, actorsMap, timeZone }: { event: PrActivityEvent;
   );
 }
 
-function CommitsItem({ actor, events, pr, actorsMap, timeZone }: { actor: string; events: PrActivityEvent[]; pr: PrData; actorsMap?: ActorsMap; timeZone?: string }) {
+function CommitsItem({
+  actor,
+  events,
+  pr,
+  actorsMap,
+  timeZone,
+  notInReview,
+}: {
+  actor: string;
+  events: PrActivityEvent[];
+  pr: PrData;
+  actorsMap?: ActorsMap;
+  timeZone?: string;
+  notInReview?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   return (
     <li className="pr-activity-item" data-kind="commit">
@@ -199,6 +238,7 @@ function CommitsItem({ actor, events, pr, actorsMap, timeZone }: { actor: string
           <Icon name={open ? 'chevronDown' : 'chevronRight'} size={12} />
           <ActorIdentity row={pr} login={actor} actorsMap={actorsMap} /> pushed {events.length} commits
         </button>
+        {notInReview && <NotInReviewTag />}
         {open && (
           <ul className="pr-activity-commits">
             {events.map((event, index) => (
@@ -242,24 +282,42 @@ function Item({ item, pr, actorsMap, timeZone }: { item: FeedItem; pr: PrData; a
     );
   }
   if (item.kind === 'commits') {
-    return <CommitsItem actor={item.actor} events={item.events} pr={pr} actorsMap={actorsMap} timeZone={timeZone} />;
+    return (
+      <CommitsItem
+        actor={item.actor}
+        events={item.events}
+        pr={pr}
+        actorsMap={actorsMap}
+        timeZone={timeZone}
+        notInReview={item.notInReview}
+      />
+    );
   }
-  return <EventItem event={item.event} pr={pr} actorsMap={actorsMap} timeZone={timeZone} />;
+  return <EventItem event={item.event} pr={pr} actorsMap={actorsMap} timeZone={timeZone} notInReview={item.notInReview} />;
 }
 
-export function PrActivityTab({ pr, actorsMap, lastLookedAt, filters, onFiltersChange, timeZone }: PrActivityTabProps) {
+export function PrActivityTab({ pr, actorsMap, lastLookedAt, ackEvents, filters, onFiltersChange, timeZone }: PrActivityTabProps) {
   const now = useNow();
   const { buildActivityEvents } = usePrInsightsDisplay();
   // Built again only when the PR or the filters change, not on each minute
   // tick (useNow) or other re-render.
-  const events = useMemo(() => buildActivityEvents(pr, Number.POSITIVE_INFINITY), [buildActivityEvents, pr]);
+  const events = useMemo(
+    () => withAckEvents(buildActivityEvents(pr, Number.POSITIVE_INFINITY), ackEvents || []),
+    [buildActivityEvents, pr, ackEvents],
+  );
   const hasLastLooked = Boolean(lastLookedAt);
   const scope: ActivityScope = hasLastLooked ? filters.scope : 'all';
+  const newCommitOids = useMemo(() => newCommitOidsFor(pr, lastLookedAt), [lastLookedAt, pr]);
   const feed = useMemo(
-    () => buildActivityFeed(events, { scope, lastLookedAt, kinds: filters.kinds, timeZone }),
-    [events, scope, lastLookedAt, filters.kinds, timeZone],
+    () => buildActivityFeed(events, { scope, lastLookedAt, kinds: filters.kinds, timeZone, newCommitOids }),
+    [events, scope, lastLookedAt, filters.kinds, timeZone, newCommitOids],
   );
   const prNumber = String(pr?.number ?? '');
+  // GitHub returns a PR's newest 250 commits at most; commitTotalCount is
+  // how many it has, only when that's more. The rest, the oldest, would
+  // come last in "All". (Not counted from `commits`, which leaves out
+  // merges of main.)
+  const commitTotalCount = Number(pr?.commitTotalCount) || 0;
   // A closed PR's timeline stops at its close date (mergedAt wins, else
   // closedAt), not today.
   const isOpen = !String(pr.mergedAt || pr.closedAt || '').trim();
@@ -324,6 +382,12 @@ export function PrActivityTab({ pr, actorsMap, lastLookedAt, filters, onFiltersC
             </div>
           );
         })
+      )}
+
+      {scope === 'all' && filters.kinds.includes('commit') && commitTotalCount > 0 && (
+        <p className="pr-activity-limit">
+          This PR has {commitTotalCount} commits, but GitHub returns only the newest 250: the older ones aren't shown.
+        </p>
       )}
 
       {feed.earlierCount > 0 && (

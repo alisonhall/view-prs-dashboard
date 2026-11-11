@@ -4,6 +4,8 @@ import type {
   DataPollRenderInput,
   ManifestDelta,
   MergeDataDeltaInput,
+  PollActorMaps,
+  PollUserState,
 } from "./pr-data-polling.helpers.ts";
 
 // PrDataProvider's data poll (pollForDataChanges): checks the data version
@@ -31,6 +33,8 @@ interface ManifestResult {
   ok?: boolean;
   manifest?: PrManifest;
   dataMeta?: PrDataPayload["dataMeta"];
+  userState?: PollUserState;
+  actorMaps?: PollActorMaps;
 }
 
 interface DeltaResult {
@@ -38,6 +42,9 @@ interface DeltaResult {
   byPrNumber?: Record<string, PrEntry>;
   scheduler?: unknown;
   lastRun?: PrDataPayload["lastRun"];
+  lastFullRun?: PrDataPayload["lastFullRun"];
+  lastRunByRepo?: PrDataPayload["lastRunByRepo"];
+  lastFullRunByRepo?: PrDataPayload["lastFullRunByRepo"];
 }
 
 export interface PrDataPollingOrchestrationDeps {
@@ -232,34 +239,42 @@ const createPrDataPollingOrchestrationHelpers = ({
             });
 
             if (!manifestDelta.hasChanges) {
-              setLatestPrManifestSafe(nextManifest);
-              const manifestVersion = String(
-                manifestResult?.dataMeta?.dataVersion || latestVersion,
-              ).trim();
-              if (manifestVersion) {
-                setLastSeenDataVersionSafe(manifestVersion);
-              }
-              markPollSuccessSafe(pollAttemptedAt);
-              return;
-            }
-
-            const deltaResponse = await fetchFnSafe("/view-prs/data-delta", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ prNumbers: manifestDelta.changedPrNumbers }),
-            });
-            const deltaResult: DeltaResult = await deltaResponse.json();
-            if (deltaResponse.ok && deltaResult?.ok !== false) {
+              // No row changed, but the data meta may have (a quick check's
+              // listing moves each repo's checkedAt without changing a
+              // row): it goes through the render decision below like any
+              // other meta change, so "checked N min ago" keeps up.
               dataResult = mergeDataDeltaPayloadSafe({
                 basePayload: getLatestStoredPayloadSafe(),
-                deltaByPrNumber: deltaResult?.byPrNumber || {},
-                removedPrNumbers: manifestDelta.removedPrNumbers,
                 nextDataMeta: manifestResult?.dataMeta || null,
-                nextScheduler: deltaResult?.scheduler || null,
-                nextLastRun: deltaResult?.lastRun || null,
                 nextManifest,
+                nextUserState: manifestResult?.userState || null,
+                nextActorMaps: manifestResult?.actorMaps || null,
               });
               setLatestPrManifestSafe(nextManifest);
+            } else {
+              const deltaResponse = await fetchFnSafe("/view-prs/data-delta", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ prNumbers: manifestDelta.changedPrNumbers }),
+              });
+              const deltaResult: DeltaResult = await deltaResponse.json();
+              if (deltaResponse.ok && deltaResult?.ok !== false) {
+                dataResult = mergeDataDeltaPayloadSafe({
+                  basePayload: getLatestStoredPayloadSafe(),
+                  deltaByPrNumber: deltaResult?.byPrNumber || {},
+                  removedPrNumbers: manifestDelta.removedPrNumbers,
+                  nextDataMeta: manifestResult?.dataMeta || null,
+                  nextScheduler: deltaResult?.scheduler || null,
+                  nextLastRun: deltaResult?.lastRun || null,
+                  nextLastFullRun: deltaResult?.lastFullRun || null,
+                  nextLastRunByRepo: deltaResult?.lastRunByRepo || null,
+                  nextLastFullRunByRepo: deltaResult?.lastFullRunByRepo || null,
+                  nextManifest,
+                  nextUserState: manifestResult?.userState || null,
+                  nextActorMaps: manifestResult?.actorMaps || null,
+                });
+                setLatestPrManifestSafe(nextManifest);
+              }
             }
           }
         }
@@ -331,13 +346,13 @@ const createPrDataPollingOrchestrationHelpers = ({
       renderPrDataSafe(renderAction.payload);
       markPollSuccessSafe(pollAttemptedAt);
 
+      // Once per new run. Other changes say nothing: pushed changes arrive
+      // every few seconds during a run, and the status line (a live region)
+      // holds the result of the user's last action.
       if (latestStamp && latestStamp !== getLastRenderedRunStampSafe()) {
         setLastRenderedRunStampSafe(latestStamp);
         setStatusMessageSafe(`Auto-updated from latest run at ${latestStamp}`);
-        return;
       }
-
-      setStatusMessageSafe("Auto-updated from latest stored data changes");
     } catch (error) {
       showPollFailureWarningSafe({
         errorSource: error,

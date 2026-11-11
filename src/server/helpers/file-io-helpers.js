@@ -10,6 +10,32 @@
 const { isObject } = require('./view-prs-data-helpers');
 
 /**
+ * Writes a file's new content beside it and renames it over the file, so
+ * a server stopped mid-write leaves the old content whole instead of a
+ * cut-off file - which reads back as empty and loses everything in it.
+ *
+ * @param {Object} fs - Node.js fs module
+ * @param {string} filePath - Path to write to
+ * @param {string} content - The file's new content
+ * @returns {void}
+ * @throws {Error} If the write or rename fails (the temp file is removed)
+ */
+const writeFileReplacingSync = (fs, filePath, content) => {
+  const tempPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
+  try {
+    fs.writeFileSync(tempPath, content, "utf8");
+    fs.renameSync(tempPath, filePath);
+  } catch (error) {
+    try {
+      fs.rmSync(tempPath, { force: true });
+    } catch (_error) {
+      // Best effort temp cleanup.
+    }
+    throw error;
+  }
+};
+
+/**
  * Creates file I/O helper functions.
  * 
  * @param {Object} deps - Dependencies
@@ -113,7 +139,7 @@ function createFileIoHelpers({ fs, path }) {
    */
   const writeJsonFile = (filePath, value) => {
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(filePath, JSON.stringify(value, null, 2), "utf8");
+    writeFileReplacingSync(fs, filePath, JSON.stringify(value, null, 2));
   };
 
   /**
@@ -155,14 +181,7 @@ function createFileIoHelpers({ fs, path }) {
        */
       writeUserDefaults: (overrides) => {
         const data = isObject(overrides) ? overrides : {};
-        fs.mkdirSync(path.dirname(config.viewPrsUserDefaultsFile), {
-          recursive: true,
-        });
-        fs.writeFileSync(
-          config.viewPrsUserDefaultsFile,
-          JSON.stringify(data, null, 2),
-          "utf8"
-        );
+        writeJsonFile(config.viewPrsUserDefaultsFile, data);
       },
 
       /**
@@ -206,4 +225,4 @@ function createFileIoHelpers({ fs, path }) {
   };
 }
 
-module.exports = { createFileIoHelpers };
+module.exports = { createFileIoHelpers, writeFileReplacingSync };

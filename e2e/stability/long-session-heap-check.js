@@ -20,7 +20,16 @@
  * workflow (.github/workflows/heap-stability.yml, Actions tab -> Run
  * workflow). Run locally via `npm run stability:heap-check`, or
  * directly: `node e2e/stability/long-session-heap-check.js [--cycles=200]
- * [--sample-every=10] [--dataset-size=40] [--data-change-every=1]`.
+ * [--sample-every=10] [--dataset-size=40] [--data-change-every=1]
+ * [--rich=1] [--unchanged=1]`.
+ *
+ * --rich=1 serves realistic rows (rich-dataset.js: comments, reviews,
+ * commits and review threads, computed by the script's computePrRow -
+ * about 127KB a row) in place of the small plain ones: whatever the page
+ * keeps per data change grows with its rows. --unchanged=1 writes the same
+ * rows each time, so the data's version moves but no row changes - what a
+ * quick check or a run that found nothing new does - and the page takes
+ * its "no row changed" path (the manifest, and nothing more).
  *
  * Each cycle also (every --data-change-every cycles; 0 disables) rewrites
  * the server's data file with ~10% of PRs changed and waits for the page's
@@ -37,11 +46,16 @@ const os = require("os");
 const path = require("path");
 const { spawn } = require("child_process");
 const { chromium } = require("@playwright/test");
+const { buildRichDataset } = require("./rich-dataset");
+
+// The rows to serve: buildDataset's, or with --rich=1 realistic ones
+// (rich-dataset.js).
+let dataset = buildDataset;
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
 
 function parseArgs(argv) {
-  const args = { cycles: 200, sampleEvery: 10, datasetSize: 40, dataChangeEvery: 1 };
+  const args = { cycles: 200, sampleEvery: 10, datasetSize: 40, dataChangeEvery: 1, rich: 0, unchanged: 0 };
   argv.forEach((arg) => {
     const match = arg.match(/^--([a-z-]+)=(\d+)$/);
     if (!match) return;
@@ -51,6 +65,8 @@ function parseArgs(argv) {
     if (key === "sample-every") args.sampleEvery = value;
     if (key === "dataset-size") args.datasetSize = value;
     if (key === "data-change-every") args.dataChangeEvery = value;
+    if (key === "rich") args.rich = value;
+    if (key === "unchanged") args.unchanged = value;
   });
   return args;
 }
@@ -123,14 +139,31 @@ function buildDataset(n, generation = 0) {
 // it (the delta endpoint, or the full-data fallback). Returns false if no
 // fetch arrived in time, so a run that silently stopped exercising this
 // path fails instead of passing as "flat".
-async function applyServerDataChange(page, dataFile, datasetSize, generation) {
+// With `unchanged`, the same rows are written again: the data's version
+// moves but no row changes - what a quick check, a run that found nothing
+// new, or another tab's Ack does - so the page fetches the manifest, finds
+// no row changed, and fetches nothing else. That's waited for instead.
+async function applyServerDataChange(page, dataFile, datasetSize, generation, unchanged = false) {
+  const waitedFor = unchanged ? ["/view-prs/data-manifest"] : ["/view-prs/data", "/view-prs/data-delta"];
   const fetched = page
-    .waitForResponse(
-      (res) => ["/view-prs/data", "/view-prs/data-delta"].includes(new URL(res.url()).pathname),
-      { timeout: 10000 },
-    )
+    .waitForResponse((res) => waitedFor.includes(new URL(res.url()).pathname), { timeout: 10000 })
     .then(() => true, () => false);
-  fs.writeFileSync(dataFile, JSON.stringify(buildDataset(datasetSize, generation)));
+  // Written whole and renamed into place, as the script does: a big file
+  // written in place can be read half-written. On Windows the rename fails
+  // (EPERM) while the server has the file open, so it's tried again.
+  const written = dataset(datasetSize, unchanged ? 0 : generation);
+  // Only when the run was: rows are the same, the file isn't.
+  if (unchanged) written.lastRun = { ...written.lastRun, updatedAt: new Date(Date.UTC(2026, 0, 1) + generation * 60000).toISOString() };
+  fs.writeFileSync(`${dataFile}.tmp`, JSON.stringify(written));
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      fs.renameSync(`${dataFile}.tmp`, dataFile);
+      break;
+    } catch (error) {
+      if (error.code !== "EPERM" || attempt >= 50) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  }
   const ok = await fetched;
   // Let the render that follows the fetch commit before the next step.
   await page.waitForTimeout(100);
@@ -173,7 +206,7 @@ async function runInteractionCycle(page, cycleIndex) {
   // link selects that row, or the next one when it's already selected, so
   // each cycle swaps the PR the pane shows and remounts its content; the
   // tab changes in turn too.
-  const firstLink = prTables.getByRole("table").first().getByRole("link", { name: /^#\d+$/ }).first();
+  const firstLink = prTables.getByRole("table").first().getByRole("link", { name: /^#\d+ opens GitHub in a new tab$/ }).first();
   if (await firstLink.count()) {
     await firstLink.focus();
     await page.keyboard.press("ArrowDown");
@@ -232,15 +265,16 @@ function summarize(samples) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  if (args.rich) dataset = buildRichDataset;
   console.log(
-    `Long-session heap check: ${args.cycles} cycles, sampling every ${args.sampleEvery}, ${args.datasetSize} PRs, ` +
+    `Long-session heap check: ${args.cycles} cycles, sampling every ${args.sampleEvery}, ${args.datasetSize} ${args.rich ? "realistic " : ""}PRs, ` +
       (args.dataChangeEvery > 0 ? `server data change every ${args.dataChangeEvery} cycle(s)` : "no server data changes"),
   );
 
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "view-prs-stability-"));
   fs.mkdirSync(path.join(tempDir, "backups"), { recursive: true });
   const dataFile = path.join(tempDir, "check-open-pr-updates.data.json");
-  fs.writeFileSync(dataFile, JSON.stringify(buildDataset(args.datasetSize)));
+  fs.writeFileSync(dataFile, JSON.stringify(dataset(args.datasetSize)));
   fs.writeFileSync(
     path.join(tempDir, "check-open-pr-updates.user-state.json"),
     JSON.stringify({
@@ -258,6 +292,7 @@ async function main() {
     VIEW_PRS_DATA_FILE: dataFile,
     VIEW_PRS_USER_STATE_FILE: path.join(tempDir, "check-open-pr-updates.user-state.json"),
     DATA_DIR: tempDir,
+    VIEW_PRS_DATA_DIR: tempDir,
     VIEW_PRS_SCHEDULER_FILE: path.join(tempDir, "scheduler.json"),
     VIEW_PRS_ACTION_LOG_FILE: path.join(tempDir, "action-log.json"),
     VIEW_PRS_AUTHOR_COMMENTS_FILE: path.join(tempDir, "author-comments.json"),
@@ -303,7 +338,7 @@ async function main() {
     // This used to pin window.AUTO_DATA_POLL_MS with an init script; that
     // global was removed by the window-bridge elimination work.
     await page.goto(`http://localhost:3458/?dataPollMs=${DATA_POLL_MS}`);
-    await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 15000 });
+    await page.waitForSelector("#pr-sections tr", { state: "attached", timeout: 60000 });
 
     const cdp = await page.context().newCDPSession(page);
     await cdp.send("Performance.enable");
@@ -326,7 +361,7 @@ async function main() {
 
       if (args.dataChangeEvery > 0 && cycle % args.dataChangeEvery === 0) {
         dataChanges += 1;
-        if (!(await applyServerDataChange(page, dataFile, args.datasetSize, dataChanges))) {
+        if (!(await applyServerDataChange(page, dataFile, args.datasetSize, dataChanges, args.unchanged > 0))) {
           missedDataChanges += 1;
         }
       }

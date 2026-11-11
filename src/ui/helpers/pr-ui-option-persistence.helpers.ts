@@ -9,6 +9,16 @@ export interface PrUiOptionPersistenceDeps {
   fetch?: (input: string, init?: RequestInit) => Promise<Response>;
 }
 
+// Every read-then-write of the overrides, one at a time: two at once (a
+// filter change's save and a saved view's, say) would each write back what
+// they read, and the later one would undo the earlier one's change.
+let pendingOverridesUpdate: Promise<unknown> = Promise.resolve();
+export const serializeOverridesUpdate = <T>(update: () => Promise<T>): Promise<T> => {
+  const run = pendingOverridesUpdate.then(update, update);
+  pendingOverridesUpdate = run.catch(() => undefined);
+  return run;
+};
+
 const createPrUiOptionPersistenceHelpers = ({ fetch: fetchFn }: PrUiOptionPersistenceDeps = {}) => {
   const getUiOptionDefaults = (): Record<string, UiOptionValue> => ({
     repo: "",
@@ -20,8 +30,15 @@ const createPrUiOptionPersistenceHelpers = ({ fetch: fetchFn }: PrUiOptionPersis
     "ack-changed": false,
     "show-reason": true,
     quiet: false,
-    "scope-mode": "all",
+    "only-needs-attention": false,
+    "only-open-conversations-with-me": false,
+    "only-waiting-on-me": false,
+    "only-threads-to-check": false,
     "filter-pr-numbers": "",
+    // The Repos list's repos ("repo" is Run & check's repo).
+    repos: [],
+    "filter-last-activity-from": "",
+    "filter-last-activity-to": "",
     label: "",
     "exclude-label": "",
     author: [],
@@ -49,7 +66,10 @@ const createPrUiOptionPersistenceHelpers = ({ fetch: fetchFn }: PrUiOptionPersis
   // FilterStateProvider Context key - both the restore effect and the
   // persist callbacks (FilterStateProvider.tsx) need it.
   const FILTER_STATE_FIELD_MAP: Record<string, string> = {
-    "scope-mode": "scopeMode",
+    "only-needs-attention": "onlyNeedsAttention",
+    "only-open-conversations-with-me": "onlyOpenConversationsWithMe",
+    "only-waiting-on-me": "onlyWaitingOnMe",
+    "only-threads-to-check": "onlyThreadsToCheck",
     "always-show-in-review": "alwaysShowInReview",
     "attention-no-activity-mode": "attentionNoActivityMode",
     "attention-include-pending-comments": "attentionIncludePendingComments",
@@ -67,6 +87,8 @@ const createPrUiOptionPersistenceHelpers = ({ fetch: fetchFn }: PrUiOptionPersis
     "show-reason": "showReason",
     quiet: "quiet",
     "filter-pr-numbers": "filterPrNumbers",
+    "filter-last-activity-from": "filterLastActivityFrom",
+    "filter-last-activity-to": "filterLastActivityTo",
     "attention-author-thread-resolution-mode": "attentionAuthorThreadResolutionMode",
     "change-filter-ignore-commit-patterns": "changeFilterIgnoreCommitPatterns",
     "filter-custom-comments": "filterCustomComments",
@@ -76,26 +98,32 @@ const createPrUiOptionPersistenceHelpers = ({ fetch: fetchFn }: PrUiOptionPersis
     "filter-analysis-of-pr": "filterAnalysisOfPr",
   };
 
-  const readUiSessionOverrides = async (): Promise<UiOptionOverrides> => {
+  // null when they couldn't be read (the server down, an error) - unlike
+  // {}, nothing saved. Anything that writes them back, or keeps a copy,
+  // needs to tell the two apart: building on {} would lose every setting.
+  const readUiSessionOverridesOrNull = async (): Promise<UiOptionOverrides | null> => {
     try {
       const response = await (fetchFn as NonNullable<typeof fetchFn>)("/view-prs/user-defaults");
-      if (!response.ok) return {};
+      if (!response.ok) return null;
       const result: { overrides?: unknown } = await response.json();
       const parsed = result?.overrides;
       return parsed && typeof parsed === "object" && !Array.isArray(parsed)
         ? (parsed as UiOptionOverrides)
         : {};
     } catch (_error) {
-      return {};
+      return null;
     }
   };
 
+  const readUiSessionOverrides = async (): Promise<UiOptionOverrides> =>
+    (await readUiSessionOverridesOrNull()) ?? {};
+
   // Empty arrays are dropped (so a cleared list falls back to its default)
   // unless their key is in preserveEmptyArrayKeys.
-  const writeUiSessionOverrides = async (
+  const toWrittenOverrides = (
     overrides: UiOptionOverrides | null | undefined,
-    { preserveEmptyArrayKeys = [] }: { preserveEmptyArrayKeys?: string[] } = {},
-  ): Promise<void> => {
+    preserveEmptyArrayKeys: string[],
+  ): UiOptionOverrides => {
     const preserveSet = new Set(
       Array.isArray(preserveEmptyArrayKeys) ? preserveEmptyArrayKeys : [],
     );
@@ -105,37 +133,70 @@ const createPrUiOptionPersistenceHelpers = ({ fetch: fetchFn }: PrUiOptionPersis
       }
       return value !== undefined;
     });
+    return Object.fromEntries(entries);
+  };
 
-    const data = Object.fromEntries(entries);
+  // JSON with object keys sorted, so key order doesn't count as a change.
+  const stableJson = (value: unknown): string =>
+    JSON.stringify(value, (_key, inner) =>
+      inner && typeof inner === "object" && !Array.isArray(inner)
+        ? Object.fromEntries(Object.keys(inner).sort().map((key) => [key, inner[key]]))
+        : inner,
+    );
+
+  // `unchangedFrom`: the overrides these were built from. When nothing
+  // differs, nothing is written: every save writes back all of them, so a
+  // save that changes nothing (each page load's restore triggers one) would
+  // only risk putting back a value another tab, or a test, just changed.
+  // Resolves to whether they're saved: false when the server couldn't be
+  // reached or refused them (the callers that don't mind, don't look).
+  const writeUiSessionOverrides = async (
+    overrides: UiOptionOverrides | null | undefined,
+    {
+      preserveEmptyArrayKeys = [],
+      unchangedFrom,
+    }: { preserveEmptyArrayKeys?: string[]; unchangedFrom?: UiOptionOverrides } = {},
+  ): Promise<boolean> => {
+    const data = toWrittenOverrides(overrides, preserveEmptyArrayKeys);
+    if (unchangedFrom && stableJson(data) === stableJson(toWrittenOverrides(unchangedFrom, preserveEmptyArrayKeys))) {
+      return true;
+    }
 
     try {
-      await (fetchFn as NonNullable<typeof fetchFn>)("/view-prs/user-defaults", {
+      const response = await (fetchFn as NonNullable<typeof fetchFn>)("/view-prs/user-defaults", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
+      return Boolean(response?.ok);
     } catch (_error) {
       // Best effort only.
+      return false;
     }
   };
 
   // Saves one setting, keeping the others: reads the saved overrides, sets
   // `key` (or removes it when `value` is undefined), and writes them back.
-  // Settings › Appearance saves its choices this way.
-  const updateUiSessionOverride = async (key: string, value: unknown): Promise<void> => {
-    const overrides = { ...(await readUiSessionOverrides()) };
-    if (value === undefined) {
-      delete overrides[key];
-    } else {
-      overrides[key] = value;
-    }
-    await writeUiSessionOverrides(overrides);
-  };
+  // Settings › Appearance saves its choices this way. Nothing is written
+  // when they can't be read, rather than write back only this one.
+  const updateUiSessionOverride = (key: string, value: unknown): Promise<void> =>
+    serializeOverridesUpdate(async () => {
+      const existing = await readUiSessionOverridesOrNull();
+      if (!existing) return;
+      const overrides = { ...existing };
+      if (value === undefined) {
+        delete overrides[key];
+      } else {
+        overrides[key] = value;
+      }
+      await writeUiSessionOverrides(overrides, { unchangedFrom: existing });
+    });
 
   return {
     getUiOptionDefaults,
     FILTER_STATE_FIELD_MAP,
     readUiSessionOverrides,
+    readUiSessionOverridesOrNull,
     writeUiSessionOverrides,
     updateUiSessionOverride,
   };

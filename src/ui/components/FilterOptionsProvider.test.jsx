@@ -85,6 +85,31 @@ describe('FilterOptionsProvider', () => {
     expect(screen.getByText('authorOptions: alice|Alice, bob|Bob')).toBeInTheDocument();
   });
 
+  test('authors with a PR updated in the last 30 days come first, newest first, as the Authors picker lists them', () => {
+    const daysAgo = (days) => new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+    const entries = {
+      1: buildEntry({ prNumber: '1', data: { number: '1', authorLogin: 'alice', author: 'Alice', sourceUpdatedAt: daysAgo(90) } }),
+      2: buildEntry({ prNumber: '2', data: { number: '2', authorLogin: 'zed', author: 'Zed', sourceUpdatedAt: daysAgo(2) } }),
+      3: buildEntry({ prNumber: '3', data: { number: '3', authorLogin: 'bob', author: 'Bob', sourceUpdatedAt: daysAgo(40), mergedAt: daysAgo(1) } }),
+      4: buildEntry({ prNumber: '4', data: { number: '4', authorLogin: 'carol', author: 'Carol' } }),
+    };
+
+    function GroupsProbe() {
+      const { authorOptions } = useFilterOptions();
+      return <p>{authorOptions.map((option) => `${option.value}:${option.group}`).join(', ')}</p>;
+    }
+    render(
+      <PrDataProvider initialPayload={{ byPrNumber: entries, actorsMap: {} }}>
+        <FilterOptionsProvider>
+          <GroupsProbe />
+        </FilterOptionsProvider>
+      </PrDataProvider>,
+    );
+
+    // Bob's merge counts; then everyone else by name.
+    expect(screen.getByText('bob:Recent PRs, zed:Recent PRs, alice:Everyone else, carol:Everyone else')).toBeInTheDocument();
+  });
+
   test('given entries across multiple repos and a selectedRepo, when rendering, then options are scoped to that repo only', () => {
     const entryA = buildEntry({
       prNumber: '1',

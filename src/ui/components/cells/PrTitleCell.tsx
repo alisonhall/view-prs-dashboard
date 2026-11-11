@@ -1,4 +1,4 @@
-import type { PrData } from '../../types/pr-data.ts';
+import type { PrData, PrEntry } from '../../types/pr-data.ts';
 import { CopyIconButton } from '../CopyIconButton';
 import { Icon, type IconName } from '../ui/Icon';
 import { Signal } from '../ui/Signal';
@@ -6,12 +6,19 @@ import { createPrStatusDisplayHelpers } from '../../helpers/pr-status-display.he
 import { createPrFormattingHelpers } from '../../helpers/pr-formatting.helpers.ts';
 import { countPendingThreadComments } from '../../helpers/pr-thread-comments.helpers.ts';
 import { getLabelName } from '../../helpers/pr-filter-label-extraction.helpers.ts';
+import { useRowRepoName } from '../../state/RowRepoNamesContext';
+import { useSearchTerms } from '../../state/SearchTermsContext';
+import { matchRowSearch, SEARCH_FIELD_LABELS } from '../../helpers/pr-row-search.helpers.ts';
+import { describeRowRefreshProblem } from '../../helpers/pr-row-freshness.helpers.ts';
+import { useNow } from '../../state/NowContext';
+import { useRepoFreshness } from '../../state/RepoFreshnessContext';
 
 const { formatTitleWithIcons } = createPrStatusDisplayHelpers();
 const { escapeHtml } = createPrFormattingHelpers();
 
-// In smart groups, which mix lifecycle states, each row shows its state.
-const LIFECYCLE_SIGNALS: Record<string, { icon: IconName; tone: 'success' | 'muted' | 'danger' | 'accent'; label: string }> = {
+// In smart groups, which mix lifecycle states, each row shows its state
+// (and each PR in the Authors view, AuthorInsightsPrRow).
+export const LIFECYCLE_SIGNALS: Record<string, { icon: IconName; tone: 'success' | 'muted' | 'danger' | 'accent'; label: string }> = {
   open: { icon: 'pr', tone: 'success', label: 'Open' },
   draft: { icon: 'prDraft', tone: 'muted', label: 'Draft' },
   closed: { icon: 'prClosed', tone: 'danger', label: 'Closed' },
@@ -24,19 +31,25 @@ const labelHue = (label: string) => [...label].reduce((sum, char) => sum + char.
 /**
  * The Pull request column. The title wraps rather than being cut off, and
  * is followed by:
- * - the #number link
+ * - the repo's name, when rows from more than one are in view
+ *   (RowRepoNamesContext), in full on hover
+ * - the #number link, opening GitHub in a new tab (its icon says so)
  * - a busy indicator while the PR is refreshing or queued
  * - a copy button (on row hover/focus)
  * - the label chips
  *
  * A second line holds a non-main target branch, unsubmitted pending
- * comments, and "update queued". The chevron opens the row's summary
+ * comments, "Details updating" / "No longer open" while the row's
+ * details are behind GitHub, and where a search matched when the row
+ * doesn't show it ("Matches in comments"). The chevron opens the row's summary
  * (PrRowSummary). The cell carries
  * data-pr-number / data-repo and the .pr-link class, which "Jump to PR"
  * looks for.
  */
 export interface PrTitleCellProps {
   pr: PrData;
+  // For its notes (the search's "Matches in").
+  entry?: PrEntry;
   repo: string;
   sectionKey: string;
   isSmartGroup?: boolean;
@@ -45,10 +58,51 @@ export interface PrTitleCellProps {
   isActive?: boolean;
   isQueued?: boolean;
   onToggleInsights: (prNumber: string | number | undefined, sectionKey: string, repo: string) => void;
+  // The row's Update PR, for Retry when its last refresh failed.
+  onRetry?: () => unknown;
+}
+
+/**
+ * "Couldn't refresh · data from 2h ago" when the row's last refresh failed
+ * (pr-row-freshness's describeRowRefreshProblem: why in its tooltip), with
+ * Retry - disabled while the row is being fetched. Its own component, so
+ * the clock (useNow) and what couldn't be refreshed re-render it, not the
+ * title cell.
+ */
+function PrRefreshProblem({
+  entry,
+  prNumber,
+  isBusy,
+  onRetry,
+}: {
+  entry: PrEntry;
+  prNumber: string;
+  isBusy: boolean;
+  onRetry?: () => unknown;
+}) {
+  const nowMs = useNow();
+  const { refreshFailures, unreachablePrs } = useRepoFreshness();
+  const problem = describeRowRefreshProblem({ entry, refreshFailures, unreachablePrs, nowMs });
+  if (!problem) return null;
+  return (
+    <div className="pr-title-meta pr-refresh-problem">
+      <span className="pr-meta-chip" data-tone="attention" title={problem.lines.join('\n')}>
+        <Icon name="alert" size={12} />
+        {problem.label}
+        {problem.dataAge && ` · data from ${problem.dataAge}`}
+      </span>
+      {onRetry && (
+        <button type="button" className="pr-refresh-retry" disabled={isBusy} aria-label={`Retry refreshing PR #${prNumber}`} onClick={() => void onRetry()}>
+          Retry
+        </button>
+      )}
+    </div>
+  );
 }
 
 export function PrTitleCell({
   pr,
+  entry,
   repo,
   sectionKey,
   isSmartGroup = false,
@@ -57,8 +111,12 @@ export function PrTitleCell({
   isActive = false,
   isQueued = false,
   onToggleInsights,
+  onRetry,
 }: PrTitleCellProps) {
   const prNumber = String(pr?.number || '');
+  // With rows from several repos in view, the number alone doesn't say
+  // which PR this is.
+  const repoName = useRowRepoName(repo);
   const title = formatTitleWithIcons(pr?.titleDisplay, pr?.title);
   const plainTitle = String(pr?.title || '').trim();
   const url = pr?.url || `https://github.com/${repo || ''}/pull/${prNumber}`;
@@ -67,7 +125,16 @@ export function PrTitleCell({
   const targetBranch = String(pr?.targetBranch || '').trim();
   const showTargetBranch = Boolean(targetBranch) && targetBranch.toLowerCase() !== 'main';
   const pendingCommentCount = countPendingThreadComments(pr);
-  const hasMeta = showTargetBranch || pendingCommentCount > 0 || Boolean(pr?.updatePending);
+  // The live summary's view (pr.live, open/draft rows): a complete listing
+  // no longer has it, or GitHub has activity the row's details haven't
+  // caught up with (or the quick check queued it).
+  const noLongerOpen = pr?.live?.stillOpen === false;
+  const detailsBehind = !noLongerOpen && (Boolean(pr?.updatePending) || pr?.live?.detailsBehind === true);
+  // A search word found only in what the row doesn't show (its branch
+  // names, your notes): where, so it's clear why the row is here.
+  const searchTerms = useSearchTerms();
+  const searchHiddenFields = searchTerms.length > 0 ? matchRowSearch(entry || { data: pr }, searchTerms).hiddenFields : [];
+  const hasMeta = showTargetBranch || pendingCommentCount > 0 || noLongerOpen || detailsBehind || searchHiddenFields.length > 0;
 
   return (
     <td className="pr-cell pr-cell-title" data-pr-number={prNumber} data-repo={repo || ''}>
@@ -87,9 +154,20 @@ export function PrTitleCell({
         </button>
         <div className="pr-title-body">
           <div className="pr-title-number-line">
-            <a className="pr-link" href={url} target="_blank" rel="noopener noreferrer">
-              #{prNumber}
-            </a>
+            {/* The repo and number together: a long repo name is cut short
+                rather than pushing the number onto a line of its own. */}
+            <span className="pr-title-ref">
+              {repoName && (
+                <span className="pr-title-repo" title={`In ${repo}`}>
+                  <span aria-hidden="true">{repoName}</span>
+                  <span className="ui-visually-hidden">{repo}</span>
+                </span>
+              )}
+              <a className="pr-link" href={url} target="_blank" rel="noopener noreferrer">
+                #{prNumber}
+                <Icon name="externalLink" size={11} label="opens GitHub in a new tab" />
+              </a>
+            </span>
             {lifecycle && <Signal icon={lifecycle.icon} tone={lifecycle.tone} label={lifecycle.label} />}
             {isActive ? (
               <span className="pr-busy" data-busy="active">
@@ -136,14 +214,34 @@ export function PrTitleCell({
                   {pendingCommentCount} pending comment{pendingCommentCount === 1 ? '' : 's'}
                 </span>
               )}
-              {pr?.updatePending && (
-                <span className="pr-meta-chip" title="A change was detected on GitHub; full details are queued to refresh.">
+              {noLongerOpen && (
+                <span
+                  className="pr-meta-chip"
+                  data-tone="attention"
+                  title="GitHub no longer lists it as open (merged or closed since); its update is queued."
+                >
                   <Icon name="refresh" size={12} />
-                  Update queued
+                  No longer open
+                </span>
+              )}
+              {detailsBehind && (
+                <span
+                  className="pr-meta-chip"
+                  title="GitHub has newer activity. The row's summary (CI, mergeability, labels, size) is current; reviews, approvals and activity update when its queued refresh runs."
+                >
+                  <Icon name="refresh" size={12} />
+                  Details updating
+                </span>
+              )}
+              {searchHiddenFields.length > 0 && (
+                <span className="pr-meta-chip" data-search-match="">
+                  <Icon name="search" size={12} />
+                  Matches in {searchHiddenFields.map((field) => SEARCH_FIELD_LABELS[field]).join(', ')}
                 </span>
               )}
             </div>
           )}
+          {entry && <PrRefreshProblem entry={entry} prNumber={prNumber} isBusy={isActive || isQueued} onRetry={onRetry} />}
         </div>
       </div>
     </td>

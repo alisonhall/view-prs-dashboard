@@ -52,6 +52,16 @@ const writeViewPrsUserState = (state = EMPTY_USER_STATE) => {
 describe("integration behavior", () => {
   jest.setTimeout(60000);
   let server, request;
+  // No sources file, as before any is seeded: every stored row is shown -
+  // the owner/repo rows these tests write included, which nothing fetches,
+  // so no seeded file would subscribe. And no rows left by the test before
+  // (its notes give their PR a row too), which it would be seeded from.
+  beforeEach(() => {
+    writeViewPrsData({ byPrNumber: {}, lastRun: null });
+    writeViewPrsUserState();
+    fs.rmSync(appModule.viewPrsSourcesStorage.sourcesFile, { force: true });
+    fs.rmSync(`${appModule.viewPrsSourcesStorage.sourcesFile}.seeded`, { force: true });
+  });
   beforeAll(() => {
     writeViewPrsData({ byPrNumber: {}, lastRun: null });
     writeViewPrsUserState();
@@ -112,7 +122,7 @@ describe("integration behavior", () => {
     const persistedUserState = JSON.parse(
       fs.readFileSync(viewPrsUserStateFile, "utf8"),
     );
-    expect(persistedUserState.notesByPrNumber[prNumber]).toMatchObject({
+    expect(persistedUserState.notesByPrNumber[`owner/repo#${prNumber}`]).toMatchObject({
       comments: [
         expect.objectContaining({
           author: "a",
@@ -129,11 +139,130 @@ describe("integration behavior", () => {
       ],
       analysisOfPr: "Looks moderate overall",
     });
-    expect(persistedUserState.notesByPrNumber[prNumber]).not.toHaveProperty("rallyStories");
+    expect(persistedUserState.notesByPrNumber[`owner/repo#${prNumber}`]).not.toHaveProperty("rallyStories");
   });
 
   // The Notes tab sends only id, author, tone and note. Saving used to
   // reset every comment's createdAt/updatedAt to the save time.
+  test("POST /thread-checks confirms a thread resolved for you, undoes it, and a notes save keeps it", async () => {
+    writeViewPrsData({ byPrNumber: { "owner/repo#7": { repo: "owner/repo", prNumber: "7" } }, lastRun: null });
+    writeViewPrsUserState({ ...EMPTY_USER_STATE, flaggedByRepo: { "owner/repo": { 3: true } } });
+    const stored = () => JSON.parse(fs.readFileSync(viewPrsUserStateFile, "utf8"));
+
+    const confirmed = await request
+      .post("/thread-checks")
+      .send({ repo: "owner/repo", prNumber: "7", threadId: "T1", signature: "bob|2|C2" });
+    expect(confirmed.status).toBe(200);
+    expect(stored().threadChecksByRepo).toEqual({ "owner/repo": { 7: { T1: "bob|2|C2" } } });
+    // The other user state stays, and the page gets it back.
+    expect(stored().flaggedByRepo).toEqual({ "owner/repo": { 3: true } });
+    expect(confirmed.body.prData.threadChecksByRepo).toEqual({ "owner/repo": { 7: { T1: "bob|2|C2" } } });
+
+    // A notes save rewrites the user state: the confirmation survives.
+    const notes = await request.post("/notes").send({ prNumber: "7", repo: "owner/repo", comments: [], otherNotes: "x" });
+    expect(notes.status).toBe(200);
+    expect(stored().threadChecksByRepo).toEqual({ "owner/repo": { 7: { T1: "bob|2|C2" } } });
+
+    const undone = await request.post("/thread-checks").send({ repo: "owner/repo", prNumber: "7", threadId: "T1", confirmed: false });
+    expect(undone.status).toBe(200);
+    expect(stored().threadChecksByRepo).toEqual({});
+  });
+
+  test("the Ack history (written by the script) survives a notes save and reaches the page", async () => {
+    writeViewPrsData({ byPrNumber: { "owner/repo#7": { repo: "owner/repo", prNumber: "7" } }, lastRun: null });
+    const ackHistoryByRepo = { "owner/repo": { 7: ["2026-01-01T00:00:00Z", "2026-01-03T00:00:00Z"] } };
+    writeViewPrsUserState({ ...EMPTY_USER_STATE, ackHistoryByRepo });
+
+    const notes = await request.post("/notes").send({ prNumber: "7", repo: "owner/repo", comments: [], otherNotes: "x" });
+    expect(notes.status).toBe(200);
+    expect(JSON.parse(fs.readFileSync(viewPrsUserStateFile, "utf8")).ackHistoryByRepo).toEqual(ackHistoryByRepo);
+    expect(notes.body.prData.ackHistoryByRepo).toEqual(ackHistoryByRepo);
+  });
+
+  describe("the script's user-state lock", () => {
+    const lockDir = viewPrsUserStateFile.replace(/\.json$/, "") + ".lock";
+    afterEach(() => fs.rmSync(lockDir, { recursive: true, force: true }));
+    const saveNotes = () =>
+      request.post("/notes").send({ prNumber: "7", repo: "owner/repo", comments: [], otherNotes: "saved" });
+    const storedNotes = () => JSON.parse(fs.readFileSync(viewPrsUserStateFile, "utf8")).notesByPrNumber;
+    beforeEach(() => {
+      writeViewPrsData({ byPrNumber: { "owner/repo#7": { repo: "owner/repo", prNumber: "7" } }, lastRun: null });
+      writeViewPrsUserState();
+    });
+
+    test("a notes save waits while the script holds it, then saves, and lets it go", async () => {
+      fs.mkdirSync(lockDir);
+      // The script lets it go shortly - here a worker thread, which runs
+      // while the save holds up this one.
+      const { Worker } = require("worker_threads");
+      const worker = new Worker(
+        `setTimeout(() => require("fs").rmdirSync(${JSON.stringify(lockDir)}), 300)`,
+        { eval: true },
+      );
+      const startedAt = Date.now();
+      const res = await saveNotes();
+      expect(res.status).toBe(200);
+      expect(Date.now() - startedAt).toBeGreaterThanOrEqual(250);
+      expect(storedNotes()["owner/repo#7"].otherNotes).toBe("saved");
+      expect(fs.existsSync(lockDir)).toBe(false);
+      await worker.terminate();
+    });
+
+    test("one left by a script that died (over a minute old) doesn't stop a save", async () => {
+      fs.mkdirSync(lockDir);
+      const old = new Date(Date.now() - 5 * 60 * 1000);
+      fs.utimesSync(lockDir, old, old);
+      expect((await saveNotes()).status).toBe(200);
+      expect(storedNotes()["owner/repo#7"].otherNotes).toBe("saved");
+      // Not ours to remove.
+      expect(fs.existsSync(lockDir)).toBe(true);
+    });
+  });
+
+  test("a confirmation saved over a malformed user state is added to its backup, not to an empty state", async () => {
+    writeViewPrsData({ byPrNumber: { "owner/repo#7": { repo: "owner/repo", prNumber: "7" } }, lastRun: null });
+    const backupFile = path.join(viewPrsBackupDir, `${path.basename(viewPrsUserStateFile)}.user-state.malformed-test.bak`);
+    fs.mkdirSync(viewPrsBackupDir, { recursive: true });
+    fs.writeFileSync(
+      backupFile,
+      JSON.stringify({ ...EMPTY_USER_STATE, threadChecksByRepo: { "owner/repo": { 7: { T1: "sig-1" } } } }),
+    );
+    // The newest backup.
+    const later = new Date(Date.now() + 60 * 1000);
+    fs.utimesSync(backupFile, later, later);
+    fs.writeFileSync(viewPrsUserStateFile, "{ not json");
+
+    try {
+      const res = await request.post("/thread-checks").send({ repo: "owner/repo", prNumber: "7", threadId: "T2", signature: "sig-2" });
+      expect(res.status).toBe(200);
+      expect(JSON.parse(fs.readFileSync(viewPrsUserStateFile, "utf8")).threadChecksByRepo).toEqual({
+        "owner/repo": { 7: { T1: "sig-1", T2: "sig-2" } },
+      });
+    } finally {
+      fs.rmSync(backupFile, { force: true });
+      writeViewPrsUserState();
+    }
+  });
+
+  test("a server write keeps the file's Ack history, not an older copy read before the script recorded an Ack", () => {
+    const latest = { "owner/repo": { 7: ["2026-01-01T00:00:00Z", "2026-01-03T00:00:00Z"] } };
+    writeViewPrsUserState({ ...EMPTY_USER_STATE, ackHistoryByRepo: latest });
+
+    appModule.writeViewPrsUserState({
+      ...EMPTY_USER_STATE,
+      ackHistoryByRepo: { "owner/repo": { 7: ["2026-01-01T00:00:00Z"] } },
+    });
+    expect(JSON.parse(fs.readFileSync(viewPrsUserStateFile, "utf8")).ackHistoryByRepo).toEqual(latest);
+  });
+
+  test("POST /thread-checks rejects a request without a repo, PR number, thread or signature", async () => {
+    const send = (body) => request.post("/thread-checks").send(body);
+    expect((await send({ prNumber: "7", threadId: "T1", signature: "s" })).status).toBe(400);
+    expect((await send({ repo: "owner/repo", prNumber: "x", threadId: "T1", signature: "s" })).status).toBe(400);
+    expect((await send({ repo: "owner/repo", prNumber: "7", signature: "s" })).status).toBe(400);
+    expect((await send({ repo: "owner/repo", prNumber: "7", threadId: "T1" })).status).toBe(400);
+  });
+
   test("given stored note comments, when POST /notes saves them without timestamps, then unchanged ones keep theirs and an edited one keeps createdAt", async () => {
     const prNumber = "124";
     writeViewPrsData({ byPrNumber: { [prNumber]: { repo: "owner/repo" } }, lastRun: null });
@@ -169,7 +298,7 @@ describe("integration behavior", () => {
     });
     expect(res.status).toBe(200);
 
-    const saved = JSON.parse(fs.readFileSync(viewPrsUserStateFile, "utf8")).notesByPrNumber[prNumber].comments;
+    const saved = JSON.parse(fs.readFileSync(viewPrsUserStateFile, "utf8")).notesByPrNumber[`owner/repo#${prNumber}`].comments;
     const byId = Object.fromEntries(saved.map((comment) => [comment.id, comment]));
     expect(byId["comment-1"]).toMatchObject({ createdAt: "2026-01-02T03:04:05Z", updatedAt: "2026-01-03T03:04:05Z" });
     expect(byId["comment-2"].createdAt).toBe("2026-01-02T03:04:05Z");
@@ -229,19 +358,59 @@ describe("integration behavior", () => {
     const persistedUserState = JSON.parse(
       fs.readFileSync(viewPrsUserStateFile, "utf8"),
     );
-    expect(persistedUserState.notesByPrNumber[existingPrNumber]).toMatchObject({
+    expect(persistedUserState.notesByPrNumber[`owner/repo#${existingPrNumber}`]).toMatchObject({
       otherNotes: "keep me",
       prDifficulty: "4",
       stories: [{ name: "US1", url: "https://stories.example/US1" }],
       analysisOfPr: "retain",
     });
-    expect(persistedUserState.notesByPrNumber[clearedPrNumber]).toEqual({
+    expect(persistedUserState.notesByPrNumber[`owner/repo#${clearedPrNumber}`]).toEqual({
       comments: [],
       otherNotes: "",
       prDifficulty: "",
       stories: [],
       analysisOfPr: "",
     });
+  });
+
+  test("two repos' PRs with the same number keep their own rows and notes", async () => {
+    // Before rows and notes were keyed by repo, one replaced the other.
+    writeViewPrsData({
+      byPrNumber: {
+        "acme/api#12": { prNumber: "12", repo: "acme/api", section: "open", data: { number: "12", title: "API twelve" } },
+        // Not migrated by the script yet: read as acme/web's.
+        12: { prNumber: "12", repo: "acme/web", section: "open", data: { number: "12", title: "Web twelve" } },
+      },
+      lastRun: { repo: "acme/api", updatedAt: "2026-11-02T10:00:00Z" },
+    });
+    // Notes from before, keyed by the bare number: the last run's repo's.
+    writeViewPrsUserState({ ...EMPTY_USER_STATE, notesByPrNumber: { 12: { otherNotes: "older notes" } } });
+
+    const res = await request.post("/notes").send({ prNumber: "12", repo: "acme/web", otherNotes: "web notes" });
+    expect(res.status).toBe(200);
+
+    const { notesByPrNumber } = JSON.parse(fs.readFileSync(viewPrsUserStateFile, "utf8"));
+    expect(Object.keys(notesByPrNumber).sort()).toEqual(["acme/api#12", "acme/web#12"]);
+    expect(notesByPrNumber["acme/api#12"].otherNotes).toBe("older notes");
+    expect(notesByPrNumber["acme/web#12"].otherNotes).toBe("web notes");
+
+    const data = (await request.get("/data")).body;
+    expect(data.byPrNumber["acme/api#12"]).toMatchObject({ data: { title: "API twelve" }, notes: { otherNotes: "older notes" } });
+    expect(data.byPrNumber["acme/web#12"]).toMatchObject({ data: { title: "Web twelve" }, notes: { otherNotes: "web notes" } });
+  });
+
+  test("notes still keyed by the bare number move to their PR's repo key when the data is read", async () => {
+    writeViewPrsData({
+      byPrNumber: { "acme/web#30": { prNumber: "30", repo: "acme/web", section: "open", data: { number: "30" } } },
+      lastRun: { repo: "acme/api", updatedAt: "2026-11-02T10:00:00Z" },
+    });
+    writeViewPrsUserState({ ...EMPTY_USER_STATE, notesByPrNumber: { 30: { otherNotes: "thirty" } } });
+
+    expect((await request.get("/data")).status).toBe(200);
+
+    const { notesByPrNumber } = JSON.parse(fs.readFileSync(viewPrsUserStateFile, "utf8"));
+    // The only row with #30 is acme/web's, whatever the last run was.
+    expect(notesByPrNumber).toEqual({ "acme/web#30": expect.objectContaining({ otherNotes: "thirty" }) });
   });
 
   test("returns cached diff data when GET /diff receives an unchanged commit fingerprint", async () => {
@@ -578,7 +747,7 @@ describe("integration behavior", () => {
       expect(res.status).toBe(200);
       expect(res.body.ok).toBe(true);
 
-      const row = res.body?.byPrNumber?.[prNumber]?.data;
+      const row = res.body?.byPrNumber?.[`owner/repo#${prNumber}`]?.data;
       expect(Array.isArray(row?.activityTimeline)).toBe(true);
       expect(Array.isArray(row?.activityEvents)).toBe(true);
       expect(Array.isArray(row?.reviewThreads)).toBe(true);
@@ -654,6 +823,79 @@ describe("integration behavior", () => {
       if (typeof testServer.closeIdleConnections === "function") {
         testServer.closeIdleConnections();
       }
+      await new Promise((resolve) => testServer.close(resolve));
+    }
+  });
+
+  test("a Run script is a task of yours counting the PRs it finishes - of how many for chosen PRs; gone when it ends", async () => {
+    const app = require("../app.js");
+    const orig = app.runViewPrsScript;
+    const origDep = app.getDependencyStatus;
+    const savedSources = app.viewPrsSourcesStorage.readSources();
+    const seen = [];
+    app.runViewPrsScript = async (_args, _maxBuffer, options) => {
+      options.progressTracker.onEnd("5");
+      seen.push(app.getViewPrsSchedulerPublicState().tasks);
+      return { stdout: "ok", stderr: "" };
+    };
+    app.getDependencyStatus = () => ({ ok: true, missing: [] });
+    const testServer = createViewPrsApp().listen(0);
+    const testRequest = supertest(testServer);
+    try {
+      await testRequest.post("/view-prs/run").send({ repo: "acme-org/run-task", prNumber: "5, 6", openMode: "none" }).expect(200);
+      await testRequest.post("/view-prs/run").send({ repo: "acme-org/run-task", openMode: "none" }).expect(200);
+
+      expect(seen[0]).toEqual([
+        expect.objectContaining({ kind: "runScript", origin: "you", repos: ["acme-org/run-task"], unit: "PR", done: 1, total: 2 }),
+      ]);
+      expect(seen[1]).toEqual([expect.objectContaining({ kind: "runScript", done: 1, total: null })]);
+      expect(app.getViewPrsSchedulerPublicState().tasks).toEqual([]);
+    } finally {
+      app.runViewPrsScript = orig;
+      app.getDependencyStatus = origDep;
+      app.viewPrsSourcesStorage.writeSources(savedSources);
+      await new Promise((resolve) => testServer.close(resolve));
+    }
+  });
+
+  // Running a repo in full always added it to the background updates; it
+  // subscribes it (the sources file) now. A run of one PR adds just it, so
+  // its row stays in view.
+  test("a full manual run subscribes its repo to its recent PRs, and a run of one PR adds just it", async () => {
+    const app = require("../app.js");
+    const orig = app.runViewPrsScript;
+    const origDep = app.getDependencyStatus;
+    const savedSources = app.viewPrsSourcesStorage.readSources();
+    app.runViewPrsScript = () => Promise.resolve({ stdout: "ok", stderr: "" });
+    app.getDependencyStatus = () => ({ ok: true, missing: [] });
+    app.viewPrsSourcesStorage.writeSources({ subscriptions: [] });
+    const testServer = createViewPrsApp().listen(0);
+    const testRequest = supertest(testServer);
+    try {
+      await testRequest.post("/view-prs/run").send({ repo: "acme-org/run-whole", openMode: "none" }).expect(200);
+      await testRequest.post("/view-prs/run").send({ repo: "acme-org/run-one", prNumber: "5", openMode: "none" }).expect(200);
+      await testRequest.post("/view-prs/run").send({ repo: "owner/repo", openMode: "none" }).expect(200);
+
+      expect(app.viewPrsSourcesStorage.readSources().subscriptions).toEqual([{ repo: "acme-org/run-whole", mode: "recent" }]);
+      expect(app.viewPrsSourcesStorage.readSources().trackedPrs).toEqual([
+        expect.objectContaining({ repo: "acme-org/run-one", number: "5", url: "https://github.com/acme-org/run-one/pull/5" }),
+      ]);
+      expect(app.getViewPrsAutoRefreshRepos("")).toEqual(["acme-org/run-whole", "acme-org/run-one"]);
+
+      // A run of one PR in a subscribed repo, or of one added already, adds nothing.
+      await testRequest.post("/view-prs/run").send({ repo: "acme-org/run-whole", prNumber: "8", openMode: "none" }).expect(200);
+      await testRequest.post("/view-prs/run").send({ repo: "acme-org/run-one", prNumber: "5", openMode: "none" }).expect(200);
+      expect(app.viewPrsSourcesStorage.readSources().trackedPrs).toHaveLength(1);
+    } finally {
+      app.runViewPrsScript = orig;
+      app.getDependencyStatus = origDep;
+      if (savedSources) {
+        app.viewPrsSourcesStorage.writeSources(savedSources);
+      } else {
+        fs.rmSync(app.viewPrsSourcesStorage.sourcesFile, { force: true });
+        fs.rmSync(`${app.viewPrsSourcesStorage.sourcesFile}.seeded`, { force: true });
+      }
+      testServer.closeAllConnections?.();
       await new Promise((resolve) => testServer.close(resolve));
     }
   });
@@ -820,13 +1062,13 @@ describe("integration behavior", () => {
     const origDep = app.getDependencyStatus;
     app.getDependencyStatus = () => ({ ok: true, missing: [] });
     app.viewPrsSchedulerState.isAutoRunInProgress = false;
-    app.viewPrsSchedulerState.lastManualRunAt = new Date().toISOString();
+    app.viewPrsSchedulerState.manualFullRunAtByRepo = { "*": new Date().toISOString() };
     await runViewPrsAutoRefresh();
     expect(app.viewPrsSchedulerState.lastAutoSkipReason).toMatch(
       /manual run happened within/,
     );
     app.getDependencyStatus = origDep;
-    app.viewPrsSchedulerState.lastManualRunAt = null;
+    app.viewPrsSchedulerState.manualFullRunAtByRepo = {};
   });
 
   test("given author-comments file is missing, when POST /author-comments succeeds, then the file is created", async () => {
@@ -1086,7 +1328,7 @@ describe("integration behavior", () => {
       const res = await request.get("/data");
       expect(res.status).toBe(200);
       expect(res.body.ok).toBe(true);
-      const row = res.body?.byPrNumber?.["901"]?.data;
+      const row = res.body?.byPrNumber?.["owner/repo#901"]?.data;
       expect(Array.isArray(row?.activityTimeline)).toBe(true);
       expect(Array.isArray(row?.activityEvents)).toBe(true);
       expect(Array.isArray(row?.reviewThreads)).toBe(true);

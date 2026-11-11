@@ -1,4 +1,4 @@
-import { useFilterState } from '../../state/FilterStateContext';
+import { useRuleField } from '../../state/useRuleField';
 import { isValidHeadlinePattern, parseRuleLines } from '../../helpers/pr-merge-commit-rules.helpers.ts';
 
 /**
@@ -15,8 +15,10 @@ export interface MergeCommitRulesTextareaProps {
 }
 
 export function MergeCommitRulesTextarea({ id, filterStateKey, placeholder, validatePatterns = false }: MergeCommitRulesTextareaProps) {
-  const { values, setValue } = useFilterState();
-  const text = String(values[filterStateKey] ?? '');
+  // The headline patterns: every repo's, or the repo's own (Settings › Rules
+  // for a repo); the logins are the same for every repo.
+  const { value, setValue } = useRuleField(filterStateKey);
+  const text = String(value ?? '');
   const invalidLines = validatePatterns ? parseRuleLines(text).filter((line) => !isValidHeadlinePattern(line)) : [];
   return (
     <>
@@ -27,7 +29,7 @@ export function MergeCommitRulesTextarea({ id, filterStateKey, placeholder, vali
         placeholder={placeholder}
         aria-describedby="merge-commit-rules-help"
         value={text}
-        onChange={(event) => setValue(filterStateKey, event.target.value)}
+        onChange={(event) => setValue(event.target.value)}
       />
       {invalidLines.length > 0 && (
         <p className="subtle-copy" role="status">

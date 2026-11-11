@@ -3,7 +3,7 @@ import { useIsSettingsSectionVisible } from './SettingsDrawerContext';
 
 /**
  * Loads the backfill status/log once on mount, whatever is showing, then
- * again each time the Settings drawer's Backfill section comes into view
+ * again each time the Tools drawer's Backfill section comes into view
  * (opened at it, or switched to it) - not when it leaves.
  *
  * Takes `triggerBackfillTabLoad` rather than calling `useBackfillActions()`

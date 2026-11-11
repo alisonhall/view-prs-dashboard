@@ -7,6 +7,7 @@
 .pr-workspace-toolbar {
   display: flex;
   justify-content: flex-end;
+  gap: var(--space-2);
   margin-bottom: var(--space-2);
 }
 
@@ -61,7 +62,14 @@
   position: sticky;
   /* Below the Auto update paused banner when it's showing (AppShell). */
   top: calc(var(--sticky-top, 0px) + var(--space-3));
-  max-height: calc(100vh - var(--space-6) - var(--sticky-top, 0px));
+  /* Its borders count in max-height, so it fits the room exactly. */
+  box-sizing: border-box;
+  /* As far above the window's bottom as top is below --sticky-top (which
+     PrTableApp relies on). Near the list's end, no taller than the room
+     left above its bottom (PrTableApp sets --pr-pane-room on the pane
+     then), so the header stays in the window. */
+  --pr-pane-room: calc(100vh - var(--space-6) - var(--sticky-top, 0px));
+  max-height: var(--pr-pane-room);
   overflow-y: auto;
 }
 
@@ -142,6 +150,17 @@
   font-family: var(--font-mono);
   font-size: var(--font-size-sm);
   color: var(--color-text);
+  overflow-wrap: anywhere;
+}
+
+/* The source branch and its copy button (which a long name used to push
+   onto the next line), and "into" with the target: each kept together,
+   the name breaking first. */
+.pr-pane-branch-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
 }
 
 .pr-pane-actions {
@@ -265,9 +284,6 @@
   white-space: pre-wrap;
 }
 
-.pr-activity-text > :first-child { margin-top: 0; }
-.pr-activity-text > :last-child { margin-bottom: 0; }
-
 /* A long body folds to about six lines until "Show more" (PrActivityTab's
    FOLD_EMS matches this height). */
 .pr-activity-text[data-folded="true"] {
@@ -328,6 +344,14 @@
   display: flex;
   justify-content: center;
   margin: var(--space-3) 0;
+}
+
+/* More commits than GitHub returns */
+.pr-activity-limit {
+  margin: var(--space-3) 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  text-align: center;
 }
 
 /* Conversations tab (PrConversationsTab) */
@@ -449,7 +473,53 @@
 .pr-conv-state[data-state="waiting"] { color: var(--color-accent-text); font-weight: 600; }
 .pr-conv-state[data-state="wrong"] { color: var(--color-attention); font-weight: 600; }
 
-.pr-conv-badge {
+/* A thread resolved for you: "to check" until you confirm it. */
+.pr-conv-check { color: var(--color-attention); font-weight: 600; }
+.pr-conv-check[data-confirmed="true"] { color: var(--color-success); font-weight: 400; }
+
+.pr-conv-check-panel {
+  margin: 0 0 var(--space-2);
+  padding: 6px 10px;
+  border: 1px solid var(--color-attention);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+}
+
+.pr-conv-check-panel[data-confirmed="true"] {
+  border-color: var(--color-border-subtle);
+}
+
+.pr-conv-check-panel > p { margin: 0 0 4px; }
+.pr-conv-check-panel > .pr-conv-callout { margin: 0 0 4px; }
+
+.pr-conv-check-evidence {
+  margin: 0 0 6px;
+  padding-left: 1.2em;
+  color: var(--color-text-muted);
+}
+
+.pr-conv-check-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.pr-conv-check-done {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--color-success);
+}
+
+.pr-conv-check-error { color: var(--color-danger); }
+
+.pr-activity-tag {
+  white-space: nowrap;
+}
+
+.pr-conv-badge,
+.pr-activity-tag {
   margin-left: 4px;
   padding: 0 6px;
   border-radius: var(--radius-pill);
@@ -501,8 +571,73 @@
   overflow-wrap: anywhere;
 }
 
-.pr-conv-comment .insight-thread-body > :first-child { margin-top: 0; }
-.pr-conv-comment .insight-thread-body > :last-child { margin-bottom: 0; }
+/* Rendered comment and review markdown (pr-markdown-render.helpers.ts):
+   the Activity tab's text and Conversations' comments. Half a line between
+   blocks, none before the first or after the last; code set apart from
+   the text around it. */
+.pr-markdown {
+  white-space: normal;
+}
+
+.pr-markdown > :first-child { margin-top: 0; }
+.pr-markdown > :last-child { margin-bottom: 0; }
+
+.pr-markdown :is(p, ul, ol, pre, blockquote, table, h1, h2, h3, h4, h5, h6) {
+  margin: 0 0 0.5em;
+}
+
+.pr-markdown :is(h1, h2, h3, h4, h5, h6) {
+  font-size: 1em;
+  font-weight: 600;
+}
+
+/* A list item's own paragraphs (a "loose" list) and nested lists add no
+   gap of their own. */
+.pr-markdown li > :is(p, ul, ol) {
+  margin: 0;
+}
+
+.pr-markdown :is(ul, ol) {
+  padding-left: 1.5em;
+}
+
+.pr-markdown ul { list-style: disc; }
+.pr-markdown ul ul { list-style: circle; }
+
+.pr-markdown blockquote {
+  padding-left: var(--space-2);
+  border-left: 3px solid var(--color-border-strong);
+  color: var(--color-text-muted);
+}
+
+.pr-markdown code {
+  padding: 0.1em 0.35em;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-inset);
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+
+.pr-markdown pre {
+  padding: 6px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-inset);
+  overflow-x: auto;
+}
+
+.pr-markdown pre code {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: var(--font-size-sm);
+}
+
+/* The fail-closed fallback: plain text, its line breaks kept. */
+.md-plain {
+  white-space: pre-wrap;
+}
 
 .pr-conv-thread-footer {
   display: flex;
@@ -656,6 +791,11 @@
   background: var(--color-surface);
   font: var(--font-size-md) / 1.45 var(--font-sans);
   color: var(--color-text);
+}
+
+/* A one-line field: 30px, as the page's other text boxes and selects. */
+.pr-notes-input {
+  padding: 4px 8px;
 }
 
 /* Grows with its text (AutoResizeTextarea). */

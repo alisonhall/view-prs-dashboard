@@ -34,12 +34,12 @@ else
 fi
 echo ""
 
-# Test 3: Check react-app.jsx exists
-echo "Test 3: Checking react-app.jsx..."
-if [ -f "src/ui/react-app.jsx" ]; then
-  echo -e "${GREEN}✅ react-app.jsx exists${NC}"
+# Test 3: Check the React entry point exists
+echo "Test 3: Checking react-app.tsx..."
+if [ -f "src/ui/react-app.tsx" ]; then
+  echo -e "${GREEN}✅ react-app.tsx exists${NC}"
 else
-  echo -e "${RED}❌ react-app.jsx missing${NC}"
+  echo -e "${RED}❌ react-app.tsx missing${NC}"
   ERRORS=$((ERRORS + 1))
 fi
 echo ""
@@ -56,7 +56,7 @@ echo ""
 
 # Test 5: Check index.html has React script tag
 echo "Test 5: Checking index.html..."
-if grep -q 'react-app.jsx' src/ui/index.html; then
+if grep -q 'react-app.tsx' src/ui/index.html; then
   echo -e "${GREEN}✅ index.html has React script tag${NC}"
 else
   echo -e "${RED}❌ index.html missing React script tag${NC}"
@@ -118,7 +118,6 @@ if [ $ERRORS -eq 0 ]; then
   echo "Next steps:"
   echo "  1. Run: npm run dev"
   echo "  2. Open: http://localhost:3456"
-  echo "  3. Look for: Blue 'React Migration' box"
   echo ""
   echo "See README.md's 'React Development Scripts' section for the full workflow."
 else
@@ -128,3 +127,6 @@ else
   echo "See README.md's 'Quick Start' and 'Requirements' sections for setup instructions."
 fi
 echo "================================"
+
+# Fails the npm script when a check failed.
+[ $ERRORS -eq 0 ]

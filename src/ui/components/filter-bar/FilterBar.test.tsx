@@ -1,7 +1,7 @@
 /** @jest-environment jsdom */
 
 import type { ReactNode } from 'react';
-import { act, render, screen, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { FilterStateProvider } from '../../state/FilterStateProvider';
 import { RowFilterSelectionProvider } from '../../state/RowFilterSelectionProvider';
@@ -14,6 +14,7 @@ import { ListSelectionSeeding } from '../../state/useListSelectionSeeding';
 import { FILTER_BAR_OPEN_STORAGE_KEY, FilterBar, type FilterBarProps } from './FilterBar';
 
 const NO_OPTIONS: FilterOptionsValue = {
+  repoOptions: [],
   labelOptions: [],
   excludeLabelOptions: [],
   authorOptions: [],
@@ -49,7 +50,7 @@ const tree = (
   <RowFilterSelectionProvider>
     <AuthorThreadResolutionSelectionProvider>
       <ChangeFilterActorSelectionProvider>
-        <FilterStateProvider initialValues={{ scopeMode: 'all', filterPrNumbers: '', alwaysShowInReview: false, filterStories: '', ...initialValues }}>
+        <FilterStateProvider initialValues={{ onlyNeedsAttention: false, onlyThreadsToCheck: false, filterPrNumbers: '', alwaysShowInReview: false, filterStories: '', ...initialValues }}>
           <FilterOptionsContext.Provider value={options}>
             <SelectionProbe />
             {seeding && <ListSelectionSeeding />}
@@ -80,7 +81,7 @@ describe('FilterBar header', () => {
     renderBar();
     expect(screen.getByRole('region', { name: 'Filters' })).toBeInTheDocument();
     expect(toggle()).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.queryByRole('combobox', { name: 'View scope' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: 'PRs' })).not.toBeInTheDocument();
     expect(screen.getByText('Showing 3 of 5 PRs')).toBeInTheDocument();
   });
 
@@ -105,7 +106,7 @@ describe('FilterBar header', () => {
     const { unmount } = renderBar();
     await user.click(toggle());
     expect(toggle()).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByRole('combobox', { name: 'View scope' })).toBeVisible();
+    expect(screen.getByRole('textbox', { name: 'PRs' })).toBeVisible();
     expect(window.localStorage.getItem(FILTER_BAR_OPEN_STORAGE_KEY)).toBe('true');
 
     unmount();
@@ -135,7 +136,7 @@ describe('FilterBar header', () => {
 
   test('shows a removable chip per applied filter, how many on the button, and "Clear all"', async () => {
     const user = userEvent.setup();
-    renderBar(LABELS, {}, { scopeMode: 'last-run', filterStories: 'none' });
+    renderBar(LABELS, {}, { onlyNeedsAttention: true, filterStories: 'none' });
     const chips = screen.getByRole('group', { name: 'Applied table filters' });
     expect(within(chips).getAllByRole('button', { name: /^Remove filter: / })).toHaveLength(2);
     expect(toggle()).toHaveAccessibleName('Filters, 2 applied');
@@ -148,18 +149,39 @@ describe('FilterBar header', () => {
     expect(screen.queryByRole('button', { name: 'Clear all' })).not.toBeInTheDocument();
     expect(toggle()).toHaveAccessibleName('Filters');
   });
+
+  test('has a search box beside the button, with the bar closed: its chip follows it, and Escape clears it', async () => {
+    const user = userEvent.setup();
+    renderBar();
+    const search = screen.getByRole('searchbox', { name: 'Search PRs' });
+    expect(search).toBeVisible();
+    expect(search).toHaveAccessibleDescription(/Titles, authors, branch names and your notes/);
+
+    await user.type(search, 'parser');
+    expect(await screen.findByRole('button', { name: 'Remove filter: Search: parser' })).toBeInTheDocument();
+
+    await user.keyboard('{Escape}');
+    expect(search).toHaveValue('');
+    // (Debounced, as the table is.)
+    await waitFor(() => expect(screen.queryByRole('group', { name: 'Applied table filters' })).not.toBeInTheDocument());
+  });
 });
 
 describe('FilterBar panel', () => {
   const open = async (user: ReturnType<typeof userEvent.setup>) => user.click(toggle());
 
-  test('groups its controls: rows, labels and people, your notes', async () => {
+  test('groups its controls: rows, labels and people, your notes, conversations', async () => {
     const user = userEvent.setup();
     renderBar();
     await open(user);
     const rows = screen.getByRole('group', { name: 'Rows' });
-    expect(within(rows).getByRole('combobox', { name: 'View scope' })).toBeInTheDocument();
-    expect(within(rows).getByRole('textbox', { name: 'PR numbers' })).toBeInTheDocument();
+    expect(within(rows).queryByRole('combobox')).not.toBeInTheDocument();
+    expect(within(rows).getByRole('textbox', { name: 'PRs' })).toBeInTheDocument();
+    expect(within(rows).getByRole('group', { name: 'Repos' })).toHaveClass('multi-select-list');
+    const lastActivity = within(rows).getByRole('group', { name: 'Last activity' });
+    expect(within(lastActivity).getByLabelText('From')).toHaveAttribute('type', 'date');
+    expect(within(lastActivity).getByLabelText('To')).toHaveAttribute('type', 'date');
+    expect(within(rows).getByRole('checkbox', { name: 'Only PRs that need attention' })).toBeInTheDocument();
     expect(within(rows).getByRole('checkbox', { name: 'Always show PRs in review' })).toBeInTheDocument();
     const people = screen.getByRole('group', { name: 'Labels and people' });
     ['Labels', 'Excluded labels', 'Authors', 'Assigned to', 'Approved by'].forEach((name) => {
@@ -173,6 +195,26 @@ describe('FilterBar panel', () => {
       'filter-stories',
       'filter-analysis-of-pr',
     ]);
+    const conversations = screen.getByRole('group', { name: 'Conversations' });
+    expect(within(conversations).getAllByRole('checkbox').map((checkbox) => checkbox.getAttribute('id'))).toEqual([
+      'only-open-conversations-with-me',
+      'only-waiting-on-me',
+      'only-threads-to-check',
+    ]);
+  });
+
+  test('the "only" checkboxes set their filter, and add a chip that unchecks them', async () => {
+    const user = userEvent.setup();
+    renderBar();
+    await open(user);
+    await user.click(screen.getByRole('checkbox', { name: 'Only PRs that need attention' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Resolved for you to check' }));
+    const chips = screen.getByRole('group', { name: 'Applied table filters' });
+    expect(within(chips).getByRole('button', { name: 'Remove filter: Needs attention' })).toBeInTheDocument();
+
+    await user.click(within(chips).getByRole('button', { name: 'Remove filter: Conversations resolved for you' }));
+    expect(screen.getByRole('checkbox', { name: 'Resolved for you to check' })).not.toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Only PRs that need attention' })).toBeChecked();
   });
 
   test('a list\'s checkboxes set the selection the table filters by, and its summary counts them', async () => {
@@ -190,6 +232,39 @@ describe('FilterBar panel', () => {
     expect(within(screen.getByRole('group', { name: 'Applied table filters' })).getByText(/docs/)).toBeInTheDocument();
   });
 
+  test('the Repos list picks repos the table filters by, with a chip each', async () => {
+    const user = userEvent.setup();
+    renderBar(withOptions({ repoOptions: [{ value: 'owner/other', label: 'owner/other' }, { value: 'owner/repo', label: 'owner/repo' }] }));
+    await open(user);
+    const repos = screen.getByRole('group', { name: 'Repos' });
+    await user.click(repos.closest('details')?.querySelector('summary') as HTMLElement);
+    await user.click(within(repos).getByRole('checkbox', { name: 'owner/repo' }));
+    expect(Array.from(selection?.checkedByListId['repo-list'] ?? [])).toEqual(['owner/repo']);
+    expect(within(screen.getByRole('group', { name: 'Applied table filters' })).getByText('Repo: owner/repo')).toBeInTheDocument();
+  });
+
+  test('the Last activity dates set the range, with one chip for it, and a start after the end says no PR matches', async () => {
+    const user = userEvent.setup();
+    renderBar();
+    await open(user);
+    const from = screen.getByLabelText('From');
+    const to = screen.getByLabelText('To');
+    expect(screen.getByRole('group', { name: 'Last activity' })).toHaveAccessibleDescription(/Leave a date empty for no limit/);
+
+    await user.type(from, '2026-11-10');
+    const chips = () => screen.getByRole('group', { name: 'Applied table filters' });
+    expect(within(chips()).getByText('Last activity: from Nov 10, 2026')).toBeInTheDocument();
+    expect(to).toHaveAttribute('min', '2026-11-10');
+    expect(screen.queryByText(/start date is after the end date/)).not.toBeInTheDocument();
+
+    await user.type(to, '2026-11-01');
+    expect(screen.getByText(/start date is after the end date/)).toBeInTheDocument();
+
+    await user.click(within(chips()).getByRole('button', { name: 'Remove filter: Last activity: Nov 10, 2026 – Nov 1, 2026' }));
+    expect(from).toHaveValue('');
+    expect(to).toHaveValue('');
+  });
+
   test('a list with no options says so', async () => {
     const user = userEvent.setup();
     renderBar();
@@ -205,13 +280,20 @@ describe('FilterBar list selections (ListSelectionSeeding, mounted beside it)', 
     expect(checked('label-list')).toEqual([]);
   });
 
-  test('a saved selection waits for its options, then applies (closed or open)', () => {
+  test("a saved selection applies at once, before its options load, then takes the option's value", () => {
     act(() => setPendingMultiSelectSelection('pendingLabelSelections', ['Docs']));
     const { rerenderWith } = renderBar(NO_OPTIONS);
-    expect(checked('label-list')).toEqual([]);
+    expect(checked('label-list')).toEqual(['Docs']);
     rerenderWith(LABELS);
     // Labels match case-insensitively.
     expect(checked('label-list')).toEqual(['docs']);
+  });
+
+  test("a saved repo takes its option's value whatever the case, as it matches rows - not listed as one no PR has", () => {
+    act(() => setPendingMultiSelectSelection('pendingRepoSelections', ['Owner/Repo']));
+    const { rerenderWith } = renderBar(NO_OPTIONS);
+    rerenderWith(withOptions({ repoOptions: [{ value: 'owner/repo', label: 'owner/repo' }] }));
+    expect(Array.from(selection?.checkedByListId['repo-list'] ?? [])).toEqual(['owner/repo']);
   });
 
   test('options rebuilt the same (every data poll) leave the selection as it was, so nothing re-filters or re-saves', async () => {
@@ -224,13 +306,37 @@ describe('FilterBar list selections (ListSelectionSeeding, mounted beside it)', 
     expect(selection?.checkedByListId).toBe(before);
   });
 
-  test('a picked value no longer among the options is dropped', async () => {
+  test('a picked value no loaded PR has any more stays picked, listed so it can be unticked', async () => {
     const user = userEvent.setup();
     const { rerenderWith } = renderBar();
     await user.click(toggle());
     await user.click(within(screen.getByRole('group', { name: 'Authors' })).getByRole('checkbox', { name: 'The Octocat' }));
     expect(checked('author-list')).toEqual(['octocat']);
     rerenderWith(withOptions({ labelOptions: LABELS.labelOptions }));
+    expect(checked('author-list')).toEqual(['octocat']);
+
+    const missing = within(screen.getByRole('group', { name: 'Authors' })).getByRole('checkbox', { name: 'octocat · no PRs loaded' });
+    expect(missing).toBeChecked();
+    await user.click(missing);
     expect(checked('author-list')).toEqual([]);
+    expect(within(screen.getByRole('group', { name: 'Authors' })).queryByRole('checkbox')).not.toBeInTheDocument();
+  });
+});
+
+describe('FilterBar descriptions', () => {
+  test('each filter says what it does', async () => {
+    const user = userEvent.setup();
+    renderBar();
+    await user.click(toggle());
+
+    expect(screen.getByRole('checkbox', { name: 'Only PRs that need attention' })).toHaveAccessibleDescription(/warning icon/);
+    expect(screen.getByRole('checkbox', { name: 'Resolved for you to check' })).toHaveAccessibleDescription(/someone else resolved/);
+    expect(screen.getByRole('checkbox', { name: 'Open conversations with me' })).toHaveAccessibleDescription(/started or replied in/);
+    expect(screen.getByRole('checkbox', { name: 'Waiting on me' })).toHaveAccessibleDescription(/latest comment is someone else's/);
+
+    expect(screen.getByRole('textbox', { name: 'PRs' })).toHaveAccessibleDescription(/Numbers \(any repo\), owner\/repo#12/);
+    expect(screen.getByRole('checkbox', { name: 'Always show PRs in review' })).toHaveAccessibleDescription(/stay in view/);
+    expect(screen.getByRole('combobox', { name: 'PR difficulty' })).toHaveAccessibleDescription(/difficulty \(1 to 5\)/);
+    expect(screen.getByRole('group', { name: 'Excluded labels', hidden: true })).toHaveAccessibleDescription('Hides PRs with any of these labels.');
   });
 });
