@@ -14,6 +14,7 @@ import { describeStatusLine, getSummaryThreads, toPlainLine } from '../helpers/p
 import { formatShortAge } from '../helpers/pr-row-signals.helpers.ts';
 import { isNotInReview } from '../helpers/pr-activity-feed.helpers.ts';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.ts';
+import { usePrDetail } from '../state/usePrDetail';
 
 const { formatIsoDatetime } = createPrFormattingHelpers();
 
@@ -92,7 +93,7 @@ function Snippet({ text, prefix = '' }: { text: string; prefix?: string }) {
 const eventSnippet = (event: PrActivityEvent): string => toPlainLine(event?.body || event?.messageHeadline || '');
 
 export function PrRowSummary({
-  pr,
+  pr: listRow,
   repo,
   attentionReasons: rawReasons,
   isFlagged = false,
@@ -103,6 +104,9 @@ export function PrRowSummary({
   onShowActivity,
 }: PrRowSummaryProps) {
   const now = useNow();
+  // With its comments' and commits' text (the snippets below), fetched
+  // when the row is expanded (usePrDetail).
+  const { pr } = usePrDetail(listRow, repo, String(listRow?.number ?? ''));
   const { buildActivityEvents } = usePrInsightsDisplay();
   const { resolveActorDisplayName } = useActorIdentity();
   const prNumber = String(pr?.number ?? '');

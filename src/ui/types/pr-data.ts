@@ -22,6 +22,9 @@ export interface ReviewThreadComment extends PrComment {
   path?: string;
   line?: number | null;
   originalLine?: number | null;
+  // The logins the comment @-mentions (lower case), in place of its body
+  // in the list's slim rows (PrData.detailSlim).
+  mentions?: string[];
 }
 
 export interface ReviewThread {
@@ -235,6 +238,12 @@ export interface PrData {
   commentEvents?: PrActivityEvent[];
   activityEvents?: PrActivityEvent[];
   activityTimeline?: PrActivityTimelineBucket[];
+  // The list's rows carry the four fields above without their text (no
+  // comment bodies, commit messages or links; the timeline empty):
+  // usePrDetail fetches the rest where one PR is shown in full. The
+  // version moves when the detail does, the text included.
+  detailSlim?: boolean;
+  detailVersion?: string;
   // A text summary of the timeline, shown when it has no buckets.
   activityTimelineSummary?: string;
   // Digits-only string in the data file.

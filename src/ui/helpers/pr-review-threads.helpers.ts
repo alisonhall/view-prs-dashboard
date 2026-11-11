@@ -69,7 +69,15 @@ export const isWaitingOnViewer = (thread: ReviewThread, viewerLogin: string): bo
   const submitted = sortedComments(thread).filter((comment) => !isPending(comment));
   if (!submitted.some((comment) => loginKey(comment?.authorLogin) === viewer)) return false;
   const latest = submitted[submitted.length - 1];
-  return loginKey(latest?.authorLogin) !== viewer || mentions(latest?.body, viewer);
+  return loginKey(latest?.authorLogin) !== viewer || commentMentions(latest, viewer);
+};
+
+// Whether a comment @-mentions a login: from its body, or - in the list's
+// slim rows, which have no bodies - the logins the server found in it.
+export const commentMentions = (comment: ReviewThreadComment | undefined, login: string): boolean => {
+  if (comment?.body !== undefined) return mentions(comment.body, login);
+  const key = loginKey(login);
+  return Boolean(key) && Array.isArray(comment?.mentions) && comment.mentions.some((mentioned) => loginKey(mentioned) === key);
 };
 
 // "Resolved for you": a thread the viewer started that someone else

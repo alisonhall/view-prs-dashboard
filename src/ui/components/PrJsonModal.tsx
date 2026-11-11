@@ -14,7 +14,8 @@ import { useEffect, useRef, useState } from 'react';
 import { safeJsonStringify } from '../helpers/pr-ui-render-utils.helpers.ts';
 import { getPerPrUserStateFromPayload } from '../helpers/pr-per-pr-user-state.helpers.ts';
 import { DEFAULT_REPO as defaultRepo } from '../helpers/pr-default-repo.helpers.ts';
-import { findPrEntry } from '../helpers/pr-entry-keys.helpers.ts';
+import { buildPrEntryKey, findPrEntry } from '../helpers/pr-entry-keys.helpers.ts';
+import { fetchPrDetailsInto } from '../state/usePrDetail';
 import type { PrData, PrDataPayload, PrEntry } from '../types/pr-data.ts';
 
 type JsonRecord = Record<string, unknown>;
@@ -106,6 +107,10 @@ function buildPrJsonModalPayload({
   const dataRow = isRecord(dataFileEntry) && isRecord(dataFileEntry.data) ? { ...dataFileEntry.data } : null;
   if (dataRow && isRecord(dataFileEntry)) {
     dataFileEntry.data = dataRow;
+    // The list's markers for a row without its detail text (usePrDetail),
+    // not in either file.
+    delete dataRow.detailSlim;
+    delete dataRow.detailVersion;
   }
   const detailRef = dataRow && isRecord(dataRow.detailRef) ? dataRow.detailRef : null;
   const prDetailEntry: JsonRecord = {};
@@ -339,6 +344,21 @@ export function PrJsonModal({ target, payload, onClose }: PrJsonModalProps) {
     }
 
     let cancelled = false;
+    // The list's row goes without its comments' and commits' text: fetched
+    // for the detail file's part, then shown again with it.
+    const entryKey = buildPrEntryKey(builtPayload.repo, builtPayload.prNumber);
+    if (payload?.byPrNumber?.[entryKey]?.data?.detailSlim) {
+      fetchPrDetailsInto(payload, [entryKey])
+        .then((withDetail) => {
+          if (cancelled) return;
+          setDetailsPayload(
+            buildPrJsonModalPayload({ entry: target.entry, pr: target.pr, payload: withDetail, defaultRepo, getPerPrUserStateFromPayload }),
+          );
+        })
+        .catch(() => {
+          // The detail file's part stays as the list has it (no text).
+        });
+    }
     fetchPrDiffForModal({ repo: builtPayload.repo, prNumber: builtPayload.prNumber }).then((result) => {
       if (cancelled) return;
       setDiffData(result);

@@ -53,6 +53,28 @@ describe("pr export helpers", () => {
     ]);
   });
 
+  test("given the list's slim rows, when the field catalog is built, then their markers aren't offered as fields, nor exported", () => {
+    const helpers = createPrExportHelpers({ getPerPrUserStateFromPayload });
+    const payload = {
+      byPrNumber: {
+        "owner/repo#123": {
+          prNumber: "123",
+          repo: "owner/repo",
+          data: { title: "Feature", reviewThreads: [], detailSlim: true, detailVersion: "abc" },
+        },
+      },
+    };
+
+    expect(helpers.getFieldCatalog(payload).dataPaths).toEqual(["data.reviewThreads", "data.title", "prNumber", "repo"]);
+    const exported = helpers.buildExportPayload({
+      payload,
+      visiblePrKeys: ["owner/repo#123"],
+      selectedDataPaths: ["data.title", "data.detailSlim"],
+    });
+    expect(exported.prs[0].data).toEqual({ data: { title: "Feature" } });
+    expect(payload.byPrNumber["owner/repo#123"].data.detailSlim).toBe(true);
+  });
+
   test("getPrKeysInOpenSections returns only rows from expanded sections", () => {
     expect(
       getPrKeysInOpenSections([

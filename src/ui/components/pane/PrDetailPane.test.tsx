@@ -8,6 +8,7 @@ import { NotesDirtyContext } from '../../state/NotesDirtyContext';
 import { RepoLabelsContext } from '../../state/RepoLabelsContext';
 import type { PrEntry } from '../../types/pr-data.ts';
 import { PrDetailPane, type PrDetailPaneProps } from './PrDetailPane';
+import { clearPrDetailCache } from '../../state/usePrDetail';
 
 const baseEntry: PrEntry = {
   prNumber: '7',
@@ -464,6 +465,66 @@ describe('PrDetailPane', () => {
         expect(table.querySelectorAll('tr').length).toBeGreaterThan(1);
         expect(within(table).getAllByText(/No activity/).length).toBeGreaterThan(0);
       });
+    });
+  });
+
+  // The list's rows go without their comments' text (usePrDetail): the
+  // pane fetches it.
+  describe("a row without its detail text", () => {
+    const slimEntry: PrEntry = {
+      ...baseEntry,
+      data: {
+        ...baseEntry.data,
+        detailSlim: true,
+        detailVersion: 'v1',
+        reviewThreads: [{ id: 't1', isResolved: false, comments: [{ id: 'c1', authorLogin: 'hubot', createdAt: '2026-01-01T00:00:00Z' }] }],
+      },
+    };
+    const detailAnswer = {
+      ok: true,
+      detailVersion: 'v1',
+      detail: {
+        activityTimeline: [],
+        activityEvents: [],
+        commentEvents: [],
+        reviewThreads: [
+          { id: 't1', isResolved: false, comments: [{ id: 'c1', authorLogin: 'hubot', createdAt: '2026-01-01T00:00:00Z', body: 'Please handle the empty input' }] },
+        ],
+      },
+    };
+    let detailFails = false;
+
+    beforeEach(() => {
+      clearPrDetailCache();
+      detailFails = false;
+      global.fetch = jest.fn((input: string) => {
+        const url = String(input);
+        if (url.startsWith('/view-prs/pr-detail')) {
+          return Promise.resolve(
+            detailFails
+              ? ({ ok: false, status: 500, json: () => Promise.resolve({ ok: false, error: 'No' }) } as Response)
+              : ({ ok: true, status: 200, json: () => Promise.resolve(detailAnswer) } as Response),
+          );
+        }
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true }) } as Response);
+      }) as unknown as typeof fetch;
+    });
+
+    test('given the Conversations tab, when the detail arrives, then the comment text shows', async () => {
+      renderPane({ entry: slimEntry, tab: 'conversations' });
+      expect(await screen.findByText('Please handle the empty input')).toBeInTheDocument();
+      expect(global.fetch).toHaveBeenCalledWith('/view-prs/pr-detail?repo=owner%2Frepo&prNumber=7', expect.anything());
+    });
+
+    test("given the detail can't be fetched, then the pane says so, and Try again fetches it", async () => {
+      detailFails = true;
+      renderPane({ entry: slimEntry, tab: 'conversations' });
+      expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't load this PR's comment and commit text.");
+
+      detailFails = false;
+      await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+      expect(await screen.findByText('Please handle the empty input')).toBeInTheDocument();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
   });
 

@@ -24,6 +24,7 @@ import { createPrAuthorCellHelpers } from '../../helpers/pr-author-cell.helpers.
 import { buildPrEntryKey } from '../../helpers/pr-entry-keys.helpers.ts';
 import { useNotesDirty } from '../../state/NotesDirtyContext';
 import { useOptionalPrData } from '../../state/PrDataContext';
+import { usePrDetail } from '../../state/usePrDetail';
 import { useFocusTrap } from '../../state/useFocusTrap';
 import { getLabelName } from '../../helpers/pr-filter-label-extraction.helpers.ts';
 import { createPrStatusDisplayHelpers } from '../../helpers/pr-status-display.helpers.ts';
@@ -188,8 +189,11 @@ function PaneContent({
   activityFilters: ActivityFilters;
   onActivityFiltersChange: (filters: ActivityFilters) => void;
 }) {
-  const pr = useMemo(() => entry.data || {}, [entry.data]);
   const repo = entry.repo || fallbackRepo;
+  // The row with its comments' and commits' text, fetched for the pane
+  // (the list's rows go without it - usePrDetail).
+  const listRow = useMemo(() => entry.data || {}, [entry.data]);
+  const { pr, failed: detailFailed, retry: retryDetail } = usePrDetail(listRow, repo, prNumber);
   const ref = { prNumber, repo };
   const url = pr.url || `https://github.com/${repo}/pull/${prNumber}`;
   // This PR's repo's labels, not the current repo's, fetched when the
@@ -341,6 +345,15 @@ function PaneContent({
         />
         <IconButton icon="braces" label="View PR JSON details" onClick={() => onViewJson?.(ref, pr)} />
       </div>
+
+      {detailFailed && (
+        <p className="pr-pane-detail-error" role="alert">
+          Couldn't load this PR's comment and commit text.{' '}
+          <button type="button" className="ui-link-button" onClick={retryDetail}>
+            Try again
+          </button>
+        </p>
+      )}
 
       <Tabs
         label={`PR #${prNumber} details`}

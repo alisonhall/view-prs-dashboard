@@ -54,8 +54,12 @@ import { SavedItemsBar, SavedItemsManager } from '../ui/SavedItems';
 import { buildFieldTree } from '../../helpers/export-field-tree.helpers.ts';
 import { ExportFieldTree, fieldId, type FieldSource } from './ExportFieldTree';
 import { Button } from '../ui/Button';
+import { fetchPrDetailsInto } from '../../state/usePrDetail';
 
 const { getFieldCatalog, buildExportPayload } = createPrExportHelpers({ getPerPrUserStateFromPayload });
+
+// The fields whose text the list's rows go without (PrData.detailSlim).
+const DETAIL_FIELD_PATHS = ['data.activityTimeline', 'data.activityEvents', 'data.reviewThreads', 'data.commentEvents'];
 const { readUiSessionOverridesOrNull, writeUiSessionOverrides } = createPrUiOptionPersistenceHelpers({
   fetch: (input, init) => fetch(input, init),
 });
@@ -236,14 +240,18 @@ export function ExportSection() {
     return selected;
   };
 
-  const buildVisibleExportJson = () => {
+  const buildVisibleExportJson = async () => {
     const selected = getSelectedPaths();
     if (selected.dataPaths.length + selected.userStatePaths.length === 0) {
       throw new Error('Select at least one field before exporting.');
     }
 
+    // The list's rows go without their comments' and commits' text: a
+    // chosen detail field fetches it for the PRs exported.
+    const wantsDetail = selected.dataPaths.some((path) => DETAIL_FIELD_PATHS.some((field) => path === field || path.startsWith(`${field}.`)));
+    const source = wantsDetail ? await fetchPrDetailsInto(payload, prKeysInOpenSections) : payload;
     const exportPayload = buildExportPayload({
-      payload,
+      payload: source,
       visiblePrKeys: prKeysInOpenSections,
       selectedDataPaths: selected.dataPaths,
       selectedUserStatePaths: selected.userStatePaths,
@@ -256,7 +264,7 @@ export function ExportSection() {
   const handlePreview = async () => {
     await persistSelection();
     try {
-      const { jsonText, exportPayload } = buildVisibleExportJson();
+      const { jsonText, exportPayload } = await buildVisibleExportJson();
       setPreview(jsonText);
       setStatus(describeCount('Prepared', exportPayload));
     } catch (error) {
@@ -267,7 +275,7 @@ export function ExportSection() {
   const handleCopy = async () => {
     await persistSelection();
     try {
-      const { jsonText, exportPayload } = buildVisibleExportJson();
+      const { jsonText, exportPayload } = await buildVisibleExportJson();
       if (!navigator.clipboard?.writeText) {
         throw new Error('Clipboard API not available in this browser.');
       }
@@ -283,7 +291,7 @@ export function ExportSection() {
     let objectUrl = '';
     let anchor: HTMLAnchorElement | null = null;
     try {
-      const { jsonText, exportPayload } = buildVisibleExportJson();
+      const { jsonText, exportPayload } = await buildVisibleExportJson();
       if (typeof Blob === 'undefined' || !window.URL?.createObjectURL) {
         throw new Error('Download is not supported in this browser.');
       }

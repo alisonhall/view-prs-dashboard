@@ -69,6 +69,8 @@ const registerViewPrsPrRoutes = ({
   isRepoSlug,
   syncPrDiffForEntry,
   runInsightsHookScript,
+  // PRs' full detail fields by key (app.js's readViewPrsPrDetails).
+  readViewPrsPrDetails,
 }) => {
   const { sendSuccessPayload, sendInternalError, sendErrorStatus, sendRouteResult } =
     createViewPrsRouteResponseHelpers();
@@ -455,6 +457,45 @@ const registerViewPrsPrRoutes = ({
       res,
       result: buildDiffSyncRouteResult({ repo, prNumber, diffResult }),
     });
+  });
+
+  // A PR's full detail - the text the list's rows go without - for the
+  // detail pane, the expanded row's summary and the PR JSON window.
+  app.get(["/pr-detail", "/view-prs/pr-detail"], (req, res) => {
+    const repo = String(req.query?.repo || "").trim();
+    const prNumber = String(req.query?.prNumber || "").trim();
+    if (!isRepoSlug(repo) || !isValidPrNumber(prNumber)) {
+      sendErrorStatus({ res, statusCode: 400, error: "repo (owner/name) and prNumber are required" });
+      return;
+    }
+    try {
+      const found = Object.values(readViewPrsPrDetails([{ repo, prNumber }]))[0];
+      if (!found) {
+        sendErrorStatus({ res, statusCode: 404, error: `No stored PR ${repo}#${prNumber}` });
+        return;
+      }
+      sendSuccessPayload({ res, payload: { ok: true, ...found } });
+    } catch (error) {
+      sendInternalError({ res, error });
+    }
+  });
+
+  // Several PRs' full detail at once, for the export.
+  const MAX_DETAIL_PRS = 2000;
+  app.post(["/pr-details", "/view-prs/pr-details"], (req, res) => {
+    const prs = Array.isArray(req.body?.prs) ? req.body.prs : null;
+    if (!prs || prs.length > MAX_DETAIL_PRS) {
+      sendErrorStatus({ res, statusCode: 400, error: `prs must be a list of up to ${MAX_DETAIL_PRS} { repo, prNumber }` });
+      return;
+    }
+    const valid = prs
+      .map((pr) => ({ repo: String(pr?.repo || "").trim(), prNumber: String(pr?.prNumber || "").trim() }))
+      .filter(({ repo, prNumber }) => isRepoSlug(repo) && isValidPrNumber(prNumber));
+    try {
+      sendSuccessPayload({ res, payload: { ok: true, byPrKey: readViewPrsPrDetails(valid) } });
+    } catch (error) {
+      sendInternalError({ res, error });
+    }
   });
 
   app.get(["/insights-hook", "/view-prs/insights-hook"], async (req, res) => {

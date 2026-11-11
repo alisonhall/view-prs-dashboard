@@ -659,7 +659,9 @@ describe("integration behavior", () => {
     });
   });
 
-  test("hydrates heavy PR detail arrays from detailRef sidecar when GET /data is requested", async () => {
+  // The list's rows carry the detail without its text (the full rows were
+  // ~100 MB for 960 PRs); /pr-detail gives one PR's in full.
+  test("given a row with a detail file, when GET /data and GET /pr-detail are requested, then the list's row has the detail without its text and /pr-detail all of it", async () => {
     const app = require("../app.js");
     const originalEnqueuePrDiffRefreshForData = app.enqueuePrDiffRefreshForData;
     app.enqueuePrDiffRefreshForData = () => {};
@@ -671,10 +673,12 @@ describe("integration behavior", () => {
       detailFilePath,
       JSON.stringify(
         {
-          activityTimeline: [{ date: "2026-06-02", events: [] }],
-          activityEvents: [{ type: "comment", actor: "alice" }],
-          reviewThreads: [{ id: "thread-1", comments: [] }],
-          commentEvents: [{ channel: "thread", actor: "alice" }],
+          activityTimeline: [{ date: "2026-06-02", events: [{ type: "comment", actor: "alice", body: "Looks fine" }] }],
+          activityEvents: [{ type: "comment", actor: "alice", body: "Looks fine", url: "https://example.test/c1" }],
+          reviewThreads: [
+            { id: "thread-1", comments: [{ id: "c2", authorLogin: "alice", body: "@Bob can you check this?", createdAt: "2026-06-02T18:00:00Z" }] },
+          ],
+          commentEvents: [{ channel: "thread", actor: "alice", body: "@Bob can you check this?" }],
         },
         null,
         2,
@@ -748,14 +752,26 @@ describe("integration behavior", () => {
       expect(res.body.ok).toBe(true);
 
       const row = res.body?.byPrNumber?.[`owner/repo#${prNumber}`]?.data;
-      expect(Array.isArray(row?.activityTimeline)).toBe(true);
-      expect(Array.isArray(row?.activityEvents)).toBe(true);
-      expect(Array.isArray(row?.reviewThreads)).toBe(true);
-      expect(Array.isArray(row?.commentEvents)).toBe(true);
-      expect(row.activityTimeline).toHaveLength(1);
-      expect(row.activityEvents).toHaveLength(1);
-      expect(row.reviewThreads).toHaveLength(1);
-      expect(row.commentEvents).toHaveLength(1);
+      expect(row.detailSlim).toBe(true);
+      expect(row.detailVersion).toMatch(/^[0-9a-f]{16}$/);
+      expect(row.activityTimeline).toEqual([]);
+      expect(row.activityEvents).toEqual([{ type: "comment", actor: "alice" }]);
+      expect(row.commentEvents).toEqual([{ channel: "thread", actor: "alice" }]);
+      expect(row.reviewThreads).toEqual([
+        { id: "thread-1", comments: [{ id: "c2", authorLogin: "alice", createdAt: "2026-06-02T18:00:00Z", mentions: ["bob"] }] },
+      ]);
+
+      const detailRes = await request.get("/pr-detail").query({ repo: "owner/repo", prNumber });
+      expect(detailRes.status).toBe(200);
+      expect(detailRes.body.detailVersion).toBe(row.detailVersion);
+      expect(detailRes.body.detail.activityTimeline[0].events[0].body).toBe("Looks fine");
+      expect(detailRes.body.detail.reviewThreads[0].comments[0].body).toBe("@Bob can you check this?");
+      expect(detailRes.body.detail.commentEvents).toHaveLength(1);
+
+      const detailsRes = await request.post("/pr-details").send({ prs: [{ repo: "owner/repo", prNumber }, { repo: "owner/repo", prNumber: "999" }] });
+      expect(Object.keys(detailsRes.body.byPrKey)).toEqual([`owner/repo#${prNumber}`]);
+      expect((await request.get("/pr-detail").query({ repo: "owner/repo", prNumber: "999" })).status).toBe(404);
+      expect((await request.get("/pr-detail").query({ repo: "bad", prNumber })).status).toBe(400);
     } finally {
       app.enqueuePrDiffRefreshForData = originalEnqueuePrDiffRefreshForData;
     }

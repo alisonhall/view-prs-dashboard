@@ -96,6 +96,13 @@
   box-shadow: var(--shadow-drawer);
 }
 
+/* The PR's comment and commit text couldn't be fetched (usePrDetail). */
+.pr-pane-detail-error {
+  margin: 0 var(--space-4) var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-danger);
+}
+
 .pr-pane-header {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

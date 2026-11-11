@@ -66,7 +66,12 @@ const {
   buildViewPrsDataManifest,
   backupStamp,
 } = require("./helpers/view-prs-data-helpers");
-const { mergePrDetailFields } = require("./helpers/view-prs-pr-detail-storage");
+const {
+  mergePrDetailFields,
+  extractHeavyPrDetailFields,
+  slimPrDetailFields,
+  hasPrDetailContent,
+} = require("./helpers/view-prs-pr-detail-storage");
 const {
   applyLiveSummaryToEntry,
   findPrsWithChangedThreads,
@@ -728,19 +733,58 @@ const readViewPrsDetailPayload = (detailRef) => {
   return isObject(parsed) ? parsed : null;
 };
 
-const hydrateViewPrsEntryWithDetail = (entry) => {
+const hashDetailText = (text) => crypto.createHash("sha1").update(text).digest("hex").slice(0, 16);
+
+// A row with its detail fields from its detail file (or inline, in data
+// from before the files), and the detail's version: a hash of the file's
+// text, so a change to the text alone - an edited comment - moves the
+// row's version too, though the list's rows carry no text
+// (slimViewPrsEntry). Empty when the row has no detail.
+const loadViewPrsEntryDetail = (entry) => {
   if (!isObject(entry) || !isObject(entry.data)) {
-    return entry;
+    return { entry, detailVersion: "" };
   }
 
-  const detailPayload = readViewPrsDetailPayload(entry.data.detailRef);
-  if (!detailPayload) {
-    return entry;
+  const detailFilePath = resolveViewPrsDetailFilePath(entry.data.detailRef);
+  let detailText = "";
+  let detailPayload = null;
+  if (detailFilePath && fs.existsSync(detailFilePath)) {
+    try {
+      detailText = fs.readFileSync(detailFilePath, "utf8");
+      const parsed = JSON.parse(detailText);
+      detailPayload = isObject(parsed) ? parsed : null;
+    } catch (_error) {
+      detailPayload = null;
+    }
   }
 
+  if (detailPayload) {
+    return {
+      entry: { ...entry, data: mergePrDetailFields(entry.data, detailPayload) },
+      detailVersion: hashDetailText(detailText),
+    };
+  }
+  return {
+    entry,
+    detailVersion: hasPrDetailContent(entry.data)
+      ? hashDetailText(JSON.stringify(extractHeavyPrDetailFields(entry.data)))
+      : "",
+  };
+};
+
+const hydrateViewPrsEntryWithDetail = (entry) => loadViewPrsEntryDetail(entry).entry;
+
+// A row as the list sends it: its detail fields without their text
+// (slimPrDetailFields), marked so the page fetches the rest
+// (/view-prs/pr-detail) where it shows one PR in full. The full rows were
+// ~100 MB for 960 PRs, most of it text the table never shows.
+const slimViewPrsEntry = (entry, detailVersion) => {
+  if (!detailVersion || !isObject(entry) || !isObject(entry.data)) {
+    return entry;
+  }
   return {
     ...entry,
-    data: mergePrDetailFields(entry.data, detailPayload),
+    data: { ...slimPrDetailFields(entry.data), detailSlim: true, detailVersion },
   };
 };
 
@@ -1656,6 +1700,7 @@ const readViewPrsData = () => {
     );
     const pendingUpdateKeys = getPendingUpdatePrNumberKeys();
     const liveSummaryByRepo = readLiveSummary().byRepo;
+    const detailVersionByKey = new Map();
     const byPrNumber = Object.fromEntries(
       Object.entries(byPrNumberRaw)
         .filter(([, entry]) => !isViewPrsFixtureRow(entry))
@@ -1663,8 +1708,10 @@ const readViewPrsData = () => {
           if (!isObject(entry)) {
             return [key, entry];
           }
+          const { entry: withDetail, detailVersion } = loadViewPrsEntryDetail(entry);
+          if (detailVersion) detailVersionByKey.set(key, detailVersion);
           const hydratedEntry = applyLiveSummaryToEntry(
-            hydrateViewPrsEntryWithDetail(entry),
+            withDetail,
             liveSummaryByRepo[toTrimmedString(entry.repo)],
           );
           const notes = mergedUserState.notesByPrNumber[key];
@@ -1707,7 +1754,12 @@ const readViewPrsData = () => {
         byPrNumber[key] = buildNotesOnlyMergedEntry(prNumber, notes, repo);
       },
     );
+    // Names from the full detail (thread comments, the timeline), before
+    // the rows lose it.
     const actorMaps = buildViewPrsActorMaps(byPrNumber);
+    detailVersionByKey.forEach((detailVersion, key) => {
+      if (byPrNumber[key]) byPrNumber[key] = slimViewPrsEntry(byPrNumber[key], detailVersion);
+    });
     return {
       byPrNumber,
       lastRun: parsed.lastRun || null,
@@ -1751,6 +1803,32 @@ const readViewPrsData = () => {
       readError: error.message,
     };
   }
+};
+
+// PRs' full detail fields (the text the list's rows go without), by key,
+// with each one's version - as the list's rows have it, so the page knows
+// when what it holds is out of date. Reads the data file once for them all.
+const readViewPrsPrDetails = (prs = []) => {
+  const result = {};
+  if (!fs.existsSync(viewPrsDataFile) || !Array.isArray(prs) || prs.length === 0) return result;
+  const parsed = readJsonFileIfExists(viewPrsDataFile, {});
+  const byPrNumberRaw = normalizePrEntryKeys(parsed?.byPrNumber || {});
+  prs.forEach(({ repo, prNumber } = {}) => {
+    const safeRepo = toTrimmedString(repo);
+    const safePrNumber = toTrimmedString(prNumber);
+    if (!safeRepo || !safePrNumber) return;
+    const key = findPrEntryKey(byPrNumberRaw, safeRepo, safePrNumber);
+    const entry = byPrNumberRaw[key];
+    if (!isObject(entry) || toTrimmedString(entry.repo) !== safeRepo) return;
+    const { entry: withDetail, detailVersion } = loadViewPrsEntryDetail(entry);
+    result[buildPrEntryKey(safeRepo, safePrNumber)] = {
+      repo: safeRepo,
+      prNumber: safePrNumber,
+      detailVersion,
+      detail: extractHeavyPrDetailFields(withDetail?.data || {}),
+    };
+  });
+  return result;
 };
 
 // The data file's stats and the version the page polls. Cheap (two stats
@@ -3918,6 +3996,7 @@ const createViewPrsApp = ({ production = isProductionEnv } = {}) => {
     isRepoSlug,
     syncPrDiffForEntry,
     runInsightsHookScript: callRunInsightsHookScript,
+    readViewPrsPrDetails,
   });
 
   registerViewPrsDataRoutes({

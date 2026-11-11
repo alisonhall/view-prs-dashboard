@@ -100,6 +100,19 @@ describe('isWaitingOnViewer (an unresolved thread you took part in, answered by 
     expect(isWaitingOnViewer(t, 'me')).toBe(false);
   });
 
+  // The list's rows have no comment bodies: the server keeps the logins
+  // each comment mentions instead.
+  test('in a row without comment bodies, the logins the server found say whether your reply mentions you', () => {
+    const slim = (extra: Record<string, unknown>) => {
+      const { body: _body, ...rest } = comment('me', '2026-01-02T00:00:00Z', extra);
+      return rest;
+    };
+    const first = comment('author', '2026-01-01T00:00:00Z');
+    expect(isWaitingOnViewer(thread('t', [first, slim({ mentions: ['me'] })]), 'Me')).toBe(true);
+    expect(isWaitingOnViewer(thread('t', [first, slim({ mentions: ['someone'] })]), 'me')).toBe(false);
+    expect(isWaitingOnViewer(thread('t', [first, slim({})]), 'me')).toBe(false);
+  });
+
   test('your unsubmitted draft reply does not answer it', () => {
     const t = thread('t', [
       comment('me', '2026-01-01T00:00:00Z'),

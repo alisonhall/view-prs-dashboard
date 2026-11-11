@@ -139,6 +139,14 @@ const createPrExportHelpers = ({ getPerPrUserStateFromPayload }: PrExportDeps) =
 
     const copy = { ...entry };
     delete copy.notes;
+    // The list's markers for a row without its detail text (usePrDetail),
+    // not data of the PR's.
+    if (isPlainObject(copy.data) && ("detailSlim" in copy.data || "detailVersion" in copy.data)) {
+      const data = { ...copy.data };
+      delete data.detailSlim;
+      delete data.detailVersion;
+      copy.data = data;
+    }
     return copy;
   };
 
