@@ -968,6 +968,10 @@ on_script_exit() {
   set_current_shell_pid
   [[ "$PR_STATE_LOCK_HOLDER" == "$CURRENT_SHELL_PID" ]] && release_pr_state_lock
   [[ "$USER_STATE_LOCK_HOLDER" == "$CURRENT_SHELL_PID" ]] && release_user_state_lock
+  # Rows a stopped run had fetched but not yet saved (queue_pr_state_row).
+  if [[ "$CURRENT_SHELL_PID" == "${MAIN_SHELL_PID:-}" && "${PR_STATE_QUEUE_COUNT:-0}" -gt 0 ]]; then
+    flush_pr_state_rows || true
+  fi
   if [[ "$CURRENT_SHELL_PID" == "${MAIN_SHELL_PID:-}" && ${#EXIT_CLEANUP_PATHS[@]} -gt 0 ]]; then
     rm -rf "${EXIT_CLEANUP_PATHS[@]}"
   fi
@@ -1051,6 +1055,54 @@ with_user_state_lock() {
   return "$rc"
 }
 
+# How a row is saved (upsert_pr_state_unlocked's comment says why each
+# field is as it is), as a jq function: $row the row, $section its section,
+# $rowOrder its place in the run, $now when it was fetched. Needs $repo,
+# $updatedAt (the run's start) and $targeted, and PR_KEY_JQ before it. One
+# row (upsert_pr_state) or a run's queued rows in one pass
+# (flush_pr_state_rows) save the same.
+UPSERT_ROW_JQ='
+def upsert_row($row; $section; $rowOrder; $now):
+  ($row.number | tostring) as $number |
+  pr_key($repo; $number) as $key |
+  .byPrNumber //= {} |
+  ([pr_row($repo; $number)] | first // {}) as $existing |
+  (if ((.byPrNumber[$number].repo // "") == $repo) then del(.byPrNumber[$number]) else . end) |
+  (
+    (.lastFullRunByRepo // {})[$repo]
+    // ((.lastFullRun // .lastRun) | select(type == "object" and (.repo // "") == $repo))
+    // null
+  ) as $repoFullRun |
+  ($existing.updatedAt // $repoFullRun.updatedAt // null) as $existingUpdatedAt |
+  .byPrNumber[$key] = (($existing | del(.notes)) + {
+    prNumber: $number,
+    repo: $repo,
+    section: $section,
+    updatedAt: (if $targeted then ($existingUpdatedAt // $updatedAt) else $updatedAt end),
+    fetchedAt: (if $row.__reused == true then $existing.fetchedAt else $now end),
+    ciFetchedAt: (
+      if $row.__reused != true or $row.__ciFetched == true then $now
+      else ($existing.ciFetchedAt // $existing.fetchedAt)
+      end
+    ),
+    rowOrder: (($existing.rowOrder // $rowOrder)),
+    data: ($row | del(.__reused, .__ciFetched))
+  }) |
+  .lastFullRun = (if $targeted then (.lastFullRun // .lastRun) else {
+    repo: $repo,
+    updatedAt: $updatedAt
+  } end) |
+  .lastRun = {
+    repo: $repo,
+    updatedAt: $updatedAt
+  } |
+  .lastFullRunByRepo = (
+    (.lastFullRunByRepo // {})
+    | .[$repo] = ((if $targeted then $repoFullRun else null end) // {repo: $repo, updatedAt: $updatedAt})
+  ) |
+  .lastRunByRepo = ((.lastRunByRepo // {}) | .[$repo] = {repo: $repo, updatedAt: $updatedAt});
+'
+
 upsert_pr_state_unlocked() {
   local row_json="$1"
   local section="$2"
@@ -1097,47 +1149,8 @@ upsert_pr_state_unlocked() {
     --argjson rowOrder "$RUN_ROW_INDEX" \
     --argjson targeted "$targeted" \
     --slurpfile row_file "$row_file" \
-    "$PR_KEY_JQ"'
-      ($row_file[0] // {}) as $row |
-      ($row.number | tostring) as $number |
-      pr_key($repo; $number) as $key |
-      (now | todate) as $now |
-      .byPrNumber //= {} |
-      ([pr_row($repo; $number)] | first // {}) as $existing |
-      (if ((.byPrNumber[$number].repo // "") == $repo) then del(.byPrNumber[$number]) else . end) |
-      (
-        (.lastFullRunByRepo // {})[$repo]
-        // ((.lastFullRun // .lastRun) | select(type == "object" and (.repo // "") == $repo))
-        // null
-      ) as $repoFullRun |
-      ($existing.updatedAt // $repoFullRun.updatedAt // null) as $existingUpdatedAt |
-      .byPrNumber[$key] = (($existing | del(.notes)) + {
-        prNumber: $number,
-        repo: $repo,
-        section: $section,
-        updatedAt: (if $targeted then ($existingUpdatedAt // $updatedAt) else $updatedAt end),
-        fetchedAt: (if $row.__reused == true then $existing.fetchedAt else $now end),
-        ciFetchedAt: (
-          if $row.__reused != true or $row.__ciFetched == true then $now
-          else ($existing.ciFetchedAt // $existing.fetchedAt)
-          end
-        ),
-        rowOrder: (($existing.rowOrder // $rowOrder)),
-        data: ($row | del(.__reused, .__ciFetched))
-      }) |
-      .lastFullRun = (if $targeted then (.lastFullRun // .lastRun) else {
-        repo: $repo,
-        updatedAt: $updatedAt
-      } end) |
-      .lastRun = {
-        repo: $repo,
-        updatedAt: $updatedAt
-      } |
-      .lastFullRunByRepo = (
-        (.lastFullRunByRepo // {})
-        | .[$repo] = ((if $targeted then $repoFullRun else null end) // {repo: $repo, updatedAt: $updatedAt})
-      ) |
-      .lastRunByRepo = ((.lastRunByRepo // {}) | .[$repo] = {repo: $repo, updatedAt: $updatedAt})
+    "$PR_KEY_JQ$UPSERT_ROW_JQ"'
+      upsert_row(($row_file[0] // {}); $section; $rowOrder; (now | todate))
     ' "$PR_STATE_FILE" >"$tmp" || [[ ! -s "$tmp" ]]; then
     rm -f "$row_file" "$tmp"
     echo "Refusing to replace $PR_STATE_FILE: couldn't add row" >&2
@@ -1151,6 +1164,113 @@ upsert_pr_state() {
   local row_json="$1"
   local section="$2"
   with_pr_state_lock upsert_pr_state_unlocked "$row_json" "$section"
+}
+
+# A run's rows, saved together: upsert_pr_state rewrites the whole data
+# file for each row (25 MB for 960 PRs), so a run's cost grew with the
+# square of the PRs it saved. queue_pr_state_row adds a row (one JSON line
+# each: its section, place in the run, when it was fetched, and the row) to
+# a file - not an argument, as a row can be over the 128 KB one can hold -
+# and flush_pr_state_rows saves them in one pass, under the lock. Saved
+# every VIEW_PRS_SAVE_BATCH_ROWS rows or VIEW_PRS_SAVE_BATCH_SECONDS
+# seconds, whichever comes first, so the page still shows a run's rows as
+# they come and a stopped run keeps most of its work (the exit trap saves
+# the rest: on_script_exit); and before anything reads the rows back.
+PR_STATE_QUEUE_FILE=''
+PR_STATE_QUEUE_COUNT=0
+PR_STATE_QUEUE_STARTED=0
+PR_STATE_QUEUE_FLUSHING=0
+
+queue_pr_state_row() {
+  local row_json="$1"
+  local section="$2"
+  local max_rows="${VIEW_PRS_SAVE_BATCH_ROWS:-10}"
+  local max_seconds="${VIEW_PRS_SAVE_BATCH_SECONDS:-5}"
+  [[ "$max_rows" =~ ^[0-9]+$ && "$max_rows" -gt 0 ]] || max_rows=10
+  [[ "$max_seconds" =~ ^[0-9]+$ ]] || max_seconds=5
+
+  if [[ -z "$PR_STATE_QUEUE_FILE" ]]; then
+    PR_STATE_QUEUE_FILE=$(mktemp)
+    if [[ -n "${MAIN_SHELL_PID:-}" ]]; then
+      EXIT_CLEANUP_PATHS+=("$PR_STATE_QUEUE_FILE")
+    fi
+  fi
+  [[ "$PR_STATE_QUEUE_COUNT" -eq 0 ]] && PR_STATE_QUEUE_STARTED=$SECONDS
+
+  if ! printf '%s' "$row_json" | jq -c \
+    --arg section "$section" \
+    --argjson rowOrder "$RUN_ROW_INDEX" \
+    --arg fetchedAt "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+    '{section: $section, rowOrder: $rowOrder, fetchedAt: $fetchedAt, row: .}' >>"$PR_STATE_QUEUE_FILE"; then
+    echo "Couldn't queue a row to save; saving it on its own" >&2
+    upsert_pr_state "$row_json" "$section"
+    return
+  fi
+  PR_STATE_QUEUE_COUNT=$((PR_STATE_QUEUE_COUNT + 1))
+
+  if ((PR_STATE_QUEUE_COUNT >= max_rows || SECONDS - PR_STATE_QUEUE_STARTED >= max_seconds)); then
+    # Without the lock they stay queued, and the run goes on.
+    flush_pr_state_rows || true
+  fi
+}
+
+flush_pr_state_rows_unlocked() {
+  local tmp targeted=false
+  is_targeted_run && targeted=true
+  tmp=$(state_file_tmp_path "$PR_STATE_FILE")
+  if ! jq \
+    --arg repo "$REPO" \
+    --arg updatedAt "$RUN_TS" \
+    --argjson targeted "$targeted" \
+    --slurpfile queued "$PR_STATE_QUEUE_FILE" \
+    "$PR_KEY_JQ$UPSERT_ROW_JQ"'
+      reduce $queued[] as $item (.; upsert_row(($item.row // {}); $item.section; $item.rowOrder; $item.fetchedAt))
+    ' "$PR_STATE_FILE" >"$tmp" || [[ ! -s "$tmp" ]]; then
+    rm -f "$tmp"
+    echo "Couldn't add $PR_STATE_QUEUE_COUNT row(s) to $PR_STATE_FILE together; saving them one by one" >&2
+    # 2, not 1: the lock was had (with_pr_state_lock's 1 is not getting it).
+    return 2
+  fi
+  command mv -f "$tmp" "$PR_STATE_FILE"
+}
+
+# The queued rows saved one by one (upsert_pr_state), each in its place in
+# the run: when the batch couldn't be, a row that can't be saved loses only
+# itself.
+flush_pr_state_rows_one_by_one() {
+  local line row section saved_index="$RUN_ROW_INDEX"
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ -n "$line" ]] || continue
+    row=$(printf '%s' "$line" | jq -c '.row // empty' 2>/dev/null) || continue
+    section=$(printf '%s' "$line" | jq -r '.section // empty' 2>/dev/null) || continue
+    [[ -n "$row" && -n "$section" ]] || continue
+    RUN_ROW_INDEX=$(printf '%s' "$line" | jq -r '.rowOrder // 0' 2>/dev/null || printf '%s' "$saved_index")
+    upsert_pr_state "$row" "$section" || true
+  done <"$PR_STATE_QUEUE_FILE"
+  RUN_ROW_INDEX="$saved_index"
+}
+
+# Saves the queued rows (none queued: nothing to do). Without the lock (it
+# waits ~5s, and another writer can hold it about that long on a large
+# file) the rows stay queued, for the next save to try again; when the
+# batch fails, they're saved one by one. Returns 1 when they're still
+# queued.
+flush_pr_state_rows() {
+  [[ "$PR_STATE_QUEUE_COUNT" -gt 0 && -n "$PR_STATE_QUEUE_FILE" ]] || return 0
+  ((PR_STATE_QUEUE_FLUSHING == 0)) || return 0
+  PR_STATE_QUEUE_FLUSHING=1
+  local rc=0
+  with_pr_state_lock flush_pr_state_rows_unlocked || rc=$?
+  if [[ "$rc" -eq 1 ]]; then
+    echo "Couldn't get the lock to save $PR_STATE_QUEUE_COUNT row(s); they stay queued for the next save" >&2
+    PR_STATE_QUEUE_FLUSHING=0
+    return 1
+  fi
+  [[ "$rc" -eq 0 ]] || flush_pr_state_rows_one_by_one
+  : >"$PR_STATE_QUEUE_FILE"
+  PR_STATE_QUEUE_COUNT=0
+  PR_STATE_QUEUE_FLUSHING=0
+  return 0
 }
 
 # A full run's records of its repo's run, which each row it saves writes
@@ -2309,12 +2429,14 @@ reconcile_missing_open_rows() {
     fi
 
     RUN_ROW_INDEX=$((RUN_ROW_INDEX + 1))
-    upsert_pr_state "$row_json" "$fresh_section"
+    queue_pr_state_row "$row_json" "$fresh_section"
     RECONCILED_MISSING_OPEN_COUNT=$((RECONCILED_MISSING_OPEN_COUNT + 1))
 
     limit=$((limit - 1))
   done <"$stale_tmp"
 
+  # Saved before the listings' loops, which may come to these PRs again.
+  flush_pr_state_rows || true
   debug_log "reconciled_missing_open_rows=$RECONCILED_MISSING_OPEN_COUNT"
 
   rm -f "$current_open_tmp" "$stale_tmp"
@@ -3485,7 +3607,7 @@ main() {
     baseline=$(printf '%s' "$row_json" | jq -r '.baseline')
 
     RUN_ROW_INDEX=$((RUN_ROW_INDEX + 1))
-    upsert_pr_state "$row_json" 'open'
+    queue_pr_state_row "$row_json" 'open'
 
     if ! row_passes_display_filters "$row_json"; then
       continue
@@ -3538,7 +3660,7 @@ main() {
     baseline=$(printf '%s' "$row_json" | jq -r '.baseline')
 
     RUN_ROW_INDEX=$((RUN_ROW_INDEX + 1))
-    upsert_pr_state "$row_json" 'draft'
+    queue_pr_state_row "$row_json" 'draft'
 
     if ! row_passes_display_filters "$row_json"; then
       continue
@@ -3579,7 +3701,7 @@ main() {
     fi
 
     RUN_ROW_INDEX=$((RUN_ROW_INDEX + 1))
-    upsert_pr_state "$row_json" 'closed'
+    queue_pr_state_row "$row_json" 'closed'
 
     if ! row_passes_display_filters "$row_json"; then
       continue
@@ -3605,7 +3727,7 @@ main() {
     fi
 
     RUN_ROW_INDEX=$((RUN_ROW_INDEX + 1))
-    upsert_pr_state "$row_json" 'merged'
+    queue_pr_state_row "$row_json" 'merged'
 
     if ! row_passes_display_filters "$row_json"; then
       continue
@@ -3617,6 +3739,8 @@ main() {
   done <<<"$merged_prs_b64"
 
   [[ "$merged_printed" -eq 0 ]] && echo '(none)'
+
+  flush_pr_state_rows || true
 
   if ((RUN_ROW_INDEX == 0)) && ! is_targeted_run; then
     with_pr_state_lock record_repo_full_run_unlocked || exit 1

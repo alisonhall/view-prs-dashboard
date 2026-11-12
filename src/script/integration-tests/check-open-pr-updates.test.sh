@@ -1139,6 +1139,104 @@ JSON
   REPO='owner/repo'
 }
 
+# A run saves its rows in groups (queue_pr_state_row, flush_pr_state_rows):
+# rewriting the whole data file for each row made a run's cost grow with
+# the square of the PRs it saved.
+run_batched_save_tests() {
+  source "$SCRIPT_PATH"
+
+  REPO='owner/repo'
+  RUN_TS='2026-03-12T22:00:00Z'
+  local base='{"byPrNumber":{"owner/repo#123":{"prNumber":"123","repo":"owner/repo","section":"open","updatedAt":"2026-03-12T21:00:00Z","rowOrder":3,"data":{"number":"123","title":"Existing"}}},"lastRun":null}'
+  local one_by_one="$TEST_TMP/batched-one-by-one.json"
+  local queued="$TEST_TMP/batched-queued.json"
+  printf '%s' "$base" >"$one_by_one"
+  printf '%s' "$base" >"$queued"
+
+  # The same rows saved one by one, then queued and saved together.
+  PR_STATE_FILE="$one_by_one"
+  PR_STATE_LOCK_DIR="$TEST_TMP/batched-one-by-one.lock"
+  RUN_ROW_INDEX=1
+  upsert_pr_state "$(jq -cn '{number:"123", title:"Updated"}')" 'open'
+  RUN_ROW_INDEX=2
+  upsert_pr_state "$(jq -cn '{number:"456", title:"New"}')" 'merged'
+
+  PR_STATE_FILE="$queued"
+  PR_STATE_LOCK_DIR="$TEST_TMP/batched-queued.lock"
+  VIEW_PRS_SAVE_BATCH_ROWS=10
+  VIEW_PRS_SAVE_BATCH_SECONDS=600
+  RUN_ROW_INDEX=1
+  queue_pr_state_row "$(jq -cn '{number:"123", title:"Updated"}')" 'open'
+  RUN_ROW_INDEX=2
+  queue_pr_state_row "$(jq -cn '{number:"456", title:"New"}')" 'merged'
+  assert_eq "$(cat "$queued")" "$base" 'queued rows should not be saved before the batch is'
+  assert_eq "$PR_STATE_QUEUE_COUNT" '2' 'both rows should be queued'
+
+  flush_pr_state_rows
+  assert_eq "$PR_STATE_QUEUE_COUNT" '0' 'saving the batch should empty the queue'
+  local without_times='del(.byPrNumber[].fetchedAt, .byPrNumber[].ciFetchedAt)'
+  assert_eq "$(jq -cS "$without_times" "$queued")" "$(jq -cS "$without_times" "$one_by_one")" 'a batch should save the rows as saving them one by one does'
+  local fetched_at
+  fetched_at=$(jq -r '.byPrNumber["owner/repo#456"].fetchedAt' "$queued")
+  assert_true "[[ \"$fetched_at\" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\$ && \"$fetched_at\" > '2026-03-12T22:00:00Z' ]]" 'a queued row should be stamped with when it was fetched'
+  assert_eq "$(jq -r '.byPrNumber["owner/repo#123"].rowOrder' "$queued")" '3' 'an existing row should keep its order'
+  assert_eq "$(jq -r '.byPrNumber["owner/repo#456"].rowOrder' "$queued")" '2' 'a new row should take its place in the run'
+
+  # Nothing queued: nothing written.
+  local before
+  before=$(cat "$queued")
+  flush_pr_state_rows
+  assert_eq "$(cat "$queued")" "$before" 'saving an empty batch should change nothing'
+
+  # The batch is saved once it has VIEW_PRS_SAVE_BATCH_ROWS rows.
+  VIEW_PRS_SAVE_BATCH_ROWS=2
+  queue_pr_state_row "$(jq -cn '{number:"7", title:"Seven"}')" 'open'
+  assert_eq "$(jq -r '.byPrNumber | has("owner/repo#7")' "$queued")" 'false' 'one row of two should wait'
+  queue_pr_state_row "$(jq -cn '{number:"8", title:"Eight"}')" 'open'
+  assert_eq "$(jq -r '[.byPrNumber["owner/repo#7", "owner/repo#8"].data.title] | join(",")' "$queued")" 'Seven,Eight' 'the second row should save the batch'
+
+  # ...or once its first row has waited VIEW_PRS_SAVE_BATCH_SECONDS.
+  VIEW_PRS_SAVE_BATCH_ROWS=10
+  VIEW_PRS_SAVE_BATCH_SECONDS=0
+  queue_pr_state_row "$(jq -cn '{number:"9", title:"Nine"}')" 'open'
+  assert_eq "$(jq -r '.byPrNumber["owner/repo#9"].data.title' "$queued")" 'Nine' 'a row queued after the time limit should be saved at once'
+
+  # A run that stops saves what's still queued (on_script_exit).
+  VIEW_PRS_SAVE_BATCH_SECONDS=600
+  queue_pr_state_row "$(jq -cn '{number:"10", title:"Ten"}')" 'open'
+  set_current_shell_pid
+  local old_main="${MAIN_SHELL_PID:-}"
+  MAIN_SHELL_PID=$CURRENT_SHELL_PID
+  EXIT_CLEANUP_PATHS=()
+  on_script_exit
+  MAIN_SHELL_PID="$old_main"
+  assert_eq "$(jq -r '.byPrNumber["owner/repo#10"].data.title' "$queued")" 'Ten' 'a stopped run should save the rows it had queued'
+  assert_eq "$PR_STATE_QUEUE_COUNT" '0' 'the exit should empty the queue'
+
+  # Without the lock (another live writer holds it), the rows stay queued
+  # and the next save tries again.
+  queue_pr_state_row "$(jq -cn '{number:"11", title:"Eleven"}')" 'open'
+  mkdir "$PR_STATE_LOCK_DIR"
+  write_lock_metadata "$PR_STATE_LOCK_DIR"
+  local rc=0
+  flush_pr_state_rows 2>/dev/null || rc=$?
+  assert_eq "$rc" '1' 'a save without the lock should say the rows are still queued'
+  assert_eq "$PR_STATE_QUEUE_COUNT" '1' 'rows a save could not get the lock for should stay queued'
+  assert_eq "$(jq -r '.byPrNumber | has("owner/repo#11")' "$queued")" 'false' 'nothing should be written without the lock'
+  rm -rf "$PR_STATE_LOCK_DIR"
+  flush_pr_state_rows
+  assert_eq "$(jq -r '.byPrNumber["owner/repo#11"].data.title' "$queued")" 'Eleven' 'the next save should write the rows kept queued'
+
+  # A batch that can't be saved (here a row jq can't take) is saved one by
+  # one, so only that row is lost.
+  queue_pr_state_row '"not a row"' 'open'
+  queue_pr_state_row "$(jq -cn '{number:"12", title:"Twelve"}')" 'open'
+  flush_pr_state_rows 2>/dev/null
+  assert_eq "$(jq -r '.byPrNumber["owner/repo#12"].data.title' "$queued")" 'Twelve' 'a good row should be saved when its batch could not be'
+  assert_eq "$PR_STATE_QUEUE_COUNT" '0' 'saving one by one should empty the queue'
+  unset VIEW_PRS_SAVE_BATCH_ROWS VIEW_PRS_SAVE_BATCH_SECONDS
+}
+
 run_fetch_threads_pagination_tests() {
   source "$SCRIPT_PATH"
 
@@ -1648,6 +1746,7 @@ run_all_tests() {
   run_quick_check_tests
   run_quick_check_numbers_tests
   run_row_order_stability_tests
+  run_batched_save_tests
   run_targeted_prs_tests
   run_unfetched_pr_tests
   run_row_reuse_tests
