@@ -26,6 +26,7 @@ const DATA_GITIGNORE = `# What the dashboard fetches again or keeps changing (RE
 # Authors comments, People (actors.json), settings (user-defaults.json) and
 # sources.
 check-open-pr-updates.data.json
+check-open-pr-updates.data.archive.json
 check-open-pr-updates.live-summary.json
 check-open-pr-updates.scheduler.json
 action-log.json

@@ -57,6 +57,8 @@ const registerViewPrsPrRoutes = ({
   normalizeAuthorCommentSentiment,
   fs,
   viewPrsDataFile,
+  // Archived PRs' rows (app-config.js): notes can be saved for them too.
+  viewPrsArchiveFile,
   viewPrsAuthorCommentsFile,
   normalizeViewPrsAuthorComments,
   updateViewPrsUserState,
@@ -64,6 +66,8 @@ const registerViewPrsPrRoutes = ({
   writeViewPrsAuthorComments,
   appendActionLogEntry,
   readViewPrsData,
+  // With the archived rows, for looking up a PR the page has from the archive.
+  readViewPrsDataWithArchive = readViewPrsData,
   // A login's person's id (ignoring case), an id as it is (actors.json).
   resolveActorKey,
   isRepoSlug,
@@ -154,7 +158,18 @@ const registerViewPrsPrRoutes = ({
       // The PR by repo and number (two repos can each have a PR with this
       // number); without a repo (an older page), the row with this number.
       const repo = String(body.repo || "").trim();
-      const rows = normalizePrEntryKeys(data.byPrNumber || {});
+      // An archived PR's row too (the data file's, for a PR in both).
+      // An archive that can't be read: without it, so notes for the other PRs
+      // still save.
+      let archived = {};
+      if (viewPrsArchiveFile && fs.existsSync(viewPrsArchiveFile)) {
+        try {
+          archived = normalizePrEntryKeys(JSON.parse(fs.readFileSync(viewPrsArchiveFile, "utf8"))?.byPrNumber || {});
+        } catch (_error) {
+          archived = {};
+        }
+      }
+      const rows = { ...archived, ...normalizePrEntryKeys(data.byPrNumber || {}) };
       const rowKey = repo
         ? findPrEntryKey(rows, repo, prNumber)
         : Object.keys(rows).find((key) => prNumberFromKey(key) === String(prNumber));
@@ -442,7 +457,7 @@ const registerViewPrsPrRoutes = ({
   app.get(["/diff", "/view-prs/diff"], async (req, res) => {
     const diffRequestResult = resolveDiffRequestResult({
       query: req.query,
-      byPrNumber: readViewPrsData()?.byPrNumber,
+      byPrNumber: readViewPrsDataWithArchive()?.byPrNumber,
     });
 
     if (!diffRequestResult.ok) {
@@ -501,7 +516,7 @@ const registerViewPrsPrRoutes = ({
   app.get(["/insights-hook", "/view-prs/insights-hook"], async (req, res) => {
     const insightsHookRequestResult = resolveDiffRequestResult({
       query: req.query,
-      byPrNumber: readViewPrsData()?.byPrNumber,
+      byPrNumber: readViewPrsDataWithArchive()?.byPrNumber,
     });
 
     if (!insightsHookRequestResult.ok) {

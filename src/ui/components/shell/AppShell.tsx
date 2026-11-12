@@ -1,5 +1,7 @@
 import { Suspense, lazy, useEffect, useRef, type ReactNode, type RefObject } from 'react';
 import { usePrData } from '../../state/PrDataContext';
+import { usePrArchive, WithArchivedRows } from '../../state/PrArchiveContext';
+import { reviewStatsReachesArchive } from '../../helpers/pr-archive.helpers';
 import { type TabPanelId, useHasTabPanelBeenVisible, useIsTabPanelVisible } from '../../state/useIsTabPanelVisible';
 import { useMultiSelectDropdownClosing } from '../../state/useMultiSelectDropdownClosing';
 import { AuthorInsightsProvider } from '../AuthorInsightsProvider';
@@ -119,6 +121,25 @@ function PrTable() {
  * Authors each have one Provider for all their parts (they used to be
  * separate portals, each with its own).
  */
+// The table's archived PRs: those of the Closed and Merged sections whose
+// "Show older" was pressed.
+function TableArchiveScope({ children }: { children: ReactNode }) {
+  const { shownSections } = usePrArchive();
+  return (
+    <WithArchivedRows include={shownSections.size > 0} sections={shownSections}>
+      {children}
+    </WithArchivedRows>
+  );
+}
+
+// Review stats' archived PRs: when its dates reach back past the newest
+// one (or it has no start date).
+function ReviewStatsArchiveScope({ children }: { children: ReactNode }) {
+  const { statsViewState } = usePrData();
+  const { summary } = usePrArchive();
+  return <WithArchivedRows include={reviewStatsReachesArchive(summary, statsViewState?.startDate)}>{children}</WithArchivedRows>;
+}
+
 export function AppShell() {
   // Outside clicks close the filter dropdowns.
   useMultiSelectDropdownClosing();
@@ -145,14 +166,17 @@ export function AppShell() {
 
       <div className="data-tabs" id="data-tabs">
         <TabPanel id="tab-panel-pr-data" labelledBy="tab-pr-data">
-          <DataViewHeader />
-          <div id="pr-sections" role="region" aria-label="Pull requests">
-            <PrTable />
-          </div>
+          <TableArchiveScope>
+            <DataViewHeader />
+            <div id="pr-sections" role="region" aria-label="Pull requests">
+              <PrTable />
+            </div>
+          </TableArchiveScope>
         </TabPanel>
 
         <TabPanel id="tab-panel-review-stats" labelledBy="tab-review-stats">
           <LazyView id="tab-panel-review-stats">
+            <ReviewStatsArchiveScope>
             <ReviewStatsProvider>
               <div id="pr-stats">
                 <ViewHeading
@@ -167,13 +191,16 @@ export function AppShell() {
                 </div>
               </div>
             </ReviewStatsProvider>
+            </ReviewStatsArchiveScope>
           </LazyView>
         </TabPanel>
 
         <TabPanel id="tab-panel-author-insights" labelledBy="tab-author-insights">
           <LazyView id="tab-panel-author-insights">
             {/* The selected author's data; AuthorInsightsDraftsProvider,
-                above the shell, keeps unsaved comments. */}
+                above the shell, keeps unsaved comments. Authors covers
+                every PR, archived ones included. */}
+            <WithArchivedRows include>
             <AuthorInsightsProvider>
               <div id="author-insights">
                 <ViewHeading
@@ -197,13 +224,17 @@ export function AppShell() {
                 </div>
               </div>
             </AuthorInsightsProvider>
+            </WithArchivedRows>
           </LazyView>
         </TabPanel>
       </div>
 
       <div id="settings-drawer-root">
         <ToolsDrawer />
-        <SettingsDrawer />
+        {/* Export works from the table's rows, older ones shown included. */}
+        <TableArchiveScope>
+          <SettingsDrawer />
+        </TableArchiveScope>
       </div>
     </>
   );

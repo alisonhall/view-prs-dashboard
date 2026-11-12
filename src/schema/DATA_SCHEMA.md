@@ -395,6 +395,12 @@ All count fields are numbers.
 | `estimatedTotalConversations` | number |
 | `estimatedOpenConversations` | number |
 
+## Archive (separate file, merged and closed PRs past the cutoff)
+
+`view-prs/data/check-open-pr-updates.data.archive.json` (`VIEW_PRS_ARCHIVE_FILE` for the server; the script's `PR_ARCHIVE_FILE`, else the data file's name with `.archive` before `.json`) has the data file's shape, with only `byPrNumber`: merged and closed rows whose `data.mergedAt` (merged) or `data.closedAt` (closed) is more than `VIEW_PRS_ARCHIVE_DAYS` days old (default 120), moved there as they were by the end of each full run (`archive_old_pr_rows_unlocked`, under the data file's lock; the archive written first, then the data file). A key in both files is the data file's row; the next full run removes its archived copy.
+
+The server reads both files. `/view-prs/data`, the manifest and the delta routes go without archived rows, and carry `archiveSummary`: `{ version, merged, closed, newestEventAt }` - the archived rows' counts by section, the newest time any of their events can be at (the later of each row's merge or close time and its `fetchedAt`), and a version made from the archive file's and user state's stats. `GET /view-prs/archive` returns `{ ok, byPrNumber }` with the archived rows in view, each with `archived: true`, their notes and slim detail as in `/view-prs/data`. `/view-prs/pr-detail(s)`, `/view-prs/diff`, `/view-prs/insights-hook` and `POST /view-prs/notes` find archived PRs too.
+
 ## Live summary (separate file, laid over the rows when read)
 
 `view-prs/data/check-open-pr-updates.live-summary.json` (`VIEW_PRS_LIVE_SUMMARY_FILE`) is written only by the server (`src/server/helpers/view-prs-live-summary-helpers.js`), from a GraphQL listing of each repo's open PRs run with every quick check. It isn't part of the data file; the server lays it over open and draft rows when it reads them, so `/view-prs/data` and the delta routes return rows with it applied.

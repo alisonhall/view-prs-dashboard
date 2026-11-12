@@ -61,6 +61,9 @@ const createViewPrsDataResponseHelpers = ({
             actors: Array.isArray(data.actors) ? data.actors : [],
             actorIdMoves: data.actorIdMoves || {},
           },
+          // How many PRs are archived, and the archive's version (a page
+          // holding them fetches them again when it moves).
+          ...(data.archiveSummary ? { archiveSummary: data.archiveSummary } : {}),
         }
       : {}),
   });

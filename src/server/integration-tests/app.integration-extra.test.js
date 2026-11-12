@@ -726,6 +726,123 @@ describe("integration behavior", () => {
     });
   });
 
+  // Merged and closed PRs past the archive cutoff are in the archive file
+  // (the script moves them): the page loads them only when it asks.
+  describe("archived PRs", () => {
+    const archived = (number, section = "merged", extra = {}) => ({
+      prNumber: number,
+      repo: "owner/repo",
+      section,
+      updatedAt: "2026-01-02T18:00:00Z",
+      data: { number, title: `Old ${number}`, mergedAt: section === "merged" ? "2025-06-01T00:00:00Z" : "", ...extra },
+    });
+    const current = (number) => ({
+      prNumber: number,
+      repo: "owner/repo",
+      section: "open",
+      updatedAt: "2026-06-02T18:00:00Z",
+      data: { number, title: `Current ${number}` },
+    });
+    const writeArchive = (byPrNumber) => {
+      fs.writeFileSync(appModule.viewPrsArchiveFile, JSON.stringify({ byPrNumber }));
+    };
+    const diffFile = () => path.join(appModule.viewPrsPrDiffDir, "owner_repo__pr-501.json");
+    afterEach(() => {
+      fs.rmSync(appModule.viewPrsArchiveFile, { force: true });
+      fs.rmSync(diffFile(), { force: true });
+    });
+
+    test("given archived PRs, when the page loads its data, then they're left out and counted by section, and GET /archive gives them", async () => {
+      writeViewPrsData({ byPrNumber: { "owner/repo#1": current("1") }, lastRun: null });
+      writeArchive({
+        "owner/repo#501": archived("501"),
+        // Fetched after it merged (a comment then): its events can be as late as that.
+        "owner/repo#502": { ...archived("502"), fetchedAt: "2025-06-03T00:00:00Z" },
+        "owner/repo#503": archived("503", "closed", { closedAt: "2025-05-01T00:00:00Z" }),
+      });
+
+      // Other tests' cached diffs may add diff-only rows: only these PRs' keys are checked.
+      const archivedKeys = ["owner/repo#501", "owner/repo#502", "owner/repo#503"];
+      const data = (await request.get("/data")).body;
+      expect(Object.keys(data.byPrNumber)).toContain("owner/repo#1");
+      archivedKeys.forEach((key) => expect(data.byPrNumber).not.toHaveProperty([key]));
+      expect(data.archiveSummary).toEqual({ version: expect.any(String), merged: 2, closed: 1, newestEventAt: "2025-06-03T00:00:00Z" });
+      const manifest = (await request.get("/data-manifest")).body;
+      expect(Object.keys(manifest.manifest)).toContain("owner/repo#1");
+      archivedKeys.forEach((key) => expect(manifest.manifest).not.toHaveProperty([key]));
+      expect(manifest.archiveSummary).toEqual(data.archiveSummary);
+
+      const res = await request.get("/view-prs/archive");
+      expect(res.status).toBe(200);
+      expect(Object.keys(res.body.byPrNumber).sort()).toEqual(archivedKeys);
+      expect(res.body.byPrNumber["owner/repo#501"]).toMatchObject({ archived: true, section: "merged", data: { title: "Old 501" } });
+    });
+
+    test("given the archive changes, when the data is read again, then the archive's version and rows move with it", async () => {
+      writeViewPrsData({ byPrNumber: {}, lastRun: null });
+      writeArchive({ "owner/repo#501": archived("501") });
+      const before = (await request.get("/data-manifest")).body.archiveSummary.version;
+      writeArchive({ "owner/repo#501": archived("501"), "owner/repo#502": archived("502") });
+
+      const after = (await request.get("/data-manifest")).body.archiveSummary;
+      expect(after.version).not.toBe(before);
+      expect(after.merged).toBe(2);
+      expect(Object.keys((await request.get("/archive")).body.byPrNumber)).toHaveLength(2);
+    });
+
+    test("given a PR in both files (saved again after it was archived), then it's the data file's, and not archived", async () => {
+      writeViewPrsData({ byPrNumber: { "owner/repo#501": current("501") }, lastRun: null });
+      writeArchive({ "owner/repo#501": archived("501") });
+
+      expect((await request.get("/data")).body.byPrNumber["owner/repo#501"].data.title).toBe("Current 501");
+      expect((await request.get("/archive")).body.byPrNumber).toEqual({});
+    });
+
+    test("given an archived PR with a cached diff and notes, then it isn't shown as a diff-only or notes-only row, and its notes come with it", async () => {
+      writeViewPrsData({ byPrNumber: {}, lastRun: null });
+      writeArchive({ "owner/repo#501": archived("501") });
+      writeViewPrsUserState({ ...EMPTY_USER_STATE, notesByPrNumber: { "owner/repo#501": { otherNotes: "kept" } } });
+      fs.mkdirSync(appModule.viewPrsPrDiffDir, { recursive: true });
+      fs.writeFileSync(diffFile(), JSON.stringify({ repo: "owner/repo", prNumber: "501", fetchedAt: "2026-06-02T18:00:00Z" }));
+
+      expect((await request.get("/data")).body.byPrNumber).not.toHaveProperty(["owner/repo#501"]);
+      expect((await request.get("/archive")).body.byPrNumber["owner/repo#501"]).toMatchObject({
+        data: { title: "Old 501" },
+        notes: expect.objectContaining({ otherNotes: "kept" }),
+      });
+    });
+
+    test("given an archive file that can't be read, when a current PR's notes are saved, then they still save", async () => {
+      writeViewPrsData({ byPrNumber: { "owner/repo#1": current("1") }, lastRun: null });
+      fs.writeFileSync(appModule.viewPrsArchiveFile, '{"byPrNumber":');
+
+      const res = await request.post("/notes").send({ repo: "owner/repo", prNumber: "1", comments: [], otherNotes: "still saved" });
+
+      expect(res.status).toBe(200);
+      expect(JSON.parse(fs.readFileSync(viewPrsUserStateFile, "utf8")).notesByPrNumber["owner/repo#1"]).toMatchObject({ otherNotes: "still saved" });
+    });
+
+    test("given an archived PR, when its notes are saved or its detail is asked for, then it's found", async () => {
+      const detailFilePath = path.join(viewPrsPrDetailDir, "owner_repo__pr-504.json");
+      fs.mkdirSync(path.dirname(detailFilePath), { recursive: true });
+      fs.writeFileSync(detailFilePath, JSON.stringify({ activityTimeline: [], activityEvents: [], commentEvents: [{ body: "Old comment" }], reviewThreads: [] }));
+      writeViewPrsData({ byPrNumber: {}, lastRun: null });
+      writeArchive({ "owner/repo#504": archived("504", "merged", { detailRef: { file: detailFilePath, version: "v1" } }) });
+
+      const versionBefore = (await request.get("/data-manifest")).body.archiveSummary.version;
+      const notes = await request.post("/notes").send({ repo: "owner/repo", prNumber: "504", comments: [], otherNotes: "archived note" });
+      expect(notes.status).toBe(200);
+      // Its notes are in the archived rows the page holds: their version moves, so it fetches them again.
+      expect((await request.get("/data-manifest")).body.archiveSummary.version).not.toBe(versionBefore);
+      expect((await request.get("/archive")).body.byPrNumber["owner/repo#504"].notes).toMatchObject({ otherNotes: "archived note" });
+      const { notesByPrNumber } = JSON.parse(fs.readFileSync(viewPrsUserStateFile, "utf8"));
+      expect(notesByPrNumber["owner/repo#504"]).toMatchObject({ otherNotes: "archived note" });
+
+      const detail = await request.get("/pr-detail").query({ repo: "owner/repo", prNumber: "504" });
+      expect(detail.body.detail.commentEvents).toEqual([{ body: "Old comment" }]);
+    });
+  });
+
   test("given a row with a detail file, when GET /data and GET /pr-detail are requested, then the list's row has the detail without its text and /pr-detail all of it", async () => {
     const app = require("../app.js");
     const originalEnqueuePrDiffRefreshForData = app.enqueuePrDiffRefreshForData;

@@ -10,6 +10,7 @@ defineShellTestGroups([
   ["stored open rows no longer listed are reclassified", ["run_reconcile_missing_open_rows_tests"]],
   ["a run saves its rows in groups, as saving them one by one would, and a stopped run saves what it queued", ["run_batched_save_tests"]],
   ["a run reads a PR's stored row from its snapshot file, which keeps up with the rows the run saves", ["run_pr_row_snapshot_tests"]],
+  ["merged and closed PRs past the cutoff move to the archive file, and a PR saved again leaves it", ["run_archive_tests"]],
   ["the stale collections split open from draft; cached details are reused unless the run targets the PR", ["run_cache_freshness_tests"]],
   ["the quick check reports only changed PRs", ["run_quick_check_tests", "run_quick_check_numbers_tests"]],
 ]);

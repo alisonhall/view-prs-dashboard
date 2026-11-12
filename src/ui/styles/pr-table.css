@@ -132,6 +132,18 @@
   color: var(--color-text-muted);
 }
 
+/* A Closed or Merged section's "Show older (N)": its archived PRs. */
+.pr-section-older {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-3) 14px;
+  font-size: var(--font-size-md);
+  color: var(--color-text-muted);
+}
+
 /* Settings › Appearance hid every section. */
 .pr-sections-all-hidden {
   display: grid;

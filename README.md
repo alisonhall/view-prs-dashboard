@@ -270,7 +270,19 @@ It copies the folder (the new one must be new or empty, and not inside the old o
 
 A folder that a sync service (iCloud Drive, Dropbox, OneDrive) keeps works, but the app writes several files a minute and uses lock folders, which those services can sync half-way or duplicate as conflicted copies; git, committed now and then, doesn't have that problem.
 
-The move also puts a `.gitignore` in the new folder, so you can `git init` it and commit what's yours: notes and Acks (`check-open-pr-updates.user-state.json`), Authors comments, People (`actors.json`), settings (`user-defaults.json`) and Sources. It leaves out what's fetched again or changes every minute: the PR data and live summary, PR details and diffs, backups, the scheduler state, the action log, locks, logs and temporary files. Commit while the server is stopped, or at least not mid-save.
+The move also puts a `.gitignore` in the new folder, so you can `git init` it and commit what's yours: notes and Acks (`check-open-pr-updates.user-state.json`), Authors comments, People (`actors.json`), settings (`user-defaults.json`) and Sources. It leaves out what's fetched again or changes every minute: the PR data (archived PRs included) and live summary, PR details and diffs, backups, the scheduler state, the action log, locks, logs and temporary files. Commit while the server is stopped, or at least not mid-save.
+
+## Archived PRs
+
+Merged and closed PRs 120 days after merging or closing (`VIEW_PRS_ARCHIVE_DAYS`; `0` keeps every PR in the data file) move out of `data/check-open-pr-updates.data.json` into `data/check-open-pr-updates.data.archive.json` (`VIEW_PRS_ARCHIVE_FILE` for the server), at the end of each full run (not a run of chosen PRs) - every repo's, PRs added by URL included. The data file otherwise grew with every PR ever tracked, and the page held them all. The archive is backed up before it's replaced, like the data file. A PR saved again after it was archived (reopened, or updated from its row) is the data file's, and the next full run drops its archived copy, or archives it again if it's still past the cutoff.
+
+The page loads archived PRs only when something needs them:
+
+- **The table**: Latest Merged PRs and Closed PRs end with **Show older (N)**, which adds that section's archived PRs until the page reloads. They're left out of the smart groups (Needs Attention, In Review...) and of "Quick check all".
+- **Review stats**: when its dates reach back to the newest archived PR's activity (or it has no start date), so its numbers are the same as before archiving. Its default dates (the last 3 months) don't, which is why the cutoff is 120 days: a merged PR is still fetched for a while after merging.
+- **Authors**: always, since it covers every PR an author has opened.
+
+Their notes, detail, diffs and People are kept as they were; a PR's notes can still be edited from its archived row.
 
 ## Reusing unchanged rows
 

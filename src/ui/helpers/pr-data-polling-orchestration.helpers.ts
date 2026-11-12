@@ -35,6 +35,7 @@ interface ManifestResult {
   dataMeta?: PrDataPayload["dataMeta"];
   userState?: PollUserState;
   actorMaps?: PollActorMaps;
+  archiveSummary?: PrDataPayload["archiveSummary"];
 }
 
 interface DeltaResult {
@@ -249,6 +250,7 @@ const createPrDataPollingOrchestrationHelpers = ({
                 nextManifest,
                 nextUserState: manifestResult?.userState || null,
                 nextActorMaps: manifestResult?.actorMaps || null,
+                nextArchiveSummary: manifestResult?.archiveSummary || null,
               });
               setLatestPrManifestSafe(nextManifest);
             } else {
@@ -272,6 +274,7 @@ const createPrDataPollingOrchestrationHelpers = ({
                   nextManifest,
                   nextUserState: manifestResult?.userState || null,
                   nextActorMaps: manifestResult?.actorMaps || null,
+                  nextArchiveSummary: manifestResult?.archiveSummary || null,
                 });
                 setLatestPrManifestSafe(nextManifest);
               }

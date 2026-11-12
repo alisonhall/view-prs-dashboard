@@ -1302,6 +1302,111 @@ record_repo_full_run_unlocked() {
   command mv -f "$tmp" "$PR_STATE_FILE"
 }
 
+# Merged and closed PRs past VIEW_PRS_ARCHIVE_DAYS days (default 120; 0
+# keeps every PR in the data file) move to the archive file beside it, in
+# the data file's shape: the data file grew with every PR ever tracked, and
+# the page held them all. 120, not 90: Review stats' default dates (the last
+# 3 months, up to 92 days) then don't reach them - nor the comments a merged
+# PR gets while it's still listed - so it doesn't have to load them. The server serves archived rows only when asked
+# (the table's "Show older", Review stats reaching back, Authors), and a
+# PR in both files is the data file's (a PR saved again after it was
+# archived, as when reopened), so its archived copy is dropped here. Every
+# repo's rows, at the end of a full run. Nothing written when nothing moves.
+pr_archive_file() {
+  printf '%s' "${PR_ARCHIVE_FILE:-${PR_STATE_FILE%.json}.archive.json}"
+}
+
+PR_ARCHIVE_OLD_ROW_JQ='
+def archive_epoch($ts):
+  if ($ts | type) != "string" or $ts == "" then null
+  else (($ts | fromdateiso8601?) // (($ts | sub("\\.[0-9]+Z$"; "Z")) | fromdateiso8601?) // null)
+  end;
+def archive_done_at:
+  if .section == "merged" then (.data.mergedAt // "")
+  elif .section == "closed" then (.data.closedAt // "")
+  else "" end;
+def is_archivable($cutoff):
+  (archive_done_at | archive_epoch(.)) as $at | $at != null and $at < $cutoff;
+'
+
+archive_old_pr_rows_unlocked() {
+  local days archive archive_src plan_file archive_tmp main_tmp plan moved overlap
+  days="${VIEW_PRS_ARCHIVE_DAYS:-120}"
+  [[ "$days" =~ ^[0-9]+$ ]] || days=120
+  ((days > 0)) || return 0
+  [[ -f "$PR_STATE_FILE" ]] || return 0
+  archive=$(pr_archive_file)
+
+  plan_file=$(mktemp)
+  # No archive yet: an empty one.
+  archive_src="$archive"
+  if [[ ! -f "$archive" ]]; then
+    archive_src="$plan_file.none"
+    printf '{}' >"$archive_src"
+  fi
+  if ! jq -c \
+    --argjson days "$days" \
+    --slurpfile archive "$archive_src" \
+    "$PR_ARCHIVE_OLD_ROW_JQ"'
+      (now - ($days * 86400)) as $cutoff |
+      (.byPrNumber // {}) as $main |
+      (($archive[0] // {}).byPrNumber // {}) as $archived |
+      {
+        move: [$main | to_entries[] | select(.value | type == "object" and is_archivable($cutoff)) | .key],
+        overlap: [$archived | keys[] | select($main[.] != null)]
+      }
+    ' "$PR_STATE_FILE" >"$plan_file" 2>/dev/null; then
+    rm -f "$plan_file" "$plan_file.none"
+    echo "Couldn't work out which PRs to archive; keeping them in $PR_STATE_FILE" >&2
+    return 1
+  fi
+  plan=$(jq -r '"\(.move | length) \(.overlap | length)"' "$plan_file")
+  read -r moved overlap <<<"$plan"
+  if [[ "$moved" == '0' && "$overlap" == '0' ]]; then
+    rm -f "$plan_file" "$plan_file.none"
+    return 0
+  fi
+
+  # The archive first: a stop between the two writes leaves a PR in both
+  # files, which reads as the data file's, and the next run tidies it.
+  archive_tmp=$(state_file_tmp_path "$archive")
+  if ! jq -c \
+    --slurpfile plan "$plan_file" \
+    --slurpfile main "$PR_STATE_FILE" \
+    '
+      ($plan[0]) as $p |
+      ($main[0].byPrNumber // {}) as $rows |
+      (if type == "object" then . else {} end) |
+      .byPrNumber = (
+        ((.byPrNumber // {}) | with_entries(select(.key as $k | ($p.overlap | index($k)) == null)))
+        + ([$p.move[] | {key: ., value: $rows[.]}] | from_entries)
+      )
+    ' "$archive_src" >"$archive_tmp" 2>/dev/null \
+    || [[ ! -s "$archive_tmp" ]] || ! jq -e 'type == "object"' "$archive_tmp" >/dev/null 2>&1; then
+    rm -f "$archive_tmp" "$plan_file" "$plan_file.none"
+    echo "Refusing to replace $archive: couldn't add the PRs to archive" >&2
+    return 1
+  fi
+  rm -f "$plan_file.none"
+  create_state_backup "$archive" 'pr-archive'
+  command mv -f "$archive_tmp" "$archive"
+
+  if [[ "$moved" != '0' ]]; then
+    main_tmp=$(state_file_tmp_path "$PR_STATE_FILE")
+    if ! jq --slurpfile plan "$plan_file" '
+        .byPrNumber = ((.byPrNumber // {}) | delpaths([$plan[0].move[] | [.]]))
+      ' "$PR_STATE_FILE" >"$main_tmp" 2>/dev/null || [[ ! -s "$main_tmp" ]]; then
+      rm -f "$main_tmp" "$plan_file"
+      echo "Refusing to replace $PR_STATE_FILE: couldn't take out the archived PRs" >&2
+      return 1
+    fi
+    command mv -f "$main_tmp" "$PR_STATE_FILE"
+  fi
+  rm -f "$plan_file"
+  [[ "$moved" != '0' ]] && echo "Archived $moved merged/closed PR(s) past $days days: $archive"
+  return 0
+}
+
 apply_ack_changes() {
   if [[ "$IN_REVIEW_CLEAR_ENABLED" -eq 1 ]]; then
     while IFS= read -r review_clear_num; do
@@ -3820,6 +3925,10 @@ main() {
 
   if ((RUN_ROW_INDEX == 0)) && ! is_targeted_run; then
     with_pr_state_lock record_repo_full_run_unlocked || exit 1
+  fi
+
+  if ! is_targeted_run; then
+    with_pr_state_lock archive_old_pr_rows_unlocked || true
   fi
 
   echo

@@ -114,6 +114,7 @@ const {
   viewPrsUiBuildDir,
   viewPrsUiBuildIndexFile,
   viewPrsDataFile,
+  viewPrsArchiveFile,
   viewPrsLiveSummaryFile,
   viewPrsSourcesFile,
   viewPrsUserStateFile,
@@ -1704,8 +1705,18 @@ const readViewPrsDataUncached = (detailSources = new Map()) => {
     const pendingUpdateKeys = getPendingUpdatePrNumberKeys();
     const liveSummaryByRepo = readLiveSummary().byRepo;
     const detailVersionByKey = new Map();
+    // Merged and closed PRs past the archive cutoff, marked archived: the
+    // page asks for them (GET /view-prs/archive) when it needs them, and
+    // the other routes go without (withoutArchivedRows). Here, so they're
+    // rows like any other - their detail, notes and people - and a PR with
+    // a cached diff or notes isn't shown as a "Git Diff only" or "Stored
+    // notes only" row. A PR in both files is the data file's.
+    const archivedRaw = normalizePrEntryKeys(readJsonFileIfExists(viewPrsArchiveFile, {})?.byPrNumber || {});
+    const archivedEntries = Object.entries(archivedRaw)
+      .filter(([key, entry]) => isObject(entry) && !byPrNumberRaw[key])
+      .map(([key, entry]) => [key, { ...entry, archived: true }]);
     const byPrNumber = Object.fromEntries(
-      Object.entries(byPrNumberRaw)
+      [...Object.entries(byPrNumberRaw), ...archivedEntries]
         .filter(([, entry]) => !isViewPrsFixtureRow(entry))
         .map(([key, entry]) => {
           if (!isObject(entry)) {
@@ -1842,6 +1853,7 @@ const getViewPrsDataCacheKey = () =>
   [
     getViewPrsDataVersion(),
     statStamp(viewPrsDataFile),
+    statStamp(viewPrsArchiveFile),
     statStamp(viewPrsUserStateFile),
     statStamp(viewPrsLiveSummaryFile),
     statStamp(viewPrsActorsFile),
@@ -1937,8 +1949,12 @@ const readViewPrsDataVersion = () => {
   // the names and logins the page shows (the manifest carries them).
   const actorsStats = fs.existsSync(viewPrsActorsFile) ? fs.statSync(viewPrsActorsFile) : null;
   const actorsVersion = actorsStats ? `${Math.trunc(actorsStats.mtimeMs) || 0}-${actorsStats.size}` : "none";
+  // And the archive: a run that only tidies it (a PR saved again after it
+  // was archived) changes the archived PRs without the data file.
+  const archiveStats = fs.existsSync(viewPrsArchiveFile) ? fs.statSync(viewPrsArchiveFile) : null;
+  const archiveVersion = archiveStats ? `${Math.trunc(archiveStats.mtimeMs) || 0}-${archiveStats.size}` : "none";
   return {
-    dataVersion: `${mtimeMs}:${stats.size}:${getLiveSummaryVersion()}:${pendingVersion}:${userStateVersion}:${sourcesVersion}:${unreachableVersion}:${actorsVersion}`,
+    dataVersion: `${mtimeMs}:${stats.size}:${getLiveSummaryVersion()}:${pendingVersion}:${userStateVersion}:${sourcesVersion}:${unreachableVersion}:${actorsVersion}:${archiveVersion}`,
     mtimeMs,
     sizeBytes: Number.isFinite(stats.size) ? stats.size : 0,
   };
@@ -1967,7 +1983,47 @@ const filterToVisibleRows = (data) => {
   );
   return { ...data, byPrNumber };
 };
-const readVisibleViewPrsData = () => filterToVisibleRows(callReadViewPrsData());
+// The rows the page loads with its data: archived ones only when it asks
+// (readArchivedViewPrsRows). archiveSummary says how many there are, by
+// section (the table's "Show older (N)"); the newest time any of their
+// events can be at - the later of a row's merge or close and its last fetch
+// (a merged PR is fetched again while it's listed, comments after merging
+// included) - which Review stats reaching back to needs them; and a version that
+// moves when they change - the archive file, or the user state, which has
+// their notes - so a page holding them knows to fetch them again.
+const withoutArchivedRows = (data) => {
+  if (!isObject(data?.byPrNumber)) return data;
+  const kept = [];
+  const counts = { merged: 0, closed: 0 };
+  let newestEventAt = "";
+  Object.entries(data.byPrNumber).forEach((item) => {
+    const entry = item[1];
+    if (entry?.archived !== true) {
+      kept.push(item);
+      return;
+    }
+    if (entry.section === "merged" || entry.section === "closed") counts[entry.section] += 1;
+    const doneAt = toTrimmedString(entry.section === "closed" ? entry.data?.closedAt : entry.data?.mergedAt);
+    const fetchedAt = toTrimmedString(entry.fetchedAt);
+    const latest = fetchedAt > doneAt ? fetchedAt : doneAt;
+    if (latest > newestEventAt) newestEventAt = latest;
+  });
+  const archiveSummary = {
+    version: `${statStamp(viewPrsArchiveFile)}|${statStamp(viewPrsUserStateFile)}`,
+    ...counts,
+    newestEventAt,
+  };
+  return { ...data, byPrNumber: Object.fromEntries(kept), archiveSummary };
+};
+const readVisibleViewPrsData = () => withoutArchivedRows(filterToVisibleRows(callReadViewPrsData()));
+// With the archived rows: looking up a PR the page may have from the archive.
+const readVisibleViewPrsDataWithArchive = () => filterToVisibleRows(callReadViewPrsData());
+// The archived rows in view, for the page's "Show older", Review stats and
+// Authors.
+const readArchivedViewPrsRows = () => {
+  const byPrNumber = readVisibleViewPrsDataWithArchive()?.byPrNumber || {};
+  return Object.fromEntries(Object.entries(byPrNumber).filter(([, entry]) => entry?.archived === true));
+};
 
 // PRs fetched on their own that the last run of them couldn't fetch
 // (deleted, or no longer visible to gh): viewPrsSchedulerState's
@@ -4048,6 +4104,7 @@ const createViewPrsApp = ({ production = isProductionEnv } = {}) => {
     normalizeAuthorCommentSentiment,
     fs,
     viewPrsDataFile,
+    viewPrsArchiveFile,
     viewPrsAuthorCommentsFile,
     normalizeViewPrsUserState,
     normalizeViewPrsAuthorComments,
@@ -4060,6 +4117,7 @@ const createViewPrsApp = ({ production = isProductionEnv } = {}) => {
     appendActionLogEntry,
     // Without hidden repos' rows (filterToVisibleRows).
     readViewPrsData: readVisibleViewPrsData,
+    readViewPrsDataWithArchive: readVisibleViewPrsDataWithArchive,
     resolveActorKey: resolveViewPrsActorKey,
     isRepoSlug,
     syncPrDiffForEntry,
@@ -4075,6 +4133,7 @@ const createViewPrsApp = ({ production = isProductionEnv } = {}) => {
     getViewPrsBackfillPublicState,
     // Without hidden repos' rows (filterToVisibleRows).
     readViewPrsData: readVisibleViewPrsData,
+    readArchivedViewPrsRows,
     enqueuePrDiffRefreshForData,
     getViewPrsDataMeta,
     getViewPrsDataManifest,
@@ -4207,6 +4266,7 @@ module.exports = {
   viewPrsSchedulerFile,
   viewPrsLegacySchedulerFile,
   viewPrsDataFile,
+  viewPrsArchiveFile,
   viewPrsPrDetailDir,
   viewPrsUserStateFile,
   viewPrsAuthorCommentsFile,

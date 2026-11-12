@@ -59,12 +59,14 @@ export interface PrQuickCheckActionsDeps {
   clearPrsBusy?: (prNumbers: string[], repo: string) => void;
 }
 
-// repo -> PR numbers, from every loaded entry that has both.
+// repo -> PR numbers, from every loaded entry that has both - not archived
+// ones (merged or closed past the cutoff), which nothing checks.
 const collectAllLoadedPrsByRepo = (
   byPrNumber: Record<string, PrEntry> | null | undefined,
 ): Map<string, string[]> => {
   const map = new Map<string, string[]>();
   Object.values(byPrNumber || {}).forEach((entry) => {
+    if (entry?.archived === true) return;
     const repo = entry?.repo;
     const number = entry?.data?.number ?? entry?.prNumber;
     if (!repo || (number === undefined || number === null || number === "")) {

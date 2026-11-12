@@ -58,6 +58,12 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
   const viewPrsActorsFile =
     env.VIEW_PRS_ACTORS_FILE || path.join(path.dirname(viewPrsActorNameCacheFile), "actors.json");
 
+  // Merged and closed PRs past the archive cutoff (check-open-pr-updates.sh's
+  // archive_old_pr_rows_unlocked), beside the data file under the script's
+  // name for it.
+  const viewPrsArchiveFile =
+    env.VIEW_PRS_ARCHIVE_FILE || viewPrsDataFile.replace(/\.json$/, "") + ".archive.json";
+
   const viewPrsPrDetailDir =
     env.VIEW_PRS_PR_DETAIL_DIR || path.join(path.dirname(viewPrsDataFile), "pr-details");
   // Open PRs' live summary (view-prs-live-summary-helpers.js), beside the
@@ -364,6 +370,7 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
     viewPrsUiBuildDir,
     viewPrsUiBuildIndexFile,
     viewPrsDataFile,
+    viewPrsArchiveFile,
     viewPrsLiveSummaryFile,
     viewPrsSourcesFile,
     viewPrsUserStateFile,

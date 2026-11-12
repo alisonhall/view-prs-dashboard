@@ -13,6 +13,7 @@ import { buildFilterStateInitialValues } from './state/filterStateInitialValues'
 import { SettingsDrawerProvider } from './state/SettingsDrawerContext';
 import { PrDataPolling, readDataPollMsOverride } from './components/PrDataPolling';
 import { PrDataProvider } from './state/PrDataProvider';
+import { PrArchiveProvider } from './state/PrArchiveContext';
 import { FilterStateProvider } from './state/FilterStateProvider';
 import { PrTableUiStateProvider } from './state/PrTableUiStateProvider';
 import { TabStateProvider } from './components/TabStateProvider';
@@ -101,6 +102,7 @@ function mountApp(container: HTMLElement) {
                                 initialStatsViewState={DEFAULT_STATS_VIEW_STATE}
                                 loadOnMount
                               >
+                                <PrArchiveProvider>
                                 <NotesDirtyProvider>
                                   <PrTableUiStateProvider>
                                     <SettingsDrawerProvider>
@@ -128,6 +130,7 @@ function mountApp(container: HTMLElement) {
                                     </SettingsDrawerProvider>
                                   </PrTableUiStateProvider>
                                 </NotesDirtyProvider>
+                                </PrArchiveProvider>
                               </PrDataProvider>
                             </AutoRenderBlockingProvider>
                           </SnackbarProvider>

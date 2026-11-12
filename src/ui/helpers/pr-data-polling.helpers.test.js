@@ -325,6 +325,17 @@ describe("pr data polling helpers", () => {
     expect(computePrDataMetaFingerprint(merged)).not.toBe(computePrDataMetaFingerprint(basePayload));
   });
 
+  test("mergeDataDeltaPayload takes the manifest's archive summary, or keeps the stored one, and the poll renders it (Show older's count)", () => {
+    const archived = { 501: { repo: "owner/repo", section: "merged", archived: true } };
+    const basePayload = { byPrNumber: { ...archived }, archiveSummary: { version: "v1", merged: 1, closed: 0 } };
+    const nextArchiveSummary = { version: "v2", merged: 3, closed: 1 };
+
+    const merged = mergeDataDeltaPayload({ basePayload, nextArchiveSummary });
+    expect(merged.archiveSummary).toEqual(nextArchiveSummary);
+    expect(mergeDataDeltaPayload({ basePayload }).archiveSummary).toEqual(basePayload.archiveSummary);
+    expect(computePrDataMetaFingerprint(merged)).not.toBe(computePrDataMetaFingerprint(basePayload));
+  });
+
   test("computePrDataFingerprint returns an empty string for empty payloads", () => {
     expect(computePrDataFingerprint(null)).toBe("");
     expect(computePrDataFingerprint({ byPrNumber: {} })).toBe("");

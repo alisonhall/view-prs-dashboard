@@ -63,6 +63,8 @@ export interface MergeDataDeltaInput {
   // The people's names and logins (the manifest's actorMaps): replace the
   // stored ones when given.
   nextActorMaps?: PollActorMaps | null;
+  // The archived PRs' counts and version (the manifest's archiveSummary).
+  nextArchiveSummary?: PrDataPayload["archiveSummary"] | null;
 }
 
 // The people's names and logins a poll's manifest carries.
@@ -107,6 +109,8 @@ const computePrDataMetaFingerprint = (payload: PrDataPayload | null | undefined)
     actorsMap: payload?.actorsMap || null,
     actors: payload?.actors || null,
     actorIdMoves: payload?.actorIdMoves || null,
+    // The table's "Show older (N)", and archived PRs a view holds.
+    archiveSummary: payload?.archiveSummary || null,
   });
 
 const getManifestDelta = ({
@@ -319,6 +323,7 @@ const createPrDataPollingHelpers = ({ getOrCompute }: PrDataPollingDeps = {}) =>
     nextManifest = null,
     nextUserState = null,
     nextActorMaps = null,
+    nextArchiveSummary = null,
   }: MergeDataDeltaInput = {}): PrDataPayload => {
     const mergedByPrNumber: Record<string, PrEntry> = {
       ...(basePayload?.byPrNumber || {}),
@@ -335,6 +340,7 @@ const createPrDataPollingHelpers = ({ getOrCompute }: PrDataPollingDeps = {}) =>
       ...basePayload,
       ...(nextUserState || {}),
       ...(nextActorMaps || {}),
+      ...(nextArchiveSummary ? { archiveSummary: nextArchiveSummary } : {}),
       byPrNumber: mergedByPrNumber,
       dataMeta: nextDataMeta || basePayload?.dataMeta || null,
       scheduler: nextScheduler || basePayload?.scheduler || null,

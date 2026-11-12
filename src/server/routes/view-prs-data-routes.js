@@ -28,6 +28,8 @@ const registerViewPrsDataRoutes = ({
   writeUserDefaults,
   getViewPrsBackfillPublicState,
   readViewPrsData,
+  // Archived rows in view (app.js's readArchivedViewPrsRows).
+  readArchivedViewPrsRows,
   enqueuePrDiffRefreshForData,
   getViewPrsDataMeta,
   getViewPrsDataManifest,
@@ -192,6 +194,19 @@ const registerViewPrsDataRoutes = ({
         });
       },
       fallbackMessage: "Failed to fetch data",
+    }),
+  );
+
+  // Merged and closed PRs past the archive cutoff (archived rows), which
+  // /data goes without: the page loads them for "Show older", Review stats
+  // reaching back past the cutoff, and Authors.
+  app.get(
+    ["/archive", "/view-prs/archive"],
+    createSyncHandler({
+      handler: (_req, res) => {
+        sendSuccessPayload({ res, payload: { ok: true, byPrNumber: readArchivedViewPrsRows ? readArchivedViewPrsRows() : {} } });
+      },
+      fallbackMessage: "Failed to fetch archived PRs",
     }),
   );
 

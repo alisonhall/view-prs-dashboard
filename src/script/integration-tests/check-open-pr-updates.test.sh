@@ -14,6 +14,10 @@ for candidate in "$SCRIPT_DIR/../../../node_modules/node-jq/bin/jq" "$SCRIPT_DIR
   fi
 done
 
+# No archiving in these runs (their merged PRs' dates are fixed, so they'd
+# pass the cutoff as time goes on); run_archive_tests turns it on.
+export VIEW_PRS_ARCHIVE_DAYS="${VIEW_PRS_ARCHIVE_DAYS:-0}"
+
 print_debug_context() {
   echo 'Test run context:'
   echo "  script      : $SCRIPT_PATH"
@@ -1315,6 +1319,88 @@ JSON
   PR_ROW_SNAPSHOT_DIR=''
 }
 
+# Merged and closed PRs past VIEW_PRS_ARCHIVE_DAYS move to the archive
+# file (archive_old_pr_rows_unlocked), at the end of a full run.
+run_archive_tests() {
+  source "$SCRIPT_PATH"
+
+  local state="$TEST_TMP/archive-state.json"
+  local archive="$TEST_TMP/archive-state.archive.json"
+  local recent old
+  recent=$(date -u '+%Y-%m-%dT%H:%M:%S.123Z')
+  old='2025-01-01T00:00:00Z'
+  PR_STATE_FILE="$state"
+  PR_STATE_LOCK_DIR="$TEST_TMP/archive-state.lock"
+  STATE_BACKUP_DIR="$TEST_TMP/archive-backups"
+  rm -f "$archive"
+  jq -n --arg recent "$recent" --arg old "$old" '{
+    byPrNumber: {
+      "o/r#1": {repo: "o/r", prNumber: "1", section: "merged", data: {number: "1", mergedAt: $old}},
+      "o/r#2": {repo: "o/r", prNumber: "2", section: "merged", data: {number: "2", mergedAt: $recent}},
+      "o/r#3": {repo: "o/r", prNumber: "3", section: "closed", data: {number: "3", mergedAt: "", closedAt: "2025-02-01T00:00:00.5Z"}},
+      "o/r#4": {repo: "o/r", prNumber: "4", section: "open", data: {number: "4", mergedAt: "", createdAt: $old}},
+      "o/r#5": {repo: "o/r", prNumber: "5", section: "merged", data: {number: "5", mergedAt: ""}},
+      "p/q#6": {repo: "p/q", prNumber: "6", section: "merged", data: {number: "6", mergedAt: $old}}
+    },
+    lastRun: {repo: "o/r", updatedAt: $recent}
+  }' >"$state"
+
+  # Off: nothing moves.
+  VIEW_PRS_ARCHIVE_DAYS=0
+  local before
+  before=$(cat "$state")
+  with_pr_state_lock archive_old_pr_rows_unlocked
+  assert_eq "$(cat "$state")" "$before" 'VIEW_PRS_ARCHIVE_DAYS=0 should keep every PR in the data file'
+  assert_true "[[ ! -e '$archive' ]]" 'VIEW_PRS_ARCHIVE_DAYS=0 should write no archive'
+
+  VIEW_PRS_ARCHIVE_DAYS=90
+  local out
+  out=$(with_pr_state_lock archive_old_pr_rows_unlocked)
+  assert_contains "$out" 'Archived 3 merged/closed PR(s) past 90 days' 'the run should say how many it archived'
+  assert_eq "$(jq -r '.byPrNumber | keys | join(",")' "$state")" 'o/r#2,o/r#4,o/r#5' 'recent, open and undated PRs should stay'
+  assert_eq "$(jq -r '.byPrNumber | keys | join(",")' "$archive")" 'o/r#1,o/r#3,p/q#6' "merged and closed PRs past the cutoff should move, every repo's"
+  assert_eq "$(jq -c '.byPrNumber["o/r#1"]' "$archive")" "$(jq -c '.byPrNumber["o/r#1"]' <<<"$before")" 'an archived row should move as it was'
+  assert_eq "$(jq -c '.lastRun' "$state")" "$(jq -c '.lastRun' <<<"$before")" "the data file's other fields should stay"
+
+  # Nothing more to move: nothing written.
+  local state_before archive_before
+  state_before=$(cat "$state")
+  archive_before=$(cat "$archive")
+  out=$(with_pr_state_lock archive_old_pr_rows_unlocked)
+  assert_eq "$out" '' 'nothing to archive should print nothing'
+  assert_eq "$(cat "$state")$(cat "$archive")" "$state_before$archive_before" 'nothing to archive should write nothing'
+
+  # More later: added to what's archived. A PR saved again after it was
+  # archived (in both files) is the data file's: its archived copy goes.
+  jq --arg old "$old" '.byPrNumber["o/r#7"] = {repo: "o/r", prNumber: "7", section: "closed", data: {number: "7", closedAt: $old}}
+    | .byPrNumber["o/r#1"] = {repo: "o/r", prNumber: "1", section: "open", data: {number: "1", mergedAt: ""}}' "$state" >"$state.next"
+  command mv -f "$state.next" "$state"
+  with_pr_state_lock archive_old_pr_rows_unlocked >/dev/null
+  assert_eq "$(jq -r '.byPrNumber | keys | join(",")' "$archive")" 'o/r#3,o/r#7,p/q#6' 'a newly old PR should be added, and a PR back in the data file dropped'
+  assert_eq "$(jq -r '.byPrNumber["o/r#1"].section' "$state")" 'open' "the data file's copy should stay"
+  assert_true "compgen -G '$STATE_BACKUP_DIR/archive-state.archive.json.pr-archive.*.bak' >/dev/null" 'the archive should be backed up before it is replaced'
+
+  # Unset: 120 days. A PR merged 100 days ago stays; one 130 days ago goes.
+  jq --arg d100 "$(date -u -d '-100 days' '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date -u -v-100d '+%Y-%m-%dT%H:%M:%SZ')"     --arg d130 "$(date -u -d '-130 days' '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date -u -v-130d '+%Y-%m-%dT%H:%M:%SZ')"     '.byPrNumber["o/r#8"] = {repo: "o/r", prNumber: "8", section: "merged", data: {number: "8", mergedAt: $d100}}
+    | .byPrNumber["o/r#9"] = {repo: "o/r", prNumber: "9", section: "merged", data: {number: "9", mergedAt: $d130}}' "$state" >"$state.next"
+  command mv -f "$state.next" "$state"
+  unset VIEW_PRS_ARCHIVE_DAYS
+  out=$(with_pr_state_lock archive_old_pr_rows_unlocked)
+  assert_contains "$out" 'Archived 1 merged/closed PR(s) past 120 days' 'unset, the cutoff should be 120 days'
+  assert_eq "$(jq -r '.byPrNumber | has("o/r#8")' "$state")$(jq -r '.byPrNumber | has("o/r#9")' "$archive")" 'truetrue' 'a PR merged 100 days ago should stay, and one 130 days ago move'
+
+  # A data file jq can't read: nothing changes.
+  printf '{"byPrNumber":' >"$state"
+  archive_before=$(cat "$archive")
+  if with_pr_state_lock archive_old_pr_rows_unlocked 2>/dev/null; then
+    echo 'FAIL: an unreadable data file should fail the archive step'
+    exit 1
+  fi
+  assert_eq "$(cat "$archive")" "$archive_before" 'an unreadable data file should leave the archive as it was'
+  assert_eq "$(cat "$state")" '{"byPrNumber":' 'an unreadable data file should be left as it was'
+  VIEW_PRS_ARCHIVE_DAYS=0
+}
+
 run_fetch_threads_pagination_tests() {
   source "$SCRIPT_PATH"
 
@@ -1826,6 +1912,7 @@ run_all_tests() {
   run_row_order_stability_tests
   run_batched_save_tests
   run_pr_row_snapshot_tests
+  run_archive_tests
   run_targeted_prs_tests
   run_unfetched_pr_tests
   run_row_reuse_tests

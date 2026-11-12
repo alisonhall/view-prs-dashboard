@@ -284,6 +284,21 @@ export interface PrEntry {
   // Copied from the user state onto the entry by the server when it builds
   // the /view-prs/data payload (app.js); not stored in the data file.
   notes?: PrNotes;
+  // A merged or closed PR past the archive cutoff, from the archive file
+  // (GET /view-prs/archive): the page has it only when it asked for it
+  // (PrArchiveContext).
+  archived?: boolean;
+}
+
+// The archived PRs (merged and closed ones past the cutoff, which /data
+// goes without): how many by section, the newest time any of their events
+// can be at (the later of each one's merge or close and its last fetch),
+// and a version that moves when they change.
+export interface ArchiveSummary {
+  version?: string;
+  merged?: number;
+  closed?: number;
+  newestEventAt?: string;
 }
 
 // The data file's top-level `lastRun` (the last script run of any kind)
@@ -335,6 +350,8 @@ export interface PrDataPayload {
   viewerLogin?: string;
   // Per-PR row versions, for polling deltas (see PrManifest).
   dataManifest?: PrManifest;
+  // The archived PRs, which the rows go without (ArchiveSummary).
+  archiveSummary?: ArchiveSummary;
   // The user state's per-repo maps, repo -> PR number -> value: ack
   // values are strings, flagged/in review are booleans.
   ackByRepo?: PrFlagsByRepo;

@@ -20,6 +20,9 @@ import { describeChecks, describeMergeable } from '../helpers/pr-row-signals.hel
 import { Icon, type IconName } from './ui/Icon';
 import { PrTable, type PrTableProps } from './PrTable';
 import { useSectionInteraction } from '../state/useSectionInteraction';
+import { usePrArchive } from '../state/PrArchiveContext';
+import { archivedCount, type ArchivedSection } from '../helpers/pr-archive.helpers.ts';
+import { Button } from './ui/Button';
 
 const SECTION_ICONS: Record<string, { icon: IconName; tone: string }> = {
   flagged: { icon: 'flag', tone: 'danger' },
@@ -81,6 +84,34 @@ const summarise = (prs: PrEntry[], attentionCount: number): SummaryItem[] => {
   ];
   return items.filter((item) => item.count > 0);
 };
+
+// The Closed and Merged sections' older PRs (past the archive cutoff),
+// which the table goes without until you ask for them.
+function ShowOlderPrs({ section }: { section: ArchivedSection }) {
+  const { summary, status, shownSections, showSection } = usePrArchive();
+  const count = archivedCount(summary, section);
+  const shown = shownSections.has(section);
+  if (count === 0 || (shown && status === 'loaded')) return null;
+  const noun = section === 'merged' ? 'merged' : 'closed';
+  if (shown && status === 'loading') {
+    return <p className="pr-section-older" role="status">Loading older {noun} PRs…</p>;
+  }
+  if (shown && status === 'failed') {
+    return (
+      <div className="pr-section-older" role="alert">
+        <span>Couldn't load the older {noun} PRs.</span>
+        <Button onClick={() => showSection(section)}>Try again</Button>
+      </div>
+    );
+  }
+  return (
+    <div className="pr-section-older">
+      <Button icon="chevronDown" onClick={() => showSection(section)} hint="Merged and closed PRs past the archive cutoff, kept out of the table until asked for">
+        Show older ({count})
+      </Button>
+    </div>
+  );
+}
 
 export function PrSection({ section, isOpen, onToggleSection, onInteractingChange, onResortSection, ...tableProps }: PrSectionProps) {
   const { key, title, prs, totalCount, isSmartGroup, lifecycleSection, attentionCount = 0, orderChanged = false } = section;
@@ -170,6 +201,7 @@ export function PrSection({ section, isOpen, onToggleSection, onInteractingChang
         ) : (
           <p className="pr-section-empty">No PRs in this section.</p>
         )}
+        {!isSmartGroup && (key === 'merged' || key === 'closed') && <ShowOlderPrs section={key} />}
       </div>
     </details>
   );

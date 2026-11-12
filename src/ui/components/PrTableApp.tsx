@@ -611,7 +611,11 @@ export function PrTableApp() {
       // "allStoredRows" for its smart groups. Phase 7 (see
       // REACT_MIGRATION_PLAN.md): direct import now, not a window.*
       // bridge read - genuinely zero-dependency.
-      const allEntriesForSmartGroups = normalizeRows([...grouped.open, ...grouped.draft, ...grouped.merged, ...grouped.closed]);
+      // Not archived PRs (merged or closed past the cutoff, shown with their
+      // section's "Show older"): the smart groups are of current PRs.
+      const allEntriesForSmartGroups = normalizeRows(
+        [...grouped.open, ...grouped.draft, ...grouped.merged, ...grouped.closed].filter((entry) => entry?.archived !== true),
+      );
 
       const smartGroupHelpers = prSmartGroupsHelperFactory.createPrSmartGroupsHelpers({
         hasNeedsAttentionFlag: (entry) => {

@@ -4550,3 +4550,44 @@ test("a row's More menu opens from the keyboard with its first item focused, and
   await expect(menu).toHaveCount(0);
   await expect(button).toBeFocused();
 });
+
+test("Latest Merged PRs offers the archived merged PRs (Show older) and shows them once asked for", async ({ page }) => {
+  // The archive file beside the e2e run's temp data file (the script moves
+  // merged and closed PRs past the cutoff there), removed after the test.
+  const tempDir = path.resolve(String(process.env.VIEW_PRS_E2E_TEMP_DIR || ""));
+  if (!process.env.VIEW_PRS_E2E_TEMP_DIR || !tempDir.startsWith(path.resolve(os.tmpdir()) + path.sep)) {
+    throw new Error(`VIEW_PRS_E2E_TEMP_DIR must be a temp dir, got "${process.env.VIEW_PRS_E2E_TEMP_DIR}"`);
+  }
+  const archiveFile = path.join(tempDir, "check-open-pr-updates.data.archive.json");
+  pendingServerDataRestores.push(() => fs.rmSync(archiveFile, { force: true }));
+  fs.writeFileSync(
+    archiveFile,
+    JSON.stringify({
+      byPrNumber: {
+        "octocat/hello-world#901": {
+          prNumber: "901",
+          repo: "octocat/hello-world",
+          section: "merged",
+          updatedAt: "2025-06-02T10:00:00Z",
+          data: { number: "901", title: "An old archived change", url: "https://github.com/octocat/hello-world/pull/901", mergedAt: "2025-06-01T10:00:00Z", authorLogin: "octocat" },
+        },
+      },
+    }),
+  );
+
+  const { consoleErrors } = collectPageErrors(page);
+  await page.goto("/");
+  await waitForPrTable(page);
+
+  const merged = prSection(page, "Latest Merged PRs");
+  if (!(await merged.evaluate((el) => el.open))) {
+    await prSectionSummary(merged).click();
+  }
+  const rowFor901 = merged.getByRole("button", { name: "Show summary for PR #901", exact: true });
+  await expect(rowFor901).toHaveCount(0);
+
+  await merged.getByRole("button", { name: "Show older (1)", exact: true }).click();
+  await expect(rowFor901).toBeVisible();
+  await expect(merged.getByRole("button", { name: /Show older/ })).toHaveCount(0);
+  expect(consoleErrors).toEqual([]);
+});
