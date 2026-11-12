@@ -289,6 +289,28 @@ describe("the tracked PR routes", () => {
     expect(res.body.sources.subscriptions.map((entry) => entry.repo)).toEqual([SUBSCRIBED, "acme-org/picked"]);
   });
 
+  test("mounted at /view-prs, as the app hub mounts it (which strips the prefix), each route still answers with JSON", async () => {
+    const express = require("express");
+    const hub = express();
+    hub.use("/view-prs", appModule.createViewPrsApp());
+    const mounted = hub.listen(0);
+    try {
+      const listed = await supertest(mounted).get("/view-prs/sources");
+      const subscribed = await supertest(mounted).put("/view-prs/subscriptions").send({ repo: "stranger/repo", mode: "recent" });
+      const unsubscribed = await supertest(mounted).delete("/view-prs/subscriptions").send({ repo: "stranger/repo" });
+      const added = await supertest(mounted).post("/view-prs/tracked-prs").send({ url: "other-org/lib#9" });
+      const removed = await supertest(mounted).delete("/view-prs/tracked-prs").send({ repo: "other-org/lib", number: "9" });
+
+      [listed, subscribed, unsubscribed, added, removed].forEach((res) => {
+        expect(res.headers["content-type"]).toMatch(/json/);
+        expect(res.body.ok).toBe(true);
+      });
+    } finally {
+      mounted.closeAllConnections?.();
+      await new Promise((resolve) => mounted.close(resolve));
+    }
+  });
+
   test("a manual run of several PRs is a run of chosen PRs, on the repo's Enterprise host", async () => {
     const res = await supertest(server).post("/run").send({ repo: "corp/tool", prNumber: "3, 8", openMode: "none" });
 

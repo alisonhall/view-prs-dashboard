@@ -35,7 +35,7 @@ const registerViewPrsSourcesRoutes = ({
     sourcesStorage.loadSources({ seedRepos: seedSubscriptionRepos }) ||
     sourcesStorage.normalizeSources({});
 
-  app.get("/view-prs/sources", (_req, res) => {
+  app.get(["/sources", "/view-prs/sources"], (_req, res) => {
     res.json({ ok: true, sources: readSourcesForResponse() });
   });
 
@@ -43,7 +43,7 @@ const registerViewPrsSourcesRoutes = ({
   // changes how: its recent PRs, or only the numbers listed. Its rows show
   // again (the data's version moves with the sources file), and the
   // background updates take it up at their next tick.
-  app.put("/view-prs/subscriptions", (req, res) => {
+  app.put(["/subscriptions", "/view-prs/subscriptions"], (req, res) => {
     const repo = String(req.body?.repo || "").trim();
     if (!isRepoName(repo)) {
       res.status(400).json({ ok: false, error: `Not a repo (owner/name): ${repo}` });
@@ -76,7 +76,7 @@ const registerViewPrsSourcesRoutes = ({
 
   // { repo } - unsubscribes a repo: its rows are hidden, not deleted (notes
   // and all), and PRs added from it by URL stay.
-  app.delete("/view-prs/subscriptions", (req, res) => {
+  app.delete(["/subscriptions", "/view-prs/subscriptions"], (req, res) => {
     const repo = String(req.body?.repo || "").trim();
     try {
       const removed = sourcesStorage.removeSubscription(repo);
@@ -126,7 +126,7 @@ const registerViewPrsSourcesRoutes = ({
   // fetched: the response waits for that (responseWaitMs at most - past it,
   // fetched: null, and it carries on in the background; its row arrives with
   // the data's next change), so the page can say whether it worked.
-  app.post("/view-prs/tracked-prs", async (req, res) => {
+  app.post(["/tracked-prs", "/view-prs/tracked-prs"], async (req, res) => {
     const pr = parsePrUrl(req.body?.url);
     if (!pr) {
       res.status(400).json({ ok: false, error: "Not a pull request URL (https://github.com/owner/repo/pull/123)" });
@@ -170,7 +170,7 @@ const registerViewPrsSourcesRoutes = ({
 
   // { repo, number } - stops tracking a PR added by URL. Its row stays
   // stored, but is hidden unless its repo is subscribed.
-  app.delete("/view-prs/tracked-prs", (req, res) => {
+  app.delete(["/tracked-prs", "/view-prs/tracked-prs"], (req, res) => {
     const repo = String(req.body?.repo || "").trim();
     const number = String(req.body?.number || "").trim();
     try {
