@@ -292,7 +292,7 @@ describe("the tracked PR routes", () => {
   test("mounted at /view-prs, as the app hub mounts it (which strips the prefix), each route still answers with JSON", async () => {
     const express = require("express");
     const hub = express();
-    hub.use("/view-prs", appModule.createViewPrsApp());
+    hub.use("/view-prs", appModule.createViewPrsApp({ production: true }));
     const mounted = hub.listen(0);
     try {
       const listed = await supertest(mounted).get("/view-prs/sources");
