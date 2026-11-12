@@ -46,3 +46,17 @@ export const reviewStatsReachesArchive = (summary: ArchiveSummary | undefined, s
   if (!newestDay) return true;
   return start <= newestDay;
 };
+
+const ALL_ARCHIVED_SECTIONS: ReadonlySet<ArchivedSection> = new Set<ArchivedSection>(['merged', 'closed']);
+
+// The archived sections the table adds: those whose "Show older" was
+// pressed, and every one while the search or PR number field has something
+// in it - so a search finds archived PRs too (they show in their sections
+// while it matches them).
+export const tableArchiveSections = (
+  shownSections: ReadonlySet<ArchivedSection>,
+  filterValues: { filterSearch?: string; filterPrNumbers?: string } | null | undefined,
+): ReadonlySet<ArchivedSection> => {
+  const searching = Boolean(String(filterValues?.filterSearch || '').trim() || String(filterValues?.filterPrNumbers || '').trim());
+  return searching ? ALL_ARCHIVED_SECTIONS : shownSections;
+};

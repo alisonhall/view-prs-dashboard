@@ -2,6 +2,7 @@ import { Suspense, lazy, useEffect, useRef, type ReactNode, type RefObject } fro
 import { usePrData } from '../../state/PrDataContext';
 import { usePrArchive, WithArchivedRows } from '../../state/PrArchiveContext';
 import { reviewStatsReachesArchive } from '../../helpers/pr-archive.helpers';
+import { useTableArchiveSections } from '../../state/useTableArchiveSections';
 import { type TabPanelId, useHasTabPanelBeenVisible, useIsTabPanelVisible } from '../../state/useIsTabPanelVisible';
 import { useMultiSelectDropdownClosing } from '../../state/useMultiSelectDropdownClosing';
 import { AuthorInsightsProvider } from '../AuthorInsightsProvider';
@@ -122,11 +123,12 @@ function PrTable() {
  * separate portals, each with its own).
  */
 // The table's archived PRs: those of the Closed and Merged sections whose
-// "Show older" was pressed.
+// "Show older" was pressed, and all of them while the search or PR number
+// field has something in it (useTableArchiveSections).
 function TableArchiveScope({ children }: { children: ReactNode }) {
-  const { shownSections } = usePrArchive();
+  const sections = useTableArchiveSections();
   return (
-    <WithArchivedRows include={shownSections.size > 0} sections={shownSections}>
+    <WithArchivedRows include={sections.size > 0} sections={sections}>
       {children}
     </WithArchivedRows>
   );

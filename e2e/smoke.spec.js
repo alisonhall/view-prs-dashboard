@@ -4551,7 +4551,7 @@ test("a row's More menu opens from the keyboard with its first item focused, and
   await expect(button).toBeFocused();
 });
 
-test("Latest Merged PRs offers the archived merged PRs (Show older) and shows them once asked for", async ({ page }) => {
+test("a search finds archived PRs; Latest Merged PRs offers them (Show older) and shows them once asked for", async ({ page }) => {
   // The archive file beside the e2e run's temp data file (the script moves
   // merged and closed PRs past the cutoff there), removed after the test.
   const tempDir = path.resolve(String(process.env.VIEW_PRS_E2E_TEMP_DIR || ""));
@@ -4584,6 +4584,13 @@ test("Latest Merged PRs offers the archived merged PRs (Show older) and shows th
     await prSectionSummary(merged).click();
   }
   const rowFor901 = merged.getByRole("button", { name: "Show summary for PR #901", exact: true });
+  await expect(rowFor901).toHaveCount(0);
+
+  // A search looks through them too, and they go again when it's cleared.
+  const search = filterBar(page).getByRole("searchbox", { name: "Search PRs" });
+  await search.fill("old archived");
+  await expect(rowFor901).toBeVisible();
+  await search.press("Escape");
   await expect(rowFor901).toHaveCount(0);
 
   await merged.getByRole("button", { name: "Show older (1)", exact: true }).click();

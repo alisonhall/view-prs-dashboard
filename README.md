@@ -278,7 +278,7 @@ Merged and closed PRs 120 days after merging or closing (`VIEW_PRS_ARCHIVE_DAYS`
 
 The page loads archived PRs only when something needs them:
 
-- **The table**: Latest Merged PRs and Closed PRs end with **Show older (N)**, which adds that section's archived PRs until the page reloads. They're left out of the smart groups (Needs Attention, In Review...) and of "Quick check all".
+- **The table**: Latest Merged PRs and Closed PRs end with **Show older (N)**, which adds that section's archived PRs until the page reloads. While the search or PR number field has something in it, the table looks through every archived PR too, and shows those it matches in their sections (and in the "Showing N of M" count) until it's cleared. They're left out of the smart groups (Needs Attention, In Review...) and of "Quick check all".
 - **Review stats**: when its dates reach back to the newest archived PR's activity (or it has no start date), so its numbers are the same as before archiving. Its default dates (the last 3 months) don't, which is why the cutoff is 120 days: a merged PR is still fetched for a while after merging.
 - **Authors**: always, since it covers every PR an author has opened.
 

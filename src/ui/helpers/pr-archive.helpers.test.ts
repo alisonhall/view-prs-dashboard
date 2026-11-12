@@ -1,4 +1,5 @@
-import { archivedCount, mergeArchivedRows, reviewStatsReachesArchive } from './pr-archive.helpers';
+import { archivedCount, mergeArchivedRows, reviewStatsReachesArchive, tableArchiveSections } from './pr-archive.helpers';
+import type { ArchivedSection } from './pr-archive.helpers';
 import type { PrDataPayload, PrEntry } from '../types/pr-data';
 
 const row = (number: string, section: PrEntry['section'], extra: Partial<PrEntry> = {}): PrEntry => ({
@@ -45,6 +46,22 @@ describe('mergeArchivedRows', () => {
     expect(mergeArchivedRows(payload, {})).toBe(payload);
     expect(mergeArchivedRows(payload, archived, new Set())).toBe(payload);
     expect(mergeArchivedRows(payload, { 'o/r#2': archived['o/r#2'] })).toBe(payload);
+  });
+});
+
+describe('tableArchiveSections', () => {
+  const shown: ReadonlySet<ArchivedSection> = new Set(['closed']);
+
+  test("gives the sections whose Show older was pressed, or every one while the search or PR number field isn't empty", () => {
+    expect(tableArchiveSections(shown, { filterSearch: '', filterPrNumbers: '' })).toBe(shown);
+    expect(tableArchiveSections(shown, { filterSearch: '   ' })).toBe(shown);
+    expect(tableArchiveSections(shown, undefined)).toBe(shown);
+    expect([...tableArchiveSections(shown, { filterSearch: 'parser' })].sort()).toEqual(['closed', 'merged']);
+    expect([...tableArchiveSections(new Set(), { filterPrNumbers: '901' })].sort()).toEqual(['closed', 'merged']);
+  });
+
+  test('gives the same set each time while searching, so the table does not rebuild', () => {
+    expect(tableArchiveSections(shown, { filterSearch: 'a' })).toBe(tableArchiveSections(new Set(), { filterSearch: 'b' }));
   });
 });
 
