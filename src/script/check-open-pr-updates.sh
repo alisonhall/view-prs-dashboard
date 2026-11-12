@@ -1197,10 +1197,14 @@ queue_pr_state_row() {
   fi
   [[ "$PR_STATE_QUEUE_COUNT" -eq 0 ]] && PR_STATE_QUEUE_STARTED=$SECONDS
 
+  local fetched_at
+  fetched_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+  update_pr_row_snapshot "$row_json" "$section" "$fetched_at"
+
   if ! printf '%s' "$row_json" | jq -c \
     --arg section "$section" \
     --argjson rowOrder "$RUN_ROW_INDEX" \
-    --arg fetchedAt "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+    --arg fetchedAt "$fetched_at" \
     '{section: $section, rowOrder: $rowOrder, fetchedAt: $fetchedAt, row: .}' >>"$PR_STATE_QUEUE_FILE"; then
     echo "Couldn't queue a row to save; saving it on its own" >&2
     upsert_pr_state "$row_json" "$section"
@@ -1448,11 +1452,12 @@ push_history_ref_of() {
 # last activity ({at, oid}), or null - compute-pr-row.js's viewerSeenHead.
 get_stored_viewer_seen_head_json() {
   local number="$1"
-  local found=''
-  if [[ -n "${PR_STATE_FILE:-}" && -f "$PR_STATE_FILE" ]]; then
+  local found='' state_file
+  state_file=$(stored_pr_row_file "$number")
+  if [[ -n "$state_file" ]]; then
     found=$(jq -c --arg number "$number" --arg repo "$REPO" "$PR_KEY_JQ"'
       pr_row($repo; $number) | .data.viewerSeenHead // empty
-    ' "$PR_STATE_FILE" 2>/dev/null || true)
+    ' "$state_file" 2>/dev/null || true)
   fi
   printf '%s' "${found:-null}"
 }
@@ -2128,8 +2133,9 @@ row_passes_display_filters() {
 # changed (likely a failed fetch), or stored while the PR was still open -
 # files pushed or viewed after that fetch would stay uncounted.
 get_stored_viewed_files_stats_json() {
-  local number="$1"
-  [[ -n "${PR_STATE_FILE:-}" && -f "$PR_STATE_FILE" ]] || return 0
+  local number="$1" state_file
+  state_file=$(stored_pr_row_file "$number")
+  [[ -n "$state_file" ]] || return 0
   jq -c --arg number "$number" --arg repo "$REPO" "$PR_KEY_JQ"'
     pr_row($repo; $number)
     | select(.section == "merged" or .section == "closed")
@@ -2140,7 +2146,7 @@ get_stored_viewed_files_stats_json() {
         viewedFiles: ((.viewedFilesCount | tonumber?) // 0),
         changedFiles: ((.changedFilesCount | tonumber?) // 0)
       }
-  ' "$PR_STATE_FILE" 2>/dev/null || true
+  ' "$state_file" 2>/dev/null || true
 }
 
 # One PR's row: fetches its details, review threads, review comments and
@@ -2511,25 +2517,92 @@ build_row_local_state_key() {
 }
 
 # Each of this repo's stored rows in its own small file (the data file's
-# shape, one PR in it), in ROW_REUSE_SNAPSHOT_DIR: get_cached_row_json_for_pr
-# then reads that instead of the whole data file, twice for every listed PR.
-# Taken before the run writes its first row; a row is only looked up before
-# it's written again. None when the run reuses nothing (chosen PRs, acks,
-# VIEW_PRS_SKIP_UNCHANGED=0).
-build_row_reuse_snapshot() {
-  local number entry_json
-  [[ -n "${ROW_REUSE_SNAPSHOT_DIR:-}" && -f "$PR_STATE_FILE" ]] || return 0
-  cache_shortcut_allowed_for_section 'open' || return 0
-  while IFS=$'\t' read -r number entry_json; do
-    [[ -n "$number" && -n "$entry_json" ]] || continue
-    printf '%s' "$entry_json" >"$ROW_REUSE_SNAPSHOT_DIR/$number.json"
-  done < <(jq -r --arg repo "$REPO" "$PR_KEY_JQ"'
-    (.byPrNumber // {}) | to_entries[]
-    | select(.value.repo == $repo)
-    | (.value.prNumber // (.key | split("#") | last) | tostring) as $number
-    | select($number | test("^[0-9]+$"))
-    | "\($number)\t\({byPrNumber: {(pr_key($repo; $number)): .value}} | tojson)"
-  ' "$PR_STATE_FILE" 2>/dev/null || true)
+# shape, one PR in it), in PR_ROW_SNAPSHOT_DIR: what the run reads of a PR's
+# stored row (get_cached_row_json_for_pr, twice for every listed PR;
+# get_stored_viewer_seen_head_json, get_stored_viewed_files_stats_json and
+# pr_updated_at_matches_cache, once each) then reads one small file, not
+# the whole data file (25 MB for 960 PRs; 0.7-2.7s a read on 38 MB). Taken
+# once, before the run's first row (and before --quick-check's checks);
+# queue_pr_state_row keeps it current with the rows the run saves, which
+# may be read again later in the run (a PR the reconcile step saved, then
+# listed). Only this script writes the fields read from it; a row another
+# run saves meanwhile is merged under the lock when this run saves it, as
+# before. None for a run of chosen PRs: a read or two of the data file
+# costs less than the snapshot.
+build_pr_row_snapshot() {
+  [[ -n "${PR_ROW_SNAPSHOT_DIR:-}" && -f "$PR_STATE_FILE" ]] || return 0
+  ! is_targeted_run || return 0
+  # Split by awk, not a while-read loop: bash reads a pipe a byte at a time,
+  # which took over two minutes for a 38 MB file.
+  {
+    jq -r --arg repo "$REPO" "$PR_KEY_JQ"'
+      (.byPrNumber // {}) | to_entries[]
+      | select(.value.repo == $repo)
+      | (.value.prNumber // (.key | split("#") | last) | tostring) as $number
+      | select($number | test("^[0-9]+$"))
+      | "\($number)\t\({byPrNumber: {(pr_key($repo; $number)): .value}} | tojson)"
+    ' "$PR_STATE_FILE" 2>/dev/null |
+      SNAPSHOT_DIR="$PR_ROW_SNAPSHOT_DIR" awk '{
+        tab = index($0, "\t")
+        number = substr($0, 1, tab - 1)
+        if (tab > 1 && number ~ /^[0-9]+$/ && length($0) > tab) {
+          file = ENVIRON["SNAPSHOT_DIR"] "/" number ".json"
+          printf "%s", substr($0, tab + 1) > file
+          close(file)
+        }
+      }'
+  } && return 0
+  # An unreadable data file, or a split cut short (a full disk): no
+  # snapshot, so the reads go to the data file, rather than finding no row
+  # for the PRs it missed - a full fetch for each, and a viewerSeenHead
+  # computed again from scratch.
+  echo "Couldn't split $PR_STATE_FILE into one file per PR; reading it whole instead" >&2
+  rm -rf "$PR_ROW_SNAPSHOT_DIR"
+  PR_ROW_SNAPSHOT_DIR=''
+  return 0
+}
+
+# The file holding the PR's stored row: its snapshot file, or the data file
+# when the run has no snapshot. Nothing when there's no row to read.
+stored_pr_row_file() {
+  local number="$1"
+  if [[ -n "${PR_ROW_SNAPSHOT_DIR:-}" ]]; then
+    [[ "$number" =~ ^[0-9]+$ && -f "$PR_ROW_SNAPSHOT_DIR/$number.json" ]] && printf '%s' "$PR_ROW_SNAPSHOT_DIR/$number.json"
+    return 0
+  fi
+  [[ -n "${PR_STATE_FILE:-}" && -f "$PR_STATE_FILE" ]] && printf '%s' "$PR_STATE_FILE"
+  return 0
+}
+
+# A row the run saves (queue_pr_state_row), in its snapshot file, as the
+# save will store it: the same upsert_row, over the one PR.
+update_pr_row_snapshot() {
+  local row_json="$1" section="$2" fetched_at="$3"
+  local number snapshot_file tmp targeted=false
+  [[ -n "${PR_ROW_SNAPSHOT_DIR:-}" ]] || return 0
+  number=$(printf '%s' "$row_json" | jq -r '.number // "" | tostring' 2>/dev/null || true)
+  [[ "$number" =~ ^[0-9]+$ ]] || return 0
+  snapshot_file="$PR_ROW_SNAPSHOT_DIR/$number.json"
+  [[ -f "$snapshot_file" ]] || printf '{}' >"$snapshot_file"
+  is_targeted_run && targeted=true
+  tmp="$snapshot_file.tmp"
+  if printf '%s' "$row_json" | jq -c \
+    --arg repo "$REPO" \
+    --arg section "$section" \
+    --arg updatedAt "$RUN_TS" \
+    --arg fetchedAt "$fetched_at" \
+    --argjson rowOrder "$RUN_ROW_INDEX" \
+    --argjson targeted "$targeted" \
+    --slurpfile stored "$snapshot_file" \
+    "$PR_KEY_JQ$UPSERT_ROW_JQ"'
+      . as $row | ($stored[0] // {}) | upsert_row($row; $section; $rowOrder; $fetchedAt)
+    ' >"$tmp" 2>/dev/null && [[ -s "$tmp" ]]; then
+    command mv -f "$tmp" "$snapshot_file"
+  else
+    # Not what the save will store: no snapshot row, so a later read finds
+    # none (a full fetch) rather than a stale one.
+    rm -f "$tmp" "$snapshot_file"
+  fi
 }
 
 # The stored row for this listed PR when a full run can use it as it is -
@@ -2552,11 +2625,8 @@ get_cached_row_json_for_pr() {
   [[ -z "$number" || "$number" == 'null' ]] && return 0
   [[ -z "$source_updated_at" || "$source_updated_at" == 'null' ]] && return 0
 
-  state_file="$PR_STATE_FILE"
-  if [[ -n "${ROW_REUSE_SNAPSHOT_DIR:-}" ]]; then
-    state_file="$ROW_REUSE_SNAPSHOT_DIR/$number.json"
-    [[ -f "$state_file" ]] || return 0
-  fi
+  state_file=$(stored_pr_row_file "$number")
+  [[ -n "$state_file" ]] || return 0
 
   max_age_seconds="$VIEW_PRS_OPEN_REVALIDATE_SECONDS"
   if ! [[ "$max_age_seconds" =~ ^[0-9]+$ ]]; then
@@ -2864,15 +2934,17 @@ pr_updated_at_matches_cache() {
   local number="$1"
   local section="$2"
   local source_updated_at="$3"
-  local cached_updated_at
+  local cached_updated_at state_file
 
+  state_file=$(stored_pr_row_file "$number")
+  [[ -n "$state_file" ]] || return 1
   cached_updated_at=$(
     jq -r \
       --arg number "$number" \
       --arg repo "$REPO" \
       --arg section "$section" \
       "$PR_KEY_JQ"'pr_row($repo; $number) | select(.section == $section) | (.data.sourceUpdatedAt // empty)' \
-      "$PR_STATE_FILE" 2>/dev/null
+      "$state_file" 2>/dev/null
   )
 
   [[ -n "$cached_updated_at" && "$cached_updated_at" == "$source_updated_at" ]]
@@ -3449,6 +3521,13 @@ main() {
 
   ensure_pr_state_store
 
+  if ! is_targeted_run; then
+    PR_ROW_SNAPSHOT_DIR=$(mktemp -d)
+    # Removed when the run ends, however it ends (on_script_exit).
+    EXIT_CLEANUP_PATHS+=("$PR_ROW_SNAPSHOT_DIR")
+    build_pr_row_snapshot
+  fi
+
   if [[ "$QUICK_CHECK" -eq 1 ]]; then
     quick_check_open_draft_pending=$(
       {
@@ -3517,11 +3596,8 @@ main() {
     pr_item=$(printf '%s' "$pr_item" | base64 --decode)
     printf '%s\t%s\n' "$(printf '%s' "$pr_item" | jq -r '.number')" "$(push_history_ref_of "$pr_item")"
   done <<<"$prs_b64" >"$PUSH_HISTORY_REFS_FILE"
-  ROW_REUSE_SNAPSHOT_DIR=$(mktemp -d)
-  build_row_reuse_snapshot
 
   # Removed when the run ends, however it ends (on_script_exit).
-  EXIT_CLEANUP_PATHS+=("$ROW_REUSE_SNAPSHOT_DIR")
   [[ "$detail_cache_tmp" -eq 1 ]] && EXIT_CLEANUP_PATHS+=("$DETAIL_CACHE_DIR")
   [[ "$thread_cache_tmp" -eq 1 ]] && EXIT_CLEANUP_PATHS+=("$THREAD_CACHE_DIR")
   [[ "$files_cache_tmp" -eq 1 ]] && EXIT_CLEANUP_PATHS+=("$FILES_CACHE_DIR")

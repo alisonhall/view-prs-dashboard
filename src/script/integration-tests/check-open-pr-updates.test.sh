@@ -1237,6 +1237,84 @@ run_batched_save_tests() {
   unset VIEW_PRS_SAVE_BATCH_ROWS VIEW_PRS_SAVE_BATCH_SECONDS
 }
 
+# What a run reads of a PR's stored row comes from its snapshot file
+# (build_pr_row_snapshot), not the whole data file, and the snapshot keeps
+# up with the rows the run saves (queue_pr_state_row).
+run_pr_row_snapshot_tests() {
+  source "$SCRIPT_PATH"
+
+  REPO='owner/repo'
+  RUN_TS='2026-03-12T22:00:00Z'
+  local state="$TEST_TMP/snapshot-state.json"
+  cat >"$state" <<'JSON'
+{"byPrNumber":{
+  "owner/repo#5":{"prNumber":"5","repo":"owner/repo","section":"merged","updatedAt":"2026-03-12T21:00:00Z","rowOrder":1,"data":{"number":"5","title":"Five","sourceUpdatedAt":"2026-03-10T00:00:00Z","viewerSeenHead":{"at":"2026-03-09T00:00:00Z","oid":"aaa"},"viewedFilesCount":2,"changedFilesCount":4}},
+  "owner/repo#6":{"prNumber":"6","repo":"owner/repo","section":"open","updatedAt":"2026-03-12T21:00:00Z","rowOrder":2,"data":{"number":"6","title":"Six","sourceUpdatedAt":"2026-03-11T00:00:00Z"}},
+  "other/repo#5":{"prNumber":"5","repo":"other/repo","section":"open","updatedAt":"2026-03-12T21:00:00Z","rowOrder":1,"data":{"number":"5","title":"Elsewhere"}}
+},"lastRun":null}
+JSON
+  PR_STATE_FILE="$state"
+  PR_STATE_LOCK_DIR="$TEST_TMP/snapshot-state.lock"
+
+  # No snapshot (a run of chosen PRs): the data file.
+  PR_ROW_SNAPSHOT_DIR=''
+  assert_eq "$(get_stored_viewer_seen_head_json 5)" '{"at":"2026-03-09T00:00:00Z","oid":"aaa"}' 'without a snapshot, the data file should be read'
+
+  PR_ROW_SNAPSHOT_DIR="$TEST_TMP/snapshot-dir"
+  mkdir -p "$PR_ROW_SNAPSHOT_DIR"
+  build_pr_row_snapshot
+  assert_eq "$(ls "$PR_ROW_SNAPSHOT_DIR" | sort | tr '\n' ' ')" '5.json 6.json ' "the snapshot should hold this repo's rows, one file each"
+  assert_eq "$(jq -r '.byPrNumber | keys | join(",")' "$PR_ROW_SNAPSHOT_DIR/5.json")" 'owner/repo#5' 'a snapshot file should hold its PR alone'
+
+  # Reads come from the snapshot: the data file is gone, the answers stay.
+  local saved_state
+  saved_state=$(cat "$state")
+  printf '{"byPrNumber":{}}' >"$state"
+  assert_eq "$(get_stored_viewer_seen_head_json 5)" '{"at":"2026-03-09T00:00:00Z","oid":"aaa"}' "viewerSeenHead should be read from the PR's snapshot file"
+  assert_eq "$(get_stored_viewer_seen_head_json 6)" 'null' 'a row without viewerSeenHead should give null'
+  assert_eq "$(get_stored_viewer_seen_head_json 99)" 'null' 'a PR with no stored row should give null'
+  assert_eq "$(get_stored_viewed_files_stats_json 5)" '{"viewedFiles":2,"changedFiles":4}' "a merged PR's viewed-files counts should be read from its snapshot file"
+  assert_eq "$(get_stored_viewed_files_stats_json 6)" '' "an open PR's counts should not stand"
+  assert_true 'pr_updated_at_matches_cache 6 open 2026-03-11T00:00:00Z' "--quick-check should find an unchanged PR in its snapshot file"
+  assert_true '! pr_updated_at_matches_cache 6 open 2026-03-12T00:00:00Z' '--quick-check should see a changed PR as changed'
+  assert_true '! pr_updated_at_matches_cache 99 open 2026-03-12T00:00:00Z' '--quick-check should see a PR with no stored row as changed'
+  printf '%s' "$saved_state" >"$state"
+
+  # A queued row is in the snapshot at once, as the save will store it.
+  VIEW_PRS_SAVE_BATCH_ROWS=10
+  VIEW_PRS_SAVE_BATCH_SECONDS=600
+  RUN_ROW_INDEX=1
+  queue_pr_state_row "$(jq -cn '{number:"5", title:"Five again", sourceUpdatedAt:"2026-03-12T00:00:00Z", viewerSeenHead:{at:"2026-03-12T00:00:00Z", oid:"bbb"}}')" 'merged'
+  RUN_ROW_INDEX=2
+  queue_pr_state_row "$(jq -cn '{number:"7", title:"Seven", sourceUpdatedAt:"2026-03-12T00:00:00Z"}')" 'open'
+  assert_eq "$(get_stored_viewer_seen_head_json 5)" '{"at":"2026-03-12T00:00:00Z","oid":"bbb"}' 'a queued row should be read back before it is saved'
+  assert_true 'pr_updated_at_matches_cache 7 open 2026-03-12T00:00:00Z' "a new PR's queued row should be in the snapshot"
+  flush_pr_state_rows
+  local key
+  for key in 'owner/repo#5' 'owner/repo#7'; do
+    local num="${key##*#}"
+    assert_eq "$(jq -cS --arg k "$key" '.byPrNumber[$k]' "$PR_ROW_SNAPSHOT_DIR/$num.json")" "$(jq -cS --arg k "$key" '.byPrNumber[$k]' "$state")" "the snapshot's row for $key should be the saved row"
+  done
+  unset VIEW_PRS_SAVE_BATCH_ROWS VIEW_PRS_SAVE_BATCH_SECONDS
+
+  # A split that fails leaves no snapshot, so the reads go to the data file
+  # rather than finding no row for every PR.
+  printf '%s' "$saved_state" >"$state"
+  PR_ROW_SNAPSHOT_DIR="$TEST_TMP/snapshot-not-a-dir"
+  printf 'x' >"$PR_ROW_SNAPSHOT_DIR"
+  build_pr_row_snapshot 2>/dev/null
+  assert_eq "$PR_ROW_SNAPSHOT_DIR" '' "a split that couldn't write its files should leave no snapshot"
+  assert_eq "$(get_stored_viewer_seen_head_json 5)" '{"at":"2026-03-09T00:00:00Z","oid":"aaa"}' 'with no snapshot, the data file should be read'
+
+  PR_ROW_SNAPSHOT_DIR="$TEST_TMP/snapshot-dir-unreadable"
+  mkdir -p "$PR_ROW_SNAPSHOT_DIR"
+  printf '{"byPrNumber":' >"$state"
+  build_pr_row_snapshot 2>/dev/null
+  assert_eq "$PR_ROW_SNAPSHOT_DIR" '' "a data file jq can't read should leave no snapshot"
+  printf '%s' "$saved_state" >"$state"
+  PR_ROW_SNAPSHOT_DIR=''
+}
+
 run_fetch_threads_pagination_tests() {
   source "$SCRIPT_PATH"
 
@@ -1747,6 +1825,7 @@ run_all_tests() {
   run_quick_check_numbers_tests
   run_row_order_stability_tests
   run_batched_save_tests
+  run_pr_row_snapshot_tests
   run_targeted_prs_tests
   run_unfetched_pr_tests
   run_row_reuse_tests

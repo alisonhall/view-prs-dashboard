@@ -945,27 +945,35 @@ describe("check-open-pr-updates shell helper behavior", () => {
       const stateFile = writeState(state);
       const snapshotDir = runShell("mktemp -d");
 
-      runScriptFn(`${setup(stateFile)} ROW_REUSE_SNAPSHOT_DIR="${snapshotDir}"; build_row_reuse_snapshot`);
+      runScriptFn(`${setup(stateFile)} PR_ROW_SNAPSHOT_DIR="${snapshotDir}"; build_pr_row_snapshot`);
 
       expect(runShell(`ls "${snapshotDir}"`).split("\n")).toEqual(["123.json"]);
       expect(JSON.parse(runShell(`cat "${snapshotDir}/123.json"`))).toEqual({ byPrNumber: { "owner/repo#123": state.byPrNumber["owner/repo#123"] } });
 
       const lookUpIn = (dir, pr = listed()) =>
-        runScriptFn(`${setup(stateFile)} ROW_REUSE_SNAPSHOT_DIR="${dir}"; get_cached_row_json_for_pr '${pr}' open`);
+        runScriptFn(`${setup(stateFile)} PR_ROW_SNAPSHOT_DIR="${dir}"; get_cached_row_json_for_pr '${pr}' open`);
       expect(lookUpIn(snapshotDir)).toContain('"number":"123"');
       // Not in the snapshot (a new PR): fetched.
       expect(lookUpIn(snapshotDir, listed({ number: 789 }))).toBe("");
       expect(lookUpIn(runShell("mktemp -d"))).toBe("");
     });
 
-    test.each([
-      ["VIEW_PRS_SKIP_UNCHANGED=0", "VIEW_PRS_SKIP_UNCHANGED=0;"],
-      ["a run of chosen PRs", "TARGET_PRS='123';"],
-    ])("no snapshot is taken when the run reuses nothing (%s)", (_label, env) => {
+    test("a run that reuses no rows (VIEW_PRS_SKIP_UNCHANGED=0) still takes the snapshot, for its other reads, but reuses nothing from it", () => {
+      const stateFile = writeState(storedState());
+      const snapshotDir = runShell("mktemp -d");
+      const env = "VIEW_PRS_SKIP_UNCHANGED=0;";
+
+      runScriptFn(`${setup(stateFile)} ${env} PR_ROW_SNAPSHOT_DIR="${snapshotDir}"; build_pr_row_snapshot`);
+
+      expect(runShell(`ls "${snapshotDir}"`)).toBe("123.json");
+      expect(runScriptFn(`${setup(stateFile)} ${env} PR_ROW_SNAPSHOT_DIR="${snapshotDir}"; get_cached_row_json_for_pr '${listed()}' open`)).toBe("");
+    });
+
+    test("no snapshot is taken for a run of chosen PRs: a read or two of the data file costs less", () => {
       const stateFile = writeState(storedState());
       const snapshotDir = runShell("mktemp -d");
 
-      runScriptFn(`${setup(stateFile)} ${env} ROW_REUSE_SNAPSHOT_DIR="${snapshotDir}"; build_row_reuse_snapshot`);
+      runScriptFn(`${setup(stateFile)} TARGET_PRS='123'; PR_ROW_SNAPSHOT_DIR="${snapshotDir}"; build_pr_row_snapshot`);
 
       expect(runShell(`ls -A "${snapshotDir}"`)).toBe("");
     });
