@@ -299,6 +299,10 @@ export interface ArchiveSummary {
   merged?: number;
   closed?: number;
   newestEventAt?: string;
+  // Each repo's archived authors and labels, once each (the table's Author
+  // and Label lists offer those only archived PRs have).
+  authors?: Array<{ repo?: string; login?: string; name?: string }>;
+  labels?: Array<{ repo?: string; name?: string }>;
 }
 
 // The data file's top-level `lastRun` (the last script run of any kind)

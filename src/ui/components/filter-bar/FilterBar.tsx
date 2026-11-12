@@ -33,14 +33,17 @@ const writeOpen = (open: boolean) => {
 };
 
 export interface FilterBarProps {
-  // Rows shown, and every stored row; `loaded` is false until the first
-  // data load (the counts mean nothing before).
+  // Rows shown, and every stored row, archived ones not counted; `loaded`
+  // is false until the first data load (the counts mean nothing before).
   shownCount: number;
   totalCount: number;
   loaded: boolean;
   // Of the shown rows, how many are only in sections Settings › Appearance
   // hides (so not on the page).
   hiddenCount?: number;
+  // Archived rows shown besides (a search, Show older), said apart: the
+  // total is of the rows the page always has.
+  archivedCount?: number;
 }
 
 /**
@@ -61,7 +64,7 @@ export interface FilterBarProps {
  * closed (hidden). The lists' selections are kept in step with their
  * options by <ListSelectionSeeding />, mounted beside it.
  */
-export function FilterBar({ shownCount, totalCount, loaded, hiddenCount = 0 }: FilterBarProps) {
+export function FilterBar({ shownCount, totalCount, loaded, hiddenCount = 0, archivedCount = 0 }: FilterBarProps) {
   const { chips } = useTableFilterChips();
   // One instance for the views row and the panel's Manage saved views group.
   const savedViews = useSavedFilterViews();
@@ -92,7 +95,7 @@ export function FilterBar({ shownCount, totalCount, loaded, hiddenCount = 0 }: F
         <FilterSearchInput />
         <p className="filter-bar-count" aria-live="polite">
           {loaded
-            ? `Showing ${shownCount} of ${totalCount} ${totalCount === 1 ? 'PR' : 'PRs'}${hiddenCount > 0 ? ` · ${hiddenCount} in hidden sections` : ''}`
+            ? `Showing ${shownCount} of ${totalCount} ${totalCount === 1 ? 'PR' : 'PRs'}${archivedCount > 0 ? ` · ${archivedCount} archived` : ''}${hiddenCount > 0 ? ` · ${hiddenCount} in hidden sections` : ''}`
             : 'Loading…'}
         </p>
         {chips.length > 0 && (

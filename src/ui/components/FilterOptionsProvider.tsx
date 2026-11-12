@@ -10,6 +10,7 @@ import { extractRowLabelNames, normalizeFilterToken } from '../helpers/pr-filter
 import { createEntryDerivedCache, type EntryDerivedCache } from '../helpers/pr-entry-derived-cache.helpers.ts';
 import type { ActorsMap } from '../helpers/pr-actor-identity.helpers.ts';
 import { getPrLastActivityTime, groupAuthorOptionsByActivity } from '../helpers/author-picker.helpers.ts';
+import { ARCHIVED_ONLY_GROUP, archivedFacets } from '../helpers/pr-archive.helpers.ts';
 
 const { formatIsoDatetime } = createPrFormattingHelpers();
 
@@ -41,6 +42,9 @@ const toOptions = (entries: OptionEntry[]): FilterOption[] => entries.map(([valu
  * Authors are listed as the Authors view's picker lists them: those with a
  * PR updated in the last RECENTLY_ACTIVE_DAYS first, newest first, under
  * "Recent PRs", then "Everyone else" by name (author-picker.helpers.ts).
+ * Authors and labels only archived PRs have (the payload's archiveSummary)
+ * come last, under "Only in archived PRs": the payload here goes without
+ * archived rows, and picking one fetches them (useTableArchiveSections).
  *
  * The 4 actor-map-based lists (thread-resolution allow/deny, change-filter
  * ignore-comment/review-authors) are the same derivation (every actor in
@@ -102,9 +106,26 @@ export function FilterOptionsProvider({ children }: { children?: ReactNode }) {
         labelsByToken.set(token, labelName);
       });
     });
-    const labelOptions = Array.from(labelsByToken.values())
-      .map((labelName) => ({ value: labelName, label: labelName }))
-      .sort((a, b) => a.label.toLowerCase().localeCompare(b.label.toLowerCase()));
+    const byLabel = (a: FilterOption, b: FilterOption) => a.label.toLowerCase().localeCompare(b.label.toLowerCase());
+    // Those only archived PRs have (the archive summary's), after the
+    // others in their own group: picking one fetches the archive
+    // (useTableArchiveSections).
+    const archived = archivedFacets(payload?.archiveSummary, repoFilter);
+    const archivedOnlyLabels = new Map<string, string>();
+    archived.labels.forEach(({ name }) => {
+      const labelName = String(name || '').trim();
+      const token = normalizeFilterToken(labelName);
+      if (!token || labelsByToken.has(token) || archivedOnlyLabels.has(token)) return;
+      archivedOnlyLabels.set(token, labelName);
+    });
+    const labelOptions: FilterOption[] = [
+      ...Array.from(labelsByToken.values())
+        .map((labelName) => ({ value: labelName, label: labelName }))
+        .sort(byLabel),
+      ...Array.from(archivedOnlyLabels.values())
+        .map((labelName) => ({ value: labelName, label: labelName, group: ARCHIVED_ONLY_GROUP }))
+        .sort(byLabel),
+    ];
 
     const authors = new Map<string, string>();
     const lastActiveByLogin = new Map<string, { lastActiveAt: number }>();
@@ -122,9 +143,16 @@ export function FilterOptionsProvider({ children }: { children?: ReactNode }) {
       lastActiveByLogin,
       Date.now(),
     );
+    const archivedOnlyAuthors = new Map<string, string>();
+    archived.authors.forEach(({ login, name }) => {
+      const key = getPreferredActorKey(login, name);
+      if (!key || authors.has(key) || archivedOnlyAuthors.has(key)) return;
+      archivedOnlyAuthors.set(key, resolveActorDisplayName(key, actorsMap, String(name || '').trim()));
+    });
     const authorOptions: FilterOption[] = [
       ...recent.map(({ login, label }) => ({ value: login, label, group: 'Recent PRs' })),
       ...others.map(({ login, label }) => ({ value: login, label, group: 'Everyone else' })),
+      ...sortByDisplayName(Array.from(archivedOnlyAuthors.entries())).map(([login, label]) => ({ value: login, label, group: ARCHIVED_ONLY_GROUP })),
     ];
 
     const assignees = new Map<string, string>();

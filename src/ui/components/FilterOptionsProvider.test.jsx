@@ -128,6 +128,48 @@ describe('FilterOptionsProvider', () => {
     expect(screen.getByText('authorOptions: alice|Alice')).toBeInTheDocument();
   });
 
+  test("given archived PRs' authors and labels, then those no current PR has come last, under their own group, scoped to the selected repo", () => {
+    const entry = buildEntry({ data: { number: '1', authorLogin: 'alice', author: 'Alice', labels: [{ name: 'bug' }] } });
+    const archiveSummary = {
+      merged: 3,
+      authors: [
+        // Alice has a current PR: listed once, as before.
+        { repo: 'owner/repo', login: 'alice', name: 'Alice' },
+        { repo: 'owner/repo', login: 'old-dev', name: 'Old Dev' },
+        { repo: 'owner/other', login: 'elsewhere', name: 'Elsewhere' },
+      ],
+      labels: [
+        // "bug" in another case: the current one's.
+        { repo: 'owner/repo', name: 'Bug' },
+        { repo: 'owner/repo', name: 'legacy' },
+        { repo: 'owner/other', name: 'other-label' },
+      ],
+    };
+
+    function GroupsProbe() {
+      const { authorOptions, labelOptions, excludeLabelOptions } = useFilterOptions();
+      const describe = (options) => options.map((option) => `${option.value}:${option.group || '-'}`).join(', ');
+      return (
+        <ul>
+          <li>authors {describe(authorOptions)}</li>
+          <li>labels {describe(labelOptions)}</li>
+          <li>exclude {describe(excludeLabelOptions)}</li>
+        </ul>
+      );
+    }
+    render(
+      <PrDataProvider initialPayload={{ byPrNumber: { 1: entry }, actorsMap: {}, archiveSummary }} initialSelectedRepo="owner/repo">
+        <FilterOptionsProvider>
+          <GroupsProbe />
+        </FilterOptionsProvider>
+      </PrDataProvider>,
+    );
+
+    expect(screen.getByText('authors alice:Everyone else, old-dev:Only in archived PRs')).toBeInTheDocument();
+    expect(screen.getByText('labels bug:-, legacy:Only in archived PRs')).toBeInTheDocument();
+    expect(screen.getByText('exclude bug:-, legacy:Only in archived PRs')).toBeInTheDocument();
+  });
+
   test('given a re-render with the same entry object references (a poll tick with no real changes), when rendering again, then entry-derived values are not recomputed', () => {
     extractRowLabelNames.mockClear();
     const entryA = buildEntry({

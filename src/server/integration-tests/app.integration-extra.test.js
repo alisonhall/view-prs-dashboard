@@ -766,7 +766,14 @@ describe("integration behavior", () => {
       const data = (await request.get("/data")).body;
       expect(Object.keys(data.byPrNumber)).toContain("owner/repo#1");
       archivedKeys.forEach((key) => expect(data.byPrNumber).not.toHaveProperty([key]));
-      expect(data.archiveSummary).toEqual({ version: expect.any(String), merged: 2, closed: 1, newestEventAt: "2025-06-03T00:00:00Z" });
+      expect(data.archiveSummary).toEqual({
+        version: expect.any(String),
+        merged: 2,
+        closed: 1,
+        newestEventAt: "2025-06-03T00:00:00Z",
+        authors: [],
+        labels: [],
+      });
       const manifest = (await request.get("/data-manifest")).body;
       expect(Object.keys(manifest.manifest)).toContain("owner/repo#1");
       archivedKeys.forEach((key) => expect(manifest.manifest).not.toHaveProperty([key]));
@@ -776,6 +783,39 @@ describe("integration behavior", () => {
       expect(res.status).toBe(200);
       expect(Object.keys(res.body.byPrNumber).sort()).toEqual(archivedKeys);
       expect(res.body.byPrNumber["owner/repo#501"]).toMatchObject({ archived: true, section: "merged", data: { title: "Old 501" } });
+    });
+
+    test("given archived PRs' authors and labels, then the summary lists each repo's once each, for the Author and Label lists", async () => {
+      // Two repos, both in view ("owner/repo" is never a subscription's: a
+      // placeholder).
+      const inRepo = (repo, row) => ({ ...row, repo });
+      writeViewPrsData({ byPrNumber: {}, lastRun: null });
+      writeArchive({
+        "acme/app#501": inRepo("acme/app", archived("501", "merged", { authorLogin: "old-dev", author: "Old Dev", labels: [{ name: "legacy" }, "docs"] })),
+        // The same author and label again, in other cases: once each.
+        "acme/app#502": inRepo("acme/app", archived("502", "merged", { authorLogin: "OLD-DEV", author: "Old Dev", labels: ["Legacy"] })),
+        // No login: by name. Another repo: its own.
+        "acme/app#503": inRepo("acme/app", archived("503", "closed", { author: "Ghost", labels: [] })),
+        "acme/lib#7": inRepo("acme/lib", archived("7", "merged", { authorLogin: "old-dev", labels: ["legacy"] })),
+      });
+      appModule.viewPrsSourcesStorage.writeSources({
+        subscriptions: [
+          { repo: "acme/app", mode: "recent" },
+          { repo: "acme/lib", mode: "recent" },
+        ],
+      });
+
+      const summary = (await request.get("/data-manifest")).body.archiveSummary;
+      expect(summary.authors).toEqual([
+        { repo: "acme/app", login: "old-dev", name: "Old Dev" },
+        { repo: "acme/app", login: "", name: "Ghost" },
+        { repo: "acme/lib", login: "old-dev", name: "" },
+      ]);
+      expect(summary.labels).toEqual([
+        { repo: "acme/app", name: "legacy" },
+        { repo: "acme/app", name: "docs" },
+        { repo: "acme/lib", name: "legacy" },
+      ]);
     });
 
     test("given the archive changes, when the data is read again, then the archive's version and rows move with it", async () => {

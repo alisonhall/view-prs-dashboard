@@ -1,4 +1,15 @@
-import { archivedCount, mergeArchivedRows, reviewStatsReachesArchive, tableArchiveSections } from './pr-archive.helpers';
+import {
+  ARCHIVED_ONLY_GROUP,
+  archivedCount,
+  archivedEntryKeys,
+  archivedFacets,
+  mergeArchivedRows,
+  picksArchivedOnlyOption,
+  reviewStatsReachesArchive,
+  splitArchivedCount,
+  tableArchiveSections,
+} from './pr-archive.helpers';
+import { normalizeFilterToken } from './pr-filter-label-extraction.helpers';
 import type { ArchivedSection } from './pr-archive.helpers';
 import type { PrDataPayload, PrEntry } from '../types/pr-data';
 
@@ -62,6 +73,75 @@ describe('tableArchiveSections', () => {
 
   test('gives the same set each time while searching, so the table does not rebuild', () => {
     expect(tableArchiveSections(shown, { filterSearch: 'a' })).toBe(tableArchiveSections(new Set(), { filterSearch: 'b' }));
+  });
+
+  test('gives every one while an author or label only archived PRs have is ticked', () => {
+    expect([...tableArchiveSections(new Set(), { filterSearch: '' }, true)].sort()).toEqual(['closed', 'merged']);
+    expect(tableArchiveSections(shown, { filterSearch: '' }, false)).toBe(shown);
+  });
+});
+
+describe('archivedFacets', () => {
+  const summary = {
+    authors: [
+      { repo: 'o/r', login: 'old-dev', name: 'Old Dev' },
+      { repo: 'o/lib', login: 'lib-dev', name: '' },
+    ],
+    labels: [{ repo: 'o/lib', name: 'legacy' }],
+  };
+
+  test("gives the archived authors and labels, a repo's when given", () => {
+    expect(archivedFacets(summary)).toEqual({ authors: summary.authors, labels: summary.labels });
+    expect(archivedFacets(summary, 'o/r')).toEqual({ authors: [summary.authors[0]], labels: [] });
+  });
+
+  test('gives none from a summary without them (one from before they were added)', () => {
+    expect(archivedFacets({ merged: 3 })).toEqual({ authors: [], labels: [] });
+    expect(archivedFacets(undefined, 'o/r')).toEqual({ authors: [], labels: [] });
+  });
+});
+
+describe('picksArchivedOnlyOption', () => {
+  const options = [
+    { value: 'current-dev', label: 'Current Dev', group: 'Everyone else' },
+    { value: 'old-dev', label: 'Old Dev', group: ARCHIVED_ONLY_GROUP },
+  ];
+
+  test('says whether a ticked option is one only archived PRs have', () => {
+    expect(picksArchivedOnlyOption(options, new Set(['old-dev']))).toBe(true);
+    expect(picksArchivedOnlyOption(options, new Set(['current-dev', 'old-dev']))).toBe(true);
+    expect(picksArchivedOnlyOption(options, new Set(['current-dev']))).toBe(false);
+    expect(picksArchivedOnlyOption(options, new Set())).toBe(false);
+    expect(picksArchivedOnlyOption(options, undefined)).toBe(false);
+  });
+
+  test('matches with the given normalizing, as the label lists do', () => {
+    const labels = [{ value: 'Legacy', label: 'Legacy', group: ARCHIVED_ONLY_GROUP }];
+    expect(picksArchivedOnlyOption(labels, new Set(['legacy']))).toBe(false);
+    expect(picksArchivedOnlyOption(labels, new Set(['legacy']), normalizeFilterToken)).toBe(true);
+  });
+});
+
+describe('splitArchivedCount', () => {
+  const payload = {
+    ok: true,
+    byPrNumber: {
+      'o/r#1': row('1', 'open'),
+      'o/r#2': row('2', 'merged'),
+      'o/r#501': row('501', 'merged', { archived: true }),
+      'o/r#502': row('502', 'closed', { archived: true }),
+    },
+  } as unknown as PrDataPayload;
+
+  test("takes the archived rows the table has out of both counts, and counts those shown apart", () => {
+    const keys = archivedEntryKeys(payload);
+    expect([...keys].sort()).toEqual(['o/r#501', 'o/r#502']);
+    expect(splitArchivedCount(['o/r#1', 'o/r#501'], 4, keys)).toEqual({ shown: 1, total: 2, archivedShown: 1 });
+    expect(splitArchivedCount(['o/r#1', 'o/r#2'], 4, keys)).toEqual({ shown: 2, total: 2, archivedShown: 0 });
+  });
+
+  test('without archived rows, the counts are as given', () => {
+    expect(splitArchivedCount(['o/r#1'], 2, new Set())).toEqual({ shown: 1, total: 2, archivedShown: 0 });
   });
 });
 

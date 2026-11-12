@@ -1990,12 +1990,17 @@ const filterToVisibleRows = (data) => {
 // (a merged PR is fetched again while it's listed, comments after merging
 // included) - which Review stats reaching back to needs them; and a version that
 // moves when they change - the archive file, or the user state, which has
-// their notes - so a page holding them knows to fetch them again.
+// their notes - so a page holding them knows to fetch them again. With
+// them, each repo's archived authors and labels, once each: the table's
+// Author and Label lists offer those found only in archived PRs, and
+// picking one fetches the archive.
 const withoutArchivedRows = (data) => {
   if (!isObject(data?.byPrNumber)) return data;
   const kept = [];
   const counts = { merged: 0, closed: 0 };
   let newestEventAt = "";
+  const authors = new Map();
+  const labels = new Map();
   Object.entries(data.byPrNumber).forEach((item) => {
     const entry = item[1];
     if (entry?.archived !== true) {
@@ -2007,11 +2012,23 @@ const withoutArchivedRows = (data) => {
     const fetchedAt = toTrimmedString(entry.fetchedAt);
     const latest = fetchedAt > doneAt ? fetchedAt : doneAt;
     if (latest > newestEventAt) newestEventAt = latest;
+    const repo = toTrimmedString(entry.repo);
+    const login = toTrimmedString(entry.data?.authorLogin);
+    const name = toTrimmedString(entry.data?.author);
+    const authorKey = `${repo}|${(login || name).toLowerCase()}`;
+    if ((login || name) && !authors.has(authorKey)) authors.set(authorKey, { repo, login, name });
+    (Array.isArray(entry.data?.labels) ? entry.data.labels : []).forEach((label) => {
+      const labelName = toTrimmedString(typeof label === "string" ? label : label?.name);
+      const labelKey = `${repo}|${labelName.toLowerCase()}`;
+      if (labelName && !labels.has(labelKey)) labels.set(labelKey, { repo, name: labelName });
+    });
   });
   const archiveSummary = {
     version: `${statStamp(viewPrsArchiveFile)}|${statStamp(viewPrsUserStateFile)}`,
     ...counts,
     newestEventAt,
+    authors: [...authors.values()],
+    labels: [...labels.values()],
   };
   return { ...data, byPrNumber: Object.fromEntries(kept), archiveSummary };
 };

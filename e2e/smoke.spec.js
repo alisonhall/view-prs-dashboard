@@ -4551,7 +4551,7 @@ test("a row's More menu opens from the keyboard with its first item focused, and
   await expect(button).toBeFocused();
 });
 
-test("a search finds archived PRs; Latest Merged PRs offers them (Show older) and shows them once asked for", async ({ page }) => {
+test("a search, or an author only archived PRs have, finds archived PRs; Latest Merged PRs offers them (Show older) and shows them once asked for", async ({ page }) => {
   // The archive file beside the e2e run's temp data file (the script moves
   // merged and closed PRs past the cutoff there), removed after the test.
   const tempDir = path.resolve(String(process.env.VIEW_PRS_E2E_TEMP_DIR || ""));
@@ -4569,7 +4569,14 @@ test("a search finds archived PRs; Latest Merged PRs offers them (Show older) an
           repo: "octocat/hello-world",
           section: "merged",
           updatedAt: "2025-06-02T10:00:00Z",
-          data: { number: "901", title: "An old archived change", url: "https://github.com/octocat/hello-world/pull/901", mergedAt: "2025-06-01T10:00:00Z", authorLogin: "octocat" },
+          data: {
+            number: "901",
+            title: "An old archived change",
+            url: "https://github.com/octocat/hello-world/pull/901",
+            mergedAt: "2025-06-01T10:00:00Z",
+            authorLogin: "old-timer",
+            author: "Old Timer",
+          },
         },
       },
     }),
@@ -4586,12 +4593,31 @@ test("a search finds archived PRs; Latest Merged PRs offers them (Show older) an
   const rowFor901 = merged.getByRole("button", { name: "Show summary for PR #901", exact: true });
   await expect(rowFor901).toHaveCount(0);
 
-  // A search looks through them too, and they go again when it's cleared.
+  // A search looks through them too - counted apart - and they go again
+  // when it's cleared.
   const search = filterBar(page).getByRole("searchbox", { name: "Search PRs" });
   await search.fill("old archived");
   await expect(rowFor901).toBeVisible();
+  const count = filterBar(page).getByText(/^Showing /);
+  await expect(count).toHaveText(/^Showing 0 of \d+ PRs · 1 archived$/);
   await search.press("Escape");
   await expect(rowFor901).toHaveCount(0);
+  await expect(count).not.toContainText("archived");
+
+  // The Authors list offers its author, whose PRs are all archived: picking
+  // them shows it.
+  await openFilterBar(page);
+  const authors = filterBarList(page, "Authors");
+  await filterDropdownSummary(authors).click();
+  const oldTimer = authors
+    .getByRole("group", { name: "Only in archived PRs", exact: true })
+    .getByRole("checkbox", { name: "Old Timer", exact: true });
+  await oldTimer.check();
+  await expect(rowFor901).toBeVisible();
+  await oldTimer.uncheck();
+  await expect(rowFor901).toHaveCount(0);
+  await filterDropdownSummary(authors).click();
+  await waitForFilterPersist(page);
 
   await merged.getByRole("button", { name: "Show older (1)", exact: true }).click();
   await expect(rowFor901).toBeVisible();
