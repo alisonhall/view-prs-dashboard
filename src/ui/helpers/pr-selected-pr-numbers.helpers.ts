@@ -28,6 +28,32 @@ export const toggleSelectedPrNumber = <V>(
   return next.join(",");
 };
 
+// How many of `prNumbers` (a section's rows) the field has: the section's
+// select-all checkbox is ticked for all, a dash for some.
+export const selectionStateOf = (prNumbersInput: unknown, prNumbers: readonly string[]): 'all' | 'some' | 'none' => {
+  const wanted = prNumbers.filter((value) => /^\d+$/.test(value));
+  if (wanted.length === 0) return 'none';
+  const current = new Set(getSelectedPrNumbersFromInput(prNumbersInput));
+  const count = wanted.filter((value) => current.has(value)).length;
+  return count === 0 ? 'none' : count === wanted.length ? 'all' : 'some';
+};
+
+// The field with every one of `prNumbers` added (in their order, after
+// those already there) or taken out; the rest are left as they were.
+export const setSelectedPrNumbers = (prNumbersInput: unknown, prNumbers: readonly string[], shouldSelect: boolean): string => {
+  const numbers = prNumbers.map((value) => String(value || '').trim()).filter((value) => /^\d+$/.test(value));
+  const current = getSelectedPrNumbersFromInput(prNumbersInput);
+  if (!shouldSelect) {
+    const removing = new Set(numbers);
+    return current.filter((value) => !removing.has(value)).join(",");
+  }
+  const next = [...current];
+  numbers.forEach((value) => {
+    if (!next.includes(value)) next.push(value);
+  });
+  return next.join(",");
+};
+
 // The most PR numbers describeApplyLabelTargets lists before "and N more".
 const LISTED_TARGETS = 8;
 

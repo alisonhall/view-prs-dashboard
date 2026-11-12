@@ -2771,6 +2771,39 @@ test("a row's bulk-select checkbox writes into the Run tab's real PR-numbers inp
   await closeSettings(page);
 });
 
+test("a section's select-all checkbox ticks every row it shows, shows a dash for some, and clears them again", async ({ page }) => {
+  await page.goto("/");
+  await waitForPrTable(page);
+  const open = prSection(page, "Open PRs");
+  if (!(await open.evaluate((el) => el.open))) {
+    await prSectionSummary(open).click();
+  }
+  const selectAll = open.getByRole("checkbox", { name: "Select all PRs in Open PRs", exact: true });
+  // The column's header is still just "Select" (read with each of its cells).
+  await expect(open.getByRole("columnheader", { name: "Select", exact: true })).toBeVisible();
+  const rowBoxes = open.getByRole("checkbox", { name: /^Select PR #/ });
+  const numbers = (await rowBoxes.evaluateAll((boxes) => boxes.map((box) => box.dataset.prNumber))).filter(Boolean);
+  expect(numbers.length).toBeGreaterThan(1);
+  await expect(selectAll).not.toBeChecked();
+
+  // One row ticked: a dash.
+  await rowBoxes.first().check();
+  await expect(selectAll).toHaveJSProperty("indeterminate", true);
+
+  await selectAll.click();
+  await expect(selectAll).toBeChecked();
+  for (const box of await rowBoxes.all()) await expect(box).toBeChecked();
+  await openSettings(page, "Run & check");
+  const prNumbers = page.getByLabel("PR number(s) (comma-separated)", { exact: true });
+  await expect.poll(async () => (await prNumbers.inputValue()).split(",").sort()).toEqual([...new Set(numbers)].sort());
+  await closeSettings(page);
+
+  await selectAll.click();
+  await expect(selectAll).not.toBeChecked();
+  await expect(selectAll).toHaveJSProperty("indeterminate", false);
+  for (const box of await rowBoxes.all()) await expect(box).not.toBeChecked();
+});
+
 test("typing PR numbers into Run & check's PR-numbers field checks and unchecks the matching row checkboxes", async ({ page }) => {
   // Window-bridge elimination Phase 5 (see WINDOW_BRIDGE_ELIMINATION_PLAN.md):
   // the reverse direction of the test above. PrSelectionCell used to read the

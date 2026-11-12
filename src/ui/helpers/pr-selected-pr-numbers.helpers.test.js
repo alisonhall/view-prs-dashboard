@@ -1,6 +1,8 @@
 const {
   describeApplyLabelTargets,
   getSelectedPrNumbersFromInput,
+  selectionStateOf,
+  setSelectedPrNumbers,
   toggleSelectedPrNumber,
 } = require("./pr-selected-pr-numbers.helpers.ts");
 
@@ -39,6 +41,36 @@ describe("pr selected pr numbers helpers", () => {
 
     test("given a non-numeric PR number, when toggling, then the input is returned unchanged", () => {
       expect(toggleSelectedPrNumber("101,102", "abc", true)).toBe("101,102");
+    });
+  });
+
+  describe("selectionStateOf (a section's select-all checkbox)", () => {
+    test("says whether all, some or none of the section's PRs are selected", () => {
+      expect(selectionStateOf("101,102,999", ["101", "102"])).toBe("all");
+      expect(selectionStateOf("101 999", ["101", "102"])).toBe("some");
+      expect(selectionStateOf("999", ["101", "102"])).toBe("none");
+      expect(selectionStateOf("", ["101"])).toBe("none");
+    });
+
+    test("a section with no PR numbers has none", () => {
+      expect(selectionStateOf("101", [])).toBe("none");
+      expect(selectionStateOf("101", [""])).toBe("none");
+    });
+  });
+
+  describe("setSelectedPrNumbers", () => {
+    test("adds the section's PRs not selected yet, after those already there", () => {
+      expect(setSelectedPrNumbers("999,102", ["101", "102", "103"], true)).toBe("999,102,101,103");
+      expect(setSelectedPrNumbers("", ["101", "101"], true)).toBe("101");
+    });
+
+    test("takes out only the section's PRs, leaving the others selected", () => {
+      expect(setSelectedPrNumbers("999,101,102", ["101", "102"], false)).toBe("999");
+      expect(setSelectedPrNumbers("999", ["101"], false)).toBe("999");
+    });
+
+    test("ignores what isn't a PR number", () => {
+      expect(setSelectedPrNumbers("101", ["abc", " 102 "], true)).toBe("101,102");
     });
   });
 

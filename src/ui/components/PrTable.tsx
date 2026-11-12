@@ -6,7 +6,8 @@
  *
  * Columns: select, Signals, Pull request, Who, Review, CHK·MRG, Size,
  * Activity, Actions - all of them, with the detail pane docked too (its
- * cells then take two lines where they need to; pr-table.css).
+ * cells then take two lines where they need to; pr-table.css). The select
+ * column's header ticks every row the section shows (SectionSelectAll).
  *
  * With Settings › Appearance's "Group rows by repo", rows from more than
  * one repo go in a body per repo, under its heading (groupRowsByRepo). The
@@ -32,6 +33,7 @@ import { usePrSectionPreferences } from '../state/PrSectionPreferencesProvider';
 import { groupRowsByRepo } from '../helpers/pr-repo-grouping.helpers.ts';
 import { RowRepoNamesContext } from '../state/RowRepoNamesContext';
 import { PrSectionSortMenu } from './PrSectionSortMenu';
+import { SectionSelectAll } from './cells/SectionSelectAll';
 
 import type { ActorsMap } from '../helpers/pr-actor-identity.helpers.ts';
 type PrFlags = { isFlagged: boolean; isInReview: boolean; isAcknowledged: boolean };
@@ -212,11 +214,17 @@ export function PrTable({
               key={column.key}
               scope="col"
               className={`pr-head-${column.key}`}
-              // Its name stays "Actions" with the sort menu in it: a header's
-              // name is read out with every cell of its column.
-              aria-label={column.key === 'actions' && prs.length > 1 ? column.label : undefined}
+              // Its name stays "Actions" with the sort menu in it, and
+              // "Select" with the select-all checkbox: a header's name is
+              // read out with every cell of its column.
+              aria-label={column.key === 'select' || (column.key === 'actions' && prs.length > 1) ? column.label : undefined}
             >
-              {column.hideLabel ? (
+              {column.key === 'select' ? (
+                <>
+                  <span className="ui-visually-hidden">{column.label}</span>
+                  <SectionSelectAll prs={prs} sectionLabel={label || sectionKey} />
+                </>
+              ) : column.hideLabel ? (
                 <span className="ui-visually-hidden">{column.label}</span>
               ) : column.fullLabel ? (
                 // The abbreviation is shown (with the full name on hover);

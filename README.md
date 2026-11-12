@@ -853,7 +853,7 @@ The UI includes:
   - request payload maps form values as: `author` falls back to an empty string when no author is selected, and checkbox fields (`ackChanged`, `showReason`, `quiet`) are sent as booleans
 - `Apply ack only` (ack updates only)
 - `Undo ack` (undoes the Acks of the PRs in `PR number(s)`, as if they were never made)
-- `PR number(s)`: a row's checkbox in the table adds its PR here and takes it out again (the checkboxes show what's in the field, typed numbers too); `Clear`, beside it, empties it, unticking them all
+- `PR number(s)`: a row's checkbox in the table adds its PR here and takes it out again (the checkboxes show what's in the field, typed numbers too); `Clear`, beside it, empties it, unticking them all. The checkbox in each section's column header ticks every row the section shows (with the filters applied), part-ticked when some are; with all ticked, it unticks them. PRs ticked in other sections stay ticked
 - `Apply label` (applies an existing GitHub label to the PR number(s) in the same `pr-numbers` field the Ack buttons use). Under it, a line says which PRs that is (`Applies to 2 PRs: #912, #921.`, the first 8 then `and N more`), or how to pick some when there are none
   - the label dropdown is populated from `GET /view-prs/labels` for the currently selected repo; only labels already defined on the repo (via `gh label list`) can be chosen - there is no free-text/create-new-label input
   - `Reload labels` reloads the dropdown for the current repo
