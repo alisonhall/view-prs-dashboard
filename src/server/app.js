@@ -1685,6 +1685,7 @@ const readViewPrsDataUncached = (detailSources = new Map()) => {
       inReviewByRepo: normalizedUserState.inReviewByRepo,
       flaggedByRepo: normalizedUserState.flaggedByRepo,
       threadChecksByRepo: normalizedUserState.threadChecksByRepo,
+      customSectionsByRepo: normalizedUserState.customSectionsByRepo,
     };
   }
 
@@ -1805,6 +1806,7 @@ const readViewPrsDataUncached = (detailSources = new Map()) => {
       inReviewByRepo: mergedUserState.inReviewByRepo,
       flaggedByRepo: mergedUserState.flaggedByRepo,
       threadChecksByRepo: mergedUserState.threadChecksByRepo,
+      customSectionsByRepo: mergedUserState.customSectionsByRepo,
     };
   } catch (error) {
     return {
@@ -1822,6 +1824,7 @@ const readViewPrsDataUncached = (detailSources = new Map()) => {
       inReviewByRepo: normalizedUserState.inReviewByRepo,
       flaggedByRepo: normalizedUserState.flaggedByRepo,
       threadChecksByRepo: normalizedUserState.threadChecksByRepo,
+      customSectionsByRepo: normalizedUserState.customSectionsByRepo,
       readError: error.message,
     };
   }

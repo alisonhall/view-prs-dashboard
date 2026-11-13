@@ -190,6 +190,12 @@ const userStateValidationPayload = {
     userState.threadChecksByRepo !== null
       ? userState.threadChecksByRepo
       : {},
+  customSectionsByRepo:
+    userState &&
+    typeof userState.customSectionsByRepo === "object" &&
+    userState.customSectionsByRepo !== null
+      ? userState.customSectionsByRepo
+      : {},
 };
 
 const authorCommentsValidationPayload = {

@@ -370,6 +370,8 @@ export interface PrDataPayload {
   // repo -> PR number -> thread id -> the thread's signature then
   // (threadCheckSignature).
   threadChecksByRepo?: ThreadChecksByRepo;
+  // The custom sections each PR was added to, by id: repo -> PR number -> ids.
+  customSectionsByRepo?: Record<string, Record<string, string[]>>;
 }
 
 export type ThreadChecksByRepo = Record<string, Record<string, Record<string, string | undefined> | undefined> | undefined>;

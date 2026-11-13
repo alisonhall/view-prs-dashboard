@@ -7,6 +7,10 @@ import {
   movePrSection,
   normalizePrSectionOrder,
   orderPrSections,
+  isPrSectionTitleTaken,
+  prSectionCatalog,
+  prSectionDefaultOpen,
+  prSectionKind,
   normalizePrSectionPreferences,
   PR_SECTION_CATALOG,
   prSectionSort,
@@ -60,6 +64,33 @@ describe('PR section preferences', () => {
       expect(movePrSection(DEFAULT_PR_SECTION_ORDER, 'merged', 1)).toEqual(DEFAULT_PR_SECTION_ORDER);
       expect(movePrSection(DEFAULT_PR_SECTION_ORDER, 'unknown', 1)).toEqual(DEFAULT_PR_SECTION_ORDER);
       expect(isDefaultPrSectionOrder(movePrSection(DEFAULT_PR_SECTION_ORDER, 'draft', 1))).toBe(false);
+    });
+
+    test("custom sections join the catalog last among the smart groups, open on page load, and are ordered and chosen for like the others", () => {
+      const catalog = prSectionCatalog([{ id: "abc", name: "Release blockers", icon: "flag", tone: "danger" }]);
+      expect(catalog.map((entry) => entry.key)).toEqual([...smart, "custom-abc", ...status]);
+      expect(catalog.find((entry) => entry.key === "custom-abc")).toEqual({ key: "custom-abc", title: "Release blockers", defaultOpen: true, kind: "smart" });
+      expect(prSectionCatalog([])).toBe(PR_SECTION_CATALOG);
+      expect(prSectionKind("custom-abc", catalog)).toBe("smart");
+      expect(prSectionDefaultOpen("custom-abc", catalog)).toBe(true);
+
+      // Its key is kept with it, and dropped without it.
+      expect(normalizePrSectionOrder(["custom-abc", "flagged"], catalog).slice(0, 2)).toEqual(["custom-abc", "flagged"]);
+      expect(normalizePrSectionOrder(["custom-abc", "flagged"])).toEqual(DEFAULT_PR_SECTION_ORDER);
+      expect(isDefaultPrSectionOrder(catalog.map((entry) => entry.key), catalog)).toBe(true);
+      expect(movePrSection(catalog.map((entry) => entry.key), "custom-abc", -1, catalog).slice(6, 8)).toEqual(["custom-abc", "interacted"]);
+      expect(movePrSection(catalog.map((entry) => entry.key), "custom-abc", 1, catalog)).toEqual(catalog.map((entry) => entry.key));
+      expect(normalizePrSectionPreferences({ "custom-abc": { hidden: true, open: true } }, catalog)).toEqual({ "custom-abc": { hidden: true } });
+      expect(normalizePrSectionPreferences({ "custom-abc": { hidden: true } })).toEqual({});
+      expect(withPrSectionPreference({}, "custom-abc", { open: false }, catalog)).toEqual({ "custom-abc": { open: false } });
+    });
+
+    test("a title is taken when any other section has it, ignoring case and spaces", () => {
+      const catalog = prSectionCatalog([{ id: "abc", name: "Release blockers", icon: "flag", tone: "danger" }]);
+      expect(isPrSectionTitleTaken("  open   prs ", catalog)).toBe(true);
+      expect(isPrSectionTitleTaken("RELEASE BLOCKERS", catalog)).toBe(true);
+      expect(isPrSectionTitleTaken("Release blockers", catalog, "custom-abc")).toBe(false);
+      expect(isPrSectionTitleTaken("Soon", catalog)).toBe(false);
     });
 
     test('sections follow the order, and any it lacks keep their place after', () => {

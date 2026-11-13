@@ -85,6 +85,12 @@ describe('PrSection', () => {
     expect(document.querySelector('.pr-section-count')).toHaveAttribute('data-tone', 'attention');
   });
 
+  test("a custom section's header shows its own icon in its colour", () => {
+    renderSection({ key: 'custom-abc', title: 'Blockers', isSmartGroup: true, icon: { icon: 'flag', tone: 'danger' } });
+    expect(document.querySelector('.pr-section-icon')).toHaveAttribute('data-tone', 'danger');
+    expect(document.querySelector('.pr-section-icon svg')).toBeInTheDocument();
+  });
+
   test('says so when there are no PRs, instead of an empty table', () => {
     renderSection({ prs: [] });
     expect(screen.getByText('No PRs in this section.')).toBeInTheDocument();

@@ -273,6 +273,80 @@ const registerViewPrsPrRoutes = ({
     }
   });
 
+  // Adding a PR to a custom section (Settings › Appearance's sections, by
+  // id), or with `member: false` taking it out: the user state's
+  // customSectionsByRepo, repo -> PR number -> section ids. DELETE with a
+  // section id alone takes every PR out of it (the section was removed).
+  // Both answer with the whole map, which is all that changed.
+  const CUSTOM_SECTION_ID = /^[a-z0-9]{1,32}$/;
+  const withoutCustomSection = (perPr, sectionId) => (perPr || []).filter((id) => id !== sectionId);
+  const sendCustomSections = (res, userState) =>
+    sendSuccessPayload({ res, payload: { ok: true, customSectionsByRepo: userState.customSectionsByRepo } });
+
+  app.post(["/custom-section-prs", "/view-prs/custom-section-prs"], (req, res) => {
+    const body = req.body || {};
+    const sectionId = String(body.sectionId || "").trim();
+    const repo = String(body.repo || "").trim();
+    const prNumber = String(body.prNumber ?? "").trim();
+    const member = body.member !== false;
+    const startedAt = new Date().toISOString();
+    const triggerMs = Date.now();
+
+    if (!CUSTOM_SECTION_ID.test(sectionId) || !isRepoSlug(repo) || !isValidPrNumber(prNumber)) {
+      sendErrorStatus({ res, statusCode: 400, error: "Needs sectionId, repo and prNumber" });
+      return;
+    }
+
+    try {
+      const userState = updateViewPrsUserState((state) => {
+        const perRepo = { ...(state.customSectionsByRepo[repo] || {}) };
+        const ids = withoutCustomSection(perRepo[prNumber], sectionId);
+        if (member) ids.push(sectionId);
+        if (ids.length > 0) perRepo[prNumber] = ids;
+        else delete perRepo[prNumber];
+        state.customSectionsByRepo = { ...state.customSectionsByRepo, [repo]: perRepo };
+        if (Object.keys(perRepo).length === 0) delete state.customSectionsByRepo[repo];
+        return state;
+      });
+
+      appendActionLogEntry({
+        action: "post/custom-section-prs",
+        triggeredAt: startedAt,
+        durationMs: Date.now() - triggerMs,
+        ok: true,
+        detail: { prNumber, repo, sectionId, member },
+      });
+      sendCustomSections(res, userState);
+    } catch (error) {
+      sendInternalError({ res, error });
+    }
+  });
+
+  app.delete(["/custom-section-prs", "/view-prs/custom-section-prs"], (req, res) => {
+    const sectionId = String(req.body?.sectionId || "").trim();
+    if (!CUSTOM_SECTION_ID.test(sectionId)) {
+      sendErrorStatus({ res, statusCode: 400, error: "Needs sectionId" });
+      return;
+    }
+
+    try {
+      const userState = updateViewPrsUserState((state) => {
+        const next = {};
+        Object.entries(state.customSectionsByRepo).forEach(([repo, perRepo]) => {
+          const kept = Object.entries(perRepo)
+            .map(([prNumber, ids]) => [prNumber, withoutCustomSection(ids, sectionId)])
+            .filter(([, ids]) => ids.length > 0);
+          if (kept.length > 0) next[repo] = Object.fromEntries(kept);
+        });
+        state.customSectionsByRepo = next;
+        return state;
+      });
+      sendCustomSections(res, userState);
+    } catch (error) {
+      sendInternalError({ res, error });
+    }
+  });
+
   app.get(["/author-comments", "/view-prs/author-comments"], (req, res) => {
     const { authorLogin: requestedAuthorLogin } = parseAuthorCommentsQueryRequest(
       req.query,

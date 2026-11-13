@@ -468,6 +468,7 @@ Top-level user-state fields:
 | `inReviewByRepo` | object | Repo-scoped in-review flags |
 | `flaggedByRepo` | object | Repo-scoped flagged toggles |
 | `threadChecksByRepo` | object | Optional. Conversations you started that someone else resolved, confirmed handled: repo -> PR number -> thread id -> the thread's signature when confirmed (who resolved it, how many submitted comments, the last one's id); a confirmation holds while that's unchanged |
+| `customSectionsByRepo` | object | Optional. The custom sections each PR was put in (from its More actions): repo -> PR number -> section ids. The sections themselves (name, icon, colour) are in `user-defaults.json`'s `customSections`; removing one takes its id out of every PR here |
 
 `notesByPrNumber[key]` shape:
 

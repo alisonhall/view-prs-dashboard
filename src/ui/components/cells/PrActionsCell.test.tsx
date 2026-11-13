@@ -4,6 +4,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { PrActionsCell, type PrActionsCellProps } from './PrActionsCell';
 import { RepoLabelsContext } from '../../state/RepoLabelsContext';
+import { CustomSectionMembershipContext, type CustomSectionMembershipValue } from '../../state/CustomSectionMembership';
 
 type Labels = Array<{ name: string }>;
 
@@ -48,6 +49,54 @@ const openMenu = async (user: ReturnType<typeof userEvent.setup>) => {
 };
 
 describe('PrActionsCell', () => {
+  describe('custom sections', () => {
+    const blockers = { id: 'abc', name: 'Blockers', icon: 'flag' as const, tone: 'danger' as const };
+    const later = { id: 'xyz', name: 'Later', icon: 'note' as const, tone: 'muted' as const };
+    const renderWithSections = (inSections: string[]) => {
+      const membership: CustomSectionMembershipValue = {
+        sections: [blockers, later],
+        idsFor: jest.fn((repo: string, prNumber: string) => (repo === 'owner/repo' && prNumber === '101' ? inSections : [])),
+        setMember: jest.fn(async () => {}),
+      };
+      render(
+        <CustomSectionMembershipContext.Provider value={membership}>
+          <table>
+            <tbody>
+              <tr>
+                <PrActionsCell pr={{ number: '101' }} repo="owner/repo" isFlagged={false} isInReview={false} isAcknowledged={false} />
+              </tr>
+            </tbody>
+          </table>
+        </CustomSectionMembershipContext.Provider>,
+      );
+      return membership;
+    };
+
+    test('the More menu has Add to or Remove from for each, after Flag, as the PR is in it or not', async () => {
+      const user = userEvent.setup();
+      renderWithSections(['xyz']);
+      const menu = await openMenu(user);
+      const labels = within(menu).getAllByRole('menuitem').map((item) => item.textContent);
+      expect(labels.slice(0, 4)).toEqual(['Mark in review', 'Flag', 'Add to Blockers', 'Remove from Later']);
+    });
+
+    test('choosing one adds the PR to it, or takes it out', async () => {
+      const user = userEvent.setup();
+      const membership = renderWithSections(['xyz']);
+      await user.click(within(await openMenu(user)).getByRole('menuitem', { name: 'Add to Blockers' }));
+      expect(membership.setMember).toHaveBeenLastCalledWith(blockers, 'owner/repo', '101', true);
+      await user.click(within(await openMenu(user)).getByRole('menuitem', { name: 'Remove from Later' }));
+      expect(membership.setMember).toHaveBeenLastCalledWith(later, 'owner/repo', '101', false);
+    });
+
+    test('without any, the menu has none', async () => {
+      const user = userEvent.setup();
+      renderCell();
+      expect(within(await openMenu(user)).queryByRole('menuitem', { name: /^(Add to|Remove from) / })).not.toBeInTheDocument();
+    });
+  });
+
+
   test('only Ack and the More menu are buttons on the row', () => {
     renderCell();
     expect(screen.getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual([

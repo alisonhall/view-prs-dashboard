@@ -263,6 +263,55 @@ describe("integration behavior", () => {
     expect((await send({ repo: "owner/repo", prNumber: "7", threadId: "T1" })).status).toBe(400);
   });
 
+  test("POST /custom-section-prs adds a PR to a custom section and takes it out; a notes save keeps it, and the page gets it", async () => {
+    writeViewPrsData({ byPrNumber: { "owner/repo#7": { repo: "owner/repo", prNumber: "7" } }, lastRun: null });
+    writeViewPrsUserState({ ...EMPTY_USER_STATE, flaggedByRepo: { "owner/repo": { 3: true } } });
+    const stored = () => JSON.parse(fs.readFileSync(viewPrsUserStateFile, "utf8"));
+    const send = (body) => request.post("/custom-section-prs").send({ repo: "owner/repo", prNumber: "7", ...body });
+
+    const added = await send({ sectionId: "abc123" });
+    expect(added.status).toBe(200);
+    expect(added.body).toEqual({ ok: true, customSectionsByRepo: { "owner/repo": { 7: ["abc123"] } } });
+    // Added again, it's there once; another section joins it.
+    await send({ sectionId: "abc123", member: true });
+    await send({ sectionId: "zz9" });
+    expect(stored().customSectionsByRepo).toEqual({ "owner/repo": { 7: ["abc123", "zz9"] } });
+    expect(stored().flaggedByRepo).toEqual({ "owner/repo": { 3: true } });
+
+    const notes = await request.post("/notes").send({ prNumber: "7", repo: "owner/repo", comments: [], otherNotes: "x" });
+    expect(notes.status).toBe(200);
+    expect(stored().customSectionsByRepo).toEqual({ "owner/repo": { 7: ["abc123", "zz9"] } });
+    expect(notes.body.prData.customSectionsByRepo).toEqual({ "owner/repo": { 7: ["abc123", "zz9"] } });
+    expect((await request.get("/data")).body.customSectionsByRepo).toEqual({ "owner/repo": { 7: ["abc123", "zz9"] } });
+
+    const taken = await send({ sectionId: "abc123", member: false });
+    expect(taken.body.customSectionsByRepo).toEqual({ "owner/repo": { 7: ["zz9"] } });
+    await send({ sectionId: "zz9", member: false });
+    expect(stored().customSectionsByRepo).toEqual({});
+  });
+
+  test("DELETE /custom-section-prs takes every PR out of a removed section, leaving the others", async () => {
+    writeViewPrsUserState({
+      ...EMPTY_USER_STATE,
+      customSectionsByRepo: { "owner/repo": { 7: ["gone", "kept"], 8: ["gone"] }, "acme/app": { 1: ["gone"] } },
+    });
+
+    const res = await request.delete("/custom-section-prs").send({ sectionId: "gone" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.customSectionsByRepo).toEqual({ "owner/repo": { 7: ["kept"] } });
+    expect(JSON.parse(fs.readFileSync(viewPrsUserStateFile, "utf8")).customSectionsByRepo).toEqual({ "owner/repo": { 7: ["kept"] } });
+  });
+
+  test("/custom-section-prs rejects a request without a valid section id, repo or PR number", async () => {
+    const send = (body) => request.post("/custom-section-prs").send(body);
+    expect((await send({ repo: "owner/repo", prNumber: "7" })).status).toBe(400);
+    expect((await send({ sectionId: "Not-Valid", repo: "owner/repo", prNumber: "7" })).status).toBe(400);
+    expect((await send({ sectionId: "abc", prNumber: "7" })).status).toBe(400);
+    expect((await send({ sectionId: "abc", repo: "owner/repo", prNumber: "x" })).status).toBe(400);
+    expect((await request.delete("/custom-section-prs").send({ sectionId: "" })).status).toBe(400);
+  });
+
   test("given stored note comments, when POST /notes saves them without timestamps, then unchanged ones keep theirs and an edited one keeps createdAt", async () => {
     const prNumber = "124";
     writeViewPrsData({ byPrNumber: { [prNumber]: { repo: "owner/repo" } }, lastRun: null });

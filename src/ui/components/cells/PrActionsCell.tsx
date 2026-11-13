@@ -1,6 +1,7 @@
 import type { MouseEvent } from 'react';
 import type { PrData } from '../../types/pr-data.ts';
 import { useLabelsForRepo } from '../../state/RepoLabelsContext';
+import { useCustomSectionMembership } from '../../state/CustomSectionMembership';
 import { getLabelName } from '../../helpers/pr-filter-label-extraction.helpers.ts';
 import { IconButton } from '../ui/Button';
 import { MenuButton } from '../ui/MenuButton';
@@ -9,7 +10,8 @@ import { MenuButton } from '../ui/MenuButton';
  * The Actions column, as icon buttons with tooltips:
  * - Ack (pressed once acknowledged; pressing again clears it)
  * - a More menu: In review and Flagged (worded for what choosing them does;
- *   their state already shows in the Signals column), Update, View PR JSON
+ *   their state already shows in the Signals column), an Add to / Remove
+ *   from item per custom section (CustomSectionMembership), Update, View PR JSON
  *   details, and Add label (the repo's labels the PR doesn't have yet)
  *
  * Accessible names keep the PR number ("Ack PR #2"), so each row's
@@ -51,6 +53,17 @@ export function PrActionsCell({
   // This PR's repo's labels, not the current repo's, fetched when the menu
   // first opens.
   const { labels: repoLabels, loaded: labelsLoaded, failed: labelsFailed, load: loadLabels } = useLabelsForRepo(repo);
+  const { sections: customSections, idsFor, setMember } = useCustomSectionMembership();
+  const inCustomSections = idsFor(repo, prNumber);
+  const customSectionEntries = customSections.map((section) => {
+    const isMember = inCustomSections.includes(section.id);
+    return {
+      id: `custom-section-${section.id}`,
+      label: isMember ? `Remove from ${section.name}` : `Add to ${section.name}`,
+      icon: section.icon,
+      onSelect: () => void setMember(section, repo, prNumber, !isMember),
+    };
+  });
   const existingLabels = new Set((Array.isArray(pr?.labels) ? pr.labels : []).map((label) => getLabelName(label)).filter(Boolean));
   const availableLabels = repoLabels
     .map((label) => String(label?.name || ''))
@@ -93,6 +106,7 @@ export function PrActionsCell({
               icon: 'flag',
               onSelect: () => onCheckboxChange?.(pr?.number, 'flagged', !isFlagged, repo),
             },
+            ...customSectionEntries,
             { id: 'update', label: 'Update PR', icon: 'refresh', onSelect: () => void onUpdatePr?.(pr?.number, entry, pr) },
             { id: 'json', label: 'View PR JSON details', icon: 'braces', onSelect: () => onViewJson?.(entry, pr) },
             {

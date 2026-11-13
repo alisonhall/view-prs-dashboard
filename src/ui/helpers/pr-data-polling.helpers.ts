@@ -74,7 +74,7 @@ export type PollActorMaps = Pick<PrDataPayload, "actorsMap" | "actors" | "actorI
 // buildDataManifestPayload).
 export type PollUserState = Pick<
   PrDataPayload,
-  "ackByRepo" | "ackHistoryByRepo" | "reverifyByRepo" | "inReviewByRepo" | "flaggedByRepo" | "threadChecksByRepo"
+  "ackByRepo" | "ackHistoryByRepo" | "reverifyByRepo" | "inReviewByRepo" | "flaggedByRepo" | "threadChecksByRepo" | "customSectionsByRepo"
 >;
 
 // Something with a tagName, like document.activeElement.
@@ -105,6 +105,7 @@ const computePrDataMetaFingerprint = (payload: PrDataPayload | null | undefined)
     inReviewByRepo: payload?.inReviewByRepo || null,
     flaggedByRepo: payload?.flaggedByRepo || null,
     threadChecksByRepo: payload?.threadChecksByRepo || null,
+    customSectionsByRepo: payload?.customSectionsByRepo || null,
     // Names and logins shown in rows, lists and the pane (Settings › People).
     actorsMap: payload?.actorsMap || null,
     actors: payload?.actors || null,

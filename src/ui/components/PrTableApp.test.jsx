@@ -183,7 +183,8 @@ const { createPrSmartGroupsHelpers } = require('../helpers/pr-smart-groups.helpe
 // `sectionPreferences`: Settings › Appearance's saved section choices
 // (user-defaults.json's prSections), read by PrSectionPreferencesProvider
 // through a mocked fetch, which answers once `sectionPreferencesHeld`
-// resolves, when given; `sectionOrder`, its saved order (prSectionOrder).
+// resolves, when given; `sectionOrder`, its saved order (prSectionOrder);
+// `customSections`, the saved custom sections.
 const renderPrTableApp = ({
   initialPayload,
   selectedRepo,
@@ -193,13 +194,14 @@ const renderPrTableApp = ({
   sectionPreferences,
   sectionPreferencesHeld,
   sectionOrder,
+  customSections,
   ...tableProps
 } = {}) => {
   const table = <PrTableApp {...tableProps} />;
   if (sectionPreferences) {
     global.fetch = jest.fn(async () => {
       await sectionPreferencesHeld;
-      return { ok: true, json: async () => ({ overrides: { prSections: sectionPreferences, ...(sectionOrder && { prSectionOrder: sectionOrder }) } }) };
+      return { ok: true, json: async () => ({ overrides: { prSections: sectionPreferences, ...(sectionOrder && { prSectionOrder: sectionOrder }), ...(customSections && { customSections }) } }) };
     });
   }
   return render(
@@ -2048,6 +2050,35 @@ describe('PrTableApp', () => {
         const firstStatus = screen.getAllByTestId("section").find((element) => element.getAttribute("data-key") === "merged");
         expect(smartHeading.nextElementSibling).toBe(firstSmart);
         expect(statusHeading.nextElementSibling).toBe(firstStatus);
+      });
+
+      test("given a custom section, then it holds the PRs added to it (not archived ones), after the built-in smart groups, with its icon and colour", async () => {
+        const withCustom = {
+          byPrNumber: {
+            1: makeEntry({ prNumber: "1", repo: "owner/repo", section: "open" }),
+            2: makeEntry({ prNumber: "2", repo: "owner/repo", section: "merged" }),
+            3: { ...makeEntry({ prNumber: "3", repo: "owner/repo", section: "merged" }), archived: true },
+          },
+          customSectionsByRepo: { "owner/repo": { 1: ["abc"], 2: ["abc", "gone"], 3: ["abc"] } },
+        };
+        renderPrTableApp({
+          initialPayload: withCustom,
+          selectedRepo: "",
+          sectionPreferences: {},
+          customSections: [
+            { id: "abc", name: "Blockers", icon: "flag", tone: "danger" },
+            { id: "xyz", name: "Later", icon: "note", tone: "muted" },
+          ],
+        });
+        await waitFor(() => expect(renderedKeys()).toEqual([...smartKeys, "custom-abc", "custom-xyz", "open", "draft", "closed", "merged"]));
+        const blockers = latestSectionProps("custom-abc").section;
+        expect(blockers.title).toBe("Blockers");
+        expect(blockers.isSmartGroup).toBe(true);
+        expect(blockers.icon).toEqual({ icon: "flag", tone: "danger" });
+        expect(blockers.prs.map((entry) => entry.prNumber).sort()).toEqual(["1", "2"]);
+        expect(latestSectionProps("custom-abc").isOpen).toBe(true);
+        expect(latestSectionProps("custom-xyz").section.prs).toEqual([]);
+        expect(latestSectionProps("open").section.icon).toBeUndefined();
       });
 
       test("given only one kind of section shown, then there are no headings", async () => {

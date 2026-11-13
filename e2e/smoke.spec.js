@@ -871,6 +871,67 @@ test("Settings › Appearance: sections are listed by kind under headings, and a
   }
 });
 
+test("Settings › Appearance: a custom section is made, a PR is put in it from its More actions, both are kept after a reload, and deleting it takes the PR out", async ({ page }) => {
+  const settingKeys = ["customSections", "prSections", "prSectionOrder"];
+  // Takes any PRs out of sections a failed run left, then their settings.
+  const cleanUp = async () => {
+    const { overrides = {} } = await (await page.request.get("/view-prs/user-defaults")).json();
+    for (const section of overrides.customSections || []) {
+      await page.request.delete("/view-prs/custom-section-prs", { data: { sectionId: section.id } });
+    }
+    await clearSavedSettings(page.request, settingKeys);
+  };
+  await cleanUp();
+  try {
+    await page.goto("/");
+    await waitForPrTable(page);
+    const savedSettings = () =>
+      page.waitForResponse((response) => response.url().includes("/view-prs/user-defaults") && response.request().method() === "PUT");
+
+    const drawer = await openSettings(page, "Appearance");
+    const form = drawer.getByRole("form", { name: "New custom section", exact: true });
+    await form.getByRole("textbox", { name: "New section's name", exact: true }).fill("Release blockers");
+    await form.getByRole("combobox", { name: "Icon", exact: true }).selectOption({ label: "Flag" });
+    await form.getByRole("combobox", { name: "Colour", exact: true }).selectOption({ label: "Red" });
+    const added = savedSettings();
+    await form.getByRole("button", { name: "Add section", exact: true }).click();
+    await added;
+    await expect(drawer.getByRole("rowheader", { name: "Release blockers", exact: true })).toBeVisible();
+    await closeSettings(page);
+
+    const section = prSection(page, "Release blockers");
+    await expect(section).toHaveAttribute("open", "");
+    await expect(section).toContainText("No PRs in this section.");
+    await expect(section.locator(".pr-section-icon")).toHaveAttribute("data-tone", "danger");
+
+    // PR #1's rows are in closed sections until opened.
+    await prTables(page)
+      .getByRole("checkbox", { name: "Select PR #1", exact: true, includeHidden: true })
+      .evaluateAll((checkboxes) => checkboxes.forEach((checkbox) => (checkbox.closest("details").open = true)));
+    const saved = page.waitForResponse((response) => response.url().includes("/view-prs/custom-section-prs") && response.request().method() === "POST");
+    await (await openRowMenu(page, 1)).getByRole("menuitem", { name: "Add to Release blockers", exact: true }).click();
+    expect((await saved).status()).toBe(200);
+    await expect(section.getByRole("checkbox", { name: "Select PR #1", exact: true })).toBeVisible();
+
+    await page.reload();
+    await waitForPrTable(page);
+    await expect(section.getByRole("checkbox", { name: "Select PR #1", exact: true })).toBeVisible();
+    await expect((await openRowMenu(page, 1)).getByRole("menuitem", { name: "Remove from Release blockers", exact: true })).toBeVisible();
+    await page.keyboard.press("Escape");
+
+    const settings = await openSettings(page, "Appearance");
+    page.once("dialog", (dialog) => dialog.accept());
+    const cleared = page.waitForResponse((response) => response.url().includes("/view-prs/custom-section-prs") && response.request().method() === "DELETE");
+    await settings.getByRole("button", { name: "Delete Release blockers", exact: true }).click();
+    await cleared;
+    await expect(section).toHaveCount(0);
+    const { customSectionsByRepo } = await (await page.request.get("/view-prs/data")).json();
+    expect(customSectionsByRepo).toEqual({});
+  } finally {
+    await cleanUp();
+  }
+});
+
 test("Settings › Background updates: a repo's check interval and priority boost are saved to user-defaults.json", async ({ page }) => {
   await clearSavedSettings(page.request, ["schedulerRepoConfig"]);
   try {

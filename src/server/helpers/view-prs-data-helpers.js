@@ -237,7 +237,8 @@ const normalizePerRepoMap = (value, valueType = "string") => {
           perPrOut[prNumber] = raw;
         }
       } else if (valueType === "stringList") {
-        // ackHistoryByRepo: the times, oldest first.
+        // ackHistoryByRepo: the times, oldest first; customSectionsByRepo:
+        // the custom sections' ids.
         const items = Array.isArray(raw)
           ? raw.map((item) => String(item || "").trim()).filter(Boolean)
           : [];
@@ -297,6 +298,9 @@ const normalizeViewPrsUserState = (raw) => {
     inReviewByRepo: normalizePerRepoMap(source.inReviewByRepo, "boolean"),
     flaggedByRepo: normalizePerRepoMap(source.flaggedByRepo, "boolean"),
     threadChecksByRepo: normalizePerRepoMap(source.threadChecksByRepo, "stringMap"),
+    // The custom sections each PR was added to (Settings › Appearance's
+    // sections, by id): repo -> PR number -> ids.
+    customSectionsByRepo: normalizePerRepoMap(source.customSectionsByRepo, "stringList"),
   };
 };
 

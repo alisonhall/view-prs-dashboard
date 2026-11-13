@@ -189,6 +189,169 @@ describe('Settings › Appearance sections', () => {
   });
 });
 
+describe('Settings › Appearance custom sections', () => {
+  beforeEach(() => {
+    saved = { repo: 'owner/repo' };
+    holdGet = null;
+    window.localStorage.clear();
+    (global as unknown as { fetch: unknown }).fetch = fetchMock;
+  });
+
+  afterEach(() => {
+    fetchMock.mockClear();
+    jest.restoreAllMocks();
+  });
+
+  const group = (name: string) => screen.getByRole('group', { name });
+  const newForm = () => screen.getByRole('form', { name: 'New custom section' });
+  const deleteCalls = () => fetchMock.mock.calls.filter(([, init]) => init?.method === 'DELETE');
+
+  test('a new section is saved with its name, icon and colour, and listed with the smart groups in the Sections table', async () => {
+    const user = userEvent.setup();
+    renderSettings();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const add = within(newForm()).getByRole('button', { name: 'Add section' });
+    expect(add).toBeDisabled();
+
+    await user.type(within(newForm()).getByRole('textbox', { name: "New section's name" }), '  Release blockers ');
+    await user.selectOptions(within(newForm()).getByRole('combobox', { name: 'Icon' }), 'Flag');
+    await user.selectOptions(within(newForm()).getByRole('combobox', { name: 'Colour' }), 'Red');
+    await user.click(add);
+
+    await waitFor(() =>
+      expect(saved.customSections).toEqual([{ id: expect.stringMatching(/^[a-z0-9]{8}$/), name: 'Release blockers', icon: 'flag', tone: 'danger' }]),
+    );
+    expect(within(newForm()).getByRole('textbox', { name: "New section's name" })).toHaveValue('');
+    expect(sectionTitles()).toEqual([...SMART, 'Release blockers', ...STATUS]);
+    expect(showBox('Release blockers')).toBeChecked();
+    expect(openBox('Release blockers')).toBeChecked();
+    expect(moveButton('Release blockers', 'down')).toBeDisabled();
+    expect(within(group('Release blockers')).getByRole('textbox', { name: 'Name' })).toHaveValue('Release blockers');
+  });
+
+  test("a section's name, icon and colour change in place; an emptied name goes back to the saved one", async () => {
+    const user = userEvent.setup();
+    saved = { repo: 'owner/repo', customSections: [{ id: 'abc', name: 'Blockers', icon: 'tag', tone: 'accent' }] };
+    renderSettings();
+    await waitFor(() => expect(group('Blockers')).toBeInTheDocument());
+
+    const name = within(group('Blockers')).getByRole('textbox', { name: 'Name' });
+    await user.clear(name);
+    await user.type(name, 'Release blockers{Enter}');
+    await waitFor(() => expect(saved.customSections).toEqual([{ id: 'abc', name: 'Release blockers', icon: 'tag', tone: 'accent' }]));
+    expect(sectionTitles()).toContain('Release blockers');
+
+    await user.selectOptions(within(group('Release blockers')).getByRole('combobox', { name: 'Colour' }), 'Purple');
+    await user.selectOptions(within(group('Release blockers')).getByRole('combobox', { name: 'Icon' }), 'Eye');
+    await waitFor(() => expect(saved.customSections).toEqual([{ id: 'abc', name: 'Release blockers', icon: 'eye', tone: 'done' }]));
+
+    const renamed = within(group('Release blockers')).getByRole('textbox', { name: 'Name' });
+    await user.clear(renamed);
+    await user.tab();
+    expect(renamed).toHaveValue('Release blockers');
+  });
+
+  test("deleting a section, once confirmed, removes it, its choices and place in the order, and takes its PRs out of it", async () => {
+    const user = userEvent.setup();
+    saved = {
+      repo: 'owner/repo',
+      customSections: [
+        { id: 'abc', name: 'Blockers', icon: 'tag', tone: 'accent' },
+        { id: 'xyz', name: 'Later', icon: 'note', tone: 'muted' },
+      ],
+      prSections: { 'custom-abc': { open: false }, closed: { hidden: true } },
+      prSectionOrder: ['custom-abc', 'flagged'],
+    };
+    renderSettings();
+    await waitFor(() => expect(sectionTitles()[0]).toBe('Blockers'));
+    const confirm = jest.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
+
+    await user.click(within(group('Blockers')).getByRole('button', { name: 'Delete Blockers' }));
+    expect(confirm).toHaveBeenLastCalledWith('Delete the section "Blockers"?');
+    expect(group('Blockers')).toBeInTheDocument();
+    expect(deleteCalls()).toHaveLength(0);
+
+    await user.click(within(group('Blockers')).getByRole('button', { name: 'Delete Blockers' }));
+
+    await waitFor(() =>
+      expect(saved).toEqual({
+        repo: 'owner/repo',
+        customSections: [{ id: 'xyz', name: 'Later', icon: 'note', tone: 'muted' }],
+        prSections: { closed: { hidden: true } },
+      }),
+    );
+    expect(screen.queryByRole('group', { name: 'Blockers' })).not.toBeInTheDocument();
+    expect(sectionTitles()).toEqual([...SMART, 'Later', ...STATUS]);
+    expect(deleteCalls()).toHaveLength(1);
+    const [url, init] = deleteCalls()[0] ?? [];
+    expect(url).toBe('/view-prs/custom-section-prs');
+    expect(JSON.parse(String(init?.body))).toEqual({ sectionId: 'abc' });
+  });
+
+  test("a name another section already has (ignoring case) can't be added, and a rename to one goes back, saying why", async () => {
+    const user = userEvent.setup();
+    saved = {
+      repo: 'owner/repo',
+      customSections: [
+        { id: 'abc', name: 'Blockers', icon: 'tag', tone: 'accent' },
+        { id: 'xyz', name: 'Later', icon: 'note', tone: 'muted' },
+      ],
+    };
+    renderSettings();
+    await waitFor(() => expect(group('Blockers')).toBeInTheDocument());
+    const newName = within(newForm()).getByRole('textbox', { name: "New section's name" });
+    const add = within(newForm()).getByRole('button', { name: 'Add section' });
+
+    await user.type(newName, ' flagged ');
+    expect(add).toBeDisabled();
+    expect(newName).toHaveAttribute('aria-invalid', 'true');
+    expect(newName).toHaveAccessibleDescription('There\'s already a section called "flagged".');
+    await user.clear(newName);
+    await user.type(newName, 'LATER{Enter}');
+    expect(add).toBeDisabled();
+    await user.clear(newName);
+    await user.type(newName, 'Soon');
+    expect(add).toBeEnabled();
+    expect(newName).not.toHaveAttribute('aria-invalid');
+
+    const name = within(group('Blockers')).getByRole('textbox', { name: 'Name' });
+    await user.clear(name);
+    await user.type(name, 'later');
+    await user.tab();
+    expect(name).toHaveValue('Blockers');
+    expect(name).toHaveAccessibleDescription('There\'s already a section called "later".');
+    // With Enter, then leaving the box, the message stays.
+    await user.clear(name);
+    await user.type(name, 'Later{Enter}');
+    await user.tab();
+    expect(name).toHaveValue('Blockers');
+    expect(name).toHaveAccessibleDescription('There\'s already a section called "Later".');
+    // Its own name, in another case, is fine.
+    await user.clear(name);
+    await user.type(name, 'BLOCKERS{Enter}');
+    await waitFor(() => expect(within(group('BLOCKERS')).getByRole('textbox', { name: 'Name' })).toHaveValue('BLOCKERS'));
+    expect(saved.customSections).toEqual([
+      { id: 'abc', name: 'BLOCKERS', icon: 'tag', tone: 'accent' },
+      { id: 'xyz', name: 'Later', icon: 'note', tone: 'muted' },
+    ]);
+  });
+
+  test('the sections are kept in the browser too, so the next page draws them straight away', async () => {
+    const user = userEvent.setup();
+    const first = renderSettings();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    await user.type(within(newForm()).getByRole('textbox', { name: "New section's name" }), 'Mine');
+    await user.click(within(newForm()).getByRole('button', { name: 'Add section' }));
+    await user.click(showBox('Mine'));
+    first.unmount();
+
+    holdGet = new Promise<void>(() => {});
+    renderSettings();
+    expect(sectionTitles()).toContain('Mine');
+    expect(showBox('Mine')).not.toBeChecked();
+  });
+});
+
 describe('the browser copy of the section choices', () => {
   const Probe = () => {
     const { preferences, isReady } = usePrSectionPreferences();

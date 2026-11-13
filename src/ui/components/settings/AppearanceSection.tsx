@@ -4,19 +4,18 @@ import type { ThemePreference } from '../../helpers/theme.helpers.ts';
 import {
   isDefaultPrSectionOrder,
   isPrSectionHidden,
-  PR_SECTION_CATALOG,
+  prSectionDefaultOpen,
   prSectionKind,
   prSectionStartsOpen,
   type PrSectionKind,
 } from '../../helpers/pr-section-preferences.helpers.ts';
 import { Button, IconButton } from '../ui/Button';
+import { CustomSectionsSettings } from './CustomSectionsSettings';
 
 const SECTION_KINDS: ReadonlyArray<{ kind: PrSectionKind; heading: string }> = [
   { kind: 'smart', heading: 'Smart groups' },
   { kind: 'status', heading: 'By status' },
 ];
-
-const titleOf = (key: string) => PR_SECTION_CATALOG.find((entry) => entry.key === key)?.title ?? key;
 
 const OPTIONS: ReadonlyArray<{ value: ThemePreference; label: string }> = [
   { value: 'light', label: 'Light' },
@@ -28,17 +27,29 @@ const OPTIONS: ReadonlyArray<{ value: ThemePreference; label: string }> = [
  * The Settings drawer's "Appearance": the page's theme, which PR table
  * sections show and start open and their order (each kind among its own,
  * under the same headings as the page), and whether rows are grouped by
- * repo. Each is saved as soon as it changes
+ * repo; and the custom sections (CustomSectionsSettings). Each is saved as soon as it changes
  * (ThemeProvider, PrSectionPreferencesProvider), in user-defaults.json.
  */
 export function AppearanceSection() {
   const { preference, setPreference } = useTheme();
-  const { preferences, setSectionHidden, setSectionStartsOpen, sectionOrder, moveSection, resetSections, groupByRepo, setGroupByRepo } =
-    usePrSectionPreferences();
+  const {
+    preferences,
+    setSectionHidden,
+    setSectionStartsOpen,
+    sectionOrder,
+    moveSection,
+    resetSections,
+    groupByRepo,
+    setGroupByRepo,
+    catalog,
+  } = usePrSectionPreferences();
+  // Every section, the custom ones included.
+  const titleOf = (key: string) => catalog.find((entry) => entry.key === key)?.title ?? key;
+  const kindOf = (key: string) => prSectionKind(key, catalog);
   // A move that takes a section to the end of its kind disables the button
   // just pressed, so focus goes to the row's other one.
   const move = (key: string, offset: -1 | 1, button: HTMLButtonElement) => {
-    const kindKeys = sectionOrder.filter((sectionKey) => prSectionKind(sectionKey) === prSectionKind(key));
+    const kindKeys = sectionOrder.filter((sectionKey) => kindOf(sectionKey) === kindOf(key));
     const target = kindKeys.indexOf(key) + offset;
     moveSection(key, offset);
     if (target === 0 || target === kindKeys.length - 1) {
@@ -76,7 +87,7 @@ export function AppearanceSection() {
             </tr>
           </thead>
           {SECTION_KINDS.map(({ kind, heading }) => {
-            const kindKeys = sectionOrder.filter((key) => prSectionKind(key) === kind);
+            const kindKeys = sectionOrder.filter((key) => kindOf(key) === kind);
             return (
               <tbody key={kind}>
                 <tr className="settings-sections-kind">
@@ -102,7 +113,7 @@ export function AppearanceSection() {
                         <input
                           type="checkbox"
                           aria-label={`Open ${title} when the page loads`}
-                          checked={prSectionStartsOpen(preferences, key)}
+                          checked={prSectionStartsOpen(preferences, key, prSectionDefaultOpen(key, catalog))}
                           disabled={hidden}
                           onChange={(event) => setSectionStartsOpen(key, event.target.checked)}
                         />
@@ -137,7 +148,7 @@ export function AppearanceSection() {
           <Button
             onClick={resetSections}
             disabled={
-              isDefaultPrSectionOrder(sectionOrder) &&
+              isDefaultPrSectionOrder(sectionOrder, catalog) &&
               !Object.values(preferences).some((preference) => preference.hidden || preference.open !== undefined)
             }
           >
@@ -145,6 +156,8 @@ export function AppearanceSection() {
           </Button>
         </div>
       </div>
+
+      <CustomSectionsSettings />
 
       <div className="settings-group">
         <h3 className="settings-heading">Rows</h3>

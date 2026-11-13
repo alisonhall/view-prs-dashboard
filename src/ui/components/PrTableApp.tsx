@@ -28,9 +28,12 @@ import type { RepoRefreshFailure } from '../helpers/pr-row-freshness.helpers.ts'
 import { useNotesDirty } from '../state/NotesDirtyContext';
 import { useMediaQuery } from '../state/useMediaQuery';
 import { usePrSectionPreferences } from '../state/PrSectionPreferencesProvider';
+import { CustomSectionMembershipProvider } from '../state/CustomSectionMembership';
 import { useSettingsDrawer } from '../state/SettingsDrawerContext';
 import { isPrSectionHidden, orderPrSections, prSectionSort, prSectionStartsOpen } from '../helpers/pr-section-preferences.helpers.ts';
 import { buildPrEntryKey } from '../helpers/pr-entry-keys.helpers.ts';
+import { customSectionIdsFor, customSectionKey } from '../helpers/pr-custom-sections.helpers.ts';
+import type { SmartGroupData } from '../helpers/pr-section-config.helpers.ts';
 import { captureRowAnchor, restoreRowAnchor, type RowAnchor } from '../helpers/row-scroll-anchor.helpers.ts';
 import { dockedPaneRoom } from '../helpers/docked-pane-room.helpers.ts';
 import { PrDetailPane } from './pane/PrDetailPane';
@@ -127,7 +130,13 @@ export function PrTableApp() {
   } = usePrTableUiState();
   const { dirtyPrKeys } = useNotesDirty();
   // Settings › Appearance: which sections show, and which start open.
-  const { preferences: sectionPreferences, isReady: areSectionPreferencesReady, groupByRepo, sectionOrder } = usePrSectionPreferences();
+  const {
+    preferences: sectionPreferences,
+    isReady: areSectionPreferencesReady,
+    groupByRepo,
+    sectionOrder,
+    customSections,
+  } = usePrSectionPreferences();
   const settingsDrawer = useSettingsDrawer();
   // Below 900px the detail pane is an overlay drawer instead of docked.
   const isNarrow = useMediaQuery(NARROW_SCREEN_QUERY);
@@ -602,7 +611,7 @@ export function PrTableApp() {
     // now, imported directly above instead of read off window - see
     // pr-section-config.helpers.ts's own note above on the now-dead guard
     // kept as-is to minimize the diff).
-    let smartGroups = null;
+    let smartGroups: Record<string, SmartGroupData> | null = null;
     if (prSmartGroupsHelperFactory) {
       // Smart groups mix rows from every lifecycle section, so they use
       // vanilla's own cross-section ordering (normalizeRows: rowOrder
@@ -651,6 +660,21 @@ export function PrTableApp() {
       });
 
       smartGroups = smartGroupHelpers.applySmartGroups(allEntriesForSmartGroups, configs);
+      // The custom sections, after the built-in smart groups: the PRs
+      // added to each (the user state's customSectionsByRepo), of every
+      // status, like Flagged.
+      customSections.forEach((section) => {
+        smartGroups = {
+          ...smartGroups,
+          [customSectionKey(section.id)]: {
+            title: section.name,
+            defaultOpen: true,
+            rows: allEntriesForSmartGroups.filter((entry) =>
+              customSectionIdsFor(payload.customSectionsByRepo, entry?.repo, entry?.data?.number ?? entry?.prNumber).includes(section.id),
+            ),
+          },
+        };
+      });
     }
 
     // Build section configs
@@ -661,9 +685,12 @@ export function PrTableApp() {
       actorsMapFromPayload: payload.actorsMap || {},
     });
 
+    const customIcons = new Map(customSections.map((section) => [customSectionKey(section.id), { icon: section.icon, tone: section.tone }]));
     return sectionConfigs.map(config => ({
       key: config.sectionKey,
       title: config.title,
+      // A custom section's own icon and colour (the built-in ones' are PrSection's).
+      icon: customIcons.get(config.sectionKey),
       // Per the documented "non-exclusive membership" design, a PR shown in
       // a smart group above is ALSO rendered here in its lifecycle section
       // (pr-section-config.helpers.ts no longer deduplicates them) - `prs`
@@ -694,6 +721,7 @@ export function PrTableApp() {
     normalizeActorLogin,
     collectAssignedUsers,
     collectPendingReviewRequests,
+    customSections,
   ]);
 
   // Settings › Appearance's choices: the sections in its order (so
@@ -1197,75 +1225,77 @@ export function PrTableApp() {
               </Button>
               <PrLegendPopover />
             </div>
-            <div ref={workspaceRef} className="pr-workspace" data-pane={isPaneDocked ? 'docked' : undefined}>
-              <div className="pr-workspace-list">
-                {sections.length === 0 && (
-                  <div className="pr-sections-all-hidden">
-                    <p>Every section is hidden.</p>
-                    <Button onClick={() => settingsDrawer.open('appearance')}>Choose sections to show</Button>
-                  </div>
+            <CustomSectionMembershipProvider>
+              <div ref={workspaceRef} className="pr-workspace" data-pane={isPaneDocked ? 'docked' : undefined}>
+                <div className="pr-workspace-list">
+                  {sections.length === 0 && (
+                    <div className="pr-sections-all-hidden">
+                      <p>Every section is hidden.</p>
+                      <Button onClick={() => settingsDrawer.open('appearance')}>Choose sections to show</Button>
+                    </div>
+                  )}
+                  {sections.map((section, index) => (
+                    <Fragment key={section.key}>
+                      {/* Smart groups and the status sections each under a
+                          heading, when both kinds are shown. */}
+                      {showsSectionKindHeadings && sections[index - 1]?.isSmartGroup !== section.isSmartGroup && (
+                        <h2 className="pr-section-kind-heading">{section.isSmartGroup ? 'Smart groups' : 'By status'}</h2>
+                      )}
+                      <PrSection
+                        section={section}
+                        repo={effectiveRepo}
+                        actorsMap={actorsMap}
+                        isOpen={isSectionOpen(section.key, Boolean(section.defaultOpen))}
+                        expandedInsights={expandedInsights}
+                        selectedPrKey={selectedPrKey}
+                        onToggleSection={handleToggleSection}
+                        onInteractingChange={setSectionInteracting}
+                        onResortSection={resortSection}
+                        onToggleInsights={handleToggleInsights}
+                        onSelectRow={handleSelectRow}
+                        onSelectPr={handleSelectPr}
+                        onShowDetails={handleShowDetails}
+                        onClearSelection={handleClearSelection}
+                        onCheckboxChange={handleCheckboxChange}
+                        onAckAction={handleAckActionBusy}
+                        onApplyLabel={handleApplyLabelBusy}
+                        onUpdatePr={handleUpdatePrBusy}
+                        onViewJson={handleViewJson}
+                        getPrFlags={getPrFlags}
+                        getAttentionReasons={getAttentionReasons}
+                        activePrNumbers={combinedActivePrNumbers}
+                        queuedPrNumbers={combinedQueuedPrNumbers}
+                      />
+                    </Fragment>
+                  ))}
+                </div>
+                {isPaneVisible && (
+                  <PrDetailPane
+                    entry={selectedEntry}
+                    repo={effectiveRepo}
+                    mode={paneMode}
+                    actorsMap={actorsMap}
+                    isFlagged={Boolean(paneFlags?.isFlagged)}
+                    isInReview={Boolean(paneFlags?.isInReview)}
+                    isAcknowledged={Boolean(paneFlags?.isAcknowledged)}
+                    ackedAt={paneAckedAt}
+                    tab={paneTab}
+                    onTabChange={setPaneTab}
+                    activitySinceRequest={activitySinceRequest}
+                    onPrevious={previousPr ? () => handleStepPr(previousPr) : undefined}
+                    onNext={nextPr ? () => handleStepPr(nextPr) : undefined}
+                    onClose={handleClosePane}
+                    onClearSelection={handleClearSelection}
+                    onCheckboxChange={handleCheckboxChange}
+                    onAckAction={handleAckActionBusy}
+                    onApplyLabel={handleApplyLabelBusy}
+                    onUpdatePr={handleUpdatePrBusy}
+                    onViewJson={handleViewJson}
+                    onDataRefresh={setPayload}
+                  />
                 )}
-                {sections.map((section, index) => (
-                  <Fragment key={section.key}>
-                    {/* Smart groups and the status sections each under a
-                        heading, when both kinds are shown. */}
-                    {showsSectionKindHeadings && sections[index - 1]?.isSmartGroup !== section.isSmartGroup && (
-                      <h2 className="pr-section-kind-heading">{section.isSmartGroup ? 'Smart groups' : 'By status'}</h2>
-                    )}
-                    <PrSection
-                      section={section}
-                      repo={effectiveRepo}
-                      actorsMap={actorsMap}
-                      isOpen={isSectionOpen(section.key, Boolean(section.defaultOpen))}
-                      expandedInsights={expandedInsights}
-                      selectedPrKey={selectedPrKey}
-                      onToggleSection={handleToggleSection}
-                      onInteractingChange={setSectionInteracting}
-                      onResortSection={resortSection}
-                      onToggleInsights={handleToggleInsights}
-                      onSelectRow={handleSelectRow}
-                      onSelectPr={handleSelectPr}
-                      onShowDetails={handleShowDetails}
-                      onClearSelection={handleClearSelection}
-                      onCheckboxChange={handleCheckboxChange}
-                      onAckAction={handleAckActionBusy}
-                      onApplyLabel={handleApplyLabelBusy}
-                      onUpdatePr={handleUpdatePrBusy}
-                      onViewJson={handleViewJson}
-                      getPrFlags={getPrFlags}
-                      getAttentionReasons={getAttentionReasons}
-                      activePrNumbers={combinedActivePrNumbers}
-                      queuedPrNumbers={combinedQueuedPrNumbers}
-                    />
-                  </Fragment>
-                ))}
               </div>
-              {isPaneVisible && (
-                <PrDetailPane
-                  entry={selectedEntry}
-                  repo={effectiveRepo}
-                  mode={paneMode}
-                  actorsMap={actorsMap}
-                  isFlagged={Boolean(paneFlags?.isFlagged)}
-                  isInReview={Boolean(paneFlags?.isInReview)}
-                  isAcknowledged={Boolean(paneFlags?.isAcknowledged)}
-                  ackedAt={paneAckedAt}
-                  tab={paneTab}
-                  onTabChange={setPaneTab}
-                  activitySinceRequest={activitySinceRequest}
-                  onPrevious={previousPr ? () => handleStepPr(previousPr) : undefined}
-                  onNext={nextPr ? () => handleStepPr(nextPr) : undefined}
-                  onClose={handleClosePane}
-                  onClearSelection={handleClearSelection}
-                  onCheckboxChange={handleCheckboxChange}
-                  onAckAction={handleAckActionBusy}
-                  onApplyLabel={handleApplyLabelBusy}
-                  onUpdatePr={handleUpdatePrBusy}
-                  onViewJson={handleViewJson}
-                  onDataRefresh={setPayload}
-                />
-              )}
-            </div>
+            </CustomSectionMembershipProvider>
             <PrJsonModal target={jsonModalTarget} payload={payload} onClose={() => setJsonModalTarget(null)} />
           </RepoFreshnessProvider>
         </NowProvider>

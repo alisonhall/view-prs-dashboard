@@ -41,6 +41,8 @@ const SECTION_ICONS: Record<string, { icon: IconName; tone: string }> = {
 export interface PrSectionData {
   key: string;
   title: string;
+  // A custom section's icon and colour; the built-in sections have theirs here.
+  icon?: { icon: IconName; tone: string };
   prs: PrEntry[];
   totalCount?: number;
   isSmartGroup?: boolean;
@@ -118,7 +120,7 @@ export function PrSection({ section, isOpen, onToggleSection, onInteractingChang
   const interactionHandlers = useSectionInteraction(onInteractingChange && ((interacting) => onInteractingChange(key, interacting)));
   // `totalCount` is the full row count; fall back to the rendered rows.
   const displayedTotalCount = typeof totalCount === 'number' ? totalCount : prs.length;
-  const sectionIcon = SECTION_ICONS[key];
+  const sectionIcon = SECTION_ICONS[key] ?? section.icon;
   const summary = isOpen ? [] : summarise(prs, attentionCount);
   const detailsRef = useRef<HTMLDetailsElement>(null);
   const headerRef = useRef<HTMLElement>(null);

@@ -2,9 +2,12 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { createPrUiOptionPersistenceHelpers } from '../helpers/pr-ui-option-persistence.helpers.ts';
 import {
   isDefaultPrSectionOrder,
+  isPrSectionTitleTaken,
   movePrSection,
   normalizePrSectionOrder,
   normalizePrSectionPreferences,
+  prSectionCatalog,
+  PR_SECTION_CATALOG,
   PR_SECTION_ORDER_OVERRIDE_KEY,
   PR_ROWS_GROUP_BY_REPO_OVERRIDE_KEY,
   PR_SECTIONS_OVERRIDE_KEY,
@@ -15,13 +18,28 @@ import {
   storePrSectionOrder,
   storePrSectionPreferences,
   withPrSectionPreference,
+  type PrSectionCatalog,
   type PrSectionPreferences,
 } from '../helpers/pr-section-preferences.helpers.ts';
+import {
+  CUSTOM_SECTIONS_MAX,
+  CUSTOM_SECTIONS_OVERRIDE_KEY,
+  customSectionKey,
+  newCustomSectionId,
+  normalizeCustomSectionName,
+  normalizeCustomSections,
+  readStoredCustomSections,
+  storeCustomSections,
+  type CustomSection,
+} from '../helpers/pr-custom-sections.helpers.ts';
 import type { SectionSort } from '../helpers/pr-section-sort.helpers.ts';
+import { sendJson } from '../helpers/pr-http.helpers.ts';
 
 const { readUiSessionOverridesOrNull, updateUiSessionOverride } = createPrUiOptionPersistenceHelpers({
   fetch: (input, init) => fetch(input, init),
 });
+
+export type CustomSectionChange = Partial<Pick<CustomSection, 'name' | 'icon' | 'tone'>>;
 
 export interface PrSectionPreferencesValue {
   preferences: PrSectionPreferences;
@@ -41,6 +59,15 @@ export interface PrSectionPreferencesValue {
   // "Group rows by repo".
   groupByRepo: boolean;
   setGroupByRepo: (groupByRepo: boolean) => void;
+  // The custom sections (pr-custom-sections.helpers.ts), and every section
+  // with them. Adding one gives it back (null at CUSTOM_SECTIONS_MAX, or
+  // without a name or with one a section already has - a rename to one is
+  // ignored too); removing one also takes its PRs out of it.
+  customSections: CustomSection[];
+  catalog: PrSectionCatalog;
+  addCustomSection: (section: Omit<CustomSection, 'id'>) => CustomSection | null;
+  updateCustomSection: (id: string, change: CustomSectionChange) => void;
+  removeCustomSection: (id: string) => void;
 }
 
 export const PrSectionPreferencesContext = createContext<PrSectionPreferencesValue>({
@@ -54,24 +81,49 @@ export const PrSectionPreferencesContext = createContext<PrSectionPreferencesVal
   resetSections: () => {},
   groupByRepo: false,
   setGroupByRepo: () => {},
+  customSections: [],
+  catalog: PR_SECTION_CATALOG,
+  addCustomSection: () => null,
+  updateCustomSection: () => {},
+  removeCustomSection: () => {},
 });
 
 export const usePrSectionPreferences = () => useContext(PrSectionPreferencesContext);
 
+// Takes a removed section's PRs out of it. Its rows are ignored once it's
+// gone anyway, so a failure only leaves them in the file.
+const clearCustomSectionPrs = (sectionId: string) => sendJson('DELETE', '/view-prs/custom-section-prs', { sectionId }).catch(() => {});
+
 /**
  * Settings › Appearance's section choices (which sections show, which
- * start open, and their order), and whether rows are grouped by repo. They start from the browser copy, then take the setting
- * saved in user-defaults.json once it's read; each change saves both. The
- * PR table reads them too.
+ * start open, and their order), the custom sections, and whether rows are
+ * grouped by repo. They start from the browser copy, then take the
+ * setting saved in user-defaults.json once it's read; each change saves
+ * both. The PR table reads them too.
  */
 export function PrSectionPreferencesProvider({ children }: { children: ReactNode }) {
-  const [stored] = useState(readStoredPrSectionPreferences);
-  const [preferences, setPreferences] = useState<PrSectionPreferences>(() => stored ?? {});
-  const [isReady, setIsReady] = useState(stored !== null);
+  // The custom sections first: the other choices are read against every
+  // section, theirs included.
+  const [initial] = useState(() => {
+    const customSections = readStoredCustomSections() ?? [];
+    const catalog = prSectionCatalog(customSections);
+    return { customSections, preferences: readStoredPrSectionPreferences(catalog), order: readStoredPrSectionOrder(catalog) };
+  });
+  const [customSections, setCustomSectionsState] = useState<CustomSection[]>(initial.customSections);
+  const catalog = useMemo(() => prSectionCatalog(customSections), [customSections]);
+  const catalogRef = useRef(catalog);
+  catalogRef.current = catalog;
+  const [savedPreferences, setPreferences] = useState<PrSectionPreferences>(() => initial.preferences ?? {});
+  const [isReady, setIsReady] = useState(initial.preferences !== null);
   const [groupByRepo, setGroupByRepoState] = useState(() => readStoredGroupRowsByRepo() ?? false);
   const hasChosenGroupingRef = useRef(false);
-  const [sectionOrder, setSectionOrderState] = useState(() => readStoredPrSectionOrder() ?? normalizePrSectionOrder(null));
+  const [savedOrder, setSectionOrderState] = useState<string[]>(() => initial.order ?? []);
   const hasChosenOrderRef = useRef(false);
+  const hasChosenCustomRef = useRef(false);
+  // Read against the sections there are now: a removed section's choices
+  // drop out, and a new one takes its place in the order.
+  const preferences = useMemo(() => normalizePrSectionPreferences(savedPreferences, catalog), [savedPreferences, catalog]);
+  const sectionOrder = useMemo(() => normalizePrSectionOrder(savedOrder, catalog), [savedOrder, catalog]);
 
   // The saved choices, unless one was made here before they arrived. If
   // they can't be read, the browser copy stays (and is kept), else the
@@ -80,22 +132,28 @@ export function PrSectionPreferencesProvider({ children }: { children: ReactNode
   useEffect(() => {
     let cancelled = false;
     readUiSessionOverridesOrNull().then((overrides) => {
+      if (!cancelled && overrides && !hasChosenCustomRef.current) {
+        const savedCustom = normalizeCustomSections(overrides[CUSTOM_SECTIONS_OVERRIDE_KEY]);
+        catalogRef.current = prSectionCatalog(savedCustom);
+        setCustomSectionsState(savedCustom);
+        storeCustomSections(savedCustom);
+      }
       if (!cancelled && overrides && !hasChosenGroupingRef.current) {
         const savedGrouping = overrides[PR_ROWS_GROUP_BY_REPO_OVERRIDE_KEY] === true;
         setGroupByRepoState(savedGrouping);
         storeGroupRowsByRepo(savedGrouping);
       }
       if (!cancelled && overrides && !hasChosenOrderRef.current) {
-        const savedOrder = normalizePrSectionOrder(overrides[PR_SECTION_ORDER_OVERRIDE_KEY]);
-        setSectionOrderState(savedOrder);
-        storePrSectionOrder(savedOrder);
+        const order = normalizePrSectionOrder(overrides[PR_SECTION_ORDER_OVERRIDE_KEY], catalogRef.current);
+        setSectionOrderState(order);
+        storePrSectionOrder(order);
       }
       if (cancelled || hasChosenRef.current) return;
       if (!overrides) {
         setIsReady(true);
         return;
       }
-      const saved = normalizePrSectionPreferences(overrides[PR_SECTIONS_OVERRIDE_KEY]);
+      const saved = normalizePrSectionPreferences(overrides[PR_SECTIONS_OVERRIDE_KEY], catalogRef.current);
       setPreferences(saved);
       storePrSectionPreferences(saved);
       setIsReady(true);
@@ -118,15 +176,15 @@ export function PrSectionPreferencesProvider({ children }: { children: ReactNode
     updateUiSessionOverride(PR_SECTIONS_OVERRIDE_KEY, Object.keys(next).length > 0 ? next : undefined);
   }, []);
   const setSectionHidden = useCallback(
-    (key: string, hidden: boolean) => save(withPrSectionPreference(preferencesRef.current, key, { hidden })),
+    (key: string, hidden: boolean) => save(withPrSectionPreference(preferencesRef.current, key, { hidden }, catalogRef.current)),
     [save],
   );
   const setSectionStartsOpen = useCallback(
-    (key: string, open: boolean) => save(withPrSectionPreference(preferencesRef.current, key, { open })),
+    (key: string, open: boolean) => save(withPrSectionPreference(preferencesRef.current, key, { open }, catalogRef.current)),
     [save],
   );
   const setSectionSort = useCallback(
-    (key: string, sort: SectionSort) => save(withPrSectionPreference(preferencesRef.current, key, { sort })),
+    (key: string, sort: SectionSort) => save(withPrSectionPreference(preferencesRef.current, key, { sort }, catalogRef.current)),
     [save],
   );
   // Each move builds on the latest order, like the choices above.
@@ -137,11 +195,11 @@ export function PrSectionPreferencesProvider({ children }: { children: ReactNode
     sectionOrderRef.current = next;
     setSectionOrderState(next);
     storePrSectionOrder(next);
-    updateUiSessionOverride(PR_SECTION_ORDER_OVERRIDE_KEY, isDefaultPrSectionOrder(next) ? undefined : next);
+    updateUiSessionOverride(PR_SECTION_ORDER_OVERRIDE_KEY, isDefaultPrSectionOrder(next, catalogRef.current) ? undefined : next);
   }, []);
   const moveSection = useCallback(
     (key: string, offset: -1 | 1) => {
-      const next = movePrSection(sectionOrderRef.current, key, offset);
+      const next = movePrSection(sectionOrderRef.current, key, offset, catalogRef.current);
       if (next.some((sectionKey, index) => sectionKey !== sectionOrderRef.current[index])) saveOrder(next);
     },
     [saveOrder],
@@ -156,7 +214,7 @@ export function PrSectionPreferencesProvider({ children }: { children: ReactNode
           .map(([key, preference]) => [key, { sort: preference.sort }]),
       ),
     );
-    if (!isDefaultPrSectionOrder(sectionOrderRef.current)) saveOrder(normalizePrSectionOrder(null));
+    if (!isDefaultPrSectionOrder(sectionOrderRef.current, catalogRef.current)) saveOrder(normalizePrSectionOrder(null, catalogRef.current));
   }, [save, saveOrder]);
   const setGroupByRepo = useCallback((next: boolean) => {
     hasChosenGroupingRef.current = true;
@@ -164,6 +222,54 @@ export function PrSectionPreferencesProvider({ children }: { children: ReactNode
     storeGroupRowsByRepo(next);
     updateUiSessionOverride(PR_ROWS_GROUP_BY_REPO_OVERRIDE_KEY, next ? true : undefined);
   }, []);
+
+  const customSectionsRef = useRef(customSections);
+  customSectionsRef.current = customSections;
+  const saveCustomSections = useCallback((next: CustomSection[]) => {
+    hasChosenCustomRef.current = true;
+    customSectionsRef.current = next;
+    catalogRef.current = prSectionCatalog(next);
+    setCustomSectionsState(next);
+    storeCustomSections(next);
+    updateUiSessionOverride(CUSTOM_SECTIONS_OVERRIDE_KEY, next.length > 0 ? next : undefined);
+  }, []);
+  const addCustomSection = useCallback(
+    (section: Omit<CustomSection, 'id'>) => {
+      const current = customSectionsRef.current;
+      const [added] = normalizeCustomSections([{ ...section, id: newCustomSectionId(current) }]);
+      if (!added || current.length >= CUSTOM_SECTIONS_MAX || isPrSectionTitleTaken(added.name, catalogRef.current)) return null;
+      saveCustomSections([...current, added]);
+      return added;
+    },
+    [saveCustomSections],
+  );
+  const updateCustomSection = useCallback(
+    (id: string, change: CustomSectionChange) => {
+      const current = customSectionsRef.current;
+      // An emptied name, or one another section has, keeps the old one.
+      const wanted = normalizeCustomSectionName(change.name);
+      const name = (section: CustomSection) =>
+        wanted && !isPrSectionTitleTaken(wanted, catalogRef.current, customSectionKey(section.id)) ? wanted : section.name;
+      const next = normalizeCustomSections(
+        current.map((section) => (section.id === id ? { ...section, ...change, name: name(section) } : section)),
+      );
+      if (JSON.stringify(next) !== JSON.stringify(current)) saveCustomSections(next);
+    },
+    [saveCustomSections],
+  );
+  // Its choices and place in the order go with it, and its PRs leave it.
+  const removeCustomSection = useCallback(
+    (id: string) => {
+      const current = customSectionsRef.current;
+      if (!current.some((section) => section.id === id)) return;
+      saveCustomSections(current.filter((section) => section.id !== id));
+      const nextPreferences = normalizePrSectionPreferences(preferencesRef.current, catalogRef.current);
+      if (JSON.stringify(nextPreferences) !== JSON.stringify(preferencesRef.current)) save(nextPreferences);
+      saveOrder(normalizePrSectionOrder(sectionOrderRef.current, catalogRef.current));
+      void clearCustomSectionPrs(id);
+    },
+    [save, saveOrder, saveCustomSections],
+  );
 
   const value = useMemo(
     () => ({
@@ -177,8 +283,29 @@ export function PrSectionPreferencesProvider({ children }: { children: ReactNode
       resetSections,
       groupByRepo,
       setGroupByRepo,
+      customSections,
+      catalog,
+      addCustomSection,
+      updateCustomSection,
+      removeCustomSection,
     }),
-    [preferences, isReady, setSectionHidden, setSectionStartsOpen, setSectionSort, sectionOrder, moveSection, resetSections, groupByRepo, setGroupByRepo],
+    [
+      preferences,
+      isReady,
+      setSectionHidden,
+      setSectionStartsOpen,
+      setSectionSort,
+      sectionOrder,
+      moveSection,
+      resetSections,
+      groupByRepo,
+      setGroupByRepo,
+      customSections,
+      catalog,
+      addCustomSection,
+      updateCustomSection,
+      removeCustomSection,
+    ],
   );
   return <PrSectionPreferencesContext.Provider value={value}>{children}</PrSectionPreferencesContext.Provider>;
 }

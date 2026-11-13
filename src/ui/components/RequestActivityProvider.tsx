@@ -21,6 +21,7 @@ const REQUEST_ACTIVITY_LABELS: Record<RequestActivityKey, string> = {
   checkboxToggle: 'Checkbox toggle',
   notesSave: 'Notes save',
   threadCheck: 'Conversation check',
+  customSection: 'Custom section',
   authorComment: 'Author comment',
 };
 const REQUEST_ACTIVITY_KEYS = Object.keys(REQUEST_ACTIVITY_LABELS) as RequestActivityKey[];

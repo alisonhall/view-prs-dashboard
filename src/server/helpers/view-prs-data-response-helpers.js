@@ -6,6 +6,7 @@ const USER_STATE_MAP_KEYS = [
   "inReviewByRepo",
   "flaggedByRepo",
   "threadChecksByRepo",
+  "customSectionsByRepo",
 ];
 
 const createViewPrsDataResponseHelpers = ({

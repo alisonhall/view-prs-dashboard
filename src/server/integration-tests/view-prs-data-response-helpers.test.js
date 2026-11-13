@@ -109,6 +109,7 @@ describe("view-prs data response helpers", () => {
       ackByRepo: { "o/r": { 1: "2026-01-02T00:00:00Z" } },
       ackHistoryByRepo: { "o/r": { 1: ["2026-01-02T00:00:00Z"] } },
       flaggedByRepo: { "o/r": { 1: true } },
+      customSectionsByRepo: { "o/r": { 1: ["abc"] } },
     };
 
     expect(helpers.buildDataManifestPayload({ manifest: {}, data }).userState).toEqual({
@@ -118,6 +119,7 @@ describe("view-prs data response helpers", () => {
       inReviewByRepo: {},
       flaggedByRepo: data.flaggedByRepo,
       threadChecksByRepo: {},
+      customSectionsByRepo: data.customSectionsByRepo,
     });
   });
 

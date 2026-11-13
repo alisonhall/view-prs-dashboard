@@ -50,6 +50,7 @@ const ACTIONS: Record<string, { kind: string; label: string; origin: 'you' | 'ba
   'post/labels/apply': { kind: 'labelApply', label: 'Apply label', origin: 'you' },
   'post/notes': { kind: 'notesSave', label: 'Notes save', origin: 'you' },
   'post/thread-checks': { kind: 'threadCheck', label: 'Conversation check', origin: 'you' },
+  'post/custom-section-prs': { kind: 'customSection', label: 'Custom section', origin: 'you' },
   'post/author-comments': { kind: 'authorComment', label: 'Author comment', origin: 'you' },
   'put/author-comments': { kind: 'authorComment', label: 'Author comment', origin: 'you' },
   'get/backfill': { kind: 'backfill', label: 'Backfill', origin: 'you' },

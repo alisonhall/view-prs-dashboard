@@ -19,6 +19,11 @@ const renderMenu = (sectionKey: string, sectionTitle: string, preferences: PrSec
     setGroupByRepo: jest.fn(),
     sectionOrder: [],
     moveSection: jest.fn(),
+    customSections: [],
+    catalog: [],
+    addCustomSection: jest.fn(),
+    updateCustomSection: jest.fn(),
+    removeCustomSection: jest.fn(),
   } as PrSectionPreferencesValue;
   render(
     <PrSectionPreferencesContext.Provider value={value}>

@@ -248,6 +248,31 @@
   justify-content: center;
 }
 
+/* Settings › Appearance's custom sections: one row of fields each (and
+   the new one's form), wrapping on a narrow drawer. */
+.settings-custom-section {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.settings-custom-section .settings-field {
+  min-width: 0;
+}
+
+.settings-custom-section input[type="text"] {
+  width: 14em;
+  max-width: 100%;
+}
+
+/* The chosen icon in the chosen colour, level with the fields. */
+.settings-custom-section-preview {
+  min-height: 30px;
+}
+
 /* Settings › Background updates: a group per repo, its fields in a row
    that wraps. */
 .settings-repo {

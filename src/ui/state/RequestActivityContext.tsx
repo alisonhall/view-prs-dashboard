@@ -33,6 +33,7 @@ export type RequestActivityKey =
   | 'checkboxToggle'
   | 'notesSave'
   | 'threadCheck'
+  | 'customSection'
   | 'authorComment';
 
 export interface RequestActivityValue {
