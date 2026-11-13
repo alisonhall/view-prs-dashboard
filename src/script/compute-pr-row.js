@@ -1085,6 +1085,7 @@ const computePrRow = (input) => {
     url,
     mergedAt,
     closedAt,
+    createdAt,
     sourceUpdatedAt,
     sourceFingerprint,
     sourceBranch,

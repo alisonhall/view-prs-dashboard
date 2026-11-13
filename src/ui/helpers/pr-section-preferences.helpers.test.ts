@@ -170,7 +170,7 @@ describe('PR section preferences', () => {
     expect(
       normalizePrSectionPreferences({
         merged: { sort: { by: 'number', direction: 'asc' } },
-        open: { sort: { by: 'number', direction: 'desc' } },
+        open: { sort: { by: 'created', direction: 'desc' } },
         flagged: { sort: { by: 'merged', direction: 'desc' } },
         draft: { sort: { by: 'sideways', direction: 'desc' } },
       }),
@@ -183,6 +183,8 @@ describe('PR section preferences', () => {
     expect(prSectionSort(sorted, 'merged')).toEqual({ by: 'merged', direction: 'desc' });
     expect(sorted.closed).toEqual({ hidden: true });
 
-    expect(withPrSectionPreference(sorted, 'open', { sort: { by: 'number', direction: 'desc' } })).toEqual({ closed: { hidden: true } });
+    expect(withPrSectionPreference(sorted, 'open', { sort: { by: 'created', direction: 'desc' } })).toEqual({ closed: { hidden: true } });
+    // PR number, newest first, was the default before date created: now it's a choice to keep.
+    expect(withPrSectionPreference(sorted, 'open', { sort: { by: 'number', direction: 'desc' } }).open).toEqual({ sort: { by: 'number', direction: 'desc' } });
   });
 });

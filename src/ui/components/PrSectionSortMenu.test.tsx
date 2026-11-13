@@ -42,6 +42,7 @@ describe('PrSectionSortMenu', () => {
     await user.click(screen.getByRole('button', { name: 'Sort Latest Merged PRs: Date merged, newest first' }));
 
     expect(screen.getAllByRole('menuitemradio').map((item) => [item.textContent, item.getAttribute('aria-checked')])).toEqual([
+      ['Date created', 'false'],
       ['PR number', 'false'],
       ['Last updated', 'false'],
       ['Date merged', 'true'],

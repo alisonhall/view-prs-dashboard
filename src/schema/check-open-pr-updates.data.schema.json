@@ -185,6 +185,9 @@
         "closedAt": {
           "$ref": "#/$defs/isoDateTimeOrEmpty"
         },
+        "createdAt": {
+          "$ref": "#/$defs/isoDateTimeOrEmpty"
+        },
         "sourceUpdatedAt": {
           "$ref": "#/$defs/isoDateTimeOrEmpty"
         },

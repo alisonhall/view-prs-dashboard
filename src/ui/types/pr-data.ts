@@ -228,6 +228,9 @@ export interface PrData {
   mergedAt?: string;
   // When the PR last changed on GitHub (ISO, or "").
   sourceUpdatedAt?: string;
+  // When the PR was created (ISO); missing on rows saved before 2026-11-13
+  // (prCreatedAt falls back to the "opened" activity event).
+  createdAt?: string;
   metrics?: PrMetrics;
   // Older data kept notes on the row itself; current data has them on the
   // entry (PrEntry.notes).

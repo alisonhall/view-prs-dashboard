@@ -1438,6 +1438,11 @@ test("under \"Last updated\", a refresh holds the rows while the pointer is over
     const order = () => openSection.locator("tr.pr-row").evaluateAll((rows) => rows.map((row) => row.getAttribute("data-pr-number")));
     const sortMenu = openSection.getByRole("button", { name: /^Sort Open PRs/ });
     await sortMenu.click();
+    // Both groups show (the second, Order, was hidden once), the default checked.
+    await expect(page.getByRole("menuitemradio", { name: "Date created", exact: true })).toHaveAttribute("aria-checked", "true");
+    await expect(page.getByRole("menu").getByText("Order", { exact: true })).toBeVisible();
+    await expect(page.getByRole("menuitemradio", { name: "Newest first", exact: true })).toBeVisible();
+    await expect(page.getByRole("menuitemradio", { name: "Oldest first", exact: true })).toBeVisible();
     await page.getByRole("menuitemradio", { name: "Last updated", exact: true }).click();
     // #2 was updated after #1.
     await expect.poll(order).toEqual(["2", "1"]);

@@ -291,7 +291,7 @@ describe('PrTable section sort', () => {
       <PrTable prs={[entry('2'), entry('1')]} repo="owner/repo" sectionKey="open" label="Open PRs" expandedInsights={{}} onToggleInsights={jest.fn()} />,
     );
     const actions = screen.getByRole('columnheader', { name: 'Actions' });
-    expect(within(actions).getByRole('button', { name: 'Sort Open PRs: PR number, highest first' })).toBeInTheDocument();
+    expect(within(actions).getByRole('button', { name: 'Sort Open PRs: Date created, newest first' })).toBeInTheDocument();
     unmount();
 
     render(<PrTable prs={[entry('2')]} repo="owner/repo" sectionKey="open" label="Open PRs" expandedInsights={{}} onToggleInsights={jest.fn()} />);

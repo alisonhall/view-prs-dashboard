@@ -21,12 +21,12 @@ const directionLabel = (by: SectionSortField, direction: SectionSortDirection) =
 
 /**
  * A section's sort, as a small menu button in its table's header row: what
- * by (PR number, last updated, and the date merged or closed in those
- * sections) and which way, the current choices checked. Its name says the
- * current sort ("Sort Open PRs: PR number, highest first"). Saved with the
- * section's preferences (user-defaults.json's prSections) as soon as it's
- * chosen; the default (merged by date merged, closed by date closed, the
- * rest by PR number, newest first) isn't saved.
+ * by (date created, PR number, last updated, and the date merged or closed
+ * in those sections) and which way, the current choices checked. Its name
+ * says the current sort ("Sort Open PRs: Date created, newest first").
+ * Saved with the section's preferences (user-defaults.json's prSections) as
+ * soon as it's chosen; the default (merged by date merged, closed by date
+ * closed, the rest by date created, newest first) isn't saved.
  */
 export function PrSectionSortMenu({ sectionKey, sectionTitle }: { sectionKey: string; sectionTitle: string }) {
   const { preferences, setSectionSort } = usePrSectionPreferences();

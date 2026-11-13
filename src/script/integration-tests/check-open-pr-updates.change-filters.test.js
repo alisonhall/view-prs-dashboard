@@ -219,6 +219,13 @@ describe("change filter application in jq queries", () => {
   });
 });
 
+// The sort by date created reads it (pr-section-sort.helpers.ts).
+test("a row keeps when the PR was created", () => {
+  const rowFor = (pr) => computePrRow({ pr: { number: 1, author: { login: "alice" }, ...pr }, viewerLogin: "me", detail: {}, threads: [], viewedFilesStats: { changedFiles: 0, viewedFiles: 0 } }).row;
+  expect(rowFor({ createdAt: "2026-03-01T09:00:00Z" }).createdAt).toBe("2026-03-01T09:00:00Z");
+  expect(rowFor({}).createdAt).toBe("");
+});
+
 // ROADMAP: PRs flagged by a comment from an author on the ignore lists.
 describe("the ignore lists, in a row's computation", () => {
   const rowWith = ({ author = "alice", detail = {}, ignoreCommentAuthors = "", ignoreReviewAuthors = "", threads = [] }) =>
