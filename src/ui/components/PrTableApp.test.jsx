@@ -2081,6 +2081,13 @@ describe('PrTableApp', () => {
         expect(latestSectionProps("open").section.icon).toBeUndefined();
       });
 
+      test("given a smart group's saved icon and colour, then its section has them, and the others their own", async () => {
+        renderPrTableApp({ initialPayload: payload, selectedRepo: "", sectionPreferences: { flagged: { tone: "accent" } } });
+        await waitFor(() => expect(renderedKeys()).toContain("flagged"));
+        expect(latestSectionProps("flagged").section.icon).toEqual({ icon: "flag", tone: "accent" });
+        expect(latestSectionProps("in-review").section.icon).toBeUndefined();
+      });
+
       test("given only one kind of section shown, then there are no headings", async () => {
         renderPrTableApp({
           initialPayload: payload,

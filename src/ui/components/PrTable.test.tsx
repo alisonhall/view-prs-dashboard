@@ -229,6 +229,7 @@ describe('PrTable with rows from several repos', () => {
     setSectionHidden: jest.fn(),
     setSectionStartsOpen: jest.fn(),
     setSectionSort: jest.fn(),
+    setSectionLook: jest.fn(),
     resetSections: jest.fn(),
     groupByRepo,
     setGroupByRepo: jest.fn(),

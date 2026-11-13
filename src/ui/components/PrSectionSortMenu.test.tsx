@@ -14,6 +14,7 @@ const renderMenu = (sectionKey: string, sectionTitle: string, preferences: PrSec
     setSectionHidden: jest.fn(),
     setSectionStartsOpen: jest.fn(),
     setSectionSort,
+    setSectionLook: jest.fn(),
     resetSections: jest.fn(),
     groupByRepo: false,
     setGroupByRepo: jest.fn(),

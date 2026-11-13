@@ -171,6 +171,37 @@ describe('Settings › Appearance sections', () => {
     expect(screen.getByRole('button', { name: 'Restore default sections' })).toBeDisabled();
   });
 
+  test("a smart group's icon and colour are chosen under the table, saved, put back with Use the default, and reset with the sections", async () => {
+    const user = userEvent.setup();
+    saved = { repo: 'owner/repo', prSections: { 'in-review': { tone: 'done' } } };
+    renderSettings();
+    const looks = screen.getByText('Icons and colours of the smart groups');
+    await user.click(looks);
+    const lookOf = (title: string) => screen.getByRole('group', { name: `${title}'s icon and colour` });
+    await waitFor(() => expect(within(lookOf('In Review')).getByRole('combobox', { name: 'Colour' })).toHaveDisplayValue('Purple'));
+    // Only the smart groups.
+    expect(screen.getAllByRole('group', { name: /'s icon and colour$/ })).toHaveLength(SMART.length);
+    expect(within(lookOf('Me as Reviewer')).getByRole('combobox', { name: 'Icon' })).toHaveDisplayValue('Approval');
+    const flaggedDefault = within(lookOf('Flagged')).getByRole('button', { name: 'Use the default' });
+    expect(flaggedDefault).toBeDisabled();
+
+    await user.selectOptions(within(lookOf('Flagged')).getByRole('combobox', { name: 'Colour' }), 'Blue');
+    await user.selectOptions(within(lookOf('Flagged')).getByRole('combobox', { name: 'Icon' }), 'Note');
+    await waitFor(() =>
+      expect(saved.prSections).toEqual({ 'in-review': { tone: 'done' }, flagged: { icon: 'note', tone: 'accent' } }),
+    );
+    expect(flaggedDefault).toBeEnabled();
+
+    await user.click(flaggedDefault);
+    await waitFor(() => expect(saved.prSections).toEqual({ 'in-review': { tone: 'done' } }));
+    expect(within(lookOf('Flagged')).getByRole('combobox', { name: 'Colour' })).toHaveDisplayValue('Red');
+
+    // A look alone is something to restore.
+    await user.click(screen.getByRole('button', { name: 'Restore default sections' }));
+    await waitFor(() => expect(saved).toEqual({ repo: 'owner/repo' }));
+    expect(within(lookOf('In Review')).getByRole('combobox', { name: 'Colour' })).toHaveDisplayValue('Blue');
+  });
+
   test('a choice made before the saved ones arrive is kept', async () => {
     const user = userEvent.setup();
     let release = () => {};

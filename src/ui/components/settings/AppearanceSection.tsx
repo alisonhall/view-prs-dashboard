@@ -11,6 +11,7 @@ import {
 } from '../../helpers/pr-section-preferences.helpers.ts';
 import { Button, IconButton } from '../ui/Button';
 import { CustomSectionsSettings } from './CustomSectionsSettings';
+import { SmartGroupLooks } from './SmartGroupLooks';
 
 const SECTION_KINDS: ReadonlyArray<{ kind: PrSectionKind; heading: string }> = [
   { kind: 'smart', heading: 'Smart groups' },
@@ -143,13 +144,16 @@ export function AppearanceSection() {
             );
           })}
         </table>
+        <SmartGroupLooks />
         <div className="settings-actions">
-          {/* Only show/open/order choices: a section's sort isn't one of these. */}
+          {/* Show, open, look and order choices: a section's sort isn't one of these. */}
           <Button
             onClick={resetSections}
             disabled={
               isDefaultPrSectionOrder(sectionOrder, catalog) &&
-              !Object.values(preferences).some((preference) => preference.hidden || preference.open !== undefined)
+              !Object.values(preferences).some(
+                (preference) => preference.hidden || preference.open !== undefined || preference.icon || preference.tone,
+              )
             }
           >
             Restore default sections

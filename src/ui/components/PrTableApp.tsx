@@ -30,7 +30,13 @@ import { useMediaQuery } from '../state/useMediaQuery';
 import { usePrSectionPreferences } from '../state/PrSectionPreferencesProvider';
 import { CustomSectionMembershipProvider } from '../state/CustomSectionMembership';
 import { useSettingsDrawer } from '../state/SettingsDrawerContext';
-import { isPrSectionHidden, orderPrSections, prSectionSort, prSectionStartsOpen } from '../helpers/pr-section-preferences.helpers.ts';
+import {
+  isPrSectionHidden,
+  orderPrSections,
+  prSectionLookOverride,
+  prSectionSort,
+  prSectionStartsOpen,
+} from '../helpers/pr-section-preferences.helpers.ts';
 import { buildPrEntryKey } from '../helpers/pr-entry-keys.helpers.ts';
 import { customSectionIdsFor, customSectionKey } from '../helpers/pr-custom-sections.helpers.ts';
 import type { SmartGroupData } from '../helpers/pr-section-config.helpers.ts';
@@ -742,6 +748,8 @@ export function PrTableApp() {
             ...section,
             prs: groupByRepo ? groupRowsByRepo(sorted, true).flatMap((group) => group.rows) : sorted,
             defaultOpen: prSectionStartsOpen(sectionPreferences, section.key, section.defaultOpen),
+            // A smart group's icon and colour chosen in Settings › Appearance.
+            icon: section.icon ?? prSectionLookOverride(sectionPreferences, section.key),
           };
         }),
     [builtSections, sectionOrder, sectionPreferences, groupByRepo],

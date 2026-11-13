@@ -113,6 +113,7 @@
 .ui-signal[data-tone="attention"] { color: var(--color-attention); }
 .ui-signal[data-tone="pending"] { color: var(--color-pending); }
 .ui-signal[data-tone="accent"] { color: var(--color-accent); }
+.ui-signal[data-tone="done"] { color: var(--color-done); }
 
 .ui-signal-empty {
   display: inline-block;

@@ -23,25 +23,29 @@ const countPrsIn = (customSectionsByRepo: PrDataPayload['customSectionsByRepo'],
     0,
   );
 
-function IconAndColourFields({
+// A section's icon and colour, with how its header will show them; also
+// the built-in smart groups' (SmartGroupLooks), with their icon choices.
+export function IconAndColourFields({
   idPrefix,
   icon,
   tone,
   onIcon,
   onTone,
+  iconChoices = CUSTOM_SECTION_ICONS,
 }: {
   idPrefix: string;
   icon: IconName;
-  tone: CustomSectionTone;
+  tone: string;
   onIcon: (icon: IconName) => void;
   onTone: (tone: CustomSectionTone) => void;
+  iconChoices?: ReadonlyArray<{ icon: IconName; label: string }>;
 }) {
   return (
     <>
       <div className="settings-field">
         <label htmlFor={`${idPrefix}-icon`}>Icon</label>
         <select id={`${idPrefix}-icon`} value={icon} onChange={(event) => onIcon(event.target.value as IconName)}>
-          {CUSTOM_SECTION_ICONS.map((option) => (
+          {iconChoices.map((option) => (
             <option key={option.icon} value={option.icon}>
               {option.label}
             </option>

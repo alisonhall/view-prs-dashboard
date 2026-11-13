@@ -8,6 +8,9 @@ import {
   normalizePrSectionOrder,
   orderPrSections,
   isPrSectionTitleTaken,
+  prSectionLookOverride,
+  sectionIconChoices,
+  canChangePrSectionLook,
   prSectionCatalog,
   prSectionDefaultOpen,
   prSectionKind,
@@ -83,6 +86,37 @@ describe('PR section preferences', () => {
       expect(normalizePrSectionPreferences({ "custom-abc": { hidden: true, open: true } }, catalog)).toEqual({ "custom-abc": { hidden: true } });
       expect(normalizePrSectionPreferences({ "custom-abc": { hidden: true } })).toEqual({});
       expect(withPrSectionPreference({}, "custom-abc", { open: false }, catalog)).toEqual({ "custom-abc": { open: false } });
+    });
+
+    test("a built-in smart group's icon and colour are kept when they're among the choices and not its own; the others' aren't", () => {
+      const catalog = prSectionCatalog([{ id: "abc", name: "Mine too", icon: "flag", tone: "danger" }]);
+      expect(
+        normalizePrSectionPreferences(
+          {
+            flagged: { icon: "eye", tone: "done" },
+            "in-review": { icon: "eye", tone: "accent" },
+            "review-requested": { icon: "rocket", tone: "pink" },
+            mine: { icon: "pr", tone: "success" },
+            merged: { icon: "flag", tone: "danger" },
+            "custom-abc": { icon: "eye", tone: "done" },
+          },
+          catalog,
+        ),
+      ).toEqual({ flagged: { icon: "eye", tone: "done" }, mine: { tone: "success" } });
+      expect(canChangePrSectionLook("flagged")).toBe(true);
+      expect(canChangePrSectionLook("merged")).toBe(false);
+      expect(canChangePrSectionLook("custom-abc")).toBe(false);
+      // Its own icon is offered when the set lacks it.
+      expect(sectionIconChoices("review-requested")[0]).toEqual({ icon: "approve", label: "Approval" });
+      expect(sectionIconChoices("flagged").filter((option) => option.icon === "flag")).toHaveLength(1);
+    });
+
+    test("a section's look with its saved icon or colour, and the defaults put back drop them", () => {
+      expect(prSectionLookOverride({ flagged: { tone: "accent" } }, "flagged")).toEqual({ icon: "flag", tone: "accent" });
+      expect(prSectionLookOverride({}, "flagged")).toBeUndefined();
+      const changed = withPrSectionPreference({ flagged: { hidden: true } }, "flagged", { icon: "note", tone: "muted" });
+      expect(changed).toEqual({ flagged: { hidden: true, icon: "note", tone: "muted" } });
+      expect(withPrSectionPreference(changed, "flagged", { icon: "flag", tone: "danger" })).toEqual({ flagged: { hidden: true } });
     });
 
     test("a title is taken when any other section has it, ignoring case and spaces", () => {

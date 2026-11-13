@@ -2,7 +2,8 @@
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { PrTitleCell, type PrTitleCellProps } from './PrTitleCell';
+import { LIFECYCLE_SIGNALS, PrTitleCell, type PrTitleCellProps } from './PrTitleCell';
+import { BUILT_IN_SECTION_LOOKS } from '../../helpers/pr-section-preferences.helpers';
 import { SearchTermsContext } from '../../state/SearchTermsContext';
 import { RepoFreshnessProvider } from '../../state/RepoFreshnessContext';
 
@@ -28,6 +29,14 @@ const renderCell = (props: Partial<PrTitleCellProps> = {}) => {
 };
 
 describe('PrTitleCell', () => {
+  test("each status badge has its section header's icon and colour - GitHub's, merged purple", () => {
+    Object.entries(LIFECYCLE_SIGNALS).forEach(([status, signal]) => {
+      expect({ status, icon: signal.icon, tone: signal.tone }).toEqual({ status, ...BUILT_IN_SECTION_LOOKS[status] });
+    });
+    expect(LIFECYCLE_SIGNALS.merged?.tone).toBe('done');
+  });
+
+
   describe('with a search', () => {
     const entry = {
       repo: 'owner/repo',

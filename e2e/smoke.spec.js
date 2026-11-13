@@ -932,6 +932,37 @@ test("Settings › Appearance: a custom section is made, a PR is put in it from 
   }
 });
 
+test("Settings › Appearance: a smart group's icon and colour are changed, kept after a reload, and put back", async ({ page }) => {
+  await clearSavedSettings(page.request, ["prSections"]);
+  try {
+    await page.goto("/");
+    await waitForPrTable(page);
+    const flaggedIcon = prSection(page, "Flagged").locator(".pr-section-icon");
+    await expect(flaggedIcon).toHaveAttribute("data-tone", "danger");
+
+    const drawer = await openSettings(page, "Appearance");
+    await drawer.getByText("Icons and colours of the smart groups", { exact: true }).click();
+    const look = drawer.getByRole("group", { name: "Flagged's icon and colour", exact: true });
+    const saved = page.waitForResponse((response) => response.url().includes("/view-prs/user-defaults") && response.request().method() === "PUT");
+    await look.getByRole("combobox", { name: "Colour", exact: true }).selectOption({ label: "Purple" });
+    await saved;
+    await expect(flaggedIcon).toHaveAttribute("data-tone", "done");
+
+    await page.reload();
+    await waitForPrTable(page);
+    await expect(flaggedIcon).toHaveAttribute("data-tone", "done");
+    const { overrides } = await (await page.request.get("/view-prs/user-defaults")).json();
+    expect(overrides.prSections).toEqual({ flagged: { tone: "done" } });
+
+    const settings = await openSettings(page, "Appearance");
+    await settings.getByText("Icons and colours of the smart groups", { exact: true }).click();
+    await settings.getByRole("group", { name: "Flagged's icon and colour", exact: true }).getByRole("button", { name: "Use the default", exact: true }).click();
+    await expect(flaggedIcon).toHaveAttribute("data-tone", "danger");
+  } finally {
+    await clearSavedSettings(page.request, ["prSections"]);
+  }
+});
+
 test("Settings › Background updates: a repo's check interval and priority boost are saved to user-defaults.json", async ({ page }) => {
   await clearSavedSettings(page.request, ["schedulerRepoConfig"]);
   try {

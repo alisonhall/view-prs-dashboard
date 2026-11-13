@@ -1,5 +1,12 @@
 import { defaultSectionSort, isSectionSort, sectionSortFields, type SectionSort } from './pr-section-sort.helpers.ts';
-import { customSectionKey, type CustomSection } from './pr-custom-sections.helpers.ts';
+import {
+  CUSTOM_SECTION_ICONS,
+  CUSTOM_SECTION_TONES,
+  customSectionKey,
+  type CustomSection,
+  type CustomSectionTone,
+} from './pr-custom-sections.helpers.ts';
+import type { IconName } from '../components/ui/Icon';
 
 // Settings › Appearance's section choices: which PR table sections show,
 // and which start open when the page loads - and each section's sort
@@ -42,6 +49,45 @@ export const PR_SECTION_CATALOG: ReadonlyArray<PrSectionCatalogEntry> = [
 
 export type PrSectionCatalog = ReadonlyArray<PrSectionCatalogEntry>;
 
+// A section header's icon and its colour (pr-table.css's data-tone).
+export interface PrSectionLook {
+  icon: IconName;
+  tone: string;
+}
+
+// The built-in sections' looks. The sections by status keep theirs: they
+// match the status badges on rows and the legend. The smart groups' can be
+// changed in Settings › Appearance (saved as `icon` and `tone` with the
+// section's other choices, only when they differ from these).
+export const BUILT_IN_SECTION_LOOKS: Readonly<Record<string, PrSectionLook>> = {
+  flagged: { icon: 'flag', tone: 'danger' },
+  'in-review': { icon: 'eye', tone: 'accent' },
+  'needs-attention': { icon: 'alert', tone: 'attention' },
+  mine: { icon: 'pr', tone: 'accent' },
+  'assigned-to-me': { icon: 'user', tone: 'accent' },
+  'review-requested': { icon: 'approve', tone: 'attention' },
+  interacted: { icon: 'users', tone: 'muted' },
+  open: { icon: 'pr', tone: 'success' },
+  draft: { icon: 'prDraft', tone: 'muted' },
+  closed: { icon: 'prClosed', tone: 'danger' },
+  merged: { icon: 'merge', tone: 'done' },
+};
+
+// Whether a section's look can be changed here: a built-in smart group
+// (a custom section's is its own, chosen with it).
+export const canChangePrSectionLook = (key: string) =>
+  Boolean(BUILT_IN_SECTION_LOOKS[key]) && PR_SECTION_CATALOG.some((entry) => entry.key === key && entry.kind === 'smart');
+
+// The icons a section can have: the custom sections' set, and its own
+// default when that isn't one of them.
+export const sectionIconChoices = (key: string): ReadonlyArray<{ icon: IconName; label: string }> => {
+  const own = BUILT_IN_SECTION_LOOKS[key]?.icon;
+  const extra: Partial<Record<IconName, string>> = { pr: 'Pull request', approve: 'Approval' };
+  return own && !CUSTOM_SECTION_ICONS.some((option) => option.icon === own)
+    ? [{ icon: own, label: extra[own] || own }, ...CUSTOM_SECTION_ICONS]
+    : CUSTOM_SECTION_ICONS;
+};
+
 // Every section with the custom ones (pr-custom-sections.helpers.ts): last
 // among the smart groups, open on page load, titled by their names. The
 // functions below take it, defaulting to the built-in sections.
@@ -75,6 +121,9 @@ export interface PrSectionPreference {
   hidden?: true;
   open?: boolean;
   sort?: SectionSort;
+  // A built-in smart group's own look (canChangePrSectionLook).
+  icon?: IconName;
+  tone?: CustomSectionTone;
 }
 export type PrSectionPreferences = Record<string, PrSectionPreference>;
 
@@ -90,7 +139,7 @@ export const normalizePrSectionPreferences = (value: unknown, catalog: PrSection
   catalog.forEach(({ key, defaultOpen }) => {
     const saved = (value as Record<string, unknown>)[key];
     if (!saved || typeof saved !== 'object') return;
-    const { hidden, open, sort } = saved as { hidden?: unknown; open?: unknown; sort?: unknown };
+    const { hidden, open, sort, icon, tone } = saved as { hidden?: unknown; open?: unknown; sort?: unknown; icon?: unknown; tone?: unknown };
     const preference: PrSectionPreference = {};
     if (hidden === true) preference.hidden = true;
     if (typeof open === 'boolean' && open !== defaultOpen) preference.open = open;
@@ -101,9 +150,23 @@ export const normalizePrSectionPreferences = (value: unknown, catalog: PrSection
         preference.sort = { by: sort.by, direction: sort.direction };
       }
     }
+    // A look one of the choices offers, and not the section's own.
+    if (canChangePrSectionLook(key)) {
+      const look = BUILT_IN_SECTION_LOOKS[key];
+      if (sectionIconChoices(key).some((option) => option.icon === icon) && icon !== look?.icon) preference.icon = icon as IconName;
+      if (CUSTOM_SECTION_TONES.some((option) => option.tone === tone) && tone !== look?.tone) preference.tone = tone as CustomSectionTone;
+    }
     if (Object.keys(preference).length > 0) result[key] = preference;
   });
   return result;
+};
+
+// A section's look with its saved icon and colour, for one that has either
+// (undefined otherwise: the header shows the built-in one).
+export const prSectionLookOverride = (preferences: PrSectionPreferences, key: string): PrSectionLook | undefined => {
+  const { icon, tone } = preferences[key] || {};
+  const look = BUILT_IN_SECTION_LOOKS[key];
+  return look && (icon || tone) ? { icon: icon ?? look.icon, tone: tone ?? look.tone } : undefined;
 };
 
 // Storage can throw (blocked site data) or be missing, and the copy can be
@@ -232,7 +295,7 @@ export const prSectionStartsOpen = (preferences: PrSectionPreferences, key: stri
 export const withPrSectionPreference = (
   preferences: PrSectionPreferences,
   key: string,
-  change: { hidden?: boolean; open?: boolean; sort?: SectionSort },
+  change: { hidden?: boolean; open?: boolean; sort?: SectionSort; icon?: IconName; tone?: CustomSectionTone },
   catalog: PrSectionCatalog = PR_SECTION_CATALOG,
 ): PrSectionPreferences => {
   const current = preferences[key] || {};
@@ -243,6 +306,8 @@ export const withPrSectionPreference = (
         hidden: change.hidden ?? current.hidden,
         open: change.open ?? current.open,
         sort: change.sort ?? current.sort,
+        icon: change.icon ?? current.icon,
+        tone: change.tone ?? current.tone,
       },
     },
     catalog,

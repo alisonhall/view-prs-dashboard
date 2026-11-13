@@ -3,7 +3,7 @@ import { Button, IconButton } from './ui/Button';
 import { Icon, type IconName } from './ui/Icon';
 import { useHeaderPopover } from './shell/useHeaderPopover';
 
-type Tone = 'success' | 'danger' | 'attention' | 'accent' | 'pending' | 'muted';
+type Tone = 'success' | 'danger' | 'attention' | 'accent' | 'pending' | 'muted' | 'done';
 
 interface LegendEntry {
   // An icon as the table draws it - with a name for screen readers, which
@@ -42,7 +42,7 @@ const LEGEND: LegendGroup[] = [
       { icon: 'checksPending', tone: 'muted', name: 'Grey clock', meaning: 'Queued for an update.' },
       { icon: 'pr', tone: 'success', name: 'Green PR icon', meaning: 'Open (shown in sections that mix states, like Flagged).' },
       { icon: 'prDraft', tone: 'muted', name: 'Grey draft PR icon', meaning: 'Draft.' },
-      { icon: 'merge', tone: 'accent', name: 'Blue merge icon', meaning: 'Merged.' },
+      { icon: 'merge', tone: 'done', name: 'Purple merge icon', meaning: 'Merged.' },
       { icon: 'prClosed', tone: 'danger', name: 'Red closed PR icon', meaning: 'Closed without merging.' },
       { sample: 'Details updating', meaning: 'GitHub has changes its details haven’t caught up with yet.' },
       { sample: 'No longer open', meaning: 'GitHub’s list of open PRs doesn’t have it any more.' },

@@ -18,30 +18,19 @@ import { useEffect, useRef } from 'react';
 import type { PrEntry } from '../types/pr-data.ts';
 import { describeChecks, describeMergeable } from '../helpers/pr-row-signals.helpers.ts';
 import { Icon, type IconName } from './ui/Icon';
+import { BUILT_IN_SECTION_LOOKS } from '../helpers/pr-section-preferences.helpers.ts';
 import { PrTable, type PrTableProps } from './PrTable';
 import { useSectionInteraction } from '../state/useSectionInteraction';
 import { usePrArchive } from '../state/PrArchiveContext';
 import { archivedCount, type ArchivedSection } from '../helpers/pr-archive.helpers.ts';
 import { Button } from './ui/Button';
 
-const SECTION_ICONS: Record<string, { icon: IconName; tone: string }> = {
-  flagged: { icon: 'flag', tone: 'danger' },
-  'in-review': { icon: 'eye', tone: 'accent' },
-  'needs-attention': { icon: 'alert', tone: 'attention' },
-  mine: { icon: 'pr', tone: 'accent' },
-  'assigned-to-me': { icon: 'user', tone: 'accent' },
-  'review-requested': { icon: 'approve', tone: 'attention' },
-  interacted: { icon: 'users', tone: 'muted' },
-  open: { icon: 'pr', tone: 'success' },
-  draft: { icon: 'prDraft', tone: 'muted' },
-  closed: { icon: 'prClosed', tone: 'danger' },
-  merged: { icon: 'merge', tone: 'done' },
-};
 
 export interface PrSectionData {
   key: string;
   title: string;
-  // A custom section's icon and colour; the built-in sections have theirs here.
+  // A custom section's icon and colour, or a smart group's chosen in
+  // Settings › Appearance; otherwise the built-in look (BUILT_IN_SECTION_LOOKS).
   icon?: { icon: IconName; tone: string };
   prs: PrEntry[];
   totalCount?: number;
@@ -120,7 +109,7 @@ export function PrSection({ section, isOpen, onToggleSection, onInteractingChang
   const interactionHandlers = useSectionInteraction(onInteractingChange && ((interacting) => onInteractingChange(key, interacting)));
   // `totalCount` is the full row count; fall back to the rendered rows.
   const displayedTotalCount = typeof totalCount === 'number' ? totalCount : prs.length;
-  const sectionIcon = SECTION_ICONS[key] ?? section.icon;
+  const sectionIcon = section.icon ?? BUILT_IN_SECTION_LOOKS[key];
   const summary = isOpen ? [] : summarise(prs, attentionCount);
   const detailsRef = useRef<HTMLDetailsElement>(null);
   const headerRef = useRef<HTMLElement>(null);

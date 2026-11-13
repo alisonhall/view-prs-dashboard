@@ -17,12 +17,13 @@ const { formatTitleWithIcons } = createPrStatusDisplayHelpers();
 const { escapeHtml } = createPrFormattingHelpers();
 
 // In smart groups, which mix lifecycle states, each row shows its state
-// (and each PR in the Authors view, AuthorInsightsPrRow).
-export const LIFECYCLE_SIGNALS: Record<string, { icon: IconName; tone: 'success' | 'muted' | 'danger' | 'accent'; label: string }> = {
+// (and each PR in the Authors view, AuthorInsightsPrRow). GitHub's colours,
+// as the sections by status' headers (BUILT_IN_SECTION_LOOKS): merged purple.
+export const LIFECYCLE_SIGNALS: Record<string, { icon: IconName; tone: 'success' | 'muted' | 'danger' | 'done'; label: string }> = {
   open: { icon: 'pr', tone: 'success', label: 'Open' },
   draft: { icon: 'prDraft', tone: 'muted', label: 'Draft' },
   closed: { icon: 'prClosed', tone: 'danger', label: 'Closed' },
-  merged: { icon: 'merge', tone: 'accent', label: 'Merged' },
+  merged: { icon: 'merge', tone: 'done', label: 'Merged' },
 };
 
 // A stable colour per label name, from a small palette (pr-table.css).

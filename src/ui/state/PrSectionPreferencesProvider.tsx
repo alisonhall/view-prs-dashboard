@@ -31,7 +31,9 @@ import {
   readStoredCustomSections,
   storeCustomSections,
   type CustomSection,
+  type CustomSectionTone,
 } from '../helpers/pr-custom-sections.helpers.ts';
+import type { IconName } from '../components/ui/Icon';
 import type { SectionSort } from '../helpers/pr-section-sort.helpers.ts';
 import { sendJson } from '../helpers/pr-http.helpers.ts';
 
@@ -50,11 +52,13 @@ export interface PrSectionPreferencesValue {
   setSectionHidden: (key: string, hidden: boolean) => void;
   setSectionStartsOpen: (key: string, open: boolean) => void;
   setSectionSort: (key: string, sort: SectionSort) => void;
+  // A built-in smart group's icon and colour (its built-in ones put it back).
+  setSectionLook: (key: string, look: { icon?: IconName; tone?: CustomSectionTone }) => void;
   // The sections' order (every key, smart groups first), and moving one a
   // place up (-1) or down (1) among its kind.
   sectionOrder: string[];
   moveSection: (key: string, offset: -1 | 1) => void;
-  // Show, open-on-load and order back to the defaults (not the sorts).
+  // Show, open-on-load, looks and order back to the defaults (not the sorts).
   resetSections: () => void;
   // "Group rows by repo".
   groupByRepo: boolean;
@@ -76,6 +80,7 @@ export const PrSectionPreferencesContext = createContext<PrSectionPreferencesVal
   setSectionHidden: () => {},
   setSectionStartsOpen: () => {},
   setSectionSort: () => {},
+  setSectionLook: () => {},
   sectionOrder: normalizePrSectionOrder(null),
   moveSection: () => {},
   resetSections: () => {},
@@ -187,6 +192,11 @@ export function PrSectionPreferencesProvider({ children }: { children: ReactNode
     (key: string, sort: SectionSort) => save(withPrSectionPreference(preferencesRef.current, key, { sort }, catalogRef.current)),
     [save],
   );
+  const setSectionLook = useCallback(
+    (key: string, look: { icon?: IconName; tone?: CustomSectionTone }) =>
+      save(withPrSectionPreference(preferencesRef.current, key, look, catalogRef.current)),
+    [save],
+  );
   // Each move builds on the latest order, like the choices above.
   const sectionOrderRef = useRef(sectionOrder);
   sectionOrderRef.current = sectionOrder;
@@ -204,8 +214,8 @@ export function PrSectionPreferencesProvider({ children }: { children: ReactNode
     },
     [saveOrder],
   );
-  // Which sections show, start open and their order, back to the defaults
-  // - not their sorts, chosen in each section (PrSectionSortMenu).
+  // Which sections show, start open, their looks and order, back to the
+  // defaults - not their sorts, chosen in each section (PrSectionSortMenu).
   const resetSections = useCallback(() => {
     save(
       Object.fromEntries(
@@ -278,6 +288,7 @@ export function PrSectionPreferencesProvider({ children }: { children: ReactNode
       setSectionHidden,
       setSectionStartsOpen,
       setSectionSort,
+      setSectionLook,
       sectionOrder,
       moveSection,
       resetSections,
@@ -295,6 +306,7 @@ export function PrSectionPreferencesProvider({ children }: { children: ReactNode
       setSectionHidden,
       setSectionStartsOpen,
       setSectionSort,
+      setSectionLook,
       sectionOrder,
       moveSection,
       resetSections,
