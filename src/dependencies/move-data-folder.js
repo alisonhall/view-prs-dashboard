@@ -21,10 +21,12 @@ const path = require("path");
 const { readEnvFileValue, resolveDataDir } = require("../server/config/data-dir.js");
 
 // Fetched again, rebuilt, or changing all the time: not worth tracking.
-const DATA_GITIGNORE = `# What the dashboard fetches again or keeps changing (README "Data folder").
-# Tracked: your notes and Acks (check-open-pr-updates.user-state.json),
-# Authors comments, People (actors.json), settings (user-defaults.json) and
-# sources.
+const DATA_GITIGNORE = `# What the dashboard fetches again or keeps changing (README "Data folder"),
+# and where this computer's clones are (local-repos.json: its paths mean
+# nothing on another computer). Tracked: your notes and Acks
+# (check-open-pr-updates.user-state.json), Authors comments, People
+# (actors.json), settings (user-defaults.json) and sources.
+local-repos.json
 check-open-pr-updates.data.json
 check-open-pr-updates.data.archive.json
 check-open-pr-updates.live-summary.json
@@ -32,6 +34,8 @@ check-open-pr-updates.scheduler.json
 action-log.json
 pr-details/
 pr-diffs/
+pr-descriptions/
+pr-attachments/
 backups/
 *.lock/
 *.pid

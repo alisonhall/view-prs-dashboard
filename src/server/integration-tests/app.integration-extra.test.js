@@ -582,6 +582,121 @@ describe("integration behavior", () => {
     });
   });
 
+  describe("local clones", () => {
+    const { execFile, execFileSync } = require("child_process");
+    const os = require("os");
+    const git = (cwd, ...args) =>
+      execFileSync("git", ["-c", "user.name=Test", "-c", "user.email=test@example.com", ...args], { cwd, encoding: "utf8" }).trim();
+    let root;
+    let clone;
+    let worktree;
+    let oids;
+    let originalOpen;
+    let originalRunViewPrsCommand;
+    let opened;
+    beforeAll(() => {
+      root = fs.mkdtempSync(path.join(os.tmpdir(), "local-clones-"));
+      clone = path.join(root, "repo");
+      worktree = path.join(root, "feature-tree");
+      fs.mkdirSync(clone);
+      git(clone, "init", "-q");
+      git(clone, "remote", "add", "origin", "https://github.com/owner/repo.git");
+      git(clone, "commit", "--allow-empty", "-q", "-m", "base");
+      git(clone, "branch", "feature");
+      git(clone, "config", "branch.feature.remote", "origin");
+      git(clone, "config", "branch.feature.merge", "refs/heads/feature");
+      oids = { local: git(clone, "rev-parse", "feature") };
+      git(clone, "worktree", "add", "-q", worktree, "feature");
+      git(worktree, "commit", "--allow-empty", "-q", "-m", "pushed by someone");
+      oids.head = git(worktree, "rev-parse", "HEAD");
+      // The local branch is a commit behind the PR's newest.
+      git(worktree, "reset", "-q", "--hard", oids.local);
+    });
+    afterAll(() => fs.rmSync(root, { recursive: true, force: true }));
+    beforeEach(() => {
+      fs.rmSync(process.env.VIEW_PRS_LOCAL_REPOS_FILE, { force: true });
+      opened = [];
+      // Real git, run without spawn (which the tests' setup refuses).
+      originalRunViewPrsCommand = appModule.runViewPrsCommand;
+      appModule.runViewPrsCommand = (command, args) =>
+        new Promise((resolve, reject) =>
+          execFile(command, args, { encoding: "utf8" }, (error, stdout, stderr) => (error ? reject({ error, stderr }) : resolve({ stdout }))),
+        );
+      originalOpen = appModule.openFolderInEditor;
+      appModule.openFolderInEditor = async (folder) => {
+        opened.push(folder);
+      };
+      writeViewPrsData({
+        byPrNumber: {
+          5: {
+            prNumber: "5",
+            repo: "owner/repo",
+            section: "open",
+            data: { number: "5", sourceBranch: "feature", headOid: oids.head, commits: [{ oid: oids.local }, { oid: oids.head }] },
+          },
+          6: { prNumber: "6", repo: "owner/repo", section: "open", data: { number: "6", sourceBranch: "not-here", headOid: oids.head } },
+        },
+        lastRun: null,
+      });
+    });
+    afterEach(() => {
+      appModule.openFolderInEditor = originalOpen;
+      appModule.runViewPrsCommand = originalRunViewPrsCommand;
+    });
+
+    test("a clone's folder is saved, in this computer's own file, once git finds it's a clone of the repo", async () => {
+      expect((await request.put("/view-prs/local-repos").send({ repo: "owner/repo", path: "relative/path" })).status).toBe(400);
+      const wrong = await request.put("/view-prs/local-repos").send({ repo: "other/repo", path: clone });
+      expect(wrong.status).toBe(422);
+      expect(wrong.body.error).toBe("None of its remotes is other/repo (it has owner/repo)");
+      expect(fs.existsSync(process.env.VIEW_PRS_LOCAL_REPOS_FILE)).toBe(false);
+
+      const res = await request.put("/local-repos").send({ repo: "owner/repo", path: clone });
+      expect(res.status).toBe(200);
+      expect(res.body.repos).toEqual({ "owner/repo": { path: clone, ok: true, branchCount: 2, worktreeCount: 2 } });
+      expect(JSON.parse(fs.readFileSync(process.env.VIEW_PRS_LOCAL_REPOS_FILE, "utf8"))).toEqual({ repos: { "owner/repo": { path: clone } } });
+      expect((await request.get("/view-prs/local-repos")).body.repos["owner/repo"]).toMatchObject({ ok: true });
+
+      const removed = await request.delete("/view-prs/local-repos").send({ repo: "owner/repo" });
+      expect(removed.body).toEqual({ ok: true, removed: true, repos: {} });
+    });
+
+    test("a path pasted with its quotes (Windows' Copy as path) is saved without them", async () => {
+      const res = await request.put("/view-prs/local-repos").send({ repo: "owner/repo", path: ` "${clone}" ` });
+      expect(res.status).toBe(200);
+      expect(Object.values(res.body.repos)).toEqual([expect.objectContaining({ path: clone, ok: true })]);
+    });
+
+    test("each PR's local branch: the worktree it's in and how far behind the PR it is", async () => {
+      // Without a clone, git isn't asked.
+      const calls = [];
+      const realRun = appModule.runViewPrsCommand;
+      appModule.runViewPrsCommand = (...args) => {
+        calls.push(args);
+        return realRun(...args);
+      };
+      expect((await request.get("/view-prs/local-branches")).body).toEqual({ ok: true, repos: {}, prs: {} });
+      expect(calls).toEqual([]);
+      await request.put("/view-prs/local-repos").send({ repo: "owner/repo", path: clone });
+
+      const res = await request.get("/local-branches");
+      expect(res.status).toBe(200);
+      expect(Object.keys(res.body.prs)).toEqual(["owner/repo#5"]);
+      expect(res.body.prs["owner/repo#5"]).toMatchObject({ branch: "feature", oid: oids.local, ahead: 0, behind: 1, exact: true });
+      expect(path.resolve(res.body.prs["owner/repo#5"].worktreePath)).toBe(path.resolve(worktree));
+    });
+
+    test("opens the clone or one of its worktrees in the editor, and no other folder", async () => {
+      await request.put("/view-prs/local-repos").send({ repo: "owner/repo", path: clone });
+      expect((await request.post("/view-prs/open-in-editor").send({ repo: "owner/repo", path: worktree })).body).toEqual({ ok: true });
+      expect((await request.post("/open-in-editor").send({ repo: "owner/repo", path: clone })).status).toBe(200);
+      const elsewhere = await request.post("/view-prs/open-in-editor").send({ repo: "owner/repo", path: root });
+      expect(elsewhere.status).toBe(400);
+      expect((await request.post("/view-prs/open-in-editor").send({ repo: "other/repo", path: clone })).status).toBe(400);
+      expect(opened).toEqual([worktree, clone]);
+    });
+  });
+
   describe("GET /pr-description", () => {
     const repo = "owner/repo";
     const prNumber = "321";

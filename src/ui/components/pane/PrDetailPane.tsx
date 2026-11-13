@@ -1,3 +1,4 @@
+import { PrLocalBranchLine } from '../LocalBranchStatus';
 import { Fragment, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import type { PrData, PrDataPayload, PrEntry } from '../../types/pr-data.ts';
 import type { ActorsMap } from '../../helpers/pr-actor-identity.helpers.ts';
@@ -310,6 +311,7 @@ function PaneContent({
             </span>
           )}
         </p>
+        <PrLocalBranchLine repo={repo} prNumber={String(prNumber)} />
       </header>
 
       <div className="pr-pane-actions" role="group" aria-label="Actions">

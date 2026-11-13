@@ -200,6 +200,12 @@
         "sourceBranch": {
           "type": "string"
         },
+        "headOid": {
+          "type": "string"
+        },
+        "crossRepository": {
+          "type": "boolean"
+        },
         "targetBranch": {
           "type": "string"
         },

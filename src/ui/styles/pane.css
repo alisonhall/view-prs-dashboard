@@ -170,6 +170,37 @@
   min-width: 0;
 }
 
+/* "On this computer": the PR's local branch (LocalBranchStatus), with
+   Open in editor; the attention colour when it's behind. */
+.pr-pane-local {
+  grid-column: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--space-2);
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.pr-pane-local-text {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.pr-pane-local[data-tone="attention"] .pr-pane-local-text {
+  color: var(--color-attention-text);
+}
+
+.pr-pane-local code {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+  overflow-wrap: anywhere;
+}
+
 .pr-pane-actions {
   display: flex;
   flex-wrap: wrap;

@@ -520,3 +520,9 @@
 .sources-item-meta[data-tone="error"] {
   color: var(--color-danger);
 }
+
+/* Settings › Local clones: each repo's clone folder, the path field taking the room. */
+.local-clone-path {
+  flex: 1 1 18rem;
+  min-width: 0;
+}

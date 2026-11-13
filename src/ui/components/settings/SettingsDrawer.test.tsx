@@ -25,6 +25,7 @@ jest.mock('./BackfillSection', () => ({ BackfillSection: () => <p>Backfill conte
 jest.mock('./BackgroundUpdatesSection', () => ({ BackgroundUpdatesSection: () => <p>Background updates content</p> }));
 jest.mock('./ActionLogSection', () => ({ ActionLogSection: () => <p>Action log content</p> }));
 jest.mock('./PeopleSection', () => ({ PeopleSection: () => <p>People content</p> }));
+jest.mock('./LocalClonesSection', () => ({ LocalClonesSection: () => <p>Local clones content</p> }));
 jest.mock('./ExportSection', () => ({ ExportSection: () => <p>Export content</p> }));
 
 let drawer: ReturnType<typeof useSettingsDrawer>;
@@ -79,6 +80,7 @@ describe('SettingsDrawer and ToolsDrawer', () => {
     expect(tabNames(settingsDialog())).toEqual([
       'Sources',
       'Background updates',
+      'Local clones',
       'Attention rules',
       'Change detection',
       'Merge commits',
@@ -131,8 +133,8 @@ describe('SettingsDrawer and ToolsDrawer', () => {
 
   test('↑/↓ move between sections, past the group headings', async () => {
     const user = userEvent.setup();
-    renderDrawers(true, 'background-updates');
-    await user.click(screen.getByRole('tab', { name: 'Background updates' }));
+    renderDrawers(true, 'local-clones');
+    await user.click(screen.getByRole('tab', { name: 'Local clones' }));
     await user.keyboard('{ArrowDown}');
     expect(screen.getByRole('tab', { name: 'Attention rules' })).toHaveFocus();
     expect(screen.getByRole('tab', { name: 'Attention rules' })).toHaveAttribute('aria-selected', 'true');

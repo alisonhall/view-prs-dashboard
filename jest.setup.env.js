@@ -45,6 +45,7 @@ if (!process.env.VIEW_PRS_TEST_STATE_DIR) {
   process.env.VIEW_PRS_PR_DIFF_DIR = path.join(tempDir, "pr-diffs");
   process.env.VIEW_PRS_PR_DESCRIPTION_DIR = path.join(tempDir, "pr-descriptions");
   process.env.VIEW_PRS_ATTACHMENT_DIR = path.join(tempDir, "pr-attachments");
+  process.env.VIEW_PRS_LOCAL_REPOS_FILE = path.join(tempDir, "local-repos.json");
   process.env.VIEW_PRS_PR_DETAIL_DIR = path.join(tempDir, "pr-details");
   process.env.VIEW_PRS_BACKFILL_PID_FILE = path.join(tempDir, "backfill-missing.pid");
   process.env.VIEW_PRS_BACKFILL_LOG_FILE = path.join(tempDir, "backfill-missing.log");

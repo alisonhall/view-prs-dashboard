@@ -16,6 +16,7 @@ export type SettingsSectionId =
   | ToolsSectionId
   | 'sources'
   | 'background-updates'
+  | 'local-clones'
   | 'attention'
   | 'change-detection'
   | 'merge-commits'

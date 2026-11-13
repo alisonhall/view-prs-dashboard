@@ -80,6 +80,7 @@ const isolatedEnv = {
 
 
   VIEW_PRS_ATTACHMENT_DIR: path.join(tempDir, "pr-attachments"),
+  VIEW_PRS_LOCAL_REPOS_FILE: path.join(tempDir, "local-repos.json"),
   VIEW_PRS_PR_DETAIL_DIR: path.join(tempDir, "pr-details"),
   VIEW_PRS_USER_DEFAULTS_FILE: path.join(tempDir, "user-defaults.json"),
   VIEW_PRS_BACKFILL_PID_FILE: path.join(tempDir, "backfill-missing.pid"),

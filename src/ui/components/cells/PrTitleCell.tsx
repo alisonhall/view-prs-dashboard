@@ -12,6 +12,7 @@ import { matchRowSearch, SEARCH_FIELD_LABELS } from '../../helpers/pr-row-search
 import { describeRowRefreshProblem } from '../../helpers/pr-row-freshness.helpers.ts';
 import { useNow } from '../../state/NowContext';
 import { useRepoFreshness } from '../../state/RepoFreshnessContext';
+import { PrLocalBranchChip } from '../LocalBranchStatus';
 
 const { formatTitleWithIcons } = createPrStatusDisplayHelpers();
 const { escapeHtml } = createPrFormattingHelpers();
@@ -242,6 +243,8 @@ export function PrTitleCell({
               )}
             </div>
           )}
+          {/* This computer's copy of its branch (Settings › Local clones). */}
+          <PrLocalBranchChip repo={repo} prNumber={prNumber} />
           {entry && <PrRefreshProblem entry={entry} prNumber={prNumber} isBusy={isActive || isQueued} onRetry={onRetry} />}
         </div>
       </div>

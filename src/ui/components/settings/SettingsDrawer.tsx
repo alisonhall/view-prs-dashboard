@@ -14,6 +14,7 @@ const BackgroundUpdatesSection = lazy(() =>
   import('./BackgroundUpdatesSection').then((m) => ({ default: m.BackgroundUpdatesSection })),
 );
 const PeopleSection = lazy(() => import('./PeopleSection').then((m) => ({ default: m.PeopleSection })));
+const LocalClonesSection = lazy(() => import('./LocalClonesSection').then((m) => ({ default: m.LocalClonesSection })));
 
 // The sections, in the nav's order, under what they're for: which PRs are
 // followed and how often, how a PR's activity is judged, and how the page
@@ -27,6 +28,16 @@ const SECTIONS: ReadonlyArray<DrawerSection> = [
     render: () => (
       <OnceOpened section="background-updates">
         <BackgroundUpdatesSection />
+      </OnceOpened>
+    ),
+  },
+  {
+    id: 'local-clones',
+    label: 'Local clones',
+    group: 'PRs followed',
+    render: () => (
+      <OnceOpened section="local-clones">
+        <LocalClonesSection />
       </OnceOpened>
     ),
   },
@@ -48,10 +59,11 @@ const SECTIONS: ReadonlyArray<DrawerSection> = [
 
 /**
  * The Settings drawer, opened from the app header: choices kept until
- * they're changed - which PRs are followed (Sources, Background updates),
+ * they're changed - which PRs are followed (Sources, Background updates,
+ * and where they're cloned on this computer: Local clones),
  * the rules a PR's activity is judged by, and how the page looks. Things
- * to do are in the Tools drawer (ToolsDrawer). Background updates and
- * People mount the first time they're opened.
+ * to do are in the Tools drawer (ToolsDrawer). Background updates, Local
+ * clones and People mount the first time they're opened.
  */
 // The Rules sections share which repo's rules they edit (RulesScopeContext).
 export function SettingsDrawer() {

@@ -218,6 +218,20 @@ describe("check-open-pr-updates shell helper behavior", () => {
     expect(row.sourceFingerprint).toMatch(/^fp:v2:sha256:[a-f0-9]{64}$/);
   });
 
+  test("a row keeps the PR's newest commit, a merge from main included, and whether its branch is in a fork - what a local clone is compared with", () => {
+    const commits = [
+      { oid: "a1", committedDate: "2026-03-01T00:00:00Z", messageHeadline: "feat: one" },
+      { oid: "a2", committedDate: "2026-03-02T00:00:00Z", messageHeadline: "Merge branch 'main' into feature" },
+    ];
+    const stats = { changedFiles: 0, viewedFiles: 0 };
+    const { row } = computePrRow({ pr: { number: 1, headRefName: "feature" }, detail: { commits }, viewedFilesStats: stats });
+    expect(row).toMatchObject({ sourceBranch: "feature", headOid: "a2" });
+    expect(row).not.toHaveProperty("crossRepository");
+    const fork = computePrRow({ pr: { number: 2, isCrossRepository: true }, detail: { commits }, viewedFilesStats: stats }).row;
+    expect(fork.crossRepository).toBe(true);
+    expect(computePrRow({ pr: { number: 3 }, viewedFilesStats: stats }).row).not.toHaveProperty("headOid");
+  });
+
   test("returns First Last when normalize_author_name receives Last, First input", () => {
     const output = runScriptFn(
       `normalize_author_name "kshar280_uhg" "Sharma, Karan"`,

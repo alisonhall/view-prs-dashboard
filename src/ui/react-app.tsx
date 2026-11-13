@@ -35,6 +35,7 @@ import { AuthorThreadResolutionSelectionProvider } from './state/AuthorThreadRes
 import { ChangeFilterActorSelectionProvider } from './state/ChangeFilterActorSelectionProvider';
 import { ThemeProvider } from './state/ThemeProvider';
 import { PrSectionPreferencesProvider } from './state/PrSectionPreferencesProvider';
+import { LocalBranchesProvider } from './state/LocalBranchesContext';
 import type { ReviewStatsViewState } from './state/PrDataContext';
 
 // The Review stats date range starts 3 months back from today (a
@@ -120,7 +121,9 @@ function mountApp(container: HTMLElement) {
                                               <ListSelectionSeeding />
                                               <ThemeProvider>
                                                 <PrSectionPreferencesProvider>
-                                                  <AppShell />
+                                                  <LocalBranchesProvider>
+                                                    <AppShell />
+                                                  </LocalBranchesProvider>
                                                 </PrSectionPreferencesProvider>
                                               </ThemeProvider>
                                             </FilterOptionsProvider>

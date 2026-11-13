@@ -45,6 +45,8 @@ const {
   registerViewPrsPrRoutes,
 } = require("./routes/view-prs-pr-routes");
 const { registerViewPrsSourcesRoutes } = require("./routes/view-prs-sources-routes");
+const { registerViewPrsLocalBranchesRoutes } = require("./routes/view-prs-local-branches-routes");
+const { createViewPrsLocalBranches } = require("./helpers/view-prs-local-branches");
 const {
   isViewPrsFixtureRow,
   parseTimestamp,
@@ -93,6 +95,7 @@ const { createCommandExecutionHelpers, describeFailure } = require("./helpers/co
 const { createSchedulerHelpers } = require("./helpers/scheduler-helpers");
 const { createRequestOriginGuard, isLoopbackHostname } = require("./helpers/request-origin-guard");
 const { createViewPrsSourcesStorage } = require("./storage/view-prs-sources-storage");
+const { createViewPrsLocalReposStorage } = require("./storage/view-prs-local-repos-storage");
 
 // Configuration and constants
 // Initialize configuration from config module
@@ -128,6 +131,7 @@ const {
   viewPrsPrDiffDir,
   viewPrsPrDescriptionDir,
   viewPrsAttachmentDir,
+  viewPrsLocalReposFile,
   viewPrsRunScriptRelativePath,
   viewPrsBackfillManagerRelativePath,
   viewPrsBackfillManagerScript,
@@ -497,6 +501,45 @@ const { getAttachment } = createViewPrsAttachmentProxy({
   getRepoGhEnv: (repo) => getRepoGhEnv(repo),
   viewPrsAttachmentDir,
 });
+
+// This computer's clones of the repos (Settings › Local clones), and what
+// they have of each PR's branch (GET /local-branches).
+const viewPrsLocalReposStorage = createViewPrsLocalReposStorage({
+  fs,
+  localReposFile: viewPrsLocalReposFile,
+  isRepoSlug,
+});
+const viewPrsLocalBranches = createViewPrsLocalBranches({ runCommand: callRunViewPrsCommand, fs });
+
+// Opens a folder in the code editor: VS Code's `code` command, a .cmd file
+// on Windows, so started through cmd there (the folder quoted; one with a
+// quote or % in it refused, as cmd would read them). Resolves once `code`
+// has handed the folder to the editor, which it does in a second or two.
+const openFolderInEditor = (folder) =>
+  new Promise((resolve, reject) => {
+    const isWindows = process.platform === "win32";
+    if (isWindows && /["%]/.test(folder)) {
+      reject(new Error("Can't open a folder whose path has a quote or % in it"));
+      return;
+    }
+    const child = isWindows
+      ? spawn("cmd.exe", ["/d", "/s", "/c", `"code "${folder}""`], {
+          stdio: "ignore",
+          windowsHide: true,
+          windowsVerbatimArguments: true,
+        })
+      : spawn("code", [folder], { stdio: "ignore" });
+    const timer = setTimeout(() => resolve(), 15000);
+    child.once("error", (error) => {
+      clearTimeout(timer);
+      reject(new Error(error.code === "ENOENT" ? "The code command wasn't found (VS Code's Shell Command: Install 'code' command in PATH)" : error.message));
+    });
+    child.once("exit", (code) => {
+      clearTimeout(timer);
+      if (code === 0) resolve();
+      else reject(new Error("The code command wasn't found or failed (VS Code's Shell Command: Install 'code' command in PATH)"));
+    });
+  });
 
 // Open PRs' live summary, listed with each quick check and laid over the
 // rows in readViewPrsData (see view-prs-live-summary-helpers.js).
@@ -4144,6 +4187,15 @@ const createViewPrsApp = ({ production = isProductionEnv } = {}) => {
     emitDataChanged: callEmitDataChanged,
     getSourcesForPage,
     console,
+  });
+
+  registerViewPrsLocalBranchesRoutes({
+    app,
+    localReposStorage: viewPrsLocalReposStorage,
+    localBranches: viewPrsLocalBranches,
+    isRepoSlug,
+    readViewPrsRows: () => Object.values(readVisibleViewPrsData()?.byPrNumber || {}),
+    openInEditor: (...args) => (module.exports.openFolderInEditor || openFolderInEditor)(...args),
   });
 
   registerViewPrsPrRoutes({

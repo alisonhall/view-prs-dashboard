@@ -1089,6 +1089,10 @@ const computePrRow = (input) => {
     sourceUpdatedAt,
     sourceFingerprint,
     sourceBranch,
+    // The PR's newest commit, and whether its branch is in a fork: what a
+    // local clone's branch is compared with (GET /local-branches).
+    ...(headOid ? { headOid } : {}),
+    ...(pr.isCrossRepository === true ? { crossRepository: true } : {}),
     targetBranch,
     checkState,
     mergeState,

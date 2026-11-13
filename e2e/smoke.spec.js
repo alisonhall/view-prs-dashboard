@@ -483,7 +483,7 @@ test("the Tools and Settings drawers open from the header, switch sections, and 
   await expect(drawer.getByRole("tab", { name: "Run & check" })).toHaveCount(0);
 
   // ↓ moves to the next section, past a group heading; End to the last.
-  await drawer.getByRole("tab", { name: "Background updates", exact: true }).click();
+  await drawer.getByRole("tab", { name: "Local clones", exact: true }).click();
   await page.keyboard.press("ArrowDown");
   await expect(drawer.getByRole("tab", { name: "Attention rules", exact: true })).toHaveAttribute("aria-selected", "true");
   // Each option says what it does, as its description.
@@ -1005,6 +1005,58 @@ test("the detail pane's Description tab shows the PR's description, rendered fro
   await expect(pane.locator("video.md-video")).toHaveAttribute("src", /\/view-prs\/attachment\?url=https%3A%2F%2Fgithub\.com%2Fuser-attachments/);
   // The fixture's PR #2 is octocat/hello-world's.
   expect(attachments[0]).toEqual([asset, "octocat/hello-world", "2"]);
+});
+
+test("Settings › Local clones saves a repo's clone, and each PR with a local branch shows how far behind it is, with Open in editor", async ({ page }) => {
+  // A real clone of the fixture's repo, for the server's git checks.
+  const { execFileSync } = require("child_process");
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "e2e-clone-"));
+  const git = (...args) => execFileSync("git", ["-c", "user.name=E2E", "-c", "user.email=e2e@example.com", ...args], { cwd: root, encoding: "utf8" });
+  git("init", "-q");
+  git("remote", "add", "origin", "https://github.com/octocat/hello-world.git");
+  git("commit", "--allow-empty", "-q", "-m", "base");
+  // What the server finds of each PR's branch would come from the PRs'
+  // head commits, which the fixture doesn't have: given here. And the
+  // editor isn't really opened.
+  await page.route("**/view-prs/local-branches", async (route) => {
+    const json = await (await route.fetch()).json();
+    json.prs = { "octocat/hello-world#2": { branch: "feature/two", oid: "abc1234def", worktreePath: root, ahead: 0, behind: 2, exact: true } };
+    return route.fulfill({ json });
+  });
+  const opened = [];
+  await page.route("**/view-prs/open-in-editor", (route) => {
+    opened.push(route.request().postDataJSON());
+    return route.fulfill({ json: { ok: true } });
+  });
+  try {
+    await page.goto("/");
+    await waitForPrTable(page);
+
+    const drawer = await openSettings(page, "Local clones");
+    const field = drawer.getByLabel("octocat/hello-world", { exact: true });
+    await field.fill(path.join(root, "missing"));
+    await drawer.getByRole("button", { name: "Save the clone's folder for octocat/hello-world" }).click();
+    await expect(drawer.getByRole("alert")).toContainText("No such folder");
+    await field.fill(root);
+    await drawer.getByRole("button", { name: "Save the clone's folder for octocat/hello-world" }).click();
+    await expect(drawer.getByText("1 branch, 1 worktree", { exact: true })).toBeVisible();
+    await closeSettings(page);
+
+    const openSection = prSection(page, "Open PRs");
+    if (!(await openSection.evaluate((el) => el.open))) {
+      await openSection.getByText("Open PRs", { exact: true }).click();
+    }
+    await expect(openSection.getByText("Local · 2 behind", { exact: true })).toHaveCount(1);
+    await summaryToggleFor(openSection, 2).click();
+    await openSection.getByRole("button", { name: "Show details for PR #2", exact: true }).click();
+    const pane = detailPane(page);
+    await expect(pane.getByText(/On this computer:/)).toContainText("feature/two · 2 behind");
+    await pane.getByRole("button", { name: "Open in editor", exact: true }).click();
+    await expect.poll(() => opened).toEqual([{ repo: "octocat/hello-world", path: root }]);
+  } finally {
+    await page.request.delete("/view-prs/local-repos", { data: { repo: "octocat/hello-world" } });
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("Settings › Background updates: a repo's check interval and priority boost are saved to user-defaults.json", async ({ page }) => {
