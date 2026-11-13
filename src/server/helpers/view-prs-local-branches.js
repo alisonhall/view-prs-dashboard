@@ -108,6 +108,16 @@ const describeGitFailure = (failure) => {
 };
 
 // Same folder, however it's written (git gives forward slashes on Windows).
+// Each by its real path where it exists: Windows writes a folder in its
+// short form (C:\Users\RUNNER~1) as well as its long one, which git gives,
+// and a junction or symlink is another name for the folder it points to.
+const realFolder = (fs, value) => {
+  try {
+    return fs.realpathSync.native(String(value || ""));
+  } catch (_error) {
+    return String(value || "");
+  }
+};
 const sameFolder = (a, b) => {
   const normalize = (value) => String(value || "").replace(/\\/g, "/").replace(/\/+$/, "");
   const left = normalize(a);
@@ -306,9 +316,10 @@ const createViewPrsLocalBranches = ({
   // own, or one of its worktrees - never any other path.
   const isOpenableFolder = async (repo, cloneFolder, folder) => {
     if (!cloneFolder || !folder) return false;
-    if (sameFolder(cloneFolder, folder)) return true;
+    const asked = realFolder(fs, folder);
+    if (sameFolder(realFolder(fs, cloneFolder), asked)) return true;
     const clone = await getClone(repo, cloneFolder);
-    return Boolean(clone.ok && clone.worktrees.some((worktree) => sameFolder(worktree.path, folder)));
+    return Boolean(clone.ok && clone.worktrees.some((worktree) => sameFolder(realFolder(fs, worktree.path), asked)));
   };
 
   // For saving a folder: the same checks, read afresh.

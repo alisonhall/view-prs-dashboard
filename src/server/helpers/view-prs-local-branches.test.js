@@ -197,6 +197,20 @@ describe("each PR's local branch", () => {
     expect(await helper.isOpenableFolder("acme/app", undefined, clone)).toBe(false);
   });
 
+  test("a folder named another way - a junction or symlink, or Windows' short name for it - is the same folder", async () => {
+    const alias = path.join(root, "alias");
+    fs.symlinkSync(clone, alias, "junction");
+    try {
+      const helper = createViewPrsLocalBranches({ runCommand: run, fs });
+      // Saved by one name, asked for by the other - the clone and a worktree.
+      expect(await helper.isOpenableFolder("acme/app", alias, clone)).toBe(true);
+      expect(await helper.isOpenableFolder("acme/app", alias, path.join(root, "feature-tree"))).toBe(true);
+      expect(await helper.isOpenableFolder("acme/app", clone, alias)).toBe(true);
+    } finally {
+      fs.unlinkSync(alias);
+    }
+  });
+
   test("worktree list's blocks: a detached one has no branch, a bare one is marked", () => {
     expect(
       parseWorktrees("worktree /a\nHEAD 1\nbranch refs/heads/x\n\nworktree /b\nHEAD 2\ndetached\n\nworktree /c\nbare\n"),

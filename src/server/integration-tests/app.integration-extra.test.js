@@ -683,7 +683,8 @@ describe("integration behavior", () => {
       expect(res.status).toBe(200);
       expect(Object.keys(res.body.prs)).toEqual(["owner/repo#5"]);
       expect(res.body.prs["owner/repo#5"]).toMatchObject({ branch: "feature", oid: oids.local, ahead: 0, behind: 1, exact: true });
-      expect(path.resolve(res.body.prs["owner/repo#5"].worktreePath)).toBe(path.resolve(worktree));
+      // As git names it: the long form of a short Windows path.
+      expect(fs.realpathSync.native(res.body.prs["owner/repo#5"].worktreePath)).toBe(fs.realpathSync.native(worktree));
     });
 
     test("opens the clone or one of its worktrees in the editor, and no other folder", async () => {
