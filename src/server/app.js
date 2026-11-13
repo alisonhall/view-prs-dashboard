@@ -30,6 +30,8 @@ const {
 const {
   createViewPrsPrDiffCache,
 } = require("./helpers/view-prs-pr-diff-cache");
+const { createViewPrsPrDescriptionCache } = require("./helpers/view-prs-pr-description-cache");
+const { createViewPrsAttachmentProxy } = require("./helpers/view-prs-pr-attachment-proxy");
 const {
   registerViewPrsBackfillRoutes,
 } = require("./routes/view-prs-backfill-routes");
@@ -124,6 +126,8 @@ const {
   viewPrsPrDetailDir,
   viewPrsBackupDir,
   viewPrsPrDiffDir,
+  viewPrsPrDescriptionDir,
+  viewPrsAttachmentDir,
   viewPrsRunScriptRelativePath,
   viewPrsBackfillManagerRelativePath,
   viewPrsBackfillManagerScript,
@@ -467,6 +471,31 @@ const {
   viewPrsPrDiffDir,
   viewPrsPrDiffTimeoutMs,
   viewPrsPrDiffConcurrency,
+});
+
+// PRs' descriptions for the detail pane (GET /pr-description), fetched
+// with gh when first asked for and kept per PR beside the diffs.
+const { getPrDescription } = createViewPrsPrDescriptionCache({
+  fs,
+  safeReadJsonFile,
+  toTrimmedString,
+  isRepoSlug,
+  buildCacheFilePath: buildPrDiffCacheFilePath,
+  runViewPrsCommand: callRunViewPrsCommand,
+  getRepoGhEnv: (repo) => getRepoGhEnv(repo),
+  viewPrsPrDescriptionDir,
+  timeoutMs: viewPrsPrDiffTimeoutMs,
+});
+
+// Images and videos uploaded to GitHub in PRs (GET /attachment), fetched
+// with the gh login when first shown and kept by their id.
+const { getAttachment } = createViewPrsAttachmentProxy({
+  fs,
+  path,
+  isRepoSlug,
+  runViewPrsCommand: callRunViewPrsCommand,
+  getRepoGhEnv: (repo) => getRepoGhEnv(repo),
+  viewPrsAttachmentDir,
 });
 
 // Open PRs' live summary, listed with each quick check and laid over the
@@ -4141,6 +4170,8 @@ const createViewPrsApp = ({ production = isProductionEnv } = {}) => {
     resolveActorKey: resolveViewPrsActorKey,
     isRepoSlug,
     syncPrDiffForEntry,
+    getPrDescription,
+    getAttachment,
     runInsightsHookScript: callRunInsightsHookScript,
     readViewPrsPrDetails,
   });

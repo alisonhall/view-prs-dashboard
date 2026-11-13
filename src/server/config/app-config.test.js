@@ -10,6 +10,8 @@ const OTHER_WRITABLE_TEMP_PATHS = {
   VIEW_PRS_AUTHOR_COMMENTS_FILE: "/tmp/author-comments.json",
   VIEW_PRS_BACKUP_DIR: "/tmp/backups",
   VIEW_PRS_PR_DIFF_DIR: "/tmp/pr-diffs",
+  VIEW_PRS_PR_DESCRIPTION_DIR: "/tmp/pr-descriptions",
+  VIEW_PRS_ATTACHMENT_DIR: "/tmp/pr-attachments",
   VIEW_PRS_ACTION_LOG_FILE: "/tmp/action-log.json",
   VIEW_PRS_BACKFILL_PID_FILE: "/tmp/backfill-missing.pid",
   VIEW_PRS_BACKFILL_LOG_FILE: "/tmp/backfill-missing.log",

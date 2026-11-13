@@ -535,6 +535,125 @@ describe("integration behavior", () => {
     });
   });
 
+  describe("GET /attachment", () => {
+    const id = "af1d5a16-8556-4bd3-8d5b-079f77f86d33";
+    const asset = `https://github.com/user-attachments/assets/${id}`;
+    let originalRunViewPrsCommand;
+    let originalFetch;
+    beforeEach(() => {
+      fs.rmSync(process.env.VIEW_PRS_ATTACHMENT_DIR, { recursive: true, force: true });
+      originalRunViewPrsCommand = appModule.runViewPrsCommand;
+      originalFetch = global.fetch;
+      appModule.runViewPrsCommand = async () => ({ stdout: "tok" });
+      global.fetch = async () => ({
+        status: 200,
+        ok: true,
+        headers: { get: (name) => (name === "content-type" ? "image/svg+xml" : null) },
+        arrayBuffer: async () => new TextEncoder().encode("<svg/>").buffer,
+      });
+    });
+    afterEach(() => {
+      appModule.runViewPrsCommand = originalRunViewPrsCommand;
+      global.fetch = originalFetch;
+    });
+
+    test("serves a GitHub attachment so it can't run as a page if opened on its own", async () => {
+      const res = await request.get("/view-prs/attachment").query({ url: asset, repo: "owner/repo", prNumber: "1" });
+      expect(res.status).toBe(200);
+      expect(res.headers["content-type"]).toMatch(/^image\/svg\+xml/);
+      expect(res.headers["x-content-type-options"]).toBe("nosniff");
+      expect(res.headers["content-security-policy"]).toBe("default-src 'none'; style-src 'unsafe-inline'; sandbox");
+      expect(res.headers["cache-control"]).toBe("private, max-age=31536000, immutable");
+      expect(Buffer.from(res.body).toString()).toBe("<svg/>");
+    });
+
+    test("serves part of one when asked (a video played from part way)", async () => {
+      const res = await request.get("/attachment").query({ url: asset }).set("Range", "bytes=1-3");
+      expect(res.status).toBe(206);
+      expect(res.headers["content-range"]).toBe("bytes 1-3/6");
+      expect(res.headers["content-type"]).toMatch(/^image\/svg\+xml/);
+      expect(Buffer.from(res.body).toString()).toBe("svg");
+    });
+
+    test("a link that isn't a GitHub attachment is a 400", async () => {
+      const res = await request.get("/attachment").query({ url: "https://evil.example/x.png" });
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ ok: false, error: "Not a GitHub attachment link" });
+    });
+  });
+
+  describe("GET /pr-description", () => {
+    const repo = "owner/repo";
+    const prNumber = "321";
+    const writeRow = (sourceUpdatedAt) =>
+      writeViewPrsData({ byPrNumber: { [prNumber]: { prNumber, repo, data: { number: prNumber, sourceUpdatedAt } } }, lastRun: null });
+    let calls;
+    let answer;
+    let originalRunViewPrsCommand;
+    beforeEach(() => {
+      fs.rmSync(process.env.VIEW_PRS_PR_DESCRIPTION_DIR, { recursive: true, force: true });
+      calls = [];
+      answer = async () => ({ stdout: JSON.stringify({ body: "## What\n\nFixes the thing." }) });
+      originalRunViewPrsCommand = appModule.runViewPrsCommand;
+      appModule.runViewPrsCommand = async (command, args, ...rest) => {
+        calls.push([command, ...args]);
+        return answer(command, args, ...rest);
+      };
+    });
+    afterEach(() => {
+      appModule.runViewPrsCommand = originalRunViewPrsCommand;
+    });
+
+    test("fetches the description with gh, then answers from its copy while the PR is unchanged, and fetches again once it changes", async () => {
+      writeRow("2026-11-01T00:00:00Z");
+
+      const first = await request.get("/pr-description").query({ repo, prNumber });
+      expect(first.status).toBe(200);
+      expect(first.body).toMatchObject({ ok: true, source: "fresh", body: "## What\n\nFixes the thing.", fetchedAt: expect.any(String) });
+      expect(calls).toEqual([["gh", "pr", "view", prNumber, "-R", repo, "--json", "body"]]);
+
+      const second = await request.get("/view-prs/pr-description").query({ repo, prNumber });
+      expect(second.body).toMatchObject({ ok: true, source: "cache", body: "## What\n\nFixes the thing." });
+      expect(calls).toHaveLength(1);
+
+      writeRow("2026-11-02T00:00:00Z");
+      answer = async () => ({ stdout: JSON.stringify({ body: "Edited." }) });
+      const third = await request.get("/pr-description").query({ repo, prNumber });
+      expect(third.body).toMatchObject({ source: "fresh", body: "Edited." });
+      expect(calls).toHaveLength(2);
+    });
+
+    test("a failed fetch answers with the copy, marked stale; with no copy it's a 502", async () => {
+      writeRow("2026-11-01T00:00:00Z");
+      answer = async () => {
+        throw new Error("gh: network down");
+      };
+      const none = await request.get("/pr-description").query({ repo, prNumber });
+      expect(none.status).toBe(502);
+      expect(none.body).toEqual({ ok: false, error: "gh: network down" });
+
+      answer = async () => ({ stdout: JSON.stringify({ body: "Kept." }) });
+      await request.get("/pr-description").query({ repo, prNumber });
+      writeRow("2026-11-05T00:00:00Z");
+      answer = async () => {
+        throw new Error("gh: network down");
+      };
+      const stale = await request.get("/pr-description").query({ repo, prNumber });
+      expect(stale.status).toBe(200);
+      expect(stale.body).toMatchObject({ ok: true, source: "stale-cache", stale: true, body: "Kept.", warning: "gh: network down" });
+    });
+
+    test("an empty description is an empty body; an unknown PR is a 404 and a bad request a 400, without asking gh", async () => {
+      writeRow("2026-11-01T00:00:00Z");
+      answer = async () => ({ stdout: JSON.stringify({ body: "" }) });
+      expect((await request.get("/pr-description").query({ repo, prNumber })).body).toMatchObject({ ok: true, body: "" });
+      calls = [];
+      expect((await request.get("/pr-description").query({ repo, prNumber: "999" })).status).toBe(404);
+      expect((await request.get("/pr-description").query({ repo: "nope", prNumber })).status).toBe(400);
+      expect(calls).toEqual([]);
+    });
+  });
+
   test("given diff fetch fails for a stored pr row, when GET /diff is requested, then status 500 and route failure error are returned", async () => {
     const repo = "owner/repo";
     const prNumber = "654";

@@ -72,6 +72,10 @@ const registerViewPrsPrRoutes = ({
   resolveActorKey,
   isRepoSlug,
   syncPrDiffForEntry,
+  // A PR's description, fetched or from its copy (view-prs-pr-description-cache.js).
+  getPrDescription = async () => ({ ok: false, error: "Descriptions aren't available" }),
+  // A file uploaded to GitHub in a PR (view-prs-pr-attachment-proxy.js).
+  getAttachment = async () => ({ ok: false, statusCode: 404, error: "Attachments aren't available" }),
   runInsightsHookScript,
   // PRs' full detail fields by key (app.js's readViewPrsPrDetails).
   readViewPrsPrDetails,
@@ -546,6 +550,60 @@ const registerViewPrsPrRoutes = ({
       res,
       result: buildDiffSyncRouteResult({ repo, prNumber, diffResult }),
     });
+  });
+
+  // A PR's description, for the detail pane's Description tab: any PR the
+  // page has, archived ones included. A failed fetch with a copy answers
+  // with the copy, marked stale; without one it's a 502.
+  app.get(["/pr-description", "/view-prs/pr-description"], async (req, res) => {
+    const found = resolveDiffRequestResult({ query: req.query, byPrNumber: readViewPrsDataWithArchive()?.byPrNumber });
+    if (!found.ok) {
+      sendErrorStatus({ res, ...found });
+      return;
+    }
+    try {
+      const result = await getPrDescription(found.entry);
+      if (!result.ok) {
+        sendErrorStatus({ res, statusCode: 502, error: result.error || "Couldn't fetch the description" });
+        return;
+      }
+      sendSuccessPayload({ res, payload: result });
+    } catch (error) {
+      sendInternalError({ res, error });
+    }
+  });
+
+  // An image or video uploaded to GitHub in a PR, for the rendered
+  // descriptions and comments (pr-markdown-render.helpers.ts): ?url= the
+  // attachment link, and the PR it's in (repo, prNumber) for when it has to
+  // be found in the PR's rendered bodies. Served from its kept file, with
+  // range requests (a video's seeking), and so it can't run as a page
+  // if opened on its own (an SVG can hold a script): no sniffing, and a
+  // sandboxed policy allowing nothing.
+  app.get(["/attachment", "/view-prs/attachment"], async (req, res) => {
+    try {
+      const result = await getAttachment({
+        url: String(req.query?.url || ""),
+        repo: String(req.query?.repo || "").trim(),
+        prNumber: String(req.query?.prNumber || "").trim(),
+      });
+      if (!result.ok) {
+        sendErrorStatus({ res, statusCode: result.statusCode || 404, error: result.error });
+        return;
+      }
+      res.set({
+        "Content-Type": result.contentType,
+        "Cache-Control": "private, max-age=31536000, immutable",
+        "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+      });
+      // From disk, so a video can be played from part way (range requests).
+      res.sendFile(result.filePath, (error) => {
+        if (error && !res.headersSent) sendInternalError({ res, error });
+      });
+    } catch (error) {
+      sendInternalError({ res, error });
+    }
   });
 
   // A PR's full detail - the text the list's rows go without - for the

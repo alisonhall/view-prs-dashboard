@@ -1,4 +1,5 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useMarkdownAttachmentSource } from '../../state/MarkdownAttachmentContext';
 import type { PrActivityEvent, PrData } from '../../types/pr-data.ts';
 import type { ActorsMap } from '../../helpers/pr-actor-identity.helpers.ts';
 import { ActorIdentity } from '../ActorIdentity';
@@ -110,6 +111,7 @@ const FOLD_EMS = 9;
 
 function Body({ text, markdown }: { text: string; markdown: boolean }) {
   const { renderMarkdownAsHtml } = usePrInsightsDisplay();
+  const attachmentSource = useMarkdownAttachmentSource();
   const textRef = useRef<HTMLDivElement>(null);
   // null until measured.
   const [overflows, setOverflows] = useState<boolean | null>(null);
@@ -140,7 +142,7 @@ function Body({ text, markdown }: { text: string; markdown: boolean }) {
           ref={textRef}
           className="pr-activity-text pr-markdown"
           data-folded={folded ? 'true' : undefined}
-          dangerouslySetInnerHTML={{ __html: renderMarkdownAsHtml(text) }}
+          dangerouslySetInnerHTML={{ __html: renderMarkdownAsHtml(text, attachmentSource) }}
         />
       ) : (
         <div ref={textRef} className="pr-activity-text pr-activity-plain" data-folded={folded ? 'true' : undefined}>

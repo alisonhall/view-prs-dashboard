@@ -940,7 +940,7 @@ describe("index page rendering with Testing Library", () => {
     expect(within(pane).getByRole("button", { name: /Since I last looked/ })).toHaveTextContent("4");
   });
 
-  test("given review comment markdown with github user attachments when insights render then blocked image tags are replaced with unavailable placeholders", async () => {
+  test("given review comment markdown with github user attachments when the pane shows it then the image comes through the server, for that PR", async () => {
     initTestPage({
       dataPayload: createMultiPrPayload({
         prs: [
@@ -1003,14 +1003,15 @@ describe("index page rendering with Testing Library", () => {
 
     const insightsContent = await openPrPane(user, row, "Conversations");
     const thread = await openConversation(user, insightsContent, "thread-attachments-1");
-    const placeholder = thread.querySelector(".md-image-expired");
-    expect(placeholder).toBeTruthy();
-    expect(String(placeholder?.textContent || "")).toContain("image unavailable");
-
-    const retainedAttachmentImage = insightsContent?.querySelector(
-      'img[src*="github.com/user-attachments"]',
-    );
-    expect(retainedAttachmentImage).toBeNull();
+    const image = thread.querySelector("img");
+    const src = new URL(image.getAttribute("src"), "http://localhost");
+    expect(src.pathname).toBe("/view-prs/attachment");
+    expect(src.searchParams.get("url")).toBe("https://github.com/user-attachments/assets/6505dfd5-67b9-43b3-8411-92e5e051bfee");
+    expect(src.searchParams.get("prNumber")).toBe("12");
+    expect(src.searchParams.get("repo")).toBeTruthy();
+    expect(thread.querySelector(".md-image-expired")).toBeNull();
+    // Not loaded from GitHub directly, which the page can't do.
+    expect(insightsContent?.querySelector('img[src^="https://github.com/user-attachments"]')).toBeNull();
   });
 
   test("given additions and deletions are available, when the insights are opened, then Lines changed renders GitHub-style totals", async () => {

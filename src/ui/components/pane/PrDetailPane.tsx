@@ -25,6 +25,8 @@ import { buildPrEntryKey } from '../../helpers/pr-entry-keys.helpers.ts';
 import { useNotesDirty } from '../../state/NotesDirtyContext';
 import { useOptionalPrData } from '../../state/PrDataContext';
 import { usePrDetail } from '../../state/usePrDetail';
+import { PrDescriptionTab } from './PrDescriptionTab';
+import { MarkdownAttachmentContext } from '../../state/MarkdownAttachmentContext';
 import { useFocusTrap } from '../../state/useFocusTrap';
 import { getLabelName } from '../../helpers/pr-filter-label-extraction.helpers.ts';
 import { createPrStatusDisplayHelpers } from '../../helpers/pr-status-display.helpers.ts';
@@ -195,6 +197,8 @@ function PaneContent({
   const listRow = useMemo(() => entry.data || {}, [entry.data]);
   const { pr, failed: detailFailed, retry: retryDetail } = usePrDetail(listRow, repo, prNumber);
   const ref = { prNumber, repo };
+  // The PR its tabs' text is from, for that text's GitHub attachments.
+  const attachmentSource = useMemo(() => ({ repo, prNumber }), [repo, prNumber]);
   const url = pr.url || `https://github.com/${repo}/pull/${prNumber}`;
   // This PR's repo's labels, not the current repo's, fetched when the
   // Add label menu first opens.
@@ -244,6 +248,7 @@ function PaneContent({
 
   const tabs: TabItem[] = [
     { id: 'overview', label: 'Overview' },
+    { id: 'description', label: 'Description' },
     { id: 'activity', label: 'Activity', badge: eventCount ? String(eventCount) : undefined },
     {
       id: 'conversations',
@@ -362,30 +367,34 @@ function PaneContent({
         selectedId={selectedTab}
         onSelect={(id) => onTabChange(id as PaneTab)}
       />
-      <TabPanel idPrefix={TAB_ID_PREFIX} tabId={selectedTab} className="pr-pane-panel">
-        {selectedTab === 'overview' && (
-          <PrOverview entry={entry} pr={pr} actorsMap={rowActorsMap} lastLookedAt={lastLookedAt} lastAckedAt={lastAckedAt} />
-        )}
-        {selectedTab === 'activity' && (
-          <PrActivityTab
-            pr={pr}
-            actorsMap={rowActorsMap}
-            lastLookedAt={lastLookedAt}
-            ackEvents={ackEvents}
-            filters={activityFilters}
-            onFiltersChange={onActivityFiltersChange}
-          />
-        )}
-        {selectedTab === 'conversations' && (
-          <PrConversationsTab pr={pr} actorsMap={rowActorsMap} entry={entry} onDataRefresh={onDataRefresh} />
-        )}
-        {/* Kept mounted (hidden) on the other tabs: unmounting would drop
-            unsaved edits, which the "unsaved" badge still promises. */}
-        <div className="pr-pane-notes" hidden={selectedTab !== 'notes'}>
-          <PrNotesTab entry={entry} pr={pr} actorsMap={rowActorsMap} onDataRefresh={onDataRefresh} />
-        </div>
-        {selectedTab === 'custom' && hookHtml && <InsightsHookContent html={hookHtml} />}
-      </TabPanel>
+      {/* The PR its tabs' rendered text is from, for that text's GitHub attachments. */}
+      <MarkdownAttachmentContext.Provider value={attachmentSource}>
+        <TabPanel idPrefix={TAB_ID_PREFIX} tabId={selectedTab} className="pr-pane-panel">
+          {selectedTab === 'overview' && (
+            <PrOverview entry={entry} pr={pr} actorsMap={rowActorsMap} lastLookedAt={lastLookedAt} lastAckedAt={lastAckedAt} />
+          )}
+          {selectedTab === 'description' && <PrDescriptionTab repo={repo} prNumber={prNumber} updatedAt={String(pr?.sourceUpdatedAt || '')} />}
+          {selectedTab === 'activity' && (
+            <PrActivityTab
+              pr={pr}
+              actorsMap={rowActorsMap}
+              lastLookedAt={lastLookedAt}
+              ackEvents={ackEvents}
+              filters={activityFilters}
+              onFiltersChange={onActivityFiltersChange}
+            />
+          )}
+          {selectedTab === 'conversations' && (
+            <PrConversationsTab pr={pr} actorsMap={rowActorsMap} entry={entry} onDataRefresh={onDataRefresh} />
+          )}
+          {/* Kept mounted (hidden) on the other tabs: unmounting would drop
+              unsaved edits, which the "unsaved" badge still promises. */}
+          <div className="pr-pane-notes" hidden={selectedTab !== 'notes'}>
+            <PrNotesTab entry={entry} pr={pr} actorsMap={rowActorsMap} onDataRefresh={onDataRefresh} />
+          </div>
+          {selectedTab === 'custom' && hookHtml && <InsightsHookContent html={hookHtml} />}
+        </TabPanel>
+      </MarkdownAttachmentContext.Provider>
     </>
   );
 }

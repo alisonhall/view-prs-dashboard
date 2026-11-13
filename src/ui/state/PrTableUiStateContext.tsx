@@ -34,7 +34,7 @@ export interface SelectedPr {
   prNumber: string;
 }
 
-export type PaneTab = 'overview' | 'activity' | 'conversations' | 'notes' | 'custom';
+export type PaneTab = 'overview' | 'description' | 'activity' | 'conversations' | 'notes' | 'custom';
 
 export interface PrTableUiStateValue {
   // Open-state the user chose, by section key; a section not in here uses

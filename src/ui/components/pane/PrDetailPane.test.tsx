@@ -410,10 +410,35 @@ describe('PrDetailPane', () => {
       const tabs = screen.getByRole('tablist', { name: 'PR #7 details' });
       expect(within(tabs).getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
         'Overview',
+        'Description',
         'Activity',
         'Conversations2 open',
         'Notesunsaved',
       ]);
+    });
+
+    test("the Description tab fetches this PR's description and shows it", async () => {
+      const fetchMock = jest.fn(async () => ({ ok: true, status: 200, json: async () => ({ ok: true, body: 'Fixes the parser.' }) }));
+      (global as unknown as { fetch: unknown }).fetch = fetchMock;
+      renderPane({ tab: 'description', entry: { ...baseEntry, data: { ...baseEntry.data, sourceUpdatedAt: '2026-11-01T00:00:00Z' } } });
+      expect(screen.getByRole('tab', { name: 'Description' })).toHaveAttribute('aria-selected', 'true');
+      expect(await screen.findByText('Fixes the parser.')).toBeInTheDocument();
+      expect(fetchMock).toHaveBeenCalledWith('/view-prs/pr-description?repo=owner%2Frepo&prNumber=7', expect.anything());
+    });
+
+    test("an image uploaded to GitHub in the description comes through the server, for this PR", async () => {
+      const globals = window as unknown as { DOMPurify: unknown; marked: unknown };
+      globals.DOMPurify = jest.requireActual('dompurify');
+      globals.marked = jest.requireActual('../../vendor/marked.umd.js');
+      const asset = 'https://github.com/user-attachments/assets/af1d5a16-8556-4bd3-8d5b-079f77f86d33';
+      (global as unknown as { fetch: unknown }).fetch = jest.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({ ok: true, body: `Before:\n\n![screenshot](${asset})` }),
+      }));
+      renderPane({ tab: 'description', entry: { ...baseEntry, data: { ...baseEntry.data, sourceUpdatedAt: '2026-11-03T00:00:00Z' } } });
+      const image = await screen.findByRole('img', { name: 'screenshot' });
+      expect(image).toHaveAttribute('src', `/view-prs/attachment?url=${encodeURIComponent(asset)}&repo=owner%2Frepo&prNumber=7`);
     });
 
     test("another repo's PR with the same number having unsaved notes doesn't mark this one's", () => {

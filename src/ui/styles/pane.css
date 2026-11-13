@@ -582,8 +582,31 @@
    the Activity tab's text and Conversations' comments. Half a line between
    blocks, none before the first or after the last; code set apart from
    the text around it. */
+/* The Description tab (PrDescriptionTab): a note above the rendered text
+   when it's an old copy, or in its place while it loads or when empty. */
+.pr-description-note {
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
 .pr-markdown {
   white-space: normal;
+}
+
+/* Images and videos (GitHub attachments come through the server) fit the
+   pane; a video is a block of its own, as GitHub shows it. */
+.pr-markdown img,
+.pr-markdown video {
+  max-width: 100%;
+  height: auto;
+}
+
+.pr-markdown .md-video {
+  display: block;
+  margin: var(--space-2) 0;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-inset);
 }
 
 .pr-markdown > :first-child { margin-top: 0; }

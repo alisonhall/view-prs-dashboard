@@ -63,7 +63,7 @@ describe("pr markdown render helpers", () => {
     expect(html).toContain("<strong>bold</strong>");
     expect(html).toContain("<code>code</code>");
     expect(html).toContain("<li>item</li>");
-    expect(html).toContain('<a href="https://example.com">docs</a>');
+    expect(html).toContain('<a href="https://example.com" target="_blank" rel="noopener noreferrer">docs</a>');
     expect(html).toContain("const a = 1 &lt; 2;");
   });
 
@@ -148,6 +148,66 @@ describe("pr markdown render helpers", () => {
     expect(html).toContain("Image unavailable");
     expect(html).toContain('class="md-image-expired"');
     expect(html).not.toContain("<img");
+  });
+
+  test("given links, when rendering, then they open in a new tab without an opener (not taking the dashboard's tab away), except links within the text", () => {
+    window.marked = realMarked;
+    const { renderMarkdownAsHtml } = createPrMarkdownRenderHelpers();
+    const container = document.createElement("div");
+    container.innerHTML = renderMarkdownAsHtml('See [the issue](https://github.com/acme/app/issues/1), <a href="https://example.com" target="_self">this</a> and [below](#notes).');
+    const [issue, raw, within] = container.querySelectorAll("a");
+
+    expect(issue.getAttribute("target")).toBe("_blank");
+    expect(issue.getAttribute("rel")).toBe("noopener noreferrer");
+    expect(raw.getAttribute("target")).toBe("_blank");
+    expect(raw.getAttribute("rel")).toBe("noopener noreferrer");
+    expect(within.getAttribute("href")).toBe("#notes");
+    expect(within.hasAttribute("target")).toBe(false);
+  });
+
+  describe("GitHub attachments", () => {
+    const id = "af1d5a16-8556-4bd3-8d5b-079f77f86d33";
+    const asset = `https://github.com/user-attachments/assets/${id}`;
+    const source = { repo: "acme/app", prNumber: "7" };
+    const proxied = (url) => `/view-prs/attachment?url=${encodeURIComponent(url)}&repo=acme%2Fapp&prNumber=7`;
+    const render = (text, withSource = source) => {
+      window.marked = realMarked;
+      const container = document.createElement("div");
+      container.innerHTML = createPrMarkdownRenderHelpers().renderMarkdownAsHtml(text, withSource || undefined);
+      return container;
+    };
+
+    test("given the PR, an attachment image - markdown, HTML or an old signed link - comes through the server; others stay as they are", () => {
+      const signed = `https://private-user-images.githubusercontent.com/1/2-${id}.png?jwt=old`;
+      const container = render(`![shot](${asset})\n\n<img alt="html" src="${asset}">\n\n![old](${signed})\n\n![badge](https://img.shields.io/badge/x-y-green)`);
+      const images = [...container.querySelectorAll("img")];
+
+      expect(images.map((image) => image.getAttribute("src"))).toEqual([proxied(asset), proxied(asset), proxied(signed), "https://img.shields.io/badge/x-y-green"]);
+      expect(images[0].getAttribute("alt")).toBe("shot");
+      expect(images[0].getAttribute("loading")).toBe("lazy");
+      expect(container.querySelector(".md-image-expired")).toBeNull();
+    });
+
+    test("given the PR, a bare attachment link alone in a paragraph is a video, with its GitHub link to fall back on; one among other text stays a link", () => {
+      const container = render(`Before.\n\n${asset}\n\nSee ${asset} too.`);
+      const video = container.querySelector("video");
+
+      expect(video.getAttribute("src")).toBe(proxied(asset));
+      expect(video.hasAttribute("controls")).toBe(true);
+      expect(video.getAttribute("preload")).toBe("metadata");
+      expect(video.className).toBe("md-video");
+      expect(video.querySelector("a").getAttribute("href")).toBe(asset);
+      expect(container.querySelectorAll("video")).toHaveLength(1);
+      expect(container.querySelector("p:last-child a").getAttribute("href")).toBe(asset);
+    });
+
+    test("without the PR, an attachment image is the placeholder and a bare link stays a link", () => {
+      const container = render(`![shot](${asset})\n\n${asset}`, null);
+      expect(container.querySelector("img")).toBeNull();
+      expect(container.querySelector(".md-image-expired")).toHaveTextContent("[image unavailable]");
+      expect(container.querySelector("video")).toBeNull();
+      expect(container.querySelector("a").getAttribute("href")).toBe(asset);
+    });
   });
 
   test("given window.marked.parse throws, when rendering, then the trimmed text is returned escaped and a warning is logged", () => {

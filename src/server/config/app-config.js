@@ -36,6 +36,10 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
   );
   const _defaultBackupDir = path.join(viewPrsDataDir, "backups");
   const _defaultPrDiffDir = path.join(viewPrsDataDir, "pr-diffs");
+  // PRs' descriptions, fetched when the detail pane shows them.
+  const _defaultPrDescriptionDir = path.join(viewPrsDataDir, "pr-descriptions");
+  // Images and videos uploaded to GitHub in PRs, fetched when the page shows them.
+  const _defaultAttachmentDir = path.join(viewPrsDataDir, "pr-attachments");
   const _defaultActorNameCacheFile = path.join(viewPrsDataDir, "actor-name-cache.json");
   const _defaultActorLoginAliasesFile = path.join(viewPrsDataDir, "actor-login-aliases.json");
   const _defaultActionLogFile = path.join(viewPrsDataDir, "action-log.json");
@@ -48,6 +52,8 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
     env.VIEW_PRS_AUTHOR_COMMENTS_FILE || _defaultAuthorCommentsFile;
   const viewPrsBackupDir = env.VIEW_PRS_BACKUP_DIR || _defaultBackupDir;
   const viewPrsPrDiffDir = env.VIEW_PRS_PR_DIFF_DIR || _defaultPrDiffDir;
+  const viewPrsPrDescriptionDir = env.VIEW_PRS_PR_DESCRIPTION_DIR || _defaultPrDescriptionDir;
+  const viewPrsAttachmentDir = env.VIEW_PRS_ATTACHMENT_DIR || _defaultAttachmentDir;
   const viewPrsActorNameCacheFile =
     env.VIEW_PRS_ACTOR_NAME_CACHE_FILE || _defaultActorNameCacheFile;
   const viewPrsActorLoginAliasesFile =
@@ -147,6 +153,8 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
       VIEW_PRS_AUTHOR_COMMENTS_FILE: viewPrsAuthorCommentsFile,
       VIEW_PRS_BACKUP_DIR: viewPrsBackupDir,
       VIEW_PRS_PR_DIFF_DIR: viewPrsPrDiffDir,
+      VIEW_PRS_PR_DESCRIPTION_DIR: viewPrsPrDescriptionDir,
+      VIEW_PRS_ATTACHMENT_DIR: viewPrsAttachmentDir,
       VIEW_PRS_ACTION_LOG_FILE: viewPrsActionLogFile,
       VIEW_PRS_PR_DETAIL_DIR: viewPrsPrDetailDir,
       VIEW_PRS_LIVE_SUMMARY_FILE: viewPrsLiveSummaryFile,
@@ -364,6 +372,8 @@ function createAppConfig({ viewPrsDir, env = process.env, isTestEnv = false }) {
     viewPrsBackupDir,
     viewPrsPrDetailDir,
     viewPrsPrDiffDir,
+    viewPrsPrDescriptionDir,
+    viewPrsAttachmentDir,
 
     // File paths
     viewPrsUiIndexFile,

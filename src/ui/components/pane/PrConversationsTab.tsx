@@ -13,6 +13,7 @@ import { useReviewConversationsUiState } from '../../state/ReviewConversationsUi
 import { useAuthorThreadResolutionPolicy } from '../../state/useAuthorThreadResolutionPolicy';
 import { createPrFormattingHelpers } from '../../helpers/pr-formatting.helpers.ts';
 import { postJson } from '../../helpers/pr-http.helpers.ts';
+import { useMarkdownAttachmentSource } from '../../state/MarkdownAttachmentContext';
 import { createPrReviewConversationsUiStateHelpers } from '../../helpers/pr-review-conversations-ui-state.helpers.ts';
 import { toPlainLine } from '../../helpers/pr-row-summary.helpers.ts';
 import {
@@ -71,6 +72,7 @@ const STATE_LABEL: Record<ThreadState, string> = {
 
 function CommentBlock({ comment, pr, actorsMap, suffix }: { comment: ThreadComment | PlainComment; pr: PrData; actorsMap?: ActorsMap; suffix?: string }) {
   const { renderMarkdownAsHtml } = usePrInsightsDisplay();
+  const attachmentSource = useMarkdownAttachmentSource();
   const pending = 'isPending' in comment && comment.isPending;
   return (
     <div className="pr-conv-comment" data-pending={pending ? 'true' : undefined}>
@@ -82,7 +84,7 @@ function CommentBlock({ comment, pr, actorsMap, suffix }: { comment: ThreadComme
       </p>
       <div
         className="insight-thread-body pr-markdown"
-        dangerouslySetInnerHTML={{ __html: renderMarkdownAsHtml(comment.body || '(no comment body)') }}
+        dangerouslySetInnerHTML={{ __html: renderMarkdownAsHtml(comment.body || '(no comment body)', attachmentSource) }}
       />
     </div>
   );

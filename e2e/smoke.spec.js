@@ -963,6 +963,50 @@ test("Settings › Appearance: a smart group's icon and colour are changed, kept
   }
 });
 
+test("the detail pane's Description tab shows the PR's description, rendered from Markdown, with its GitHub images and videos", async ({ page }) => {
+  // The server would ask gh; here its answers are given: the description,
+  // and its attachments (a 1x1 PNG).
+  const asset = "https://github.com/user-attachments/assets/af1d5a16-8556-4bd3-8d5b-079f77f86d33";
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
+  const attachments = [];
+  await page.route("**/view-prs/attachment?*", (route) => {
+    const params = new URL(route.request().url()).searchParams;
+    attachments.push([params.get("url"), params.get("repo"), params.get("prNumber")]);
+    return route.fulfill({ status: 200, contentType: "image/png", body: png });
+  });
+  const asked = [];
+  await page.route("**/view-prs/pr-description?*", (route) => {
+    asked.push(new URL(route.request().url()).searchParams.get("prNumber"));
+    return route.fulfill({
+      json: { ok: true, source: "fresh", body: `## Why\n\nFixes **the flaky test**.\n\n- one\n- two\n\n![screenshot](${asset})\n\n${asset}`, fetchedAt: "2026-11-13T00:00:00Z" },
+    });
+  });
+  await page.goto("/");
+  await waitForPrTable(page);
+  const openSection = prSection(page, "Open PRs");
+  if (!(await openSection.evaluate((el) => el.open))) {
+    await openSection.getByText("Open PRs", { exact: true }).click();
+  }
+  await summaryToggleFor(openSection, 2).click();
+  await openSection.getByRole("button", { name: "Show details for PR #2", exact: true }).click();
+  expect(asked).toEqual([]);
+
+  await paneTab(page, "Description").click();
+  const pane = detailPane(page);
+  await expect(pane.getByRole("heading", { name: "Why", exact: true })).toBeVisible();
+  await expect(pane.getByText("the flaky test", { exact: true })).toBeVisible();
+  await expect(pane.getByRole("listitem")).toHaveText(["one", "two"]);
+  expect(asked).toEqual(["2"]);
+  // The image comes through the server, for this PR, and shows.
+  const image = pane.getByRole("img", { name: "screenshot", exact: true });
+  await expect(image).toBeVisible();
+  await expect.poll(() => image.evaluate((element) => element.complete && element.naturalWidth)).toBe(1);
+  // The bare link alone on its line is a video player.
+  await expect(pane.locator("video.md-video")).toHaveAttribute("src", /\/view-prs\/attachment\?url=https%3A%2F%2Fgithub\.com%2Fuser-attachments/);
+  // The fixture's PR #2 is octocat/hello-world's.
+  expect(attachments[0]).toEqual([asset, "octocat/hello-world", "2"]);
+});
+
 test("Settings › Background updates: a repo's check interval and priority boost are saved to user-defaults.json", async ({ page }) => {
   await clearSavedSettings(page.request, ["schedulerRepoConfig"]);
   try {

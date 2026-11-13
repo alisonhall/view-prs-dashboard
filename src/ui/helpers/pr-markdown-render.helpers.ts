@@ -9,7 +9,26 @@
 // the dashboard, which can call the local server's script-running routes.
 // Without DOMPurify (or marked) it fails closed, showing the comment as
 // escaped plain text rather than unsanitized HTML.
-const EXPIRED_GITHUB_IMAGE_PLACEHOLDER = `<span class="md-image-expired" title="Image unavailable (expired GitHub URL)">[image unavailable]</span>`;
+//
+// Images and videos uploaded to GitHub (its user-attachments links, or
+// older signed image links) can't be loaded by the page: given the PR
+// they're in, they're fetched through the server (/view-prs/attachment,
+// with the gh login); without it, an image shows as "[image unavailable]".
+// A bare attachment link alone in a paragraph is a video, as GitHub shows
+// it.
+
+// The PR a text is from, for fetching its attachments.
+export interface MarkdownAttachmentSource {
+  repo: string;
+  prNumber: string;
+}
+
+const ATTACHMENT_LINK = /^https:\/\/[^/]+\/user-attachments\/assets\/[0-9a-f-]{36}$/i;
+const SIGNED_IMAGE_LINK = /^https:\/\/private-user-images\.githubusercontent\.com\//i;
+const isAttachmentLink = (url: string) => ATTACHMENT_LINK.test(url) || SIGNED_IMAGE_LINK.test(url);
+
+export const attachmentUrl = (url: string, source: MarkdownAttachmentSource) =>
+  `/view-prs/attachment?${new URLSearchParams({ url, repo: source.repo, prNumber: source.prNumber }).toString()}`;
 
 // Same forbidden tags as InsightsHookSection.jsx's hook-output sanitizing:
 // not script vectors (DOMPurify blocks those by default), but they can
@@ -37,16 +56,64 @@ const escapeHtml = (text: string): string =>
 // breaks between its blocks would show as gaps).
 const asPlainText = (text: string): string => `<div class="md-plain">${escapeHtml(text)}</div>`;
 
-const createPrMarkdownRenderHelpers = () => {
-  const replaceExpiredGithubImages = (html: string): string => {
-    // Replace entire <img ...> tags where src is from known expiring/private GitHub attachment hosts.
-    return html.replace(
-      /<img\b[^>]*\bsrc=["']https:\/\/(?:private-user-images\.githubusercontent\.com|github\.com\/user-attachments)\/[^"']*["'][^>]*>/gi,
-      EXPIRED_GITHUB_IMAGE_PLACEHOLDER,
-    );
-  };
+// After sanitizing, in an inert <template> (nothing in it runs or loads),
+// so nothing the sanitizer removed can come back - and the elements added
+// here (the placeholder's class, a video) are this code's, not the text's:
+// - GitHub's attachments go through the server, given the PR; else an
+//   image is the placeholder.
+// - A bare attachment link alone in a paragraph is a video.
+// - Links open in a new tab, with no opener or referrer: followed in place,
+//   a link would take the dashboard's own tab away, and any unsaved notes
+//   with it. Links within the text (#...) stay.
+const finishHtml = (html: string, source?: MarkdownAttachmentSource): string => {
+  if (typeof document === "undefined" || !/<(a|img)\b/i.test(html)) return html;
+  const template = document.createElement("template");
+  template.innerHTML = html;
+  const root = template.content;
+  root.querySelectorAll("img[src]").forEach((image) => {
+    const src = image.getAttribute("src") || "";
+    if (!isAttachmentLink(src)) return;
+    if (source) {
+      image.setAttribute("src", attachmentUrl(src, source));
+      image.setAttribute("loading", "lazy");
+      return;
+    }
+    const placeholder = document.createElement("span");
+    placeholder.className = "md-image-expired";
+    placeholder.title = "Image unavailable (expired GitHub URL)";
+    placeholder.textContent = "[image unavailable]";
+    image.replaceWith(placeholder);
+  });
+  if (source) {
+    root.querySelectorAll("p > a[href]").forEach((link) => {
+      const href = link.getAttribute("href") || "";
+      const paragraph = link.parentElement;
+      const alone = paragraph && paragraph.childNodes.length === 1 && (link.textContent || "").trim() === href;
+      if (!alone || !ATTACHMENT_LINK.test(href)) return;
+      const video = document.createElement("video");
+      video.className = "md-video";
+      video.controls = true;
+      video.preload = "metadata";
+      video.src = attachmentUrl(href, source);
+      // Where it can't play: the link to it on GitHub.
+      const fallback = document.createElement("a");
+      fallback.href = href;
+      fallback.textContent = "Open the video on GitHub";
+      video.append(fallback);
+      paragraph.replaceWith(video);
+    });
+  }
+  root.querySelectorAll("a[href]").forEach((link) => {
+    if ((link.getAttribute("href") || "").startsWith("#")) return;
+    link.setAttribute("target", "_blank");
+    link.setAttribute("rel", "noopener noreferrer");
+  });
+  return template.innerHTML;
+};
 
-  const renderMarkdownAsHtml = (markdownText: unknown): string => {
+const createPrMarkdownRenderHelpers = () => {
+  // `source`: the PR the text is from, for its attachments.
+  const renderMarkdownAsHtml = (markdownText: unknown, source?: MarkdownAttachmentSource): string => {
     const text = String(markdownText || "").trim();
     if (!text) return "";
 
@@ -64,9 +131,7 @@ const createPrMarkdownRenderHelpers = () => {
       console.warn("Failed to render markdown", error);
       return asPlainText(text);
     }
-    // Placeholders go in after sanitizing: they're a fixed trusted string,
-    // and their class would otherwise be stripped.
-    return replaceExpiredGithubImages(sanitizer.sanitize(html, MARKDOWN_SANITIZE_CONFIG));
+    return finishHtml(sanitizer.sanitize(html, MARKDOWN_SANITIZE_CONFIG), source);
   };
 
   return {
