@@ -231,7 +231,7 @@ describe('PrTable with rows from several repos', () => {
     setSectionSort: jest.fn(),
     resetSections: jest.fn(),
     groupByRepo,
-    setGroupByRepo: jest.fn(),
+    setGroupByRepo: jest.fn(),    sectionOrder: [],    moveSection: jest.fn(),
   });
   const renderRows = (groupByRepo: boolean, showRepo: boolean) =>
     render(

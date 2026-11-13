@@ -2,11 +2,21 @@ import { useTheme } from '../../state/ThemeProvider';
 import { usePrSectionPreferences } from '../../state/PrSectionPreferencesProvider';
 import type { ThemePreference } from '../../helpers/theme.helpers.ts';
 import {
+  isDefaultPrSectionOrder,
   isPrSectionHidden,
   PR_SECTION_CATALOG,
+  prSectionKind,
   prSectionStartsOpen,
+  type PrSectionKind,
 } from '../../helpers/pr-section-preferences.helpers.ts';
-import { Button } from '../ui/Button';
+import { Button, IconButton } from '../ui/Button';
+
+const SECTION_KINDS: ReadonlyArray<{ kind: PrSectionKind; heading: string }> = [
+  { kind: 'smart', heading: 'Smart groups' },
+  { kind: 'status', heading: 'By status' },
+];
+
+const titleOf = (key: string) => PR_SECTION_CATALOG.find((entry) => entry.key === key)?.title ?? key;
 
 const OPTIONS: ReadonlyArray<{ value: ThemePreference; label: string }> = [
   { value: 'light', label: 'Light' },
@@ -16,25 +26,33 @@ const OPTIONS: ReadonlyArray<{ value: ThemePreference; label: string }> = [
 
 /**
  * The Settings drawer's "Appearance": the page's theme, which PR table
- * sections show and start open, and whether rows are grouped by repo. Each is saved as soon as it changes
+ * sections show and start open and their order (each kind among its own,
+ * under the same headings as the page), and whether rows are grouped by
+ * repo. Each is saved as soon as it changes
  * (ThemeProvider, PrSectionPreferencesProvider), in user-defaults.json.
  */
 export function AppearanceSection() {
   const { preference, setPreference } = useTheme();
-  const { preferences, setSectionHidden, setSectionStartsOpen, resetSections, groupByRepo, setGroupByRepo } = usePrSectionPreferences();
+  const { preferences, setSectionHidden, setSectionStartsOpen, sectionOrder, moveSection, resetSections, groupByRepo, setGroupByRepo } =
+    usePrSectionPreferences();
+  // A move that takes a section to the end of its kind disables the button
+  // just pressed, so focus goes to the row's other one.
+  const move = (key: string, offset: -1 | 1, button: HTMLButtonElement) => {
+    const kindKeys = sectionOrder.filter((sectionKey) => prSectionKind(sectionKey) === prSectionKind(key));
+    const target = kindKeys.indexOf(key) + offset;
+    moveSection(key, offset);
+    if (target === 0 || target === kindKeys.length - 1) {
+      const row = button.closest('tr');
+      requestAnimationFrame(() => row?.querySelector<HTMLButtonElement>(`[data-move="${offset < 0 ? 'down' : 'up'}"]`)?.focus());
+    }
+  };
   return (
     <div className="settings-section">
       <fieldset className="settings-group settings-fieldset">
         <legend className="settings-heading">Theme</legend>
         {OPTIONS.map(({ value, label }) => (
           <label key={value} className="settings-check">
-            <input
-              type="radio"
-              name="theme"
-              value={value}
-              checked={preference === value}
-              onChange={() => setPreference(value)}
-            />
+            <input type="radio" name="theme" value={value} checked={preference === value} onChange={() => setPreference(value)} />
             {label}
           </label>
         ))}
@@ -44,48 +62,84 @@ export function AppearanceSection() {
         <h3 className="settings-heading" id="settings-sections-heading">
           Sections
         </h3>
-        <p className="settings-hint">Which of the PR table&apos;s sections show, and which are open when the page loads.</p>
+        <p className="settings-hint">
+          Which of the PR table&apos;s sections show, which are open when the page loads, and their order. The smart groups come before the
+          sections by status, and each is ordered among its own kind.
+        </p>
         <table className="settings-sections-table" aria-labelledby="settings-sections-heading">
           <thead>
             <tr>
               <th scope="col">Section</th>
               <th scope="col">Show</th>
               <th scope="col">Open on page load</th>
+              <th scope="col">Order</th>
             </tr>
           </thead>
-          <tbody>
-            {PR_SECTION_CATALOG.map(({ key, title }) => {
-              const hidden = isPrSectionHidden(preferences, key);
-              return (
-                <tr key={key}>
-                  <th scope="row">{title}</th>
-                  <td>
-                    <input
-                      type="checkbox"
-                      aria-label={`Show ${title}`}
-                      checked={!hidden}
-                      onChange={(event) => setSectionHidden(key, !event.target.checked)}
-                    />
-                  </td>
-                  <td>
-                    <input
-                      type="checkbox"
-                      aria-label={`Open ${title} when the page loads`}
-                      checked={prSectionStartsOpen(preferences, key)}
-                      disabled={hidden}
-                      onChange={(event) => setSectionStartsOpen(key, event.target.checked)}
-                    />
-                  </td>
+          {SECTION_KINDS.map(({ kind, heading }) => {
+            const kindKeys = sectionOrder.filter((key) => prSectionKind(key) === kind);
+            return (
+              <tbody key={kind}>
+                <tr className="settings-sections-kind">
+                  <th scope="rowgroup" colSpan={4}>
+                    {heading}
+                  </th>
                 </tr>
-              );
-            })}
-          </tbody>
+                {kindKeys.map((key, index) => {
+                  const title = titleOf(key);
+                  const hidden = isPrSectionHidden(preferences, key);
+                  return (
+                    <tr key={key}>
+                      <th scope="row">{title}</th>
+                      <td>
+                        <input
+                          type="checkbox"
+                          aria-label={`Show ${title}`}
+                          checked={!hidden}
+                          onChange={(event) => setSectionHidden(key, !event.target.checked)}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="checkbox"
+                          aria-label={`Open ${title} when the page loads`}
+                          checked={prSectionStartsOpen(preferences, key)}
+                          disabled={hidden}
+                          onChange={(event) => setSectionStartsOpen(key, event.target.checked)}
+                        />
+                      </td>
+                      <td>
+                        <span className="settings-sections-order">
+                          <IconButton
+                            icon="chevronUp"
+                            label={`Move ${title} up`}
+                            data-move="up"
+                            disabled={index === 0}
+                            onClick={(event) => move(key, -1, event.currentTarget)}
+                          />
+                          <IconButton
+                            icon="chevronDown"
+                            label={`Move ${title} down`}
+                            data-move="down"
+                            disabled={index === kindKeys.length - 1}
+                            onClick={(event) => move(key, 1, event.currentTarget)}
+                          />
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            );
+          })}
         </table>
         <div className="settings-actions">
-          {/* Only show/open choices: a section's sort isn't one of these. */}
+          {/* Only show/open/order choices: a section's sort isn't one of these. */}
           <Button
             onClick={resetSections}
-            disabled={!Object.values(preferences).some((preference) => preference.hidden || preference.open !== undefined)}
+            disabled={
+              isDefaultPrSectionOrder(sectionOrder) &&
+              !Object.values(preferences).some((preference) => preference.hidden || preference.open !== undefined)
+            }
           >
             Restore default sections
           </Button>

@@ -828,6 +828,49 @@ test("Settings › Appearance: a hidden section and a section's open-on-load cho
   }
 });
 
+test("Settings › Appearance: sections are listed by kind under headings, and a section moved among its kind stays moved after a reload", async ({ page }) => {
+  await clearSavedSettings(page.request, ["prSectionOrder", "prSections"]);
+  try {
+    await page.goto("/");
+    await waitForPrTable(page);
+    const list = page.locator(".pr-workspace-list");
+    const order = () => list.locator("[data-pr-section], h2").evaluateAll((elements) => elements.map((element) => element.getAttribute("data-pr-section") || element.textContent));
+    await expect.poll(order).toEqual([
+      "Smart groups",
+      "flagged",
+      "in-review",
+      "needs-attention",
+      "mine",
+      "assigned-to-me",
+      "review-requested",
+      "interacted",
+      "By status",
+      "open",
+      "draft",
+      "closed",
+      "merged",
+    ]);
+
+    const drawer = await openSettings(page, "Appearance");
+    await expect(drawer.getByRole("button", { name: "Move Open PRs up", exact: true })).toBeDisabled();
+    const saved = page.waitForResponse((response) => response.url().includes("/view-prs/user-defaults") && response.request().method() === "PUT");
+    const moveMergedUp = drawer.getByRole("button", { name: "Move Latest Merged PRs up", exact: true });
+    await moveMergedUp.click();
+    await saved;
+    // Its row moved, and the button keeps focus for another move.
+    await expect(moveMergedUp).toBeFocused();
+    await expect.poll(async () => (await order()).slice(-4)).toEqual(["open", "draft", "merged", "closed"]);
+
+    await page.reload();
+    await waitForPrTable(page);
+    await expect.poll(async () => (await order()).slice(-5)).toEqual(["By status", "open", "draft", "merged", "closed"]);
+    const { overrides } = await (await page.request.get("/view-prs/user-defaults")).json();
+    expect(overrides.prSectionOrder.slice(-4)).toEqual(["open", "draft", "merged", "closed"]);
+  } finally {
+    await clearSavedSettings(page.request, ["prSectionOrder", "prSections"]);
+  }
+});
+
 test("Settings › Background updates: a repo's check interval and priority boost are saved to user-defaults.json", async ({ page }) => {
   await clearSavedSettings(page.request, ["schedulerRepoConfig"]);
   try {

@@ -8,7 +8,7 @@
  * @module components/PrTableApp
  */
 
-import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from 'react';
+import { Fragment, useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from 'react';
 import { PrSection } from './PrSection';
 import { PrJsonModal } from './PrJsonModal';
 import { usePrData } from '../state/PrDataContext';
@@ -29,7 +29,7 @@ import { useNotesDirty } from '../state/NotesDirtyContext';
 import { useMediaQuery } from '../state/useMediaQuery';
 import { usePrSectionPreferences } from '../state/PrSectionPreferencesProvider';
 import { useSettingsDrawer } from '../state/SettingsDrawerContext';
-import { isPrSectionHidden, prSectionSort, prSectionStartsOpen } from '../helpers/pr-section-preferences.helpers.ts';
+import { isPrSectionHidden, orderPrSections, prSectionSort, prSectionStartsOpen } from '../helpers/pr-section-preferences.helpers.ts';
 import { buildPrEntryKey } from '../helpers/pr-entry-keys.helpers.ts';
 import { captureRowAnchor, restoreRowAnchor, type RowAnchor } from '../helpers/row-scroll-anchor.helpers.ts';
 import { dockedPaneRoom } from '../helpers/docked-pane-room.helpers.ts';
@@ -127,7 +127,7 @@ export function PrTableApp() {
   } = usePrTableUiState();
   const { dirtyPrKeys } = useNotesDirty();
   // Settings › Appearance: which sections show, and which start open.
-  const { preferences: sectionPreferences, isReady: areSectionPreferencesReady, groupByRepo } = usePrSectionPreferences();
+  const { preferences: sectionPreferences, isReady: areSectionPreferencesReady, groupByRepo, sectionOrder } = usePrSectionPreferences();
   const settingsDrawer = useSettingsDrawer();
   // Below 900px the detail pane is an overlay drawer instead of docked.
   const isNarrow = useMediaQuery(NARROW_SCREEN_QUERY);
@@ -696,16 +696,17 @@ export function PrTableApp() {
     collectPendingReviewRequests,
   ]);
 
-  // Settings › Appearance's choices: hidden sections are left out entirely
-  // (so they're not in previous/next, Export or View in table either), and
-  // a saved "Open when the page loads" replaces the built-in default. Each
+  // Settings › Appearance's choices: the sections in its order (so
+  // previous/next follows it too), hidden sections left out entirely (so
+  // they're not in previous/next, Export or View in table either), and a
+  // saved "Open when the page loads" replacing the built-in default. Each
   // section's rows in its sort (its own choice, else its default: merged by
   // date merged, closed by date closed, the rest by PR number). With "Group
   // rows by repo", then in their repos' order (A-Z), keeping that sort
   // within each - so previous/next follows the headings PrTable draws.
   const sortedSections = useMemo(
     () =>
-      builtSections
+      orderPrSections(builtSections, sectionOrder)
         .filter((section) => !isPrSectionHidden(sectionPreferences, section.key))
         .map((section) => {
           const sorted = sortSectionRows(section.prs, prSectionSort(sectionPreferences, section.key));
@@ -715,7 +716,7 @@ export function PrTableApp() {
             defaultOpen: prSectionStartsOpen(sectionPreferences, section.key, section.defaultOpen),
           };
         }),
-    [builtSections, sectionPreferences, groupByRepo],
+    [builtSections, sectionOrder, sectionPreferences, groupByRepo],
   );
   // The sections you're working in (PrSection reports the pointer or
   // keyboard focus in one), and those with the row open in the detail pane
@@ -750,6 +751,7 @@ export function PrTableApp() {
   // Rows say their repo once those in view (not just those filtered to)
   // come from more than one, so filtering doesn't make it come and go - or
   // change what each is called.
+  const showsSectionKindHeadings = sections.some((section) => section.isSmartGroup) && sections.some((section) => !section.isSmartGroup);
   const rowRepoNames = useMemo(() => rowRepoNamesFor(Object.values(payload?.byPrNumber || {}), effectiveRepo), [payload, effectiveRepo]);
   // The PRs the filters let through that aren't in any section on the page
   // (all their sections are hidden), for the filter bar's count.
@@ -1203,33 +1205,39 @@ export function PrTableApp() {
                     <Button onClick={() => settingsDrawer.open('appearance')}>Choose sections to show</Button>
                   </div>
                 )}
-                {sections.map((section) => (
-                  <PrSection
-                    key={section.key}
-                    section={section}
-                    repo={effectiveRepo}
-                    actorsMap={actorsMap}
-                    isOpen={isSectionOpen(section.key, Boolean(section.defaultOpen))}
-                    expandedInsights={expandedInsights}
-                    selectedPrKey={selectedPrKey}
-                    onToggleSection={handleToggleSection}
-                    onInteractingChange={setSectionInteracting}
-                    onResortSection={resortSection}
-                    onToggleInsights={handleToggleInsights}
-                    onSelectRow={handleSelectRow}
-                    onSelectPr={handleSelectPr}
-                    onShowDetails={handleShowDetails}
-                    onClearSelection={handleClearSelection}
-                    onCheckboxChange={handleCheckboxChange}
-                    onAckAction={handleAckActionBusy}
-                    onApplyLabel={handleApplyLabelBusy}
-                    onUpdatePr={handleUpdatePrBusy}
-                    onViewJson={handleViewJson}
-                    getPrFlags={getPrFlags}
-                    getAttentionReasons={getAttentionReasons}
-                    activePrNumbers={combinedActivePrNumbers}
-                    queuedPrNumbers={combinedQueuedPrNumbers}
-                  />
+                {sections.map((section, index) => (
+                  <Fragment key={section.key}>
+                    {/* Smart groups and the status sections each under a
+                        heading, when both kinds are shown. */}
+                    {showsSectionKindHeadings && sections[index - 1]?.isSmartGroup !== section.isSmartGroup && (
+                      <h2 className="pr-section-kind-heading">{section.isSmartGroup ? 'Smart groups' : 'By status'}</h2>
+                    )}
+                    <PrSection
+                      section={section}
+                      repo={effectiveRepo}
+                      actorsMap={actorsMap}
+                      isOpen={isSectionOpen(section.key, Boolean(section.defaultOpen))}
+                      expandedInsights={expandedInsights}
+                      selectedPrKey={selectedPrKey}
+                      onToggleSection={handleToggleSection}
+                      onInteractingChange={setSectionInteracting}
+                      onResortSection={resortSection}
+                      onToggleInsights={handleToggleInsights}
+                      onSelectRow={handleSelectRow}
+                      onSelectPr={handleSelectPr}
+                      onShowDetails={handleShowDetails}
+                      onClearSelection={handleClearSelection}
+                      onCheckboxChange={handleCheckboxChange}
+                      onAckAction={handleAckActionBusy}
+                      onApplyLabel={handleApplyLabelBusy}
+                      onUpdatePr={handleUpdatePrBusy}
+                      onViewJson={handleViewJson}
+                      getPrFlags={getPrFlags}
+                      getAttentionReasons={getAttentionReasons}
+                      activePrNumbers={combinedActivePrNumbers}
+                      queuedPrNumbers={combinedQueuedPrNumbers}
+                    />
+                  </Fragment>
                 ))}
               </div>
               {isPaneVisible && (

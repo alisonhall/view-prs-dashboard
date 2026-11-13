@@ -8,27 +8,35 @@ import { defaultSectionSort, isSectionSort, sectionSortFields, type SectionSort 
 // A browser copy (PR_SECTIONS_STORAGE_KEY) lets the table draw with them
 // straight away, before user-defaults.json has been read.
 
+// Smart groups (Flagged, In Review, Needs Attention...) hold PRs by rules
+// or your own marks, alongside the status sections (Open, Draft, Closed,
+// Merged) that every PR is in one of. The page lists them apart, each kind
+// under its own heading.
+export type PrSectionKind = 'smart' | 'status';
+
 export interface PrSectionCatalogEntry {
   key: string;
   title: string;
   defaultOpen: boolean;
+  kind: PrSectionKind;
 }
 
-// Every section, in the table's order, with its built-in open state - the
-// same as buildSmartGroupConfigs (pr-smart-groups.helpers.ts) and the
-// lifecycle sections in pr-section-config.helpers.ts (the test checks).
+// Every section, in the table's default order, with its built-in open
+// state and kind - the same as buildSmartGroupConfigs
+// (pr-smart-groups.helpers.ts) and the lifecycle sections in
+// pr-section-config.helpers.ts (the test checks).
 export const PR_SECTION_CATALOG: ReadonlyArray<PrSectionCatalogEntry> = [
-  { key: 'flagged', title: 'Flagged', defaultOpen: false },
-  { key: 'in-review', title: 'In Review', defaultOpen: true },
-  { key: 'needs-attention', title: 'Needs Attention', defaultOpen: true },
-  { key: 'mine', title: 'My Open & Draft PRs', defaultOpen: true },
-  { key: 'assigned-to-me', title: 'Assigned to Me', defaultOpen: true },
-  { key: 'review-requested', title: 'Me as Reviewer', defaultOpen: true },
-  { key: 'interacted', title: "Open PRs I'm Involved In", defaultOpen: false },
-  { key: 'open', title: 'Open PRs', defaultOpen: false },
-  { key: 'draft', title: 'Draft PRs', defaultOpen: false },
-  { key: 'closed', title: 'Closed PRs', defaultOpen: false },
-  { key: 'merged', title: 'Latest Merged PRs', defaultOpen: false },
+  { key: 'flagged', title: 'Flagged', defaultOpen: false, kind: 'smart' },
+  { key: 'in-review', title: 'In Review', defaultOpen: true, kind: 'smart' },
+  { key: 'needs-attention', title: 'Needs Attention', defaultOpen: true, kind: 'smart' },
+  { key: 'mine', title: 'My Open & Draft PRs', defaultOpen: true, kind: 'smart' },
+  { key: 'assigned-to-me', title: 'Assigned to Me', defaultOpen: true, kind: 'smart' },
+  { key: 'review-requested', title: 'Me as Reviewer', defaultOpen: true, kind: 'smart' },
+  { key: 'interacted', title: "Open PRs I'm Involved In", defaultOpen: false, kind: 'smart' },
+  { key: 'open', title: 'Open PRs', defaultOpen: false, kind: 'status' },
+  { key: 'draft', title: 'Draft PRs', defaultOpen: false, kind: 'status' },
+  { key: 'closed', title: 'Closed PRs', defaultOpen: false, kind: 'status' },
+  { key: 'merged', title: 'Latest Merged PRs', defaultOpen: false, kind: 'status' },
 ];
 
 export const PR_SECTIONS_OVERRIDE_KEY = 'prSections';
@@ -109,7 +117,72 @@ export const storeGroupRowsByRepo = (groupByRepo: boolean) => {
   }
 };
 
-export const isPrSectionHidden =(preferences: PrSectionPreferences, key: string) => preferences[key]?.hidden === true;
+// Settings › Appearance's section order: the section keys in the order
+// the page lists them, the smart groups before the status sections - each
+// kind is reordered among its own. Saved in user-defaults.json under
+// PR_SECTION_ORDER_OVERRIDE_KEY only when it differs from the catalog's,
+// with a browser copy for the first draw like the other choices.
+export const PR_SECTION_ORDER_OVERRIDE_KEY = 'prSectionOrder';
+export const PR_SECTION_ORDER_STORAGE_KEY = 'view-prs:pr-section-order';
+export const DEFAULT_PR_SECTION_ORDER: ReadonlyArray<string> = PR_SECTION_CATALOG.map((entry) => entry.key);
+
+export const prSectionKind = (key: string): PrSectionKind | undefined => PR_SECTION_CATALOG.find((entry) => entry.key === key)?.kind;
+
+// Known keys once each, in the saved order; a section missing from it (one
+// added since it was saved) goes last among its kind; then the smart
+// groups, then the status sections.
+export const normalizePrSectionOrder = (value: unknown): string[] => {
+  const known = new Set(DEFAULT_PR_SECTION_ORDER);
+  const saved = Array.isArray(value) ? [...new Set(value.filter((key): key is string => typeof key === 'string' && known.has(key)))] : [];
+  const full = [...saved, ...DEFAULT_PR_SECTION_ORDER.filter((key) => !saved.includes(key))];
+  return [...full.filter((key) => prSectionKind(key) === 'smart'), ...full.filter((key) => prSectionKind(key) === 'status')];
+};
+
+export const isDefaultPrSectionOrder = (order: ReadonlyArray<string>) =>
+  order.length === DEFAULT_PR_SECTION_ORDER.length && order.every((key, index) => key === DEFAULT_PR_SECTION_ORDER[index]);
+
+// The order with a section moved one place up (-1) or down (1) among its
+// own kind; unchanged at the end of its kind.
+export const movePrSection = (order: ReadonlyArray<string>, key: string, offset: -1 | 1): string[] => {
+  const next = normalizePrSectionOrder(order);
+  const index = next.indexOf(key);
+  const neighbour = next[index + offset];
+  if (index < 0 || neighbour === undefined || prSectionKind(neighbour) !== prSectionKind(key)) return next;
+  next[index + offset] = key;
+  next[index] = neighbour;
+  return next;
+};
+
+// Sections in the saved order; any it doesn't know keep their place after.
+export const orderPrSections = <T extends { key: string }>(sections: ReadonlyArray<T>, order: ReadonlyArray<string>): T[] => {
+  const position = (key: string) => {
+    const index = order.indexOf(key);
+    return index < 0 ? order.length : index;
+  };
+  return sections
+    .map((section, index) => ({ section, index }))
+    .sort((a, b) => position(a.section.key) - position(b.section.key) || a.index - b.index)
+    .map(({ section }) => section);
+};
+
+export const readStoredPrSectionOrder = (): string[] | null => {
+  try {
+    const value = window.localStorage.getItem(PR_SECTION_ORDER_STORAGE_KEY);
+    return value === null ? null : normalizePrSectionOrder(JSON.parse(value));
+  } catch (_error) {
+    return null;
+  }
+};
+
+export const storePrSectionOrder = (order: ReadonlyArray<string>) => {
+  try {
+    window.localStorage.setItem(PR_SECTION_ORDER_STORAGE_KEY, JSON.stringify(order));
+  } catch (_error) {
+    // Only the first draw uses the copy; user-defaults.json keeps the order.
+  }
+};
+
+export const isPrSectionHidden = (preferences: PrSectionPreferences, key: string) => preferences[key]?.hidden === true;
 
 // Whether a section starts open: the saved choice, else the built-in default.
 export const prSectionStartsOpen = (preferences: PrSectionPreferences, key: string, fallback = builtInOpen(key)) =>

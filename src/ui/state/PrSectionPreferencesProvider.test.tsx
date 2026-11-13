@@ -1,9 +1,9 @@
 /** @jest-environment jsdom */
 
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AppearanceSection } from '../components/settings/AppearanceSection';
-import { PR_SECTIONS_STORAGE_KEY } from '../helpers/pr-section-preferences.helpers';
+import { PR_SECTION_ORDER_STORAGE_KEY, PR_SECTIONS_STORAGE_KEY } from '../helpers/pr-section-preferences.helpers';
 import { PrSectionPreferencesProvider, usePrSectionPreferences } from './PrSectionPreferencesProvider';
 
 // A stand-in for /view-prs/user-defaults: GET returns `saved` (after
@@ -32,6 +32,15 @@ const renderSettings = () =>
 
 const showBox = (title: string) => screen.getByRole('checkbox', { name: `Show ${title}` });
 const openBox = (title: string) => screen.getByRole('checkbox', { name: `Open ${title} when the page loads` });
+const moveButton = (title: string, direction: 'up' | 'down') => screen.getByRole('button', { name: `Move ${title} ${direction}` });
+// The section rows' titles in order, without the kind headings.
+const sectionTitles = () =>
+  screen
+    .getAllByRole('row')
+    .filter((row) => within(row).queryAllByRole('checkbox').length > 0)
+    .map((row) => within(row).getByRole('rowheader').textContent);
+const SMART = ['Flagged', 'In Review', 'Needs Attention', 'My Open & Draft PRs', 'Assigned to Me', 'Me as Reviewer', "Open PRs I'm Involved In"];
+const STATUS = ['Open PRs', 'Draft PRs', 'Closed PRs', 'Latest Merged PRs'];
 
 describe('Settings › Appearance sections', () => {
   beforeEach(() => {
@@ -50,19 +59,7 @@ describe('Settings › Appearance sections', () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     const table = screen.getByRole('table', { name: 'Sections' });
     expect(table).toBeInTheDocument();
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual([
-      'Flagged',
-      'In Review',
-      'Needs Attention',
-      'My Open & Draft PRs',
-      'Assigned to Me',
-      'Me as Reviewer',
-      "Open PRs I'm Involved In",
-      'Open PRs',
-      'Draft PRs',
-      'Closed PRs',
-      'Latest Merged PRs',
-    ]);
+    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual(['Smart groups', ...SMART, 'By status', ...STATUS]);
     expect(showBox('Flagged')).toBeChecked();
     expect(openBox('Flagged')).not.toBeChecked();
     expect(openBox('In Review')).toBeChecked();
@@ -125,6 +122,52 @@ describe('Settings › Appearance sections', () => {
     );
     expect(showBox('Closed PRs')).toBeChecked();
     // Only sorts left: nothing for it to restore.
+    expect(screen.getByRole('button', { name: 'Restore default sections' })).toBeDisabled();
+  });
+
+  test("a section moves up or down among its own kind, saved to user-defaults.json; the ends of each kind can't move further", async () => {
+    const user = userEvent.setup();
+    renderSettings();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(moveButton('Flagged', 'up')).toBeDisabled();
+    expect(moveButton("Open PRs I'm Involved In", 'down')).toBeDisabled();
+    expect(moveButton('Open PRs', 'up')).toBeDisabled();
+    expect(moveButton('Latest Merged PRs', 'down')).toBeDisabled();
+
+    await user.click(moveButton('Latest Merged PRs', 'up'));
+    await user.click(moveButton('In Review', 'up'));
+
+    const order = ['in-review', 'flagged', 'needs-attention', 'mine', 'assigned-to-me', 'review-requested', 'interacted', 'open', 'draft', 'merged', 'closed'];
+    expect(sectionTitles()).toEqual(['In Review', 'Flagged', ...SMART.slice(2), 'Open PRs', 'Draft PRs', 'Latest Merged PRs', 'Closed PRs']);
+    await waitFor(() => expect(saved).toEqual({ repo: 'owner/repo', prSectionOrder: order }));
+    expect(JSON.parse(window.localStorage.getItem(PR_SECTION_ORDER_STORAGE_KEY) ?? 'null')).toEqual(order);
+    // Moved to the top, its up button is disabled, so focus is on its down button.
+    expect(moveButton('In Review', 'up')).toBeDisabled();
+    await waitFor(() => expect(moveButton('In Review', 'down')).toHaveFocus());
+
+    // Moved back, the default order isn't saved.
+    await user.click(moveButton('In Review', 'down'));
+    await user.click(moveButton('Latest Merged PRs', 'down'));
+    await waitFor(() => expect(saved).toEqual({ repo: 'owner/repo' }));
+  });
+
+  test('shows the saved order, and Restore default sections puts it back', async () => {
+    const user = userEvent.setup();
+    saved = { repo: 'owner/repo', prSectionOrder: ['mine', 'merged'] };
+    renderSettings();
+    await waitFor(() => expect(sectionTitles()[0]).toBe('My Open & Draft PRs'));
+    expect(sectionTitles()).toEqual([
+      'My Open & Draft PRs',
+      ...SMART.filter((title) => title !== 'My Open & Draft PRs'),
+      'Latest Merged PRs',
+      ...STATUS.slice(0, 3),
+    ]);
+
+    // An order alone is something to restore.
+    await user.click(screen.getByRole('button', { name: 'Restore default sections' }));
+
+    expect(sectionTitles()).toEqual([...SMART, ...STATUS]);
+    await waitFor(() => expect(saved).toEqual({ repo: 'owner/repo' }));
     expect(screen.getByRole('button', { name: 'Restore default sections' })).toBeDisabled();
   });
 

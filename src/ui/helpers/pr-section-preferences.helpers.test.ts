@@ -1,7 +1,12 @@
 import { createPrSectionConfigHelpers } from './pr-section-config.helpers';
 import { createPrSmartGroupsHelpers } from './pr-smart-groups.helpers';
 import {
+  DEFAULT_PR_SECTION_ORDER,
+  isDefaultPrSectionOrder,
   isPrSectionHidden,
+  movePrSection,
+  normalizePrSectionOrder,
+  orderPrSections,
   normalizePrSectionPreferences,
   PR_SECTION_CATALOG,
   prSectionSort,
@@ -10,12 +15,58 @@ import {
 } from './pr-section-preferences.helpers';
 
 describe('PR section preferences', () => {
-  test('the catalog lists the sections the table builds, in order, with their titles and open defaults', () => {
+  test('the catalog lists the sections the table builds, in order, with their titles, open defaults and kinds', () => {
     const smartGroups = createPrSmartGroupsHelpers().applySmartGroups([], createPrSmartGroupsHelpers().buildSmartGroupConfigs());
     const built = createPrSectionConfigHelpers()
       .buildPrSectionConfigs({ grouped: { open: [], draft: [], closed: [], merged: [] }, smartGroups })
-      .map(({ sectionKey, title, isOpen }) => ({ key: sectionKey, title, defaultOpen: isOpen }));
+      .map(({ sectionKey, title, isOpen, isSmartGroup }) => ({ key: sectionKey, title, defaultOpen: isOpen, kind: isSmartGroup ? 'smart' : 'status' }));
     expect(PR_SECTION_CATALOG).toEqual(built);
+  });
+
+  describe('section order', () => {
+    const smart = ['flagged', 'in-review', 'needs-attention', 'mine', 'assigned-to-me', 'review-requested', 'interacted'];
+    const status = ['open', 'draft', 'closed', 'merged'];
+
+    test('the default is the catalog order, smart groups first', () => {
+      expect(DEFAULT_PR_SECTION_ORDER).toEqual([...smart, ...status]);
+      expect(normalizePrSectionOrder(undefined)).toEqual([...smart, ...status]);
+      expect(isDefaultPrSectionOrder(normalizePrSectionOrder(null))).toBe(true);
+    });
+
+    test('normalize keeps known keys once, adds missing ones last among their kind, and keeps the smart groups first', () => {
+      expect(normalizePrSectionOrder(['merged', 'gone', 'interacted', 7, 'merged', 'flagged'])).toEqual([
+        'interacted',
+        'flagged',
+        'in-review',
+        'needs-attention',
+        'mine',
+        'assigned-to-me',
+        'review-requested',
+        'merged',
+        'open',
+        'draft',
+        'closed',
+      ]);
+      expect(normalizePrSectionOrder('flagged')).toEqual(DEFAULT_PR_SECTION_ORDER);
+    });
+
+    test('a move swaps a section with its neighbour of the same kind, and stops at the ends of its kind', () => {
+      expect(movePrSection(DEFAULT_PR_SECTION_ORDER, 'in-review', -1).slice(0, 2)).toEqual(['in-review', 'flagged']);
+      expect(movePrSection(DEFAULT_PR_SECTION_ORDER, 'merged', -1).slice(-2)).toEqual(['merged', 'closed']);
+      // Not across into the other kind, nor past either end.
+      expect(movePrSection(DEFAULT_PR_SECTION_ORDER, 'interacted', 1)).toEqual(DEFAULT_PR_SECTION_ORDER);
+      expect(movePrSection(DEFAULT_PR_SECTION_ORDER, 'open', -1)).toEqual(DEFAULT_PR_SECTION_ORDER);
+      expect(movePrSection(DEFAULT_PR_SECTION_ORDER, 'flagged', -1)).toEqual(DEFAULT_PR_SECTION_ORDER);
+      expect(movePrSection(DEFAULT_PR_SECTION_ORDER, 'merged', 1)).toEqual(DEFAULT_PR_SECTION_ORDER);
+      expect(movePrSection(DEFAULT_PR_SECTION_ORDER, 'unknown', 1)).toEqual(DEFAULT_PR_SECTION_ORDER);
+      expect(isDefaultPrSectionOrder(movePrSection(DEFAULT_PR_SECTION_ORDER, 'draft', 1))).toBe(false);
+    });
+
+    test('sections follow the order, and any it lacks keep their place after', () => {
+      const sections = ['open', 'extra', 'flagged', 'merged'].map((key) => ({ key }));
+      expect(orderPrSections(sections, ['merged', 'flagged', 'open']).map((section) => section.key)).toEqual(['merged', 'flagged', 'open', 'extra']);
+      expect(orderPrSections(sections, []).map((section) => section.key)).toEqual(['open', 'extra', 'flagged', 'merged']);
+    });
   });
 
   test('normalize keeps known sections and booleans, and drops what matches the defaults', () => {

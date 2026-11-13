@@ -231,6 +231,23 @@
   white-space: nowrap;
 }
 
+/* A heading row over each kind of section (smart groups, by status). */
+.settings-sections-table .settings-sections-kind th {
+  padding-top: var(--space-3);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+/* The move up and down buttons, side by side. */
+.settings-sections-order {
+  display: inline-flex;
+  gap: 2px;
+  justify-content: center;
+}
+
 /* Settings › Background updates: a group per repo, its fields in a row
    that wraps. */
 .settings-repo {

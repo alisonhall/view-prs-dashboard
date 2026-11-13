@@ -17,6 +17,8 @@ const renderMenu = (sectionKey: string, sectionTitle: string, preferences: PrSec
     resetSections: jest.fn(),
     groupByRepo: false,
     setGroupByRepo: jest.fn(),
+    sectionOrder: [],
+    moveSection: jest.fn(),
   } as PrSectionPreferencesValue;
   render(
     <PrSectionPreferencesContext.Provider value={value}>

@@ -183,7 +183,7 @@ const { createPrSmartGroupsHelpers } = require('../helpers/pr-smart-groups.helpe
 // `sectionPreferences`: Settings › Appearance's saved section choices
 // (user-defaults.json's prSections), read by PrSectionPreferencesProvider
 // through a mocked fetch, which answers once `sectionPreferencesHeld`
-// resolves, when given.
+// resolves, when given; `sectionOrder`, its saved order (prSectionOrder).
 const renderPrTableApp = ({
   initialPayload,
   selectedRepo,
@@ -192,13 +192,14 @@ const renderPrTableApp = ({
   dirtyPrKeys,
   sectionPreferences,
   sectionPreferencesHeld,
+  sectionOrder,
   ...tableProps
 } = {}) => {
   const table = <PrTableApp {...tableProps} />;
   if (sectionPreferences) {
     global.fetch = jest.fn(async () => {
       await sectionPreferencesHeld;
-      return { ok: true, json: async () => ({ overrides: { prSections: sectionPreferences } }) };
+      return { ok: true, json: async () => ({ overrides: { prSections: sectionPreferences, ...(sectionOrder && { prSectionOrder: sectionOrder }) } }) };
     });
   }
   return render(
@@ -2010,6 +2011,54 @@ describe('PrTableApp', () => {
       renderPrTableApp({ initialPayload: payload, selectedRepo: "", sectionPreferences: {} });
       await waitFor(() => expect(renderedKeys()).toContain("open"));
       expect(capturedOpenSections.hiddenPrCount).toBe(0);
+    });
+
+    describe("with the smart groups (the real helpers)", () => {
+      beforeEach(() => {
+        createPrSmartGroupsHelpers.mockImplementation(jest.requireActual('../helpers/pr-smart-groups.helpers.ts').createPrSmartGroupsHelpers);
+      });
+      const kindHeadings = () => screen.queryAllByRole("heading", { level: 2 }).map((heading) => heading.textContent);
+      const smartKeys = ["flagged", "in-review", "needs-attention", "mine", "assigned-to-me", "review-requested", "interacted"];
+
+      test("given a saved order, then the sections follow it, the smart groups under one heading and the status sections under another", async () => {
+        renderPrTableApp({
+          initialPayload: payload,
+          selectedRepo: "",
+          sectionPreferences: {},
+          sectionOrder: ["interacted", "flagged", "merged", "open"],
+        });
+        await waitFor(() =>
+          expect(renderedKeys()).toEqual([
+            "interacted",
+            "flagged",
+            "in-review",
+            "needs-attention",
+            "mine",
+            "assigned-to-me",
+            "review-requested",
+            "merged",
+            "open",
+            "draft",
+            "closed",
+          ]),
+        );
+        expect(kindHeadings()).toEqual(["Smart groups", "By status"]);
+        const [smartHeading, statusHeading] = screen.getAllByRole("heading", { level: 2 });
+        const [firstSmart] = screen.getAllByTestId("section");
+        const firstStatus = screen.getAllByTestId("section").find((element) => element.getAttribute("data-key") === "merged");
+        expect(smartHeading.nextElementSibling).toBe(firstSmart);
+        expect(statusHeading.nextElementSibling).toBe(firstStatus);
+      });
+
+      test("given only one kind of section shown, then there are no headings", async () => {
+        renderPrTableApp({
+          initialPayload: payload,
+          selectedRepo: "",
+          sectionPreferences: Object.fromEntries(smartKeys.map((key) => [key, { hidden: true }])),
+        });
+        await waitFor(() => expect(renderedKeys()).toEqual(["open", "draft", "closed", "merged"]));
+        expect(kindHeadings()).toEqual([]);
+      });
     });
 
     test("given View in table for a PR whose sections are all hidden, then it is shown in the detail pane", async () => {
