@@ -51,13 +51,15 @@ export interface LocalBranchesValue {
   repos: Record<string, LocalRepoStatus>;
   prs: Record<string, LocalBranchInfo>;
   plans: Record<string, CheckoutPlan>;
+  // Whether the server has answered yet: until then no repo has a clone.
+  loaded: boolean;
   // Asks again now (after a clone is saved or removed).
   refresh: () => void;
   // Settings' answers, until the next check.
   setRepos: (repos: Record<string, LocalRepoStatus>) => void;
 }
 
-const EMPTY: LocalBranchesValue = { repos: {}, prs: {}, plans: {}, refresh: () => {}, setRepos: () => {} };
+const EMPTY: LocalBranchesValue = { repos: {}, prs: {}, plans: {}, loaded: false, refresh: () => {}, setRepos: () => {} };
 const LocalBranchesContext = createContext<LocalBranchesValue>(EMPTY);
 
 // How often it looks again while the page is open: branches change as
@@ -84,10 +86,12 @@ export function LocalBranchesProvider({ children, pollMs = POLL_MS }: { children
     repos: Record<string, LocalRepoStatus>;
     prs: Record<string, LocalBranchInfo>;
     plans: Record<string, CheckoutPlan>;
+    loaded: boolean;
   }>({
     repos: {},
     prs: {},
     plans: {},
+    loaded: false,
   });
   const lastText = useRef('');
   const inFlight = useRef(false);
@@ -104,7 +108,7 @@ export function LocalBranchesProvider({ children, pollMs = POLL_MS }: { children
       const response = await fetch('/view-prs/local-branches', { cache: 'no-store' });
       if (!response.ok) return;
       const result = (await response.json()) as LocalBranchesResult;
-      const next = { repos: result.repos || {}, prs: result.prs || {}, plans: result.plans || {} };
+      const next = { repos: result.repos || {}, prs: result.prs || {}, plans: result.plans || {}, loaded: true };
       const text = JSON.stringify(next);
       if (text === lastText.current) return;
       lastText.current = text;

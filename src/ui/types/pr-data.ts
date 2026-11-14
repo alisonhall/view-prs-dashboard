@@ -192,6 +192,8 @@ export interface PrData {
   live?: PrLiveState;
   sourceBranch?: string;
   targetBranch?: string;
+  // A fork's PR: its branch isn't on the repo's remote (only when true).
+  crossRepository?: boolean;
   // "YES" / "NO", and the approvals count as a digits-only string.
   approved?: string;
   approvalCount?: string | number;

@@ -6,11 +6,13 @@ import {
   useLocalBranches,
   type CheckoutPlan,
   type LocalBranchInfo,
+  type LocalRepoStatus,
 } from '../state/LocalBranchesContext';
 import { useSnackbar } from '../state/SnackbarContext';
 import { postJson } from '../helpers/pr-http.helpers.ts';
 import { Icon } from './ui/Icon';
 import { Button } from './ui/Button';
+import { checkoutCommandFor } from '../helpers/checkout-command.helpers.ts';
 
 const NAME_ONLY_NOTE = "It has the PR's branch's name but tracks no remote branch, so it may not be the PR's code.";
 
@@ -117,6 +119,94 @@ const useElapsedSeconds = (on: boolean) => {
   return seconds;
 };
 
+// Text onto the clipboard: the Clipboard API, else - on a page that isn't a
+// secure context, as one opened from another computer over plain http
+// (VIEW_PRS_HOST), which has no navigator.clipboard - the older copy
+// command on a hidden text area. Whether it worked.
+const copyText = async (text: string) => {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch (_error) {
+    // The older way, then.
+  }
+  const focused = document.activeElement as HTMLElement | null;
+  const area = document.createElement('textarea');
+  try {
+    area.value = text;
+    area.setAttribute('readonly', '');
+    area.style.position = 'fixed';
+    area.style.opacity = '0';
+    document.body.appendChild(area);
+    area.focus();
+    area.select();
+    return typeof document.execCommand === 'function' && document.execCommand('copy');
+  } catch (_error) {
+    return false;
+  } finally {
+    area.remove();
+    focused?.focus?.();
+  }
+};
+
+/**
+ * The line for an open PR whose repo has no clone here (none saved, or one
+ * that can't be read): Copy checkout command - the commands on the
+ * clipboard, "Copied" for a moment, and in its hover text with what they
+ * assume. Where nothing can copy, the commands are shown under the line,
+ * to select by hand.
+ */
+function CopyCommandLine({ command, clone }: { command: string; clone: LocalRepoStatus | undefined }) {
+  const [state, setState] = useState<'idle' | 'copied' | 'error'>('idle');
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    if (state === 'idle') return undefined;
+    const timer = window.setTimeout(() => setState('idle'), 1500);
+    return () => window.clearTimeout(timer);
+  }, [state]);
+  const copy = async () => {
+    const copied = await copyText(command);
+    setState(copied ? 'copied' : 'error');
+    if (!copied) setFailed(true);
+  };
+  return (
+    <>
+      <p className="pr-pane-local">
+        {clone ? (
+          // Saved, but unreadable (a drive not plugged in, a folder moved).
+          <span className="pr-pane-local-text" title={`${clone.path}: ${clone.error || "it can't be read"}`}>
+            <Icon name="branch" size={12} />
+            On this computer: the clone can&apos;t be read
+          </span>
+        ) : (
+          <span className="pr-pane-local-text">
+            <Icon name="branch" size={12} />
+            Not on this computer
+          </span>
+        )}
+        <Button
+          icon={state === 'copied' ? 'check' : 'copy'}
+          title={`To paste into bash, zsh or Git Bash (not Windows PowerShell 5.1) in a clone of the repo, its remote for the repo named origin - a worktree beside it for the PR's branch:\n${command}`}
+          onClick={() => void copy()}
+        >
+          {state === 'copied' ? 'Copied' : state === 'error' ? 'Copy unavailable' : 'Copy checkout command'}
+        </Button>
+      </p>
+      {failed && (
+        <div className="pr-pane-local-output">
+          This browser won&apos;t copy here - select the commands to copy them:
+          {/* One click selects it all. */}
+          <pre aria-label="Checkout command" onClick={(event) => window.getSelection()?.selectAllChildren(event.currentTarget)}>
+            {command}
+          </pre>
+        </div>
+      )}
+    </>
+  );
+}
+
 /**
  * The pane's "On this computer" line: the local branch, ahead/behind, the
  * worktree it's checked out in, and Open in editor (VS Code's `code`, run
@@ -124,13 +214,29 @@ const useElapsedSeconds = (on: boolean) => {
  * a worktree has Check out: a worktree for its branch, made as the repo's
  * checkout settings say (Settings › Local clones) - by the user's own
  * command, or with git - its time shown while it runs, and what it printed
- * kept under the line when it failed or warned.
+ * kept under the line when it failed or warned. One whose repo has no clone
+ * here is "Not on this computer", with Copy checkout command: plain git to
+ * paste into a terminal in a clone of it.
  */
-export function PrLocalBranchLine({ repo, prNumber, canCheckOut = false }: { repo: string; prNumber: string; canCheckOut?: boolean }) {
+export function PrLocalBranchLine({
+  repo,
+  prNumber,
+  canCheckOut = false,
+  branch,
+  targetBranch,
+  crossRepository,
+}: {
+  repo: string;
+  prNumber: string;
+  canCheckOut?: boolean;
+  branch?: string;
+  targetBranch?: string;
+  crossRepository?: boolean;
+}) {
   const key = `${repo}#${prNumber}`;
   const info = useLocalBranch(repo, prNumber);
   const plan = useCheckoutPlan(repo, prNumber);
-  const { repos, refresh } = useLocalBranches();
+  const { repos, refresh, loaded } = useLocalBranches();
   const clone = repos[repo];
   const { showError, showWarning } = useSnackbar();
   const [opening, setOpening] = useState(false);
@@ -145,6 +251,12 @@ export function PrLocalBranchLine({ repo, prNumber, canCheckOut = false }: { rep
   const output = outputFor?.key === key ? outputFor.text : '';
   const worktreePath = info?.worktreePath || made?.worktreePath || '';
   const offerCheckOut = canCheckOut && Boolean(clone?.ok) && !worktreePath;
+  // No clone here to check it out in (none saved, or it can't be read): the
+  // commands to paste into a terminal in one, wherever it is - once the
+  // server has said which clones there are.
+  const copyCommand = canCheckOut && loaded && !clone?.ok && !info && !made ? checkoutCommandFor({ repo, number: prNumber, branch, targetBranch, crossRepository }) : '';
+  // Its own for each PR: not "Copied" for the next one shown.
+  if (copyCommand) return <CopyCommandLine key={key} command={copyCommand} clone={clone} />;
   if (!info && !made && !offerCheckOut) return null;
 
   const open = async () => {

@@ -127,6 +127,86 @@ describe('a PR’s local branch', () => {
     expect(screen.getAllByText(/On this computer/)).toHaveLength(1);
   });
 
+  test("an open PR whose repo has no clone here (none saved, or unreadable) offers its checkout command to copy - once the clones are known", async () => {
+    const writeText = jest.fn().mockResolvedValue(undefined);
+    let answer: (value: Awaited<ReturnType<typeof fetchMock>>) => void = () => {};
+    fetchMock.mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)));
+    const user = userEvent.setup();
+    // After setup, which puts in its own clipboard.
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    renderWith(
+      <>
+        <PrLocalBranchLine repo="acme/other" prNumber="3" canCheckOut branch="feature/q" targetBranch="main" />
+        <PrLocalBranchLine repo="acme/broken" prNumber="4" canCheckOut branch="b" crossRepository />
+        <PrLocalBranchLine repo="acme/other" prNumber="5" branch="merged" />
+        <PrLocalBranchLine repo="acme/app" prNumber="9" canCheckOut branch="feature/z" />
+      </>,
+    );
+    // Not before the server says which repos have a clone.
+    expect(screen.queryByText('Not on this computer')).not.toBeInTheDocument();
+    await act(async () => answer({ ok: true, status: 200, json: async () => ({ ok: true, repos: localRepos, prs: localBranches, plans }) }));
+
+    expect(await screen.findAllByText('Not on this computer')).toHaveLength(1);
+    // A saved clone that can't be read says so, not that there's none.
+    expect(screen.getByText(/the clone can't be read/)).toHaveAttribute('title', 'D:/gone: No such folder');
+    expect(screen.getAllByRole('button', { name: 'Check out' })).toHaveLength(1);
+    const [first, fork] = screen.getAllByRole('button', { name: 'Copy checkout command' }) as [HTMLElement, HTMLElement];
+    // The shells it's for: && isn't Windows PowerShell 5.1's.
+    expect(first).toHaveAttribute('title', expect.stringMatching(/^To paste into bash, zsh or Git Bash \(not Windows PowerShell 5\.1\).*origin/));
+    await user.click(first);
+    expect(writeText).toHaveBeenCalledWith(expect.stringMatching(/^git fetch origin refs\/heads\/feature\/q && git worktree add -b feature\/q \.\.\/other-feature_q FETCH_HEAD/));
+    expect(await screen.findByRole('button', { name: 'Copied' })).toBeInTheDocument();
+    await user.click(fork);
+    expect(writeText).toHaveBeenLastCalledWith(expect.stringMatching(/^git fetch origin refs\/pull\/4\/head && git worktree add -b pr-4 \.\.\/broken-pr-4 FETCH_HEAD/));
+  });
+
+  test('a page with no Clipboard API (opened from another computer over http) copies the older way; where nothing copies, the command is shown to select', async () => {
+    const user = userEvent.setup();
+    Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true });
+    let copied = '';
+    const execCommand = jest.fn((name: string) => {
+      copied = name === 'copy' ? (document.activeElement as HTMLTextAreaElement).value : '';
+      return true;
+    });
+    Object.defineProperty(document, 'execCommand', { value: execCommand, configurable: true });
+    try {
+      renderWith(<PrLocalBranchLine repo="acme/other" prNumber="3" canCheckOut branch="feature/q" />);
+      const button = await screen.findByRole('button', { name: 'Copy checkout command' });
+      await user.click(button);
+      expect(execCommand).toHaveBeenCalledWith('copy');
+      expect(copied).toMatch(/^git fetch origin refs\/heads\/feature\/q && /);
+      expect(await screen.findByRole('button', { name: 'Copied' })).toHaveFocus();
+      expect(document.querySelector('textarea')).toBeNull();
+      expect(screen.queryByLabelText('Checkout command')).not.toBeInTheDocument();
+
+      execCommand.mockReturnValue(false);
+      await user.click(screen.getByRole('button', { name: 'Copied' }));
+      expect(await screen.findByRole('button', { name: 'Copy unavailable' })).toBeInTheDocument();
+      const shown = screen.getByLabelText('Checkout command');
+      expect(shown).toHaveTextContent(/^git fetch origin refs\/heads\/feature\/q && /);
+      // One click selects it all, to copy by hand.
+      await user.click(shown);
+      expect(String(window.getSelection())).toBe(shown.textContent);
+    } finally {
+      delete (document as unknown as { execCommand?: unknown }).execCommand;
+    }
+  });
+
+  test('a command just copied is not "Copied" for the next PR the pane shows', async () => {
+    const user = userEvent.setup();
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText: jest.fn().mockResolvedValue(undefined) }, configurable: true });
+    const providers = (ui: React.ReactNode) => (
+      <SnackbarContext.Provider value={{ showError, showWarning } as unknown as SnackbarValue}>
+        <LocalBranchesProvider>{ui}</LocalBranchesProvider>
+      </SnackbarContext.Provider>
+    );
+    const { rerender } = render(providers(<PrLocalBranchLine repo="acme/other" prNumber="3" canCheckOut branch="feature/q" />));
+    await user.click(await screen.findByRole('button', { name: 'Copy checkout command' }));
+    expect(await screen.findByRole('button', { name: 'Copied' })).toBeInTheDocument();
+    rerender(providers(<PrLocalBranchLine repo="acme/other" prNumber="4" canCheckOut branch="feature/r" />));
+    expect(screen.getByRole('button', { name: 'Copy checkout command' })).toBeInTheDocument();
+  });
+
   test("Check out's title says what it will do, as the server's plan says: the repo's command, or git - for a local branch the clone has, as it is", async () => {
     localRepos = { 'acme/app': { path: 'D:/work/main', ok: true, checkout: { command: 'my-tool add {branch}', after: 'npm ci' } } };
     plans = { 'acme/app#8': { how: 'git', fork: false }, 'acme/app#9': { how: 'command', fork: false } };
