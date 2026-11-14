@@ -13,6 +13,7 @@ const PRS = {
 
 let localBranches: Record<string, unknown>;
 let localRepos: Record<string, unknown>;
+let plans: Record<string, unknown>;
 let openAnswer: { status: number; body: Record<string, unknown> };
 let checkoutAnswer: { status: number; body: Record<string, unknown> };
 const fetchMock = jest.fn(async (url: string, _init?: RequestInit) => {
@@ -20,11 +21,12 @@ const fetchMock = jest.fn(async (url: string, _init?: RequestInit) => {
   if (url === '/view-prs/local-branches/checkout') {
     return { ok: checkoutAnswer.status < 400, status: checkoutAnswer.status, json: async () => checkoutAnswer.body };
   }
-  return { ok: true, status: 200, json: async () => ({ ok: true, repos: localRepos, prs: localBranches }) };
+  return { ok: true, status: 200, json: async () => ({ ok: true, repos: localRepos, prs: localBranches, plans }) };
 });
 
 beforeEach(() => {
   localBranches = PRS;
+  plans = { 'acme/app#8': { how: 'git', fork: false }, 'acme/app#9': { how: 'git', fork: false } };
   localRepos = { 'acme/app': { path: 'D:/work/main', ok: true }, 'acme/broken': { path: 'D:/gone', ok: false, error: 'No such folder' } };
   openAnswer = { status: 200, body: { ok: true } };
   checkoutAnswer = { status: 200, body: { ok: true, branch: 'feature/z', worktreePath: 'D:/work/feature_z', how: 'git' } };
@@ -125,8 +127,9 @@ describe('a PR’s local branch', () => {
     expect(screen.getAllByText(/On this computer/)).toHaveLength(1);
   });
 
-  test("Check out's title says what it will do: the repo's command, or git - for a local branch the clone has, as it is", async () => {
+  test("Check out's title says what it will do, as the server's plan says: the repo's command, or git - for a local branch the clone has, as it is", async () => {
     localRepos = { 'acme/app': { path: 'D:/work/main', ok: true, checkout: { command: 'my-tool add {branch}', after: 'npm ci' } } };
+    plans = { 'acme/app#8': { how: 'git', fork: false }, 'acme/app#9': { how: 'command', fork: false } };
     renderWith(
       <>
         <PrLocalBranchLine repo="acme/app" prNumber="9" canCheckOut />
@@ -138,26 +141,81 @@ describe('a PR’s local branch', () => {
     expect(localBranch?.getAttribute('title')).toMatch(/^A worktree for your branch .* as it is \(.*\), with git, then npm ci/);
   });
 
-  test("describes Check out as the server will do it", () => {
-    const checkout = { command: 'my-tool add {branch}', after: 'npm ci' };
+  test("describes Check out as the server will do it: by its plan, and for a local branch the clone has, as it is", () => {
+    const command = 'my-tool add {branch}';
     const branch = { branch: 'mine', oid: 'o' };
-    expect(describeCheckOut({ info: null, checkout, isFork: false, prNumber: '9' })).toBe("A worktree for the PR's branch, with my-tool add {branch}");
-    // A fork's PR: git, unless the command is for forks' PRs too.
-    expect(describeCheckOut({ info: null, checkout, isFork: true, prNumber: '9' })).toBe("A worktree for pr-9, the fork's PR, with git, then npm ci");
-    expect(describeCheckOut({ info: null, checkout: { ...checkout, forks: true }, isFork: true, prNumber: '9' })).toBe(
-      "A worktree for the PR's branch, with my-tool add {branch}",
+    const byCommand = { how: 'command' as const, fork: false };
+    const byGit = { how: 'git' as const, fork: false };
+    expect(describeCheckOut({ info: null, plan: byCommand, command, after: 'npm ci', prNumber: '9' })).toBe("A worktree for the PR's branch, with my-tool add {branch}");
+    expect(describeCheckOut({ info: null, plan: { how: 'git', fork: true }, command, after: 'npm ci', prNumber: '9' })).toBe(
+      "A worktree for pr-9, the fork's PR, with git, then npm ci",
     );
-    expect(describeCheckOut({ info: null, checkout: undefined, isFork: false, prNumber: '9' })).toBe("A worktree for the PR's branch, with git");
+    expect(describeCheckOut({ info: null, plan: byGit, command: undefined, after: undefined, prNumber: '9' })).toBe("A worktree for the PR's branch, with git");
+    // No plan yet (the first check not back): git, as the server would without settings.
+    expect(describeCheckOut({ info: null, plan: null, command: undefined, after: undefined, prNumber: '9' })).toBe("A worktree for the PR's branch, with git");
     // A local branch the clone has: git, as it is - saying so when GitHub has newer commits.
-    expect(describeCheckOut({ info: { ...branch, ahead: 0, behind: 2, exact: true }, checkout, isFork: false, prNumber: '9' })).toBe(
+    expect(describeCheckOut({ info: { ...branch, ahead: 0, behind: 2, exact: true }, plan: byGit, command, after: 'npm ci', prNumber: '9' })).toBe(
       "A worktree for your branch mine as it is (2 behind), with git, then npm ci - the PR's newer commits aren't fetched",
     );
-    expect(describeCheckOut({ info: { ...branch, ahead: 0, behind: 0 }, checkout: undefined, isFork: false, prNumber: '9' })).toBe(
+    expect(describeCheckOut({ info: { ...branch, ahead: 0, behind: 0 }, plan: byGit, command: undefined, after: undefined, prNumber: '9' })).toBe(
       'A worktree for your branch mine as it is (up to date), with git',
     );
-    expect(describeCheckOut({ info: { ...branch, diverged: true }, checkout: undefined, isFork: false, prNumber: '9' })).toBe(
+    expect(describeCheckOut({ info: { ...branch, diverged: true }, plan: byGit, command: undefined, after: undefined, prNumber: '9' })).toBe(
       "A worktree for your branch mine as it is (differs from GitHub), with git - the PR's newer commits aren't fetched",
     );
+    expect(describeCheckOut({ info: { ...branch, ahead: 0, behind: 0, nameOnly: true }, plan: byGit, command: undefined, after: undefined, prNumber: '9' })).toBe(
+      "A worktree for your branch mine as it is (up to date, same name only - it doesn't track the PR's branch), with git",
+    );
+  });
+
+  test("a branch found by the PR's branch's name alone is marked so, in the chip and the pane, not in the attention colour", async () => {
+    localBranches = { 'acme/app#7': { branch: 'feature/x', oid: 'abcdef1234567', worktreePath: 'D:/work/x', ahead: 0, behind: 2, exact: true, nameOnly: true } };
+    renderWith(
+      <>
+        <PrLocalBranchChip repo="acme/app" prNumber="7" />
+        <PrLocalBranchLine repo="acme/app" prNumber="7" />
+      </>,
+    );
+    const chip = await screen.findByText(/Local · 2 behind · same name only/);
+    expect(chip).toHaveAttribute('data-name-only', 'true');
+    expect(chip).not.toHaveAttribute('data-tone');
+    expect(chip.getAttribute('title')).toContain('tracks no remote branch, so it may not be the PR');
+    expect(screen.getByText("(same name, not tracking the PR's branch)")).toBeInTheDocument();
+  });
+
+  test('a slow checkout shows how long it has taken; what a failed one printed is kept under the line', async () => {
+    jest.useFakeTimers();
+    try {
+      let answer: (value: unknown) => void = () => {};
+      fetchMock.mockImplementationOnce(async (url: string) => {
+        if (url !== '/view-prs/local-branches') throw new Error(`unexpected ${url}`);
+        return { ok: true, status: 200, json: async () => ({ ok: true, repos: localRepos, prs: localBranches, plans }) };
+      });
+      renderWith(<PrLocalBranchLine repo="acme/app" prNumber="9" canCheckOut />);
+      const button = await screen.findByRole('button', { name: 'Check out' });
+      fetchMock.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            answer = resolve;
+          }) as never,
+      );
+      act(() => button.click());
+      expect(await screen.findByRole('button', { name: 'Checking out…' })).toBeDisabled();
+      act(() => jest.advanceTimersByTime(5000));
+      expect(screen.getByRole('button', { name: 'Checking out… 5s' })).toBeInTheDocument();
+      await act(async () =>
+        answer({
+          ok: false,
+          status: 502,
+          json: async () => ({ ok: false, error: 'The checkout command failed: nope', output: 'step 1\nstep 2\nerror: nope' }),
+        }),
+      );
+      expect(await screen.findByRole('button', { name: 'Check out' })).toBeEnabled();
+      expect(screen.getByText('What the checkout printed')).toBeInTheDocument();
+      expect(screen.getByText(/step 1\s+step 2\s+error: nope/)).toBeInTheDocument();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   test("a checkout that fails says why, with the end of what it printed; one made with a warning says so", async () => {

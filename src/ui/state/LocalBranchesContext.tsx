@@ -35,18 +35,29 @@ export interface LocalBranchInfo {
   behind?: number;
   exact?: boolean;
   diverged?: boolean;
+  // Found by the PR's branch's name alone, tracking nothing: perhaps not
+  // the PR's code.
+  nameOnly?: boolean;
+}
+
+// How Check out would make an open PR's worktree, as the server decides
+// it: with the repo's checkout command or with git; fork: a fork's PR.
+export interface CheckoutPlan {
+  how: 'command' | 'git';
+  fork: boolean;
 }
 
 export interface LocalBranchesValue {
   repos: Record<string, LocalRepoStatus>;
   prs: Record<string, LocalBranchInfo>;
+  plans: Record<string, CheckoutPlan>;
   // Asks again now (after a clone is saved or removed).
   refresh: () => void;
   // Settings' answers, until the next check.
   setRepos: (repos: Record<string, LocalRepoStatus>) => void;
 }
 
-const EMPTY: LocalBranchesValue = { repos: {}, prs: {}, refresh: () => {}, setRepos: () => {} };
+const EMPTY: LocalBranchesValue = { repos: {}, prs: {}, plans: {}, refresh: () => {}, setRepos: () => {} };
 const LocalBranchesContext = createContext<LocalBranchesValue>(EMPTY);
 
 // How often it looks again while the page is open: branches change as
@@ -59,6 +70,7 @@ interface LocalBranchesResult {
   ok?: boolean;
   repos?: Record<string, LocalRepoStatus>;
   prs?: Record<string, LocalBranchInfo>;
+  plans?: Record<string, CheckoutPlan>;
 }
 
 /**
@@ -68,9 +80,14 @@ interface LocalBranchesResult {
  */
 export function LocalBranchesProvider({ children, pollMs = POLL_MS }: { children: ReactNode; pollMs?: number }) {
   const dataVersion = useOptionalPrData()?.payload?.dataMeta?.dataVersion || '';
-  const [state, setState] = useState<{ repos: Record<string, LocalRepoStatus>; prs: Record<string, LocalBranchInfo> }>({
+  const [state, setState] = useState<{
+    repos: Record<string, LocalRepoStatus>;
+    prs: Record<string, LocalBranchInfo>;
+    plans: Record<string, CheckoutPlan>;
+  }>({
     repos: {},
     prs: {},
+    plans: {},
   });
   const lastText = useRef('');
   const inFlight = useRef(false);
@@ -87,7 +104,7 @@ export function LocalBranchesProvider({ children, pollMs = POLL_MS }: { children
       const response = await fetch('/view-prs/local-branches', { cache: 'no-store' });
       if (!response.ok) return;
       const result = (await response.json()) as LocalBranchesResult;
-      const next = { repos: result.repos || {}, prs: result.prs || {} };
+      const next = { repos: result.repos || {}, prs: result.prs || {}, plans: result.plans || {} };
       const text = JSON.stringify(next);
       if (text === lastText.current) return;
       lastText.current = text;
@@ -136,6 +153,9 @@ export const useLocalBranches = () => useContext(LocalBranchesContext);
 
 export const useLocalBranch = (repo: string, prNumber: string | number | undefined): LocalBranchInfo | null =>
   useContext(LocalBranchesContext).prs[`${repo}#${prNumber}`] || null;
+
+export const useCheckoutPlan = (repo: string, prNumber: string | number | undefined): CheckoutPlan | null =>
+  useContext(LocalBranchesContext).plans[`${repo}#${prNumber}`] || null;
 
 // "Up to date", "2 behind", "1 ahead, 3 behind", "Differs from GitHub".
 export const describeLocalBranch = (info: LocalBranchInfo): string => {

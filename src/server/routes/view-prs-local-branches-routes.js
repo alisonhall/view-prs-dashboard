@@ -1,6 +1,8 @@
 const os = require("os");
 const path = require("path");
 const { checkCheckoutSettings } = require("../storage/view-prs-local-repos-storage");
+const { isForkPr } = require("../helpers/view-prs-local-branches");
+const { planCheckout } = require("../helpers/view-prs-local-checkout");
 
 // This computer's clones of the repos (Settings › Local clones) and what
 // they have of each PR's branch (view-prs-local-branches.js).
@@ -13,8 +15,9 @@ const registerViewPrsLocalBranchesRoutes = ({
   readViewPrsRows,
   // (folder) => resolves once the editor is started, rejects with why not.
   openInEditor,
-  // view-prs-local-checkout.js's checkOut.
+  // view-prs-local-checkout.js's checkOut and checkCommands.
   checkOut,
+  checkCommands,
   sendInternalError = ({ res, error }) => res.status(500).json({ ok: false, error: error?.message || String(error) }),
   homeDir = () => os.homedir(),
   // (req) => whether the request came from this computer, not the network
@@ -148,6 +151,32 @@ const registerViewPrsLocalBranchesRoutes = ({
     }
   });
 
+  // { repo, commands } - whether the user's shell knows each command's
+  // first word (Settings' Check), run as Check out would run it, in the
+  // repo's clone's folder: { results: [{ command, name, found, detail }] }.
+  // Only from this computer, as saving the commands is.
+  app.post(["/local-repos/checkout/check", "/view-prs/local-repos/checkout/check"], async (req, res) => {
+    if (!isFromThisComputer(req)) {
+      res.status(403).json({ ok: false, error: "Commands can only be checked on this computer" });
+      return;
+    }
+    const repo = String(req.body?.repo || "").trim();
+    const commands = (Array.isArray(req.body?.commands) ? req.body.commands : [])
+      .map((command) => String(command || "").trim())
+      .filter((command) => command && !/[\r\n\0]/.test(command))
+      .slice(0, 4);
+    if (commands.length === 0) {
+      res.status(400).json({ ok: false, error: "No command to check" });
+      return;
+    }
+    try {
+      const cloneFolder = localReposStorage.loadLocalRepoEntries()[repo]?.path || "";
+      res.json({ ok: true, results: await checkCommands({ cloneFolder, commands }) });
+    } catch (error) {
+      sendInternalError({ res, error });
+    }
+  });
+
   // { repo } - forgets its clone's folder.
   app.delete(["/local-repos", "/view-prs/local-repos"], async (req, res) => {
     const repo = String(req.body?.repo || "").trim();
@@ -171,8 +200,20 @@ const registerViewPrsLocalBranchesRoutes = ({
         res.json({ ok: true, repos: {}, prs: {} });
         return;
       }
-      const result = await localBranches.getLocalBranches({ localRepos, prs: listPrs(localRepos) });
-      res.json({ ok: true, ...result });
+      const prs = listPrs(localRepos);
+      const result = await localBranches.getLocalBranches({ localRepos, prs });
+      // How Check out would make each open PR's worktree (planCheckout), so
+      // the pane says it as the server will do it.
+      const entries = localReposStorage.loadLocalRepoEntries();
+      const plans = Object.fromEntries(
+        prs
+          .filter((pr) => !pr.done && result.repos[pr.repo]?.ok)
+          .map((pr) => {
+            const fork = isForkPr(pr);
+            return [pr.key, { how: planCheckout({ existing: Boolean(result.prs[pr.key]), isFork: fork, settings: entries[pr.repo]?.checkout }), fork }];
+          }),
+      );
+      res.json({ ok: true, ...result, plans });
     } catch (error) {
       sendInternalError({ res, error });
     }

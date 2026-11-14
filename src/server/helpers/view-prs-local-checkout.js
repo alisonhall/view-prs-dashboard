@@ -23,6 +23,7 @@
 
 const os = require("os");
 const path = require("path");
+const { isForkPr } = require("./view-prs-local-branches");
 
 const MAX_OUTPUT = 4000;
 
@@ -95,6 +96,67 @@ const reasonOf = (failure) => {
     .filter((line) => line && !isShellNoise(line));
   const fatal = lines.find((line) => /^(fatal|error):/i.test(line));
   return (fatal || lines[lines.length - 1] || failure?.error?.message || failure?.message || "it failed").replace(/^(fatal|error):\s*/i, "");
+};
+
+// How Check out makes a PR's worktree: "command" (the repo's checkout
+// command) unless the clone has a local branch for the PR already (git
+// checks it out as it is), or it's a fork's PR the command isn't for, or
+// there's no command - then "git". The one place this is decided: the pane
+// is told it (GET /local-branches' plans).
+const planCheckout = ({ existing, isFork, settings }) =>
+  Boolean(settings?.command) && !existing && (!isFork || settings.forks === true) ? "command" : "git";
+
+// The command a shell line runs first, to check it's known: past any
+// NAME=value words before it (a value may be quoted or a $(...)), or ""
+// when it can't be told without running the line (it's itself a variable
+// or a substitution).
+const commandNameOf = (line) => {
+  const text = String(line || "");
+  let index = 0;
+  const readWord = () => {
+    let word = "";
+    let depth = 0;
+    let quote = "";
+    while (index < text.length) {
+      const char = text[index];
+      if (quote) {
+        if (char === "\\" && quote === '"') {
+          word += char + (text[index + 1] || "");
+          index += 2;
+          continue;
+        }
+        if (char === quote) quote = "";
+        word += char;
+      } else if (char === "\\") {
+        word += char + (text[index + 1] || "");
+        index += 2;
+        continue;
+      } else if (char === "'" || char === '"') {
+        quote = char;
+        word += char;
+      } else if (char === "(" && text[index - 1] === "$") {
+        depth += 1;
+        word += char;
+      } else if (char === ")" && depth > 0) {
+        depth -= 1;
+        word += char;
+      } else if (depth === 0 && /[\s;&|<>()]/.test(char)) {
+        break;
+      } else {
+        word += char;
+      }
+      index += 1;
+    }
+    return word;
+  };
+  for (;;) {
+    while (index < text.length && /\s/.test(text[index])) index += 1;
+    if (index >= text.length) return "";
+    const word = readWord();
+    if (!word) return "";
+    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(word)) continue;
+    return /^[A-Za-z0-9_./:+@%~-]+$/.test(word) ? word : "";
+  }
 };
 
 const checkoutError = (message, { status = 422, output = "" } = {}) => Object.assign(new Error(message), { status, output });
@@ -196,7 +258,7 @@ const createViewPrsLocalCheckout = ({
       const checkedOut = existing && worktreeOf(clone, existing.name);
       if (checkedOut) return { branch: existing.name, worktreePath: checkedOut.path, how: "git", already: true, output: "" };
 
-      const isFork = pr.crossRepository || (Boolean(pr.targetBranch) && pr.branch === pr.targetBranch);
+      const isFork = isForkPr(pr);
       if (!isFork && !pr.branch) throw checkoutError("The PR's branch isn't known yet - update the PR first");
       const remote = clone.repoRemotes.includes("origin") ? "origin" : clone.repoRemotes[0];
       const remoteRef = isFork ? `refs/pull/${pr.number}/head` : `refs/heads/${pr.branch}`;
@@ -215,7 +277,7 @@ const createViewPrsLocalCheckout = ({
       // The repo's command, unless the clone has a branch for the PR
       // already (git checks it out as it is) or it's a fork's PR the
       // command isn't for.
-      const byCommand = Boolean(settings?.command) && !existing && (!isFork || settings.forks === true);
+      const byCommand = planCheckout({ existing, isFork, settings }) === "command";
       const how = byCommand ? "command" : "git";
       let warning = "";
       try {
@@ -275,11 +337,46 @@ const createViewPrsLocalCheckout = ({
     }
   };
 
-  return { checkOut };
+  // Settings' Check: whether the user's shell knows each command's first
+  // word, as Check out would run it (the same shell, rc file and folder).
+  // => [{ command, name, found: true | false | null, detail }] - found null
+  // when the name can't be told without running the line.
+  const checkCommands = async ({ cloneFolder, commands }) => {
+    let shellName = "";
+    try {
+      shellName = path.basename(await userShell()).replace(/\.exe$/i, "");
+    } catch (error) {
+      return commands.map((command) => ({ command, name: "", found: false, detail: error.message }));
+    }
+    return Promise.all(
+      commands.map(async (command) => {
+        const name = commandNameOf(command);
+        if (!name) return { command, name, found: null, detail: "Its first word is only known when it runs, so it isn't checked" };
+        // The answer after a marker: an rc file may print its own lines first.
+        const script = 'out=$(type -- "$VIEW_PRS_CHECK" 2>&1); status=$?; printf \'%s\\n\' "@@view-prs@@" "$out"; exit $status';
+        const answer = (result) => {
+          const text = String(result?.stdout || "");
+          const at = text.lastIndexOf("@@view-prs@@");
+          return (at >= 0 ? text.slice(at + "@@view-prs@@".length) : "").trim().split(/\r?\n/)[0] || "";
+        };
+        try {
+          const result = await runUserCommand(script, cloneFolder || homeDir(), { VIEW_PRS_CHECK: name });
+          return { command, name, found: true, detail: answer(result) || `${name} is known to your shell (${shellName})` };
+        } catch (failure) {
+          if (failure instanceof Error && failure.status) return { command, name, found: false, detail: failure.message };
+          return { command, name, found: false, detail: `${name} isn't known to your shell (${shellName}) - is it in the rc file an interactive ${shellName} reads?` };
+        }
+      }),
+    );
+  };
+
+  return { checkOut, checkCommands };
 };
 
 module.exports = {
   createViewPrsLocalCheckout,
+  planCheckout,
+  commandNameOf,
   folderNameFor,
   reasonOf,
   expandPlaceholders,

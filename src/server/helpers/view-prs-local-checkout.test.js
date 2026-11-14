@@ -5,6 +5,8 @@ const { execFile, execFileSync } = require("child_process");
 const { createViewPrsLocalBranches } = require("./view-prs-local-branches");
 const {
   createViewPrsLocalCheckout,
+  planCheckout,
+  commandNameOf,
   folderNameFor,
   reasonOf,
   expandPlaceholders,
@@ -361,6 +363,46 @@ describe("checking out a PR into a worktree", () => {
       message: "The checkout command failed: stop here",
     });
     expect(calls).toEqual([path.win32.resolve(gitRoot, "bin", "bash.exe")]);
+  });
+
+  test("Check commands: whether the user's shell (its rc file read) knows each command's first word, past NAME=value words", async () => {
+    const rc = path.join(root, "home", ".bashrc");
+    fs.writeFileSync(rc, "echo 'Hello from the rc file'\nmy-fn() { :; }\n");
+    try {
+      const { checkout } = setUp();
+      const results = await checkout.checkCommands({
+        cloneFolder: freshClone(),
+        commands: ['MY_DIR="$(dirname "$VIEW_PRS_CLONE")" my-fn add {branch}', "no-such-command-here {branch}", '"$MY_TOOL" add'],
+      });
+      expect(results).toEqual([
+        expect.objectContaining({ name: "my-fn", found: true, detail: "my-fn is a function" }),
+        expect.objectContaining({ name: "no-such-command-here", found: false, detail: expect.stringMatching(/^no-such-command-here isn't known to your shell \(bash\)/) }),
+        expect.objectContaining({ name: "", found: null }),
+      ]);
+    } finally {
+      fs.rmSync(rc, { force: true });
+    }
+  });
+
+  test("the plan: the repo's command, unless the clone has a branch for the PR or it's a fork's PR the command isn't for", () => {
+    const settings = { command: "my-tool {branch}" };
+    expect(planCheckout({ existing: false, isFork: false, settings })).toBe("command");
+    expect(planCheckout({ existing: true, isFork: false, settings })).toBe("git");
+    expect(planCheckout({ existing: false, isFork: true, settings })).toBe("git");
+    expect(planCheckout({ existing: false, isFork: true, settings: { ...settings, forks: true } })).toBe("command");
+    expect(planCheckout({ existing: false, isFork: false, settings: { after: "npm ci" } })).toBe("git");
+    expect(planCheckout({ existing: false, isFork: false, settings: null })).toBe("git");
+  });
+
+  test("a command's first word: past NAME=value words (quoted, or a substitution); none when it's itself a variable", () => {
+    expect(commandNameOf("my-tool add {branch}")).toBe("my-tool");
+    expect(commandNameOf('  A=1 B="two words" C=$(dirname "$X") my-tool add')).toBe("my-tool");
+    expect(commandNameOf('cd "$VIEW_PRS_CLONE" && npm ci')).toBe("cd");
+    expect(commandNameOf("~/bin/my-tool;echo")).toBe("~/bin/my-tool");
+    expect(commandNameOf('"$TOOL" add')).toBe("");
+    expect(commandNameOf("$(which tool) add")).toBe("");
+    expect(commandNameOf("A=1")).toBe("");
+    expect(commandNameOf("")).toBe("");
   });
 
   test("one checkout at a time per clone", async () => {

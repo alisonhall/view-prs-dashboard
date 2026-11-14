@@ -40,6 +40,16 @@ const checkCheckoutSettings = (value) => {
   if (folder) {
     if (/[\r\n\0]/.test(folder)) return { error: "The worktree folder should be one line" };
     if (!folder.includes("{branch}")) return { error: "The worktree folder needs {branch} in it, so each PR's branch has its own" };
+    // Relative, not going up out of the clone's folder: inside it. (A full
+    // path, or ~, is checked at Check out, where the clone's is known.)
+    const sample = folder.replace(/\{(branch|clone)\}/g, "x");
+    if (!path.isAbsolute(sample) && !/^~(?=$|[\\/])/.test(sample)) {
+      const base = path.resolve("/clone");
+      const resolved = path.resolve(base, sample);
+      if (resolved === base || resolved.startsWith(base + path.sep)) {
+        return { error: "The worktree folder would be inside the clone's folder - start it with ../, like ../{clone}-{branch}" };
+      }
+    }
     checkout.folder = folder;
   }
   if (value.env !== undefined && value.env !== null) {

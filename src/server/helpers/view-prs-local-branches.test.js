@@ -168,8 +168,10 @@ describe("each PR's local branch", () => {
       pr({ key: "none", branch: "nope", headOid: oids.base }),
     ]);
     expect(prs.fork).toMatchObject({ branch: "pr-7", ahead: 0, behind: 0 });
-    // Same name, no upstream: taken to be the PR's.
-    expect(prs.untracked).toMatchObject({ branch: "untracked", ahead: 0, behind: 0 });
+    expect(prs.fork.nameOnly).toBeUndefined();
+    // Same name, no upstream: taken to be the PR's - marked as found by its
+    // name alone, as it may not be.
+    expect(prs.untracked).toMatchObject({ branch: "untracked", ahead: 0, behind: 0, nameOnly: true });
     expect(Object.keys(prs).sort()).toEqual(["fork", "untracked"]);
   });
 

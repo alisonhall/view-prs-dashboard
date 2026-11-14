@@ -535,6 +535,13 @@
   color: var(--color-attention-text);
 }
 
+/* A local branch found by the PR's branch's name alone: perhaps not the
+   PR's, so not shown as if it were. */
+.pr-local-branch[data-name-only="true"] {
+  font-style: italic;
+  opacity: 0.8;
+}
+
 /* Who: the avatar and the author's name, up to two lines */
 .pr-cell-who .ui-tooltip-target {
   display: block;

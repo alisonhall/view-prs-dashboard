@@ -127,6 +127,12 @@ const sameFolder = (a, b) => {
   return process.platform === "win32" || process.platform === "darwin" ? left.toLowerCase() === right.toLowerCase() : left === right;
 };
 
+// A fork's PR: its branch isn't on the repo's remotes - from another repo,
+// or from a branch named as its base (a fork's main into main). Its local
+// branch tracks its pull ref instead. The one rule for it (the rows, Check
+// out, and what the pane's told).
+const isForkPr = (pr) => Boolean(pr.crossRepository) || (Boolean(pr.targetBranch) && pr.branch === pr.targetBranch);
+
 const createViewPrsLocalBranches = ({
   runCommand,
   fs,
@@ -207,7 +213,7 @@ const createViewPrsLocalBranches = ({
   // before crossRepository was kept): this repo's branch of that name is
   // the base, not the PR.
   const findBranch = (clone, pr) => {
-    const isFork = pr.crossRepository || (Boolean(pr.targetBranch) && pr.branch === pr.targetBranch);
+    const isFork = isForkPr(pr);
     const onRepoRemote = (branch) => clone.repoRemotes.includes(branch.remote);
     const tracking = clone.branches.filter(
       (branch) =>
@@ -264,6 +270,8 @@ const createViewPrsLocalBranches = ({
       branch: branch.name,
       oid: branch.oid,
       ...(worktree ? { worktreePath: worktree.path } : {}),
+      // Found by its name alone, tracking nothing: perhaps not the PR's.
+      ...(branch.remote ? {} : { nameOnly: true }),
     };
     const headOid = pr.headOid || pr.commitOids[pr.commitOids.length - 1] || "";
     if (!headOid) return { ...base, diverged: true };
@@ -416,4 +424,4 @@ const createViewPrsLocalBranches = ({
   return { getLocalBranches, isOpenableFolder, checkClone, forgetClone, findClones, readCloneFresh, findPrBranch: findBranch };
 };
 
-module.exports = { createViewPrsLocalBranches, repoFromRemoteUrl, parseWorktrees, parseBranches, parseConfig, describeGitFailure };
+module.exports = { createViewPrsLocalBranches, isForkPr, repoFromRemoteUrl, parseWorktrees, parseBranches, parseConfig, describeGitFailure };

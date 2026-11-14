@@ -712,6 +712,20 @@ describe("integration behavior", () => {
       expect(fs.realpathSync.native(res.body.prs["owner/repo#5"].worktreePath)).toBe(fs.realpathSync.native(worktree));
     });
 
+    test("each open PR's plan for Check out, as the server would do it: its command, or git for a branch the clone has", async () => {
+      await request.put("/view-prs/local-repos").send({ repo: "owner/repo", path: clone });
+      expect((await request.get("/view-prs/local-branches")).body.plans).toEqual({
+        "owner/repo#5": { how: "git", fork: false },
+        "owner/repo#6": { how: "git", fork: false },
+      });
+      await request.put("/view-prs/local-repos/checkout").send({ repo: "owner/repo", checkout: { command: "my-tool {branch}" } });
+      // #5's branch is in the clone already: git, as it is.
+      expect((await request.get("/view-prs/local-branches")).body.plans).toEqual({
+        "owner/repo#5": { how: "git", fork: false },
+        "owner/repo#6": { how: "command", fork: false },
+      });
+    });
+
     test("opens the clone or one of its worktrees in the editor, and no other folder", async () => {
       await request.put("/view-prs/local-repos").send({ repo: "owner/repo", path: clone });
       expect((await request.post("/view-prs/open-in-editor").send({ repo: "owner/repo", path: worktree })).body).toEqual({ ok: true });
@@ -750,19 +764,29 @@ describe("integration behavior", () => {
       };
       expect(await refused({ command: "a\nb" })).toBe("The checkout command should be one line");
       expect(await refused({ folder: "../trees" })).toBe("The worktree folder needs {branch} in it, so each PR's branch has its own");
+      // Inside the clone's folder, caught when saved.
+      for (const folder of ["{branch}", "trees/{clone}-{branch}", "./{branch}", "a/../{branch}"]) {
+        expect(await refused({ folder })).toBe("The worktree folder would be inside the clone's folder - start it with ../, like ../{clone}-{branch}");
+      }
+      for (const folder of ["../{branch}", "~/trees/{branch}", `${root}/trees/{branch}`]) {
+        expect((await request.put("/view-prs/local-repos/checkout").send({ repo: "owner/repo", checkout: { folder } })).status).toBe(200);
+      }
       expect(await refused({ env: { "MY-NAME": "x" } })).toBe("Not a variable's name: MY-NAME");
       expect(await refused({ env: { VIEW_PRS_BRANCH: "x" } })).toBe("VIEW_PRS_BRANCH: VIEW_PRS_ variables are the dashboard's own");
       expect(await refused({ env: { MY_LINKS: "a\nb" } })).toBe("MY_LINKS's value should be one line");
       expect((await request.put("/view-prs/local-repos/checkout").send({ repo: "other/repo", checkout: settings })).status).toBe(404);
     });
 
-    test("checkout settings - commands run on this computer - can't be changed from the network", async () => {
+    test("checkout settings - commands run on this computer - can't be changed or checked from the network", async () => {
       await request.put("/view-prs/local-repos").send({ repo: "owner/repo", path: clone });
+      expect((await request.post("/view-prs/local-repos/checkout/check").send({ repo: "owner/repo", commands: [" "] })).status).toBe(400);
       appModule.isFromThisComputer = () => false;
       try {
         const res = await request.put("/view-prs/local-repos/checkout").send({ repo: "owner/repo", checkout: { command: "anything" } });
         expect(res.status).toBe(403);
         expect(res.body.error).toBe("Checkout settings can only be changed on this computer");
+        const check = await request.post("/view-prs/local-repos/checkout/check").send({ repo: "owner/repo", commands: ["anything"] });
+        expect(check.status).toBe(403);
       } finally {
         delete appModule.isFromThisComputer;
       }

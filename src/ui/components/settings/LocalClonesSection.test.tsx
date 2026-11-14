@@ -36,6 +36,14 @@ const fetchMock = jest.fn(async (url: string, init: RequestInit = {}) => {
       }),
     };
   }
+  if (url === '/view-prs/local-repos/checkout/check') {
+    const results = (body.commands as string[]).map((command) =>
+      command.startsWith('my-tool')
+        ? { command, name: 'my-tool', found: true, detail: 'my-tool is a function' }
+        : { command, name: command.split(' ')[0], found: false, detail: `${command.split(' ')[0]} isn't known to your shell (bash)` },
+    );
+    return { ok: true, status: 200, json: async () => ({ ok: true, results }) };
+  }
   if (url === '/view-prs/local-repos/checkout') {
     if (body.checkout.folder === '../trees') {
       return { ok: false, status: 400, json: async () => ({ ok: false, error: 'The worktree folder needs {branch} in it' }) };
@@ -214,6 +222,31 @@ describe('Settings › Local clones', () => {
     await user.type(form.getByLabelText("Folder for git's worktrees"), '../trees');
     await user.click(save);
     expect(await form.findByRole('alert')).toHaveTextContent('The worktree folder needs {branch} in it');
+  });
+
+  test("Check commands asks whether the user's shell knows each command; a placeholder in single quotes is warned of", async () => {
+    saved = { 'acme/app': { path: 'D:/code/app/main', ok: true, branchCount: 1, worktreeCount: 1 } };
+    const user = userEvent.setup();
+    renderSection();
+    await user.click(await screen.findByText('Check out PRs with git'));
+    const checkButton = screen.getByRole('button', { name: 'Check commands' });
+    expect(checkButton).toBeDisabled();
+
+    await user.type(screen.getByLabelText('Checkout command'), 'my-tool add {{branch}');
+    await user.type(screen.getByLabelText('After git makes a worktree, run'), "nope '{{local}' x");
+    expect(screen.getByText(/\{local\} inside single quotes is taken as written/)).toBeInTheDocument();
+    expect(screen.getAllByText(/inside single quotes/)).toHaveLength(1);
+
+    await user.click(checkButton);
+    const answers = await screen.findByRole('status', { name: 'What your shell knows' });
+    expect(within(answers).getAllByRole('listitem').map((item) => item.textContent)).toEqual([
+      '✓ my-tool: my-tool is a function',
+      "✗ nope: nope isn't known to your shell (bash)",
+    ]);
+    expect(requests.find((request) => request.url === '/view-prs/local-repos/checkout/check')?.body).toEqual({
+      repo: 'acme/app',
+      commands: ['my-tool add {branch}', "nope '{local}' x"],
+    });
   });
 
   test("Remove forgets a repo's folder", async () => {

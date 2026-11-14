@@ -4199,6 +4199,7 @@ const createViewPrsApp = ({ production = isProductionEnv } = {}) => {
     readViewPrsRows: () => Object.values(readVisibleViewPrsData()?.byPrNumber || {}),
     openInEditor: (...args) => (module.exports.openFolderInEditor || openFolderInEditor)(...args),
     checkOut: (...args) => viewPrsLocalCheckout.checkOut(...args),
+    checkCommands: (...args) => viewPrsLocalCheckout.checkCommands(...args),
     // Overridable, as a test's requests always come from this computer.
     isFromThisComputer: (req) => (module.exports.isFromThisComputer || ((r) => isLoopbackAddress(r.socket?.remoteAddress)))(req),
     // Overridable, as a test can't move the real home folder.
