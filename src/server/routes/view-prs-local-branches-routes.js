@@ -1,3 +1,4 @@
+const os = require("os");
 const path = require("path");
 
 // This computer's clones of the repos (Settings › Local clones) and what
@@ -12,6 +13,7 @@ const registerViewPrsLocalBranchesRoutes = ({
   // (folder) => resolves once the editor is started, rejects with why not.
   openInEditor,
   sendInternalError = ({ res, error }) => res.status(500).json({ ok: false, error: error?.message || String(error) }),
+  homeDir = () => os.homedir(),
 }) => {
   // Each PR the server can look for locally: its branch, head commit and
   // commits, from its row.
@@ -35,6 +37,16 @@ const registerViewPrsLocalBranchesRoutes = ({
       })
       .filter((pr) => pr.number && (pr.branch || pr.crossRepository));
 
+  // A path as typed or pasted - one copied with its quotes (Windows' Copy
+  // as path) works too, and ~ is the home folder, as in a terminal.
+  const cleanFolder = (value) => {
+    const folder = String(value || "")
+      .trim()
+      .replace(/^(["'])(.*)\1$/, "$2")
+      .trim();
+    return /^~(?=$|[\\/])/.test(folder) ? path.join(homeDir(), folder.slice(1)) : folder;
+  };
+
   const reposStatus = async () => (await localBranches.getLocalBranches({ localRepos: localReposStorage.loadLocalRepos(), prs: [] })).repos;
 
   // { repos: repo => { path, ok, error?, branchCount, worktreeCount } }.
@@ -46,15 +58,32 @@ const registerViewPrsLocalBranchesRoutes = ({
     }
   });
 
+  // { folder, repos } - the clones of those repos in the folder (up to two
+  // levels down), to choose from: { found: [{ repo, path }] }. Saves nothing.
+  app.post(["/local-repos/find", "/view-prs/local-repos/find"], async (req, res) => {
+    const folder = cleanFolder(req.body?.folder);
+    if (!folder || !path.isAbsolute(folder)) {
+      res.status(400).json({ ok: false, error: "Give the folder's full path" });
+      return;
+    }
+    const repos = (Array.isArray(req.body?.repos) ? req.body.repos : []).map((repo) => String(repo).trim()).filter(isRepoSlug);
+    try {
+      const result = await localBranches.findClones({ folder, repos });
+      if (!result.ok) {
+        res.status(422).json(result);
+        return;
+      }
+      res.json(result);
+    } catch (error) {
+      sendInternalError({ res, error });
+    }
+  });
+
   // { repo, path } - the clone's folder: saved once git finds it's a clone
   // of the repo.
   app.put(["/local-repos", "/view-prs/local-repos"], async (req, res) => {
     const repo = String(req.body?.repo || "").trim();
-    // A path copied with its quotes (Windows' Copy as path) works too.
-    const folder = String(req.body?.path || "")
-      .trim()
-      .replace(/^(["'])(.*)\1$/, "$2")
-      .trim();
+    const folder = cleanFolder(req.body?.path);
     if (!isRepoSlug(repo)) {
       res.status(400).json({ ok: false, error: `Not a repo (owner/name): ${repo}` });
       return;

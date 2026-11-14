@@ -211,6 +211,74 @@ describe("each PR's local branch", () => {
     }
   });
 
+  describe("finding clones in a folder", () => {
+    let tree;
+    // A clone of a repo, with a commit, at a path in the tree.
+    const cloneAt = (relative, repo) => {
+      const folder = path.join(tree, relative);
+      fs.mkdirSync(folder, { recursive: true });
+      git(folder, "init", "-q");
+      git(folder, "remote", "add", "origin", `https://github.com/${repo}.git`);
+      commit(folder, "base");
+      return folder;
+    };
+    beforeAll(() => {
+      tree = path.join(root, "sites");
+      cloneAt("app", "acme/app");
+      cloneAt("group/api", "acme/api");
+      // wt's layout: the clone in main, a branch's worktree beside it.
+      const web = cloneAt("web/main", "acme/web");
+      git(web, "worktree", "add", "-q", "-b", "feature/x", path.join(tree, "web", "feature_x"));
+      // wt's bare-repo layout: main is a worktree of .bare.
+      const bare = path.join(tree, "docs");
+      fs.mkdirSync(bare);
+      git(bare, "clone", "-q", "--bare", path.join(tree, "app"), ".bare");
+      git(path.join(bare, ".bare"), "remote", "set-url", "origin", "git@github.com:acme/docs.git");
+      git(path.join(bare, ".bare"), "worktree", "add", "-q", path.join(bare, "main"));
+      // wt's layout grouped by owner, three levels down.
+      cloneAt("acme/tools/main", "acme/tools");
+      // Not looked in: too deep, node_modules, hidden; and a repo not asked for.
+      cloneAt("a/b/c/deep", "acme/deep");
+      cloneAt("node_modules/dep", "acme/dep");
+      cloneAt(".hidden/secret", "acme/secret");
+      cloneAt("other", "someone/else");
+    });
+
+    test("finds the clones of the repos asked for, up to three levels down - a wt layout's main folder, not its worktrees", async () => {
+      const helper = createViewPrsLocalBranches({ runCommand: run, fs });
+      const repos = ["acme/app", "acme/api", "acme/web", "acme/docs", "acme/tools", "acme/deep", "acme/dep", "acme/secret", "ACME/Missing"];
+      const result = await helper.findClones({ folder: tree, repos });
+      expect(result).toEqual({
+        ok: true,
+        found: [
+          { repo: "acme/api", path: path.join(tree, "group", "api") },
+          { repo: "acme/app", path: path.join(tree, "app") },
+          { repo: "acme/docs", path: path.join(tree, "docs", "main") },
+          { repo: "acme/tools", path: path.join(tree, "acme", "tools", "main") },
+          { repo: "acme/web", path: path.join(tree, "web", "main") },
+        ],
+      });
+    });
+
+    test("a repo's names match whatever their case; the folder itself can be the clone; a folder that isn't there says so", async () => {
+      const helper = createViewPrsLocalBranches({ runCommand: run, fs });
+      expect((await helper.findClones({ folder: path.join(tree, "app"), repos: ["Acme/App"] })).found).toEqual([
+        { repo: "Acme/App", path: path.join(tree, "app") },
+      ]);
+      expect(await helper.findClones({ folder: path.join(tree, "nope"), repos: ["acme/app"] })).toEqual({
+        ok: false,
+        error: `No such folder: ${path.join(tree, "nope")}`,
+      });
+    });
+
+    test("stops after looking in so many folders, and says so", async () => {
+      const helper = createViewPrsLocalBranches({ runCommand: run, fs });
+      const result = await helper.findClones({ folder: tree, repos: ["acme/app", "acme/web"], maxFolders: 3 });
+      expect(result.truncated).toBe(true);
+      expect(result.found.length).toBeLessThan(2);
+    });
+  });
+
   test("worktree list's blocks: a detached one has no branch, a bare one is marked", () => {
     expect(
       parseWorktrees("worktree /a\nHEAD 1\nbranch refs/heads/x\n\nworktree /b\nHEAD 2\ndetached\n\nworktree /c\nbare\n"),

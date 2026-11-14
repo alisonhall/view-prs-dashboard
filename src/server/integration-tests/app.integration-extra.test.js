@@ -661,6 +661,31 @@ describe("integration behavior", () => {
       expect(removed.body).toEqual({ ok: true, removed: true, repos: {} });
     });
 
+    test("finds the clones of the page's repos in a folder, saving nothing", async () => {
+      expect((await request.post("/view-prs/local-repos/find").send({ folder: "relative", repos: ["owner/repo"] })).status).toBe(400);
+      const missing = await request.post("/view-prs/local-repos/find").send({ folder: path.join(root, "nope"), repos: ["owner/repo"] });
+      expect(missing.status).toBe(422);
+      expect(missing.body.error).toMatch(/^No such folder/);
+
+      const res = await request.post("/local-repos/find").send({ folder: `"${root}"`, repos: ["owner/repo", "not a repo"] });
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ ok: true, found: [{ repo: "owner/repo", path: clone }] });
+      expect(fs.existsSync(process.env.VIEW_PRS_LOCAL_REPOS_FILE)).toBe(false);
+    });
+
+    test("~ in a path is the home folder, as in a terminal", async () => {
+      appModule.homeDir = () => path.dirname(root);
+      try {
+        const found = await request.post("/view-prs/local-repos/find").send({ folder: `~/${path.basename(root)}`, repos: ["owner/repo"] });
+        expect(found.body).toEqual({ ok: true, found: [{ repo: "owner/repo", path: clone }] });
+        const res = await request.put("/view-prs/local-repos").send({ repo: "owner/repo", path: `~/${path.basename(root)}/repo` });
+        expect(res.status).toBe(200);
+        expect(res.body.repos["owner/repo"].path).toBe(clone);
+      } finally {
+        delete appModule.homeDir;
+      }
+    });
+
     test("a path pasted with its quotes (Windows' Copy as path) is saved without them", async () => {
       const res = await request.put("/view-prs/local-repos").send({ repo: "owner/repo", path: ` "${clone}" ` });
       expect(res.status).toBe(200);

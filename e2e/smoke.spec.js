@@ -1007,7 +1007,7 @@ test("the detail pane's Description tab shows the PR's description, rendered fro
   expect(attachments[0]).toEqual([asset, "octocat/hello-world", "2"]);
 });
 
-test("Settings › Local clones saves a repo's clone, and each PR with a local branch shows how far behind it is, with Open in editor", async ({ page }) => {
+test("Settings › Local clones finds and saves a repo's clone, and each PR with a local branch shows how far behind it is, with Open in editor", async ({ page }) => {
   // A real clone of the fixture's repo, for the server's git checks.
   const { execFileSync } = require("child_process");
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "e2e-clone-"));
@@ -1037,9 +1037,12 @@ test("Settings › Local clones saves a repo's clone, and each PR with a local b
     await field.fill(path.join(root, "missing"));
     await drawer.getByRole("button", { name: "Save the clone's folder for octocat/hello-world" }).click();
     await expect(drawer.getByRole("alert")).toContainText("No such folder");
-    await field.fill(root);
-    await drawer.getByRole("button", { name: "Save the clone's folder for octocat/hello-world" }).click();
+    // Found in a folder, and saved from there.
+    await drawer.getByLabel("Find clones in a folder", { exact: true }).fill(root);
+    await drawer.getByRole("button", { name: "Find", exact: true }).click();
+    await drawer.getByRole("button", { name: `Use ${root} for octocat/hello-world` }).click();
     await expect(drawer.getByText("1 branch, 1 worktree", { exact: true })).toBeVisible();
+    await expect(field).toHaveValue(root);
     await closeSettings(page);
 
     const openSection = prSection(page, "Open PRs");

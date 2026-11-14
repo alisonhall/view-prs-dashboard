@@ -13,6 +13,8 @@
 // the pair. None of it grows with the number of PRs, only with the PRs
 // that have a local branch.
 
+const path = require("path");
+
 const FIELD = "\t";
 
 // "owner/name" from a remote's URL - https, ssh or scp-like - else "".
@@ -329,7 +331,81 @@ const createViewPrsLocalBranches = ({
     return summarizeClone(folder, clone);
   };
 
-  return { getLocalBranches, isOpenableFolder, checkClone, forgetClone };
+  // Clones in a folder, for Settings › Local clones' Find: the folder
+  // itself and the folders up to three levels down (a wt layout grouped by
+  // owner: <folder>/<owner>/<repo>/main) - not inside a clone, a
+  // hidden folder or node_modules, and at most maxFolders looked in. A
+  // clone is a folder with a .git folder; one whose .git is a file is a
+  // worktree, whose clone is found too - except a folder named main, which
+  // in wt's bare-repo layout is where the clone is used from. Each is
+  // offered for the repos in `repos` one of its remotes is.
+  // => { ok, found: [{ repo, path }] } - per repo, a wt layout's main folder
+  // first, then by path - or { ok: false, error }.
+  const SKIPPED_FOLDERS = new Set(["node_modules", "vendor", "dist", "build", "coverage"]);
+  const findClones = async ({ folder, repos, maxDepth = 3, maxFolders = 2000 }) => {
+    try {
+      if (!fs.statSync(folder).isDirectory()) return { ok: false, error: `Not a folder: ${folder}` };
+    } catch (_error) {
+      return { ok: false, error: `No such folder: ${folder}` };
+    }
+    const wanted = new Map((repos || []).map((repo) => [String(repo).toLowerCase(), String(repo)]));
+    const clones = [];
+    let looked = 0;
+    const gitKind = (dir) => {
+      try {
+        const stats = fs.statSync(path.join(dir, ".git"));
+        return stats.isDirectory() ? "folder" : "file";
+      } catch (_error) {
+        return "";
+      }
+    };
+    const walk = (dir, depth) => {
+      if (looked >= maxFolders) return;
+      looked += 1;
+      const kind = gitKind(dir);
+      if (kind === "folder" || (kind === "file" && path.basename(dir) === "main")) {
+        clones.push(dir);
+        return;
+      }
+      if (kind === "file" || depth >= maxDepth) return;
+      let entries;
+      try {
+        entries = fs.readdirSync(dir, { withFileTypes: true });
+      } catch (_error) {
+        return;
+      }
+      entries
+        .filter((entry) => entry.isDirectory() && !entry.name.startsWith(".") && !SKIPPED_FOLDERS.has(entry.name))
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .forEach((entry) => walk(path.join(dir, entry.name), depth + 1));
+    };
+    walk(folder, 0);
+
+    const remotesOf = async (clone) => {
+      try {
+        return parseConfig(await git(clone, ["config", "-z", "--get-regexp", "^remote\\..*\\.url$"])).remotes;
+      } catch (_error) {
+        return [];
+      }
+    };
+    const remotes = await mapLimited(clones, concurrency, remotesOf);
+    const found = [];
+    clones.forEach((clone, index) => {
+      const matched = new Set();
+      remotes[index].forEach((remote) => {
+        const repo = wanted.get(remote.repo.toLowerCase());
+        if (repo && !matched.has(repo)) {
+          matched.add(repo);
+          found.push({ repo, path: clone });
+        }
+      });
+    });
+    const isMain = (item) => (path.basename(item.path) === "main" ? 0 : 1);
+    found.sort((a, b) => a.repo.localeCompare(b.repo) || isMain(a) - isMain(b) || a.path.localeCompare(b.path));
+    return { ok: true, found, ...(looked >= maxFolders ? { truncated: true } : {}) };
+  };
+
+  return { getLocalBranches, isOpenableFolder, checkClone, forgetClone, findClones };
 };
 
 module.exports = { createViewPrsLocalBranches, repoFromRemoteUrl, parseWorktrees, parseBranches, parseConfig, describeGitFailure };

@@ -4196,6 +4196,8 @@ const createViewPrsApp = ({ production = isProductionEnv } = {}) => {
     isRepoSlug,
     readViewPrsRows: () => Object.values(readVisibleViewPrsData()?.byPrNumber || {}),
     openInEditor: (...args) => (module.exports.openFolderInEditor || openFolderInEditor)(...args),
+    // Overridable, as a test can't move the real home folder.
+    homeDir: () => (module.exports.homeDir || require("os").homedir)(),
   });
 
   registerViewPrsPrRoutes({
