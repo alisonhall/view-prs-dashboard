@@ -405,7 +405,7 @@ describe("checking out a PR into a worktree", () => {
     expect(commandNameOf("")).toBe("");
   });
 
-  test("one checkout at a time per clone", async () => {
+  test("one checkout or fetch at a time per clone", async () => {
     const clone = freshClone();
     let release;
     const held = new Promise((resolve) => {
@@ -421,6 +421,94 @@ describe("checking out a PR into a worktree", () => {
     await expect(checkout.checkOut({ repo: "acme/app", cloneFolder: clone, settings: null, pr: pr() })).rejects.toMatchObject({ status: 409 });
     release();
     await expect(first).resolves.toEqual(expect.objectContaining({ branch: "feature/x" }));
+    // A checkout waits for a fetch too.
+    let releaseFetch;
+    const heldFetch = new Promise((resolve) => {
+      releaseFetch = resolve;
+    });
+    const { checkout: other } = setUp(async (command, args, maxBuffer, options) => {
+      if (args.includes("fetch")) await heldFetch;
+      return run(command, args, maxBuffer, options);
+    });
+    const fetching = other.fetchPr({ repo: "acme/app", cloneFolder: clone, pr: pr() });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    await expect(other.checkOut({ repo: "acme/app", cloneFolder: clone, settings: null, pr: pr() })).rejects.toMatchObject({ status: 409 });
+    releaseFetch();
+    await expect(fetching).resolves.toEqual(expect.objectContaining({ remote: "origin" }));
+  });
+
+  describe("Fetch: the PR's branch into the clone, for an exact count", () => {
+    // A branch the remote has moved on since the clone was made: the
+    // clone's local branch tracks it, a commit behind, the PR's newest not
+    // in the clone.
+    const movedOn = (name) => {
+      const seed = path.join(root, "seed");
+      git(seed, "push", "-q", remote, `${oids.feature}:refs/heads/${name}`);
+      const clone = freshClone();
+      git(clone, "branch", "-q", "--track", name, `origin/${name}`);
+      git(seed, "checkout", "-q", "--detach", oids.feature);
+      const head = commit(seed, `more on ${name}`);
+      git(seed, "push", "-q", remote, `${head}:refs/heads/${name}`);
+      git(seed, "checkout", "-q", "main");
+      return { clone, head };
+    };
+    const countOf = async (localBranches, clone, row) =>
+      (await localBranches.getLocalBranches({ localRepos: { "acme/app": clone }, prs: [{ key: "k", repo: "acme/app", ...row }] })).prs.k;
+
+    test("from the remote the local branch tracks: the count is exact after, and no files or local branches change", async () => {
+      const { clone, head } = movedOn("feature/f");
+      const { localBranches, checkout } = setUp();
+      const row = { number: "3", branch: "feature/f", targetBranch: "main", headOid: head, commitOids: [oids.feature, head] };
+      expect(await countOf(localBranches, clone, row)).toEqual(expect.objectContaining({ behind: 1, exact: false }));
+      const branchesBefore = git(clone, "for-each-ref", "refs/heads");
+
+      expect(await checkout.fetchPr({ repo: "acme/app", cloneFolder: clone, pr: { ...row, crossRepository: false } })).toEqual({
+        remote: "origin",
+        ref: "refs/heads/feature/f",
+      });
+      expect(await countOf(localBranches, clone, row)).toEqual(expect.objectContaining({ ahead: 0, behind: 1, exact: true }));
+      expect(git(clone, "for-each-ref", "refs/heads")).toBe(branchesBefore);
+      expect(git(clone, "status", "--porcelain")).toBe("");
+    });
+
+    test("a fork's PR: its pull ref, no branch made", async () => {
+      const clone = freshClone();
+      const { checkout } = setUp();
+      expect(await checkout.fetchPr({ repo: "acme/app", cloneFolder: clone, pr: { ...forkPr(), headOid: oids.fork } })).toEqual({
+        remote: "origin",
+        ref: "refs/pull/9/head",
+      });
+      expect(git(clone, "rev-parse", "FETCH_HEAD")).toBe(oids.fork);
+      expect(git(clone, "branch", "--list", "pr-9")).toBe("");
+    });
+
+    test("the PR's newest commit still not there after (pushed over since) is a warning; a branch git can't fetch says why", async () => {
+      const clone = freshClone();
+      const { checkout } = setUp();
+      const gone = "0123456789abcdef0123456789abcdef01234567";
+      const result = await checkout.fetchPr({ repo: "acme/app", cloneFolder: clone, pr: pr({ headOid: gone }) });
+      expect(result.warning).toBe(
+        "Fetched refs/heads/feature/x from origin, but the PR's newest commit as last fetched here (0123456) isn't on it - it may have been pushed over since; update the PR",
+      );
+      // A row from before headOid was kept: its newest stored commit, as the count uses.
+      const older = await checkout.fetchPr({ repo: "acme/app", cloneFolder: clone, pr: pr({ headOid: "", commitOids: [oids.base, gone] }) });
+      expect(older.warning).toMatch(/newest commit as last fetched here \(0123456\) isn't on it/);
+      expect(await checkout.fetchPr({ repo: "acme/app", cloneFolder: clone, pr: pr({ headOid: "", commitOids: [oids.feature] }) })).toEqual({
+        remote: "origin",
+        ref: "refs/heads/feature/x",
+      });
+      // None known (or not a commit id, never given to git): nothing to count against.
+      for (const unknown of [{ headOid: "" }, { headOid: "--output=x", commitOids: [] }]) {
+        expect((await checkout.fetchPr({ repo: "acme/app", cloneFolder: clone, pr: pr(unknown) })).warning).toBe(
+          "Fetched refs/heads/feature/x from origin, but the dashboard doesn't know the PR's newest commit yet, so there's nothing to count against - update the PR",
+        );
+      }
+      await expect(checkout.fetchPr({ repo: "acme/app", cloneFolder: clone, pr: pr({ branch: "no/such" }) })).rejects.toMatchObject({
+        status: 502,
+        message: expect.stringMatching(/^git fetch failed: couldn't find remote ref/),
+      });
+      await expect(checkout.fetchPr({ repo: "acme/app", cloneFolder: clone, pr: pr({ branch: "" }) })).rejects.toMatchObject({ status: 422 });
+    });
   });
 
   test("placeholders are the quoted variables; folder names have no / nor anything Windows refuses; the reason skips a shell's complaints", () => {

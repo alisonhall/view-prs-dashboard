@@ -812,6 +812,35 @@ describe("integration behavior", () => {
       expect(merged.status).toBe(409);
       expect(merged.body.error).toBe("#5 is merged or closed");
     });
+
+    test("Fetch: from the remote the PR's local branch tracks; one merged or closed, or not known, or without a clone, is refused", async () => {
+      expect((await request.post("/view-prs/local-branches/fetch").send({ repo: "owner/repo", number: "5" })).status).toBe(404);
+      await request.put("/view-prs/local-repos").send({ repo: "owner/repo", path: clone });
+      expect((await request.post("/local-branches/fetch").send({ repo: "owner/repo", number: "99" })).status).toBe(404);
+      // GitHub isn't reached: the fetch is answered here.
+      const fetched = [];
+      const realGit = appModule.runViewPrsCommand;
+      appModule.runViewPrsCommand = async (command, args, ...rest) => {
+        if (args.includes("fetch")) {
+          fetched.push(args.slice(args.indexOf("fetch")));
+          return { stdout: "" };
+        }
+        return realGit(command, args, ...rest);
+      };
+      const res = await request.post("/view-prs/local-branches/fetch").send({ repo: "owner/repo", number: "5" });
+      expect(res.body).toEqual({ ok: true, remote: "origin", ref: "refs/heads/feature" });
+      expect(fetched).toEqual([["fetch", "--no-tags", "origin", "refs/heads/feature"]]);
+
+      writeViewPrsData({
+        byPrNumber: {
+          5: { prNumber: "5", repo: "owner/repo", section: "merged", data: { number: "5", sourceBranch: "feature", mergedAt: "2026-11-01T00:00:00Z" } },
+        },
+        lastRun: null,
+      });
+      const merged = await request.post("/view-prs/local-branches/fetch").send({ repo: "owner/repo", number: "5" });
+      expect(merged.status).toBe(409);
+      expect(merged.body.error).toBe("#5 is merged or closed");
+    });
   });
 
   describe("GET /pr-description", () => {

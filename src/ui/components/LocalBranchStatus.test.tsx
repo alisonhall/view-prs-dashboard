@@ -16,8 +16,12 @@ let localRepos: Record<string, unknown>;
 let plans: Record<string, unknown>;
 let openAnswer: { status: number; body: Record<string, unknown> };
 let checkoutAnswer: { status: number; body: Record<string, unknown> };
+let fetchAnswer: { status: number; body: Record<string, unknown> };
 const fetchMock = jest.fn(async (url: string, _init?: RequestInit) => {
   if (url === '/view-prs/open-in-editor') return { ok: openAnswer.status < 400, status: openAnswer.status, json: async () => openAnswer.body };
+  if (url === '/view-prs/local-branches/fetch') {
+    return { ok: fetchAnswer.status < 400, status: fetchAnswer.status, json: async () => fetchAnswer.body };
+  }
   if (url === '/view-prs/local-branches/checkout') {
     return { ok: checkoutAnswer.status < 400, status: checkoutAnswer.status, json: async () => checkoutAnswer.body };
   }
@@ -30,6 +34,7 @@ beforeEach(() => {
   localRepos = { 'acme/app': { path: 'D:/work/main', ok: true }, 'acme/broken': { path: 'D:/gone', ok: false, error: 'No such folder' } };
   openAnswer = { status: 200, body: { ok: true } };
   checkoutAnswer = { status: 200, body: { ok: true, branch: 'feature/z', worktreePath: 'D:/work/feature_z', how: 'git' } };
+  fetchAnswer = { status: 200, body: { ok: true, remote: 'origin', ref: 'refs/heads/feature/e' } };
   showError.mockClear();
   showWarning.mockClear();
   fetchMock.mockClear();
@@ -190,6 +195,44 @@ describe('a PR’s local branch', () => {
     } finally {
       delete (document as unknown as { execCommand?: unknown }).execCommand;
     }
+  });
+
+  test("an estimated or unknown count offers Fetch - the branches checked again after; not an exact one, nor a merged or closed PR's", async () => {
+    localBranches = {
+      ...PRS,
+      'acme/app#11': { branch: 'feature/e', oid: 'e1', ahead: 0, behind: 3, exact: false },
+      'acme/app#12': { branch: 'feature/d', oid: 'd1', diverged: true },
+    };
+    const user = userEvent.setup();
+    renderWith(
+      <>
+        <PrLocalBranchLine repo="acme/app" prNumber="11" canCheckOut />
+        <PrLocalBranchLine repo="acme/app" prNumber="12" canCheckOut />
+        <PrLocalBranchLine repo="acme/app" prNumber="8" canCheckOut />
+        <PrLocalBranchLine repo="acme/app" prNumber="7" />
+      </>,
+    );
+    expect(await screen.findByText(/3\+ behind/)).toBeInTheDocument();
+    const [estimated] = screen.getAllByRole('button', { name: 'Fetch' }) as [HTMLElement];
+    expect(screen.getAllByRole('button', { name: 'Fetch' })).toHaveLength(2);
+    expect(estimated).toHaveAttribute('title', expect.stringMatching(/no files or local branches change/));
+
+    const checks = () => fetchMock.mock.calls.filter(([url]) => url === '/view-prs/local-branches').length;
+    const before = checks();
+    await user.click(estimated);
+    const request = fetchMock.mock.calls.find(([url]) => url === '/view-prs/local-branches/fetch');
+    expect(JSON.parse(String(request?.[1]?.body))).toEqual({ repo: 'acme/app', number: '11' });
+    await waitFor(() => expect(checks()).toBe(before + 1));
+    expect(showError).not.toHaveBeenCalled();
+    expect(showWarning).not.toHaveBeenCalled();
+
+    fetchAnswer = { status: 200, body: { ok: true, remote: 'origin', ref: 'r', warning: 'pushed over since' } };
+    await user.click(screen.getAllByRole('button', { name: 'Fetch' })[0] as HTMLElement);
+    await waitFor(() => expect(showWarning).toHaveBeenCalledWith('Fetched, but…', 'pushed over since'));
+
+    fetchAnswer = { status: 502, body: { ok: false, error: "git fetch failed: couldn't find remote ref", output: 'fatal: no' } };
+    await user.click(screen.getAllByRole('button', { name: 'Fetch' })[0] as HTMLElement);
+    await waitFor(() => expect(showError).toHaveBeenCalledWith("Couldn't fetch the PR's branch", "git fetch failed: couldn't find remote ref\nfatal: no"));
   });
 
   test('a command just copied is not "Copied" for the next PR the pane shows', async () => {

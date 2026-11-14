@@ -214,7 +214,9 @@ function CopyCommandLine({ command, clone }: { command: string; clone: LocalRepo
  * a worktree has Check out: a worktree for its branch, made as the repo's
  * checkout settings say (Settings › Local clones) - by the user's own
  * command, or with git - its time shown while it runs, and what it printed
- * kept under the line when it failed or warned. One whose repo has no clone
+ * kept under the line when it failed or warned. An open PR whose count is
+ * an estimate (or can't be told) has Fetch: the PR's branch fetched into
+ * the clone (no files change), then checked again. One whose repo has no clone
  * here is "Not on this computer", with Copy checkout command: plain git to
  * paste into a terminal in a clone of it.
  */
@@ -241,6 +243,7 @@ export function PrLocalBranchLine({
   const { showError, showWarning } = useSnackbar();
   const [opening, setOpening] = useState(false);
   const [checkingOut, setCheckingOut] = useState(false);
+  const [fetching, setFetching] = useState(false);
   const elapsed = useElapsedSeconds(checkingOut);
   // The worktree just made, until the next check shows it - and what a
   // checkout that failed or warned printed - this PR's only, should the
@@ -251,6 +254,9 @@ export function PrLocalBranchLine({
   const output = outputFor?.key === key ? outputFor.text : '';
   const worktreePath = info?.worktreePath || made?.worktreePath || '';
   const offerCheckOut = canCheckOut && Boolean(clone?.ok) && !worktreePath;
+  // The count's an estimate, or can't be told: the PR's newest commit isn't
+  // in the clone - Fetch brings it (no files change).
+  const offerFetch = canCheckOut && Boolean(clone?.ok) && Boolean(info && (info.exact === false || info.diverged));
   // No clone here to check it out in (none saved, or it can't be read): the
   // commands to paste into a terminal in one, wherever it is - once the
   // server has said which clones there are.
@@ -273,6 +279,26 @@ export function PrLocalBranchLine({
       showError("Couldn't open the editor", caught instanceof Error ? caught.message : String(caught));
     } finally {
       setOpening(false);
+    }
+  };
+
+  const fetchBranch = async () => {
+    setFetching(true);
+    try {
+      const { response, result } = await postJson<{ ok?: boolean; error?: string; warning?: string; output?: string }>(
+        '/view-prs/local-branches/fetch',
+        { repo, number: prNumber },
+      );
+      if (!response.ok || result.ok === false) {
+        showError("Couldn't fetch the PR's branch", [result.error || `HTTP ${response.status}`, lastLines(result.output)].filter(Boolean).join('\n'));
+        return;
+      }
+      if (result.warning) showWarning('Fetched, but…', result.warning);
+      refresh();
+    } catch (caught) {
+      showError("Couldn't fetch the PR's branch", caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setFetching(false);
     }
   };
 
@@ -329,6 +355,15 @@ export function PrLocalBranchLine({
             info && ' · not checked out'
           )}
         </span>
+        {offerFetch && (
+          <Button
+            disabled={fetching}
+            title="Fetch the PR's branch into the clone, for an exact count - git fetch only: no files or local branches change"
+            onClick={() => void fetchBranch()}
+          >
+            {fetching ? 'Fetching…' : 'Fetch'}
+          </Button>
+        )}
         {worktreePath && (
           <Button disabled={opening} onClick={() => void open()}>
             {opening ? 'Opening…' : 'Open in editor'}

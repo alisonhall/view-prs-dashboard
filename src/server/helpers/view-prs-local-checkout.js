@@ -243,7 +243,7 @@ const createViewPrsLocalCheckout = ({
   // worktreePath, how: "command" | "git", already?, warning?, output } -
   // or throws with .status and .output.
   const checkOut = async ({ repo, cloneFolder, settings, pr }) => {
-    if (busy.has(repo)) throw checkoutError(`A checkout in ${repo}'s clone is already running`, { status: 409 });
+    if (busy.has(repo)) throw checkoutError(`A checkout or fetch in ${repo}'s clone is already running`, { status: 409 });
     busy.add(repo);
     const outputs = [];
     const record = (result) => {
@@ -337,6 +337,53 @@ const createViewPrsLocalCheckout = ({
     }
   };
 
+  // The pane's Fetch: the PR's branch (or a fork's pull ref) fetched into
+  // the clone - from the remote its local branch tracks, else as Check out
+  // chooses - so its newest commit is there to count against. Only git's
+  // objects and remote-tracking refs change: no files, no local branches.
+  // => { remote, ref, warning? } - warning when the PR's newest commit, as
+  // last fetched by the dashboard, still isn't in the clone (pushed over
+  // since: update the PR), or isn't known - or throws with .status.
+  const fetchPr = async ({ repo, cloneFolder, pr }) => {
+    if (busy.has(repo)) throw checkoutError(`A checkout or fetch in ${repo}'s clone is already running`, { status: 409 });
+    busy.add(repo);
+    try {
+      const clone = await localBranches.readCloneFresh(repo, cloneFolder);
+      if (!clone.ok) throw checkoutError(clone.error);
+      const isFork = isForkPr(pr);
+      if (!isFork && !pr.branch) throw checkoutError("The PR's branch isn't known yet - update the PR first");
+      const existing = localBranches.findPrBranch(clone, pr);
+      const tracked = existing && existing.remote && clone.repoRemotes.includes(existing.remote) && existing.remoteRef;
+      const remote = tracked ? existing.remote : clone.repoRemotes.includes("origin") ? "origin" : clone.repoRemotes[0];
+      const ref = tracked ? existing.remoteRef : isFork ? `refs/pull/${pr.number}/head` : `refs/heads/${pr.branch}`;
+      try {
+        await git(clone.folder, ["fetch", "--no-tags", remote, ref]);
+      } catch (failure) {
+        throw checkoutError(failure?.didTimeout ? "git fetch took too long" : `git fetch failed: ${reasonOf(failure)}`, {
+          status: 502,
+          output: outputOf(failure),
+        });
+      }
+      // The commit the count compares with, as the rows do (an older row
+      // without headOid: its newest stored commit) - only ever a commit id.
+      const commitOids = Array.isArray(pr.commitOids) ? pr.commitOids : [];
+      const headOid = String(pr.headOid || commitOids[commitOids.length - 1] || "");
+      let warning = "";
+      if (!/^[0-9a-f]{40}([0-9a-f]{24})?$/i.test(headOid)) {
+        warning = `Fetched ${ref} from ${remote}, but the dashboard doesn't know the PR's newest commit yet, so there's nothing to count against - update the PR`;
+      } else {
+        try {
+          await git(clone.folder, ["cat-file", "-e", `${headOid}^{commit}`]);
+        } catch (_missing) {
+          warning = `Fetched ${ref} from ${remote}, but the PR's newest commit as last fetched here (${headOid.slice(0, 7)}) isn't on it - it may have been pushed over since; update the PR`;
+        }
+      }
+      return { remote, ref, ...(warning ? { warning } : {}) };
+    } finally {
+      busy.delete(repo);
+    }
+  };
+
   // Settings' Check: whether the user's shell knows each command's first
   // word, as Check out would run it (the same shell, rc file and folder).
   // => [{ command, name, found: true | false | null, detail }] - found null
@@ -370,7 +417,7 @@ const createViewPrsLocalCheckout = ({
     );
   };
 
-  return { checkOut, checkCommands };
+  return { checkOut, fetchPr, checkCommands };
 };
 
 module.exports = {
