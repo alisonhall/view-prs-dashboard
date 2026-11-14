@@ -220,6 +220,31 @@ const registerViewPrsLocalBranchesRoutes = ({
     }
   });
 
+  // ?repo=&number= - the uncommitted changes in the worktree the PR is
+  // checked out in, for the pane (view-prs-local-branches.js'
+  // getWorktreeChanges): { changes: { worktreePath, staged, changed,
+  // untracked, conflicted, total, files } | { worktreePath, error } | null }.
+  // Any PR, merged and closed too: their worktrees may still hold work.
+  app.get(["/local-branches/changes", "/view-prs/local-branches/changes"], async (req, res) => {
+    const repo = String(req.query?.repo || "").trim();
+    const number = String(req.query?.number || "").trim();
+    try {
+      const folder = localReposStorage.loadLocalRepos()[repo];
+      if (!folder) {
+        res.status(404).json({ ok: false, error: `No clone of ${repo} saved (Settings › Local clones)` });
+        return;
+      }
+      const pr = listPrs({ [repo]: folder }).find((item) => item.number === number);
+      if (!pr) {
+        res.status(404).json({ ok: false, error: `No PR #${number} in ${repo}` });
+        return;
+      }
+      res.json({ ok: true, changes: await localBranches.getWorktreeChanges({ repo, folder, pr }) });
+    } catch (error) {
+      sendInternalError({ res, error });
+    }
+  });
+
   // { repo, number } - a worktree for the PR's branch beside the clone
   // (view-prs-local-checkout.js): { branch, worktreePath, how, already?,
   // warning?, output } - or { error, output }.

@@ -95,6 +95,35 @@ const parseBranches = (stdout, upstreams = new Map()) =>
       return { name, oid, remote: upstream.remote, remoteRef: upstream.remoteRef };
     });
 
+// git status --porcelain=v1 -z: "XY path" entries, NUL-separated - X the
+// index (staged), Y the folder; a rename or copy is followed by its old
+// path. => { staged, changed, untracked, conflicted, total, files: [{ path,
+// code }] } - a file staged and changed again counts as both; at most
+// maxFiles listed, all counted. Ignored files aren't asked for.
+const CONFLICT_CODES = new Set(["DD", "AU", "UD", "UA", "DU", "AA", "UU"]);
+const parseStatus = (stdout, maxFiles = 50) => {
+  const entries = String(stdout || "").split("\0");
+  const result = { staged: 0, changed: 0, untracked: 0, conflicted: 0, total: 0, files: [] };
+  for (let index = 0; index < entries.length; index += 1) {
+    const entry = entries[index];
+    if (entry.length < 4 || entry[2] !== " ") continue;
+    const code = entry.slice(0, 2);
+    const file = entry.slice(3);
+    // A rename or copy's old path comes next, as an entry of its own.
+    if (/[RC]/.test(code)) index += 1;
+    if (code === "!!") continue;
+    if (code === "??") result.untracked += 1;
+    else if (CONFLICT_CODES.has(code)) result.conflicted += 1;
+    else {
+      if (code[0] !== " ") result.staged += 1;
+      if (code[1] !== " ") result.changed += 1;
+    }
+    result.total += 1;
+    if (result.files.length < maxFiles) result.files.push({ path: file, code });
+  }
+  return result;
+};
+
 // Why git couldn't read a folder, from what it printed (a failed command
 // rejects with { error, stderr }): "Not a git repository", or git's own
 // words - such as a clone another user owns, which git refuses until it's
@@ -137,13 +166,16 @@ const createViewPrsLocalBranches = ({
   runCommand,
   fs,
   timeoutMs = 15000,
+  // git status reads every file's details: slower than the rest in a large
+  // worktree, the first time especially.
+  statusTimeoutMs = 45000,
   cacheMs = 10000,
   // How many ahead/behind counts run at once.
   concurrency = 4,
   now = () => Date.now(),
 }) => {
-  const git = async (folder, args) => {
-    const result = await runCommand("git", ["-C", folder, ...args], 8 * 1024 * 1024, { timeoutMs });
+  const git = async (folder, args, timeout = timeoutMs) => {
+    const result = await runCommand("git", ["-C", folder, ...args], 8 * 1024 * 1024, { timeoutMs: timeout });
     return String(result?.stdout || "");
   };
 
@@ -186,8 +218,39 @@ const createViewPrsLocalBranches = ({
       remotes,
       repoRemotes,
       branches: parseBranches(refs, upstreams),
-      worktrees: parseWorktrees(worktreeList).filter((worktree) => !worktree.bare),
+      worktrees: parseWorktrees(worktreeList)
+        .filter((worktree) => !worktree.bare)
+        .map((worktree) => (worktree.branch ? worktree : withRebasedBranch(worktree))),
     };
+  };
+
+  // A worktree mid-rebase (stopped on a conflict, or at an edit) is listed
+  // as detached, though its branch is still in use there - git won't check
+  // it out elsewhere. The branch is in the rebase's head-name, in the
+  // worktree's own git folder (.git, or the folder a linked worktree's .git
+  // file names): { ...worktree, branch, rebasing: true }, else as it was.
+  const withRebasedBranch = (worktree) => {
+    try {
+      const dotGit = path.join(worktree.path, ".git");
+      let gitDir = dotGit;
+      if (!fs.statSync(dotGit).isDirectory()) {
+        const named = String(fs.readFileSync(dotGit, "utf8")).match(/^gitdir:\s*(.+?)\s*$/m);
+        if (!named) return worktree;
+        gitDir = path.resolve(worktree.path, named[1]);
+      }
+      for (const folder of ["rebase-merge", "rebase-apply"]) {
+        let headName = "";
+        try {
+          headName = String(fs.readFileSync(path.join(gitDir, folder, "head-name"), "utf8")).trim();
+        } catch (_error) {
+          continue;
+        }
+        if (headName.startsWith("refs/heads/")) return { ...worktree, branch: headName.slice("refs/heads/".length), rebasing: true };
+      }
+    } catch (_error) {
+      // Its folder gone, or unreadable: detached, as listed.
+    }
+    return worktree;
   };
 
   // Kept a few seconds per repo and folder, and shared while being read.
@@ -270,6 +333,7 @@ const createViewPrsLocalBranches = ({
       branch: branch.name,
       oid: branch.oid,
       ...(worktree ? { worktreePath: worktree.path } : {}),
+      ...(worktree?.rebasing ? { rebasing: true } : {}),
       // Found by its name alone, tracking nothing: perhaps not the PR's.
       ...(branch.remote ? {} : { nameOnly: true }),
     };
@@ -421,7 +485,58 @@ const createViewPrsLocalBranches = ({
     return getClone(repo, folder);
   };
 
-  return { getLocalBranches, isOpenableFolder, checkClone, forgetClone, findClones, readCloneFresh, findPrBranch: findBranch };
+  // The uncommitted changes in the worktree the PR's local branch is checked
+  // out in (the pane's, one PR at a time: a git status is too slow for every
+  // row): { worktreePath, staged, changed, untracked, conflicted, total,
+  // files } - or { worktreePath, error } when git can't read it (its folder
+  // deleted without git worktree remove); null with no worktree for it, or
+  // no readable clone. The worktree is the clone's own, found by git, never
+  // a folder the page names. No optional locks: a status run alongside the
+  // user's own git (an editor's, a commit) doesn't take index.lock, so never
+  // makes theirs fail.
+  const getWorktreeChanges = async ({ repo, folder, pr }) => {
+    const clone = await getClone(repo, folder);
+    if (!clone.ok) return null;
+    const branch = findBranch(clone, pr);
+    const worktree = branch && clone.worktrees.find((item) => item.branch === branch.name);
+    if (!worktree) return null;
+    if (!fs.existsSync(worktree.path)) {
+      return { worktreePath: worktree.path, error: "Its folder is gone (deleted without git worktree remove; git worktree prune forgets it)" };
+    }
+    // One at a time per worktree: asks while one runs (the pane's minute
+    // and a focus at once, other tabs) share it, so a slow status never
+    // piles up.
+    const running = statusRuns.get(worktree.path);
+    if (running) return running;
+    const run = (async () => {
+      try {
+        const stdout = await git(worktree.path, ["--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=normal"], statusTimeoutMs);
+        return { worktreePath: worktree.path, ...parseStatus(stdout) };
+      } catch (failure) {
+        const message = String(failure?.message || failure?.error?.message || "");
+        const error = /timed out/i.test(message)
+          ? `git status took over ${Math.round(statusTimeoutMs / 1000)}s (a very large worktree, or one on a slow drive)`
+          : describeGitFailure(failure);
+        return { worktreePath: worktree.path, error };
+      } finally {
+        statusRuns.delete(worktree.path);
+      }
+    })();
+    statusRuns.set(worktree.path, run);
+    return run;
+  };
+  const statusRuns = new Map();
+
+  return { getLocalBranches, getWorktreeChanges, isOpenableFolder, checkClone, forgetClone, findClones, readCloneFresh, findPrBranch: findBranch };
 };
 
-module.exports = { createViewPrsLocalBranches, isForkPr, repoFromRemoteUrl, parseWorktrees, parseBranches, parseConfig, describeGitFailure };
+module.exports = {
+  createViewPrsLocalBranches,
+  isForkPr,
+  repoFromRemoteUrl,
+  parseWorktrees,
+  parseBranches,
+  parseConfig,
+  parseStatus,
+  describeGitFailure,
+};

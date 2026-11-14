@@ -18,7 +18,9 @@ const NAME_ONLY_NOTE = "It has the PR's branch's name but tracks no remote branc
 
 // The hover text: where it is, and what the count compares.
 const describeInDetail = (info: LocalBranchInfo) => {
-  const where = info.worktreePath ? `Checked out in ${info.worktreePath}` : 'Not checked out in a worktree';
+  const where = info.worktreePath
+    ? `Checked out in ${info.worktreePath}${info.rebasing ? ', a rebase in progress there (git rebase --continue or --abort)' : ''}`
+    : 'Not checked out in a worktree';
   const how = info.diverged
     ? "Its newest commit isn't one of the PR's, and the PR's newest isn't in the clone - fetch to compare."
     : info.exact === false
@@ -119,6 +121,119 @@ const useElapsedSeconds = (on: boolean) => {
   return seconds;
 };
 
+// The uncommitted changes in a PR's worktree (GET
+// /view-prs/local-branches/changes): counts, and the first files with git
+// status's two-letter code - or why git couldn't read it.
+export interface WorktreeChanges {
+  worktreePath: string;
+  staged?: number;
+  changed?: number;
+  untracked?: number;
+  conflicted?: number;
+  total?: number;
+  files?: { path: string; code: string }[];
+  error?: string;
+}
+
+const CHANGES_POLL_MS = 60 * 1000;
+
+/**
+ * The worktree's uncommitted changes, for the pane's one PR (a git status
+ * is too slow for every row): asked for when its worktree is known or the
+ * local branch changes, when the window's focused again (back from the
+ * editor) and every minute while the page shows. null until answered, and
+ * with no worktree. An answer for a PR the pane has moved on from is
+ * dropped.
+ */
+export const useWorktreeChanges = (repo: string, prNumber: string, worktreePath: string, branchOid: string, pollMs = CHANGES_POLL_MS) => {
+  const key = `${repo}#${prNumber}`;
+  const [answer, setAnswer] = useState<{ key: string; worktreePath: string; changes: WorktreeChanges | null } | null>(null);
+  useEffect(() => {
+    if (!worktreePath) return undefined;
+    let live = true;
+    const load = async () => {
+      try {
+        const query = new URLSearchParams({ repo, number: prNumber });
+        const response = await fetch(`/view-prs/local-branches/changes?${query}`, { cache: 'no-store' });
+        if (!response.ok) return;
+        const result = (await response.json()) as { changes?: WorktreeChanges | null };
+        if (!live) return;
+        const changes = result.changes || null;
+        setAnswer((previous) =>
+          previous?.key === key && previous.worktreePath === worktreePath && JSON.stringify(previous.changes) === JSON.stringify(changes)
+            ? previous
+            : { key, worktreePath, changes },
+        );
+      } catch (_error) {
+        // Next time.
+      }
+    };
+    void load();
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== 'hidden') void load();
+    }, pollMs);
+    const onFocus = () => void load();
+    window.addEventListener('focus', onFocus);
+    return () => {
+      live = false;
+      window.clearInterval(timer);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [key, repo, prNumber, worktreePath, branchOid, pollMs]);
+  return worktreePath && answer?.key === key && answer.worktreePath === worktreePath ? answer.changes : null;
+};
+
+// "2 staged, 1 changed, 3 new, 1 conflicted" - each count there is.
+export const describeWorktreeChanges = (changes: WorktreeChanges) =>
+  [
+    changes.conflicted ? `${changes.conflicted} conflicted` : '',
+    changes.staged ? `${changes.staged} staged` : '',
+    changes.changed ? `${changes.changed} changed` : '',
+    changes.untracked ? `${changes.untracked} new` : '',
+  ]
+    .filter(Boolean)
+    .join(', ');
+
+// The hover text: each file listed, as git status --short prints it.
+const listChangedFiles = (changes: WorktreeChanges) => {
+  const files = changes.files || [];
+  const more = (changes.total || 0) - files.length;
+  return [
+    `Not committed in ${changes.worktreePath}:`,
+    ...files.map((file) => `${file.code} ${file.path}`),
+    ...(more > 0 ? [`…and ${more} more`] : []),
+  ].join('\n');
+};
+
+/**
+ * The pane's line under "On this computer" for a worktree with uncommitted
+ * changes: what kinds, each file in its hover text - conflicts (a merge or
+ * rebase stopped part way) in the attention colour. Nothing when it's
+ * clean; "can't be read" with git's reason when it can't.
+ */
+function WorktreeChangesLine({ changes }: { changes: WorktreeChanges | null }) {
+  if (!changes) return null;
+  if (changes.error) {
+    return (
+      <p className="pr-pane-local pr-pane-local-changes">
+        <span className="pr-pane-local-text" title={`${changes.worktreePath}: ${changes.error}`}>
+          <Icon name="alert" size={12} />
+          The worktree can&apos;t be read
+        </span>
+      </p>
+    );
+  }
+  if (!changes.total) return null;
+  return (
+    <p className="pr-pane-local pr-pane-local-changes" data-tone={changes.conflicted ? 'attention' : undefined}>
+      <span className="pr-pane-local-text" title={listChangedFiles(changes)}>
+        <Icon name={changes.conflicted ? 'mergeConflict' : 'pencil'} size={12} />
+        Uncommitted: {describeWorktreeChanges(changes)}
+      </span>
+    </p>
+  );
+}
+
 // Text onto the clipboard: the Clipboard API, else - on a page that isn't a
 // secure context, as one opened from another computer over plain http
 // (VIEW_PRS_HOST), which has no navigator.clipboard - the older copy
@@ -216,7 +331,9 @@ function CopyCommandLine({ command, clone }: { command: string; clone: LocalRepo
  * command, or with git - its time shown while it runs, and what it printed
  * kept under the line when it failed or warned. An open PR whose count is
  * an estimate (or can't be told) has Fetch: the PR's branch fetched into
- * the clone (no files change), then checked again. One whose repo has no clone
+ * the clone (no files change), then checked again. A PR checked out in a
+ * worktree, merged and closed ones too, has a line under it for the
+ * worktree's uncommitted changes, when it has any. One whose repo has no clone
  * here is "Not on this computer", with Copy checkout command: plain git to
  * paste into a terminal in a clone of it.
  */
@@ -254,6 +371,9 @@ export function PrLocalBranchLine({
   const output = outputFor?.key === key ? outputFor.text : '';
   const worktreePath = info?.worktreePath || made?.worktreePath || '';
   const offerCheckOut = canCheckOut && Boolean(clone?.ok) && !worktreePath;
+  // Asked for once the server knows the worktree (a check after Check out),
+  // as it finds the worktree itself.
+  const changes = useWorktreeChanges(repo, prNumber, clone?.ok ? info?.worktreePath || '' : '', info?.oid || '');
   // The count's an estimate, or can't be told: the PR's newest commit isn't
   // in the clone - Fetch brings it (no files change).
   const offerFetch = canCheckOut && Boolean(clone?.ok) && Boolean(info && (info.exact === false || info.diverged));
@@ -350,6 +470,7 @@ export function PrLocalBranchLine({
             <>
               {' '}
               in <code className="pr-pane-local-path">{worktreePath}</code>
+              {info?.rebasing && ' · rebase in progress'}
             </>
           ) : (
             info && ' · not checked out'
@@ -379,6 +500,7 @@ export function PrLocalBranchLine({
           </Button>
         )}
       </p>
+      <WorktreeChangesLine changes={changes} />
       {output && (
         <details className="pr-pane-local-output">
           <summary>What the checkout printed</summary>

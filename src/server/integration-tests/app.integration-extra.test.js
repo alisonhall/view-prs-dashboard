@@ -841,6 +841,30 @@ describe("integration behavior", () => {
       expect(merged.status).toBe(409);
       expect(merged.body.error).toBe("#5 is merged or closed");
     });
+
+    test("Uncommitted changes: the PR's worktree's, a merged PR's too; not known, or without a clone, is refused", async () => {
+      expect((await request.get("/view-prs/local-branches/changes?repo=owner/repo&number=5")).status).toBe(404);
+      await request.put("/view-prs/local-repos").send({ repo: "owner/repo", path: clone });
+      expect((await request.get("/local-branches/changes?repo=owner/repo&number=99")).status).toBe(404);
+      const clean = await request.get("/view-prs/local-branches/changes?repo=owner/repo&number=5");
+      expect(clean.body).toEqual({ ok: true, changes: expect.objectContaining({ total: 0, files: [] }) });
+      expect(fs.realpathSync.native(clean.body.changes.worktreePath)).toBe(fs.realpathSync.native(worktree));
+
+      const file = path.join(worktree, "notes.txt");
+      fs.writeFileSync(file, "work in progress\n");
+      try {
+        writeViewPrsData({
+          byPrNumber: {
+            5: { prNumber: "5", repo: "owner/repo", section: "merged", data: { number: "5", sourceBranch: "feature", mergedAt: "2026-11-01T00:00:00Z" } },
+          },
+          lastRun: null,
+        });
+        const res = await request.get("/view-prs/local-branches/changes?repo=owner/repo&number=5");
+        expect(res.body.changes).toEqual(expect.objectContaining({ untracked: 1, total: 1, files: [{ path: "notes.txt", code: "??" }] }));
+      } finally {
+        fs.rmSync(file, { force: true });
+      }
+    });
   });
 
   describe("GET /pr-description", () => {

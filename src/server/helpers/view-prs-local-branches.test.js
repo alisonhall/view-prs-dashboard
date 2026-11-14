@@ -2,7 +2,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { execFile, execFileSync } = require("child_process");
-const { createViewPrsLocalBranches, repoFromRemoteUrl, parseWorktrees, describeGitFailure } = require("./view-prs-local-branches");
+const { createViewPrsLocalBranches, repoFromRemoteUrl, parseWorktrees, parseStatus, describeGitFailure } = require("./view-prs-local-branches");
 
 // A real clone of acme/app in a temp folder: main with two commits, and
 // branches as a developer would have them.
@@ -289,5 +289,167 @@ describe("each PR's local branch", () => {
       { path: "/b", head: "2", branch: "", bare: false },
       { path: "/c", head: "", branch: "", bare: true },
     ]);
+  });
+});
+
+describe("the uncommitted changes in a PR's worktree", () => {
+  let root;
+  let clone;
+  let tree;
+  beforeAll(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), "local-changes-"));
+    clone = path.join(root, "app");
+    tree = path.join(root, "app-feature");
+    fs.mkdirSync(clone);
+    git(clone, "init", "-q");
+    git(clone, "remote", "add", "origin", "git@github.com:acme/app.git");
+    fs.writeFileSync(path.join(clone, "a.txt"), "a\n");
+    fs.writeFileSync(path.join(clone, "b.txt"), "b\n");
+    git(clone, "add", ".");
+    git(clone, "commit", "-q", "-m", "base");
+    git(clone, "branch", "feature");
+    track(clone, "feature", "origin", "refs/heads/feature");
+    git(clone, "branch", "clean");
+    track(clone, "clean", "origin", "refs/heads/clean");
+    git(clone, "branch", "elsewhere");
+    track(clone, "elsewhere", "origin", "refs/heads/elsewhere");
+    git(clone, "worktree", "add", "-q", tree, "feature");
+    git(clone, "worktree", "add", "-q", path.join(root, "app-clean"), "clean");
+    git(clone, "worktree", "add", "-q", "-b", "gone", path.join(root, "app-gone"));
+    track(clone, "gone", "origin", "refs/heads/gone");
+    fs.rmSync(path.join(root, "app-gone"), { recursive: true, force: true });
+    // a.txt staged, then changed again; b.txt renamed (staged); two new
+    // files in a new folder, which git lists as the folder alone; one new
+    // file at the top.
+    fs.writeFileSync(path.join(tree, "a.txt"), "a2\n");
+    git(tree, "add", "a.txt");
+    fs.writeFileSync(path.join(tree, "a.txt"), "a3\n");
+    git(tree, "mv", "b.txt", "c.txt");
+    fs.mkdirSync(path.join(tree, "new"));
+    fs.writeFileSync(path.join(tree, "new", "x.txt"), "x\n");
+    fs.writeFileSync(path.join(tree, "new", "y.txt"), "y\n");
+    fs.writeFileSync(path.join(tree, "d.txt"), "d\n");
+    // rebasing: its worktree's rebase onto main stopped on a conflict in
+    // a.txt - git lists the worktree as detached.
+    git(clone, "branch", "rebasing");
+    track(clone, "rebasing", "origin", "refs/heads/rebasing");
+    const rebasingTree = path.join(root, "app-rebasing");
+    git(clone, "worktree", "add", "-q", rebasingTree, "rebasing");
+    fs.writeFileSync(path.join(rebasingTree, "a.txt"), "theirs\n");
+    git(rebasingTree, "commit", "-q", "-am", "theirs");
+    fs.writeFileSync(path.join(clone, "a.txt"), "ours\n");
+    git(clone, "commit", "-q", "-am", "ours");
+    expect(() =>
+      execFileSync("git", ["-c", "user.name=Test", "-c", "user.email=test@example.com", "rebase", "main"], { cwd: rebasingTree, stdio: "ignore" }),
+    ).toThrow();
+  });
+  afterAll(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  const pr = (branch) => ({ key: `acme/app#1`, repo: "acme/app", number: "1", branch, headOid: "", crossRepository: false, commitOids: [] });
+  const changesOf = (branch, runCommand = run) =>
+    createViewPrsLocalBranches({ runCommand, fs }).getWorktreeChanges({ repo: "acme/app", folder: clone, pr: pr(branch) });
+
+  test("counts what's staged, changed and new - a file staged and changed again as both, a rename once, a new folder once", async () => {
+    const changes = await changesOf("feature");
+    expect(changes).toEqual({
+      worktreePath: expect.any(String),
+      staged: 2,
+      changed: 1,
+      untracked: 2,
+      conflicted: 0,
+      total: 4,
+      files: expect.arrayContaining([
+        { path: "a.txt", code: "MM" },
+        { path: "c.txt", code: "R " },
+        { path: "new/", code: "??" },
+        { path: "d.txt", code: "??" },
+      ]),
+    });
+    expect(fs.realpathSync.native(changes.worktreePath)).toBe(fs.realpathSync.native(tree));
+  });
+
+  test("a clean worktree has nothing; a branch not checked out, or no local branch for the PR, has no answer", async () => {
+    expect(await changesOf("clean")).toMatchObject({ staged: 0, changed: 0, untracked: 0, conflicted: 0, total: 0, files: [] });
+    expect(await changesOf("elsewhere")).toBeNull();
+    expect(await changesOf("no-such-branch")).toBeNull();
+  });
+
+  test("a worktree whose folder was deleted says so", async () => {
+    expect(await changesOf("gone")).toEqual({ worktreePath: expect.any(String), error: expect.stringMatching(/^Its folder is gone/) });
+  });
+
+  test("never takes the index's lock, so the user's own git isn't made to fail", async () => {
+    const runCommand = jest.fn(run);
+    await changesOf("feature", runCommand);
+    const status = runCommand.mock.calls.map(([, args]) => args).find((args) => args.includes("status"));
+    expect(status.indexOf("--no-optional-locks")).toBeLessThan(status.indexOf("status"));
+  });
+
+  test("a worktree stopped mid-rebase is still its branch's: checked out there, rebasing, its conflicts counted", async () => {
+    const helper = createViewPrsLocalBranches({ runCommand: run, fs });
+    const { prs } = await helper.getLocalBranches({ localRepos: { "acme/app": clone }, prs: [pr("rebasing")] });
+    expect(prs["acme/app#1"]).toEqual(expect.objectContaining({ branch: "rebasing", rebasing: true }));
+    expect(fs.realpathSync.native(prs["acme/app#1"].worktreePath)).toBe(fs.realpathSync.native(path.join(root, "app-rebasing")));
+    expect(await changesOf("rebasing")).toEqual(expect.objectContaining({ conflicted: 1, files: [{ path: "a.txt", code: "UU" }] }));
+    // A worktree not rebasing isn't marked.
+    const { prs: others } = await helper.getLocalBranches({ localRepos: { "acme/app": clone }, prs: [pr("feature")] });
+    expect(others["acme/app#1"].rebasing).toBeUndefined();
+  });
+
+  test("asks at once share one git status; one that takes too long says so", async () => {
+    let finish = () => {};
+    let statusStarted = () => {};
+    const started = new Promise((resolve) => (statusStarted = resolve));
+    const runCommand = jest.fn(async (command, args, ...rest) => {
+      if (args.includes("status")) {
+        const held = new Promise((resolve) => (finish = resolve));
+        statusStarted();
+        await held;
+      }
+      return run(command, args, ...rest);
+    });
+    const helper = createViewPrsLocalBranches({ runCommand, fs });
+    const ask = () => helper.getWorktreeChanges({ repo: "acme/app", folder: clone, pr: pr("feature") });
+    const first = ask();
+    // The second asks while the first's status is running.
+    await started;
+    const second = ask();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    finish();
+    expect(await second).toEqual(await first);
+    expect(runCommand.mock.calls.filter(([, args]) => args.includes("status"))).toHaveLength(1);
+
+    const slow = createViewPrsLocalBranches({
+      fs,
+      statusTimeoutMs: 45000,
+      runCommand: async (command, args, ...rest) => {
+        if (args.includes("status")) throw new Error("Command timed out after 45s");
+        return run(command, args, ...rest);
+      },
+    });
+    expect(await slow.getWorktreeChanges({ repo: "acme/app", folder: clone, pr: pr("feature") })).toEqual({
+      worktreePath: expect.any(String),
+      error: "git status took over 45s (a very large worktree, or one on a slow drive)",
+    });
+  });
+
+  test("status lines: conflicts counted apart, ignored files left out, at most so many listed but all counted", () => {
+    const stdout = ["UU both.txt", "AA added.txt", "!! ignored.log", "R  new.txt", "old.txt", " M x.txt", "?? y.txt", ""].join("\0");
+    expect(parseStatus(stdout)).toEqual({
+      staged: 1,
+      changed: 1,
+      untracked: 1,
+      conflicted: 2,
+      total: 5,
+      files: [
+        { path: "both.txt", code: "UU" },
+        { path: "added.txt", code: "AA" },
+        { path: "new.txt", code: "R " },
+        { path: "x.txt", code: " M" },
+        { path: "y.txt", code: "??" },
+      ],
+    });
+    expect(parseStatus(stdout, 2)).toMatchObject({ total: 5, files: [{ path: "both.txt" }, { path: "added.txt" }] });
+    expect(parseStatus("")).toEqual({ staged: 0, changed: 0, untracked: 0, conflicted: 0, total: 0, files: [] });
   });
 });

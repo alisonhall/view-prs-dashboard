@@ -31,6 +31,8 @@ export interface LocalBranchInfo {
   branch: string;
   oid: string;
   worktreePath?: string;
+  // Its worktree is mid-rebase (stopped on a conflict, or at an edit).
+  rebasing?: boolean;
   ahead?: number;
   behind?: number;
   exact?: boolean;

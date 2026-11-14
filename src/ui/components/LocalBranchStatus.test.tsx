@@ -17,7 +17,13 @@ let plans: Record<string, unknown>;
 let openAnswer: { status: number; body: Record<string, unknown> };
 let checkoutAnswer: { status: number; body: Record<string, unknown> };
 let fetchAnswer: { status: number; body: Record<string, unknown> };
+// Each PR's worktree's uncommitted changes, by its number.
+let changesFor: Record<string, unknown>;
 const fetchMock = jest.fn(async (url: string, _init?: RequestInit) => {
+  if (url.startsWith('/view-prs/local-branches/changes?')) {
+    const number = new URLSearchParams(url.split('?')[1]).get('number') || '';
+    return { ok: true, status: 200, json: async () => ({ ok: true, changes: changesFor[number] ?? null }) };
+  }
   if (url === '/view-prs/open-in-editor') return { ok: openAnswer.status < 400, status: openAnswer.status, json: async () => openAnswer.body };
   if (url === '/view-prs/local-branches/fetch') {
     return { ok: fetchAnswer.status < 400, status: fetchAnswer.status, json: async () => fetchAnswer.body };
@@ -35,6 +41,7 @@ beforeEach(() => {
   openAnswer = { status: 200, body: { ok: true } };
   checkoutAnswer = { status: 200, body: { ok: true, branch: 'feature/z', worktreePath: 'D:/work/feature_z', how: 'git' } };
   fetchAnswer = { status: 200, body: { ok: true, remote: 'origin', ref: 'refs/heads/feature/e' } };
+  changesFor = {};
   showError.mockClear();
   showWarning.mockClear();
   fetchMock.mockClear();
@@ -358,6 +365,97 @@ describe('a PR’s local branch', () => {
     await user.click(screen.getByRole('button', { name: 'Check out' }));
     await waitFor(() => expect(showWarning).toHaveBeenCalledWith('Checked out, but…', 'The after-command failed: oops'));
     expect(screen.getByText('D:/work/pr-9')).toBeInTheDocument();
+  });
+
+  test("a worktree's uncommitted changes are under the pane's line, each file on hover; nothing when clean or not checked out", async () => {
+    changesFor = {
+      7: {
+        worktreePath: 'D:/work/x',
+        staged: 1,
+        changed: 2,
+        untracked: 1,
+        conflicted: 0,
+        total: 4,
+        files: [
+          { path: 'a.ts', code: 'MM' },
+          { path: 'b.ts', code: ' M' },
+          { path: 'new/', code: '??' },
+        ],
+      },
+    };
+    const { rerender } = renderWith(
+      <>
+        <PrLocalBranchLine repo="acme/app" prNumber="7" />
+        <PrLocalBranchLine repo="acme/app" prNumber="8" />
+      </>,
+    );
+    const line = await screen.findByText(/Uncommitted: 1 staged, 2 changed, 1 new/);
+    expect(line.getAttribute('title')).toBe(['Not committed in D:/work/x:', 'MM a.ts', ' M b.ts', '?? new/', '…and 1 more'].join('\n'));
+    expect(line.closest('p')).not.toHaveAttribute('data-tone');
+    const asked = () => fetchMock.mock.calls.map(([url]) => url).filter((url) => url.startsWith('/view-prs/local-branches/changes?'));
+    // Only the PR checked out in a worktree is asked about.
+    expect(asked()).toEqual(['/view-prs/local-branches/changes?repo=acme%2Fapp&number=7']);
+
+    // Back from the editor, committed: the line goes.
+    changesFor = { 7: { worktreePath: 'D:/work/x', staged: 0, changed: 0, untracked: 0, conflicted: 0, total: 0, files: [] } };
+    window.dispatchEvent(new Event('focus'));
+    await waitFor(() => expect(screen.queryByText(/Uncommitted/)).not.toBeInTheDocument());
+    expect(asked().length).toBeGreaterThan(1);
+
+    // A merge stopped part way: conflicts, in the attention colour.
+    changesFor = { 7: { worktreePath: 'D:/work/x', staged: 0, changed: 0, untracked: 0, conflicted: 2, total: 2, files: [] } };
+    window.dispatchEvent(new Event('focus'));
+    expect((await screen.findByText(/Uncommitted: 2 conflicted/)).closest('p')).toHaveAttribute('data-tone', 'attention');
+
+    // Its folder deleted: can't be read, with why on hover.
+    changesFor = { 7: { worktreePath: 'D:/work/x', error: 'Its folder is gone' } };
+    window.dispatchEvent(new Event('focus'));
+    expect(await screen.findByText(/The worktree can't be read/)).toHaveAttribute('title', 'D:/work/x: Its folder is gone');
+    rerender(
+      <SnackbarContext.Provider value={{ showError, showWarning } as unknown as SnackbarValue}>
+        <LocalBranchesProvider>
+          <PrLocalBranchLine repo="acme/app" prNumber="8" />
+        </LocalBranchesProvider>
+      </SnackbarContext.Provider>,
+    );
+    expect(screen.queryByText(/The worktree can't be read/)).not.toBeInTheDocument();
+  });
+
+  test('a worktree mid-rebase says so in the pane, and how to finish on hover', async () => {
+    localBranches = { 'acme/app#7': { ...PRS['acme/app#7'], rebasing: true } };
+    renderWith(<PrLocalBranchLine repo="acme/app" prNumber="7" canCheckOut />);
+    const text = await screen.findByText(/· rebase in progress/);
+    expect(text.closest('[title]')?.getAttribute('title')).toContain('a rebase in progress there (git rebase --continue or --abort)');
+    expect(screen.queryByRole('button', { name: 'Check out' })).not.toBeInTheDocument();
+  });
+
+  test("the pane moved on to another PR shows nothing of the last one's changes, even when its answer comes late", async () => {
+    localBranches = { ...PRS, 'acme/app#11': { branch: 'feature/w', oid: '99999997654321', worktreePath: 'D:/work/w', ahead: 0, behind: 0, exact: true } };
+    let answerLate: () => void = () => {};
+    const shown = { worktreePath: 'D:/work/x', staged: 0, changed: 1, untracked: 0, conflicted: 0, total: 1, files: [{ path: 'x.ts', code: ' M' }] };
+    changesFor = { 7: shown };
+    const realFetch = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url.includes('/changes?') && url.endsWith('number=7')) await new Promise<void>((resolve) => (answerLate = resolve));
+      return realFetch(url, init);
+    });
+    try {
+      const pane = (number: string) => (
+        <SnackbarContext.Provider value={{ showError, showWarning } as unknown as SnackbarValue}>
+          <LocalBranchesProvider>
+            <PrLocalBranchLine key="pane" repo="acme/app" prNumber={number} />
+          </LocalBranchesProvider>
+        </SnackbarContext.Provider>
+      );
+      const { rerender } = render(pane('7'));
+      expect(await screen.findByText('D:/work/x')).toBeInTheDocument();
+      rerender(pane('11'));
+      expect(await screen.findByText('D:/work/w')).toBeInTheDocument();
+      await act(async () => answerLate());
+      expect(screen.queryByText(/Uncommitted/)).not.toBeInTheDocument();
+    } finally {
+      fetchMock.mockImplementation(realFetch);
+    }
   });
 
   test('a check asked for while one is running (a clone just saved) runs once that one is done', async () => {
