@@ -3,7 +3,7 @@ const request = require("supertest");
 const appModule = require("../app.js");
 appModule.getDependencyStatus = () => ({ ok: true, missing: [] });
 const { createViewPrsApp } = appModule;
-const { createRequestOriginGuard, isLoopbackHostname } = require("../helpers/request-origin-guard");
+const { createRequestOriginGuard, isLoopbackHostname, isLoopbackAddress } = require("../helpers/request-origin-guard");
 
 // Other sites' pages can't use the server through the browser: not by
 // posting a form or a bodiless fetch to it, and not by pointing their own
@@ -106,6 +106,13 @@ describe("createRequestOriginGuard", () => {
     );
     ["0.0.0.0", "192.168.0.5", "evil.example", "localhost.evil.example", ""].forEach((name) =>
       expect(isLoopbackHostname(name)).toBe(false),
+    );
+  });
+
+  test("a connection from this computer: its loopback addresses, IPv4, IPv6 or IPv4 as IPv6", () => {
+    ["127.0.0.1", "127.1.2.3", "::1", "::ffff:127.0.0.1"].forEach((address) => expect(isLoopbackAddress(address)).toBe(true));
+    ["192.168.0.5", "::ffff:192.168.0.5", "10.0.0.127", "fe80::1", "", undefined].forEach((address) =>
+      expect(isLoopbackAddress(address)).toBe(false),
     );
   });
 });

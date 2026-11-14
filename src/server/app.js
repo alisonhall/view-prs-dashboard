@@ -47,6 +47,7 @@ const {
 const { registerViewPrsSourcesRoutes } = require("./routes/view-prs-sources-routes");
 const { registerViewPrsLocalBranchesRoutes } = require("./routes/view-prs-local-branches-routes");
 const { createViewPrsLocalBranches } = require("./helpers/view-prs-local-branches");
+const { createViewPrsLocalCheckout } = require("./helpers/view-prs-local-checkout");
 const {
   isViewPrsFixtureRow,
   parseTimestamp,
@@ -93,7 +94,7 @@ const { createAppConfig } = require("./config/app-config");
 const { createFileIoHelpers } = require("./helpers/file-io-helpers");
 const { createCommandExecutionHelpers, describeFailure } = require("./helpers/command-execution-helpers");
 const { createSchedulerHelpers } = require("./helpers/scheduler-helpers");
-const { createRequestOriginGuard, isLoopbackHostname } = require("./helpers/request-origin-guard");
+const { createRequestOriginGuard, isLoopbackHostname, isLoopbackAddress } = require("./helpers/request-origin-guard");
 const { createViewPrsSourcesStorage } = require("./storage/view-prs-sources-storage");
 const { createViewPrsLocalReposStorage } = require("./storage/view-prs-local-repos-storage");
 
@@ -510,6 +511,7 @@ const viewPrsLocalReposStorage = createViewPrsLocalReposStorage({
   isRepoSlug,
 });
 const viewPrsLocalBranches = createViewPrsLocalBranches({ runCommand: callRunViewPrsCommand, fs });
+const viewPrsLocalCheckout = createViewPrsLocalCheckout({ runCommand: callRunViewPrsCommand, fs, localBranches: viewPrsLocalBranches });
 
 // Opens a folder in the code editor: VS Code's `code` command, a .cmd file
 // on Windows, so started through cmd there (the folder quoted; one with a
@@ -4196,6 +4198,9 @@ const createViewPrsApp = ({ production = isProductionEnv } = {}) => {
     isRepoSlug,
     readViewPrsRows: () => Object.values(readVisibleViewPrsData()?.byPrNumber || {}),
     openInEditor: (...args) => (module.exports.openFolderInEditor || openFolderInEditor)(...args),
+    checkOut: (...args) => viewPrsLocalCheckout.checkOut(...args),
+    // Overridable, as a test's requests always come from this computer.
+    isFromThisComputer: (req) => (module.exports.isFromThisComputer || ((r) => isLoopbackAddress(r.socket?.remoteAddress)))(req),
     // Overridable, as a test can't move the real home folder.
     homeDir: () => (module.exports.homeDir || require("os").homedir)(),
   });

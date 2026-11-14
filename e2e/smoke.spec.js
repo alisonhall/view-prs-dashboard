@@ -1007,7 +1007,7 @@ test("the detail pane's Description tab shows the PR's description, rendered fro
   expect(attachments[0]).toEqual([asset, "octocat/hello-world", "2"]);
 });
 
-test("Settings › Local clones finds and saves a repo's clone, and each PR with a local branch shows how far behind it is, with Open in editor", async ({ page }) => {
+test("Settings › Local clones finds and saves a repo's clone and how to check out its PRs; each PR with a local branch shows how far behind it is, with Check out and Open in editor", async ({ page }) => {
   // A real clone of the fixture's repo, for the server's git checks.
   const { execFileSync } = require("child_process");
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "e2e-clone-"));
@@ -1016,12 +1016,22 @@ test("Settings › Local clones finds and saves a repo's clone, and each PR with
   git("remote", "add", "origin", "https://github.com/octocat/hello-world.git");
   git("commit", "--allow-empty", "-q", "-m", "base");
   // What the server finds of each PR's branch would come from the PRs'
-  // head commits, which the fixture doesn't have: given here. And the
-  // editor isn't really opened.
+  // head commits, which the fixture doesn't have: given here - not checked
+  // out until Check out. Nothing is really checked out, nor the editor
+  // opened.
+  let checkedOut = false;
   await page.route("**/view-prs/local-branches", async (route) => {
     const json = await (await route.fetch()).json();
-    json.prs = { "octocat/hello-world#2": { branch: "feature/two", oid: "abc1234def", worktreePath: root, ahead: 0, behind: 2, exact: true } };
+    json.prs = {
+      "octocat/hello-world#2": { branch: "feature/two", oid: "abc1234def", ...(checkedOut ? { worktreePath: root } : {}), ahead: 0, behind: 2, exact: true },
+    };
     return route.fulfill({ json });
+  });
+  const checkouts = [];
+  await page.route("**/view-prs/local-branches/checkout", (route) => {
+    checkouts.push(route.request().postDataJSON());
+    checkedOut = true;
+    return route.fulfill({ json: { ok: true, branch: "feature/two", worktreePath: root, how: "command", output: "" } });
   });
   const opened = [];
   await page.route("**/view-prs/open-in-editor", (route) => {
@@ -1043,6 +1053,14 @@ test("Settings › Local clones finds and saves a repo's clone, and each PR with
     await drawer.getByRole("button", { name: `Use ${root} for octocat/hello-world` }).click();
     await expect(drawer.getByText("1 branch, 1 worktree", { exact: true })).toBeVisible();
     await expect(field).toHaveValue(root);
+    // Its PRs checked out with the user's own command.
+    await drawer.getByText("Check out PRs with git", { exact: true }).click();
+    await drawer.getByLabel("Checkout command", { exact: true }).fill("my-checkout {branch}");
+    await drawer.getByLabel("Variables", { exact: true }).fill("MY_SETTING=1");
+    await drawer.getByRole("button", { name: "Save how to check out octocat/hello-world's PRs" }).click();
+    await expect(drawer.getByText("my-checkout {branch}", { exact: true })).toBeVisible();
+    const saved = await (await page.request.get("/view-prs/local-repos")).json();
+    expect(saved.repos["octocat/hello-world"].checkout).toEqual({ command: "my-checkout {branch}", env: { MY_SETTING: "1" } });
     await closeSettings(page);
 
     const openSection = prSection(page, "Open PRs");
@@ -1053,7 +1071,16 @@ test("Settings › Local clones finds and saves a repo's clone, and each PR with
     await summaryToggleFor(openSection, 2).click();
     await openSection.getByRole("button", { name: "Show details for PR #2", exact: true }).click();
     const pane = detailPane(page);
-    await expect(pane.getByText(/On this computer:/)).toContainText("feature/two · 2 behind");
+    await expect(pane.getByText(/On this computer:/)).toContainText("feature/two · 2 behind · not checked out");
+    await expect(pane.getByRole("button", { name: "Check out", exact: true })).toHaveAttribute(
+      "title",
+      // A local branch the clone has: git checks it out as it is, not the repo's command.
+      "A worktree for your branch feature/two as it is (2 behind), with git - the PR's newer commits aren't fetched",
+    );
+    await pane.getByRole("button", { name: "Check out", exact: true }).click();
+    await expect(pane.getByText(/On this computer:/)).toContainText(`feature/two · 2 behind in ${root}`);
+    expect(checkouts).toEqual([{ repo: "octocat/hello-world", number: "2" }]);
+    await expect(pane.getByRole("button", { name: "Check out", exact: true })).toHaveCount(0);
     await pane.getByRole("button", { name: "Open in editor", exact: true }).click();
     await expect.poll(() => opened).toEqual([{ repo: "octocat/hello-world", path: root }]);
   } finally {

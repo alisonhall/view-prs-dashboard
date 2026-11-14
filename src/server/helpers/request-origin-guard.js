@@ -19,6 +19,13 @@ const isLoopbackHostname = (hostname) => {
   return LOOPBACK_HOSTNAMES.has(normalized) || normalized.endsWith(".localhost");
 };
 
+// Whether a connection's address is this computer's own (IPv4, IPv6, or
+// IPv4 as IPv6).
+const isLoopbackAddress = (address) => {
+  const normalized = String(address || "").trim().toLowerCase().replace(/^::ffff:/, "");
+  return normalized === "::1" || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(normalized);
+};
+
 // The hostname of a Host header ("localhost:9000", "[::1]:9000").
 const hostnameOfHostHeader = (hostHeader) => {
   try {
@@ -56,4 +63,4 @@ const createRequestOriginGuard = ({ allowAnyHost = false } = {}) =>
     res.status(403).json({ ok: false, error: "Requests from other sites aren't allowed" });
   };
 
-module.exports = { createRequestOriginGuard, isLoopbackHostname };
+module.exports = { createRequestOriginGuard, isLoopbackHostname, isLoopbackAddress };

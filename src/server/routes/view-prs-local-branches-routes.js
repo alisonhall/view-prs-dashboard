@@ -1,5 +1,6 @@
 const os = require("os");
 const path = require("path");
+const { checkCheckoutSettings } = require("../storage/view-prs-local-repos-storage");
 
 // This computer's clones of the repos (Settings › Local clones) and what
 // they have of each PR's branch (view-prs-local-branches.js).
@@ -12,8 +13,13 @@ const registerViewPrsLocalBranchesRoutes = ({
   readViewPrsRows,
   // (folder) => resolves once the editor is started, rejects with why not.
   openInEditor,
+  // view-prs-local-checkout.js's checkOut.
+  checkOut,
   sendInternalError = ({ res, error }) => res.status(500).json({ ok: false, error: error?.message || String(error) }),
   homeDir = () => os.homedir(),
+  // (req) => whether the request came from this computer, not the network
+  // (VIEW_PRS_HOST).
+  isFromThisComputer = () => true,
 }) => {
   // Each PR the server can look for locally: its branch, head commit and
   // commits, from its row.
@@ -31,6 +37,8 @@ const registerViewPrsLocalBranchesRoutes = ({
           branch: String(data.sourceBranch || ""),
           targetBranch: String(data.targetBranch || ""),
           headOid: String(data.headOid || ""),
+          // Merged or closed: nothing to check out.
+          done: Boolean(data.mergedAt || data.closedAt),
           crossRepository: data.crossRepository === true,
           commitOids: commits.map((commit) => String(commit?.oid || "")).filter(Boolean),
         };
@@ -47,7 +55,14 @@ const registerViewPrsLocalBranchesRoutes = ({
     return /^~(?=$|[\\/])/.test(folder) ? path.join(homeDir(), folder.slice(1)) : folder;
   };
 
-  const reposStatus = async () => (await localBranches.getLocalBranches({ localRepos: localReposStorage.loadLocalRepos(), prs: [] })).repos;
+  // Each clone's state, with its checkout settings.
+  const reposStatus = async () => {
+    const entries = localReposStorage.loadLocalRepoEntries();
+    const { repos } = await localBranches.getLocalBranches({ localRepos: localReposStorage.loadLocalRepos(), prs: [] });
+    return Object.fromEntries(
+      Object.entries(repos).map(([repo, status]) => [repo, entries[repo]?.checkout ? { ...status, checkout: entries[repo].checkout } : status]),
+    );
+  };
 
   // { repos: repo => { path, ok, error?, branchCount, worktreeCount } }.
   app.get(["/local-repos", "/view-prs/local-repos"], async (_req, res) => {
@@ -58,7 +73,7 @@ const registerViewPrsLocalBranchesRoutes = ({
     }
   });
 
-  // { folder, repos } - the clones of those repos in the folder (up to two
+  // { folder, repos } - the clones of those repos in the folder (up to three
   // levels down), to choose from: { found: [{ repo, path }] }. Saves nothing.
   app.post(["/local-repos/find", "/view-prs/local-repos/find"], async (req, res) => {
     const folder = cleanFolder(req.body?.folder);
@@ -105,6 +120,34 @@ const registerViewPrsLocalBranchesRoutes = ({
     }
   });
 
+  // { repo, checkout } - how the pane's Check out makes a worktree for the
+  // repo's PRs (view-prs-local-checkout.js): { command?, forks?, after?,
+  // folder?, env? }, or null for plain git.
+  // Only from this computer: the commands are run on it, as the user, so
+  // with the server opened to the network (no sign-in), anyone who could
+  // reach it could otherwise run anything there.
+  app.put(["/local-repos/checkout", "/view-prs/local-repos/checkout"], async (req, res) => {
+    if (!isFromThisComputer(req)) {
+      res.status(403).json({ ok: false, error: "Checkout settings can only be changed on this computer" });
+      return;
+    }
+    const repo = String(req.body?.repo || "").trim();
+    const { checkout, error } = checkCheckoutSettings(req.body?.checkout);
+    if (error) {
+      res.status(400).json({ ok: false, error });
+      return;
+    }
+    try {
+      if (!localReposStorage.setLocalRepoCheckout(repo, checkout)) {
+        res.status(404).json({ ok: false, error: `Save ${repo}'s clone first` });
+        return;
+      }
+      res.json({ ok: true, repos: await reposStatus() });
+    } catch (caught) {
+      sendInternalError({ res, error: caught });
+    }
+  });
+
   // { repo } - forgets its clone's folder.
   app.delete(["/local-repos", "/view-prs/local-repos"], async (req, res) => {
     const repo = String(req.body?.repo || "").trim();
@@ -131,6 +174,38 @@ const registerViewPrsLocalBranchesRoutes = ({
       const result = await localBranches.getLocalBranches({ localRepos, prs: listPrs(localRepos) });
       res.json({ ok: true, ...result });
     } catch (error) {
+      sendInternalError({ res, error });
+    }
+  });
+
+  // { repo, number } - a worktree for the PR's branch beside the clone
+  // (view-prs-local-checkout.js): { branch, worktreePath, how, already?,
+  // warning?, output } - or { error, output }.
+  app.post(["/local-branches/checkout", "/view-prs/local-branches/checkout"], async (req, res) => {
+    const repo = String(req.body?.repo || "").trim();
+    const number = String(req.body?.number || "").trim();
+    try {
+      const entry = localReposStorage.loadLocalRepoEntries()[repo];
+      if (!entry) {
+        res.status(404).json({ ok: false, error: `No clone of ${repo} saved (Settings › Local clones)` });
+        return;
+      }
+      const pr = listPrs({ [repo]: entry.path }).find((item) => item.number === number);
+      if (!pr) {
+        res.status(404).json({ ok: false, error: `No PR #${number} in ${repo}` });
+        return;
+      }
+      if (pr.done) {
+        res.status(409).json({ ok: false, error: `#${number} is merged or closed` });
+        return;
+      }
+      const result = await checkOut({ repo, cloneFolder: entry.path, settings: entry.checkout || null, pr });
+      res.json({ ok: true, ...result });
+    } catch (error) {
+      if (error?.status) {
+        res.status(error.status).json({ ok: false, error: error.message, output: error.output || "" });
+        return;
+      }
       sendInternalError({ res, error });
     }
   });

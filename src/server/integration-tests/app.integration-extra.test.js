@@ -721,6 +721,73 @@ describe("integration behavior", () => {
       expect((await request.post("/view-prs/open-in-editor").send({ repo: "other/repo", path: clone })).status).toBe(400);
       expect(opened).toEqual([worktree, clone]);
     });
+
+    test("a repo's checkout settings: saved as given, kept when the clone's folder is saved again; one that can't work refused, saying why", async () => {
+      await request.put("/view-prs/local-repos").send({ repo: "owner/repo", path: clone });
+      const settings = {
+        command: "my-tool add {branch}",
+        forks: true,
+        after: "my-tool link {local}",
+        folder: "../{branch}",
+        env: { MY_DEV_BRANCH: "develop", MY_LINKS: ".env .cache" },
+      };
+      const saved = await request.put("/view-prs/local-repos/checkout").send({ repo: "owner/repo", checkout: settings });
+      expect(saved.status).toBe(200);
+      expect(saved.body.repos["owner/repo"].checkout).toEqual(settings);
+      await request.put("/view-prs/local-repos").send({ repo: "owner/repo", path: clone });
+      expect((await request.get("/view-prs/local-repos")).body.repos["owner/repo"].checkout).toEqual(settings);
+
+      // Forks' PRs only with a command; nothing set is plain git.
+      const afterOnly = await request.put("/view-prs/local-repos/checkout").send({ repo: "owner/repo", checkout: { command: " ", forks: true, after: "npm ci" } });
+      expect(afterOnly.body.repos["owner/repo"].checkout).toEqual({ after: "npm ci" });
+      const cleared = await request.put("/view-prs/local-repos/checkout").send({ repo: "owner/repo", checkout: { command: "", env: {} } });
+      expect(cleared.body.repos["owner/repo"].checkout).toBeUndefined();
+
+      const refused = async (checkout) => {
+        const res = await request.put("/view-prs/local-repos/checkout").send({ repo: "owner/repo", checkout });
+        expect(res.status).toBe(400);
+        return res.body.error;
+      };
+      expect(await refused({ command: "a\nb" })).toBe("The checkout command should be one line");
+      expect(await refused({ folder: "../trees" })).toBe("The worktree folder needs {branch} in it, so each PR's branch has its own");
+      expect(await refused({ env: { "MY-NAME": "x" } })).toBe("Not a variable's name: MY-NAME");
+      expect(await refused({ env: { VIEW_PRS_BRANCH: "x" } })).toBe("VIEW_PRS_BRANCH: VIEW_PRS_ variables are the dashboard's own");
+      expect(await refused({ env: { MY_LINKS: "a\nb" } })).toBe("MY_LINKS's value should be one line");
+      expect((await request.put("/view-prs/local-repos/checkout").send({ repo: "other/repo", checkout: settings })).status).toBe(404);
+    });
+
+    test("checkout settings - commands run on this computer - can't be changed from the network", async () => {
+      await request.put("/view-prs/local-repos").send({ repo: "owner/repo", path: clone });
+      appModule.isFromThisComputer = () => false;
+      try {
+        const res = await request.put("/view-prs/local-repos/checkout").send({ repo: "owner/repo", checkout: { command: "anything" } });
+        expect(res.status).toBe(403);
+        expect(res.body.error).toBe("Checkout settings can only be changed on this computer");
+      } finally {
+        delete appModule.isFromThisComputer;
+      }
+      expect((await request.get("/view-prs/local-repos")).body.repos["owner/repo"].checkout).toBeUndefined();
+    });
+
+    test("Check out: a PR already checked out answers with its worktree; one merged or closed, or not known, or without a clone, is refused", async () => {
+      expect((await request.post("/view-prs/local-branches/checkout").send({ repo: "owner/repo", number: "5" })).status).toBe(404);
+      await request.put("/view-prs/local-repos").send({ repo: "owner/repo", path: clone });
+      const res = await request.post("/view-prs/local-branches/checkout").send({ repo: "owner/repo", number: "5" });
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual(expect.objectContaining({ ok: true, already: true, branch: "feature" }));
+      expect(fs.realpathSync.native(res.body.worktreePath)).toBe(fs.realpathSync.native(worktree));
+      expect((await request.post("/local-branches/checkout").send({ repo: "owner/repo", number: "99" })).status).toBe(404);
+
+      writeViewPrsData({
+        byPrNumber: {
+          5: { prNumber: "5", repo: "owner/repo", section: "merged", data: { number: "5", sourceBranch: "feature", mergedAt: "2026-11-01T00:00:00Z" } },
+        },
+        lastRun: null,
+      });
+      const merged = await request.post("/view-prs/local-branches/checkout").send({ repo: "owner/repo", number: "5" });
+      expect(merged.status).toBe(409);
+      expect(merged.body.error).toBe("#5 is merged or closed");
+    });
   });
 
   describe("GET /pr-description", () => {

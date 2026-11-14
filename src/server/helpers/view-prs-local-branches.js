@@ -332,14 +332,16 @@ const createViewPrsLocalBranches = ({
   };
 
   // Clones in a folder, for Settings › Local clones' Find: the folder
-  // itself and the folders up to three levels down (a wt layout grouped by
-  // owner: <folder>/<owner>/<repo>/main) - not inside a clone, a
-  // hidden folder or node_modules, and at most maxFolders looked in. A
+  // itself and the folders up to three levels down (worktrees kept beside
+  // a main folder, grouped by owner: <folder>/<owner>/<repo>/main) - not
+  // inside a clone, a hidden folder or node_modules, and at most
+  // maxFolders looked in. A
   // clone is a folder with a .git folder; one whose .git is a file is a
   // worktree, whose clone is found too - except a folder named main, which
-  // in wt's bare-repo layout is where the clone is used from. Each is
+  // in the common bare-repo layout (a .bare folder with a main worktree
+  // beside the others) is where the clone is used from. Each is
   // offered for the repos in `repos` one of its remotes is.
-  // => { ok, found: [{ repo, path }] } - per repo, a wt layout's main folder
+  // => { ok, found: [{ repo, path }] } - per repo, a folder named main
   // first, then by path - or { ok: false, error }.
   const SKIPPED_FOLDERS = new Set(["node_modules", "vendor", "dist", "build", "coverage"]);
   const findClones = async ({ folder, repos, maxDepth = 3, maxFolders = 2000 }) => {
@@ -405,7 +407,13 @@ const createViewPrsLocalBranches = ({
     return { ok: true, found, ...(looked >= maxFolders ? { truncated: true } : {}) };
   };
 
-  return { getLocalBranches, isOpenableFolder, checkClone, forgetClone, findClones };
+  // The clone read afresh, for a checkout (view-prs-local-checkout.js).
+  const readCloneFresh = (repo, folder) => {
+    forgetClone(repo);
+    return getClone(repo, folder);
+  };
+
+  return { getLocalBranches, isOpenableFolder, checkClone, forgetClone, findClones, readCloneFresh, findPrBranch: findBranch };
 };
 
 module.exports = { createViewPrsLocalBranches, repoFromRemoteUrl, parseWorktrees, parseBranches, parseConfig, describeGitFailure };

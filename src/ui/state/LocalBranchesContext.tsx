@@ -8,6 +8,19 @@ export interface LocalRepoStatus {
   error?: string;
   branchCount?: number;
   worktreeCount?: number;
+  // How Check out makes a PR's worktree; plain git without.
+  checkout?: LocalRepoCheckout;
+}
+
+// The user's own checkout command instead of git (forks: for forks' PRs
+// too), a command run in a worktree git made, the folder pattern for git's
+// worktrees, and variables given to the commands.
+export interface LocalRepoCheckout {
+  command?: string;
+  forks?: boolean;
+  after?: string;
+  folder?: string;
+  env?: Record<string, string>;
 }
 
 // What this computer has of a PR's branch (GET /view-prs/local-branches):

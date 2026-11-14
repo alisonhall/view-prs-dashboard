@@ -36,6 +36,17 @@ const fetchMock = jest.fn(async (url: string, init: RequestInit = {}) => {
       }),
     };
   }
+  if (url === '/view-prs/local-repos/checkout') {
+    if (body.checkout.folder === '../trees') {
+      return { ok: false, status: 400, json: async () => ({ ok: false, error: 'The worktree folder needs {branch} in it' }) };
+    }
+    // As the server keeps them: only what's set.
+    const kept = Object.fromEntries(
+      Object.entries(body.checkout as Record<string, unknown>).filter(([, value]) => value && (typeof value !== 'object' || Object.keys(value).length > 0)),
+    );
+    const { checkout: _dropped, ...rest } = saved[body.repo] as Record<string, unknown>;
+    saved = { ...saved, [body.repo]: Object.keys(kept).length > 0 ? { ...rest, checkout: kept } : rest };
+  }
   if (url === '/view-prs/local-repos' && method === 'DELETE') {
     const { [body.repo]: _dropped, ...rest } = saved;
     saved = rest;
@@ -138,6 +149,71 @@ describe('Settings › Local clones', () => {
     await user.click(await screen.findByRole('button', { name: 'Use all (3)' }));
     await waitFor(() => expect(screen.getByLabelText('acme/api')).toHaveValue('D:/code/api'));
     expect(requests.filter((request) => request.method === 'PUT').map((request) => (request.body as { repo: string }).repo)).toEqual(['acme/a-b', 'acme/api', 'acme/app']);
+  });
+
+  test("a repo's Check out: git by default, or the user's own command - for forks' PRs too if asked - with an after-command, a folder and variables", async () => {
+    saved = { 'acme/app': { path: 'D:/code/app/main', ok: true, branchCount: 1, worktreeCount: 1 } };
+    const user = userEvent.setup();
+    renderSection();
+    await user.click(await screen.findByText('Check out PRs with git'));
+    expect(screen.getByLabelText('Checkout command')).toHaveValue('');
+    const forks = screen.getByLabelText(/Use it for forks' PRs too/);
+    expect(forks).toBeDisabled();
+
+    await user.type(screen.getByLabelText('Checkout command'), 'my-tool add {{branch}');
+    await user.click(forks);
+    await user.type(screen.getByLabelText('After git makes a worktree, run'), 'my-tool link {{local}');
+    await user.type(screen.getByLabelText("Folder for git's worktrees"), '../{{branch}');
+    await user.type(screen.getByLabelText('Variables'), 'export MY_DEV_BRANCH="develop"{Enter}# a note{Enter}MY_LINKS=.env .cache');
+    await user.click(screen.getByRole('button', { name: "Save how to check out acme/app's PRs" }));
+    expect(await screen.findByText('my-tool add {branch}')).toBeInTheDocument();
+    expect(requests.find((request) => request.url === '/view-prs/local-repos/checkout')?.body).toEqual({
+      repo: 'acme/app',
+      checkout: {
+        command: 'my-tool add {branch}',
+        forks: true,
+        after: 'my-tool link {local}',
+        folder: '../{branch}',
+        env: { MY_DEV_BRANCH: 'develop', MY_LINKS: '.env .cache' },
+      },
+    });
+
+    // Not NAME=value: said so, nothing sent.
+    requests.length = 0;
+    await user.type(screen.getByLabelText('Variables'), '{Enter}not a setting');
+    await user.click(screen.getByRole('button', { name: "Save how to check out acme/app's PRs" }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Not NAME=value: not a setting');
+    expect(requests).toHaveLength(0);
+
+    // Back to git: no command, so not for forks either.
+    await user.clear(screen.getByLabelText('Variables'));
+    await user.clear(screen.getByLabelText('Checkout command'));
+    await user.click(screen.getByRole('button', { name: "Save how to check out acme/app's PRs" }));
+    expect(await screen.findByText('Check out PRs with git')).toBeInTheDocument();
+    expect((requests.at(-1)?.body as { checkout: { forks: boolean } }).checkout.forks).toBe(false);
+  });
+
+  test("a repo's checkout settings copied from another's; one the server refuses says why", async () => {
+    saved = {
+      'acme/app': { path: 'D:/code/app/main', ok: true, branchCount: 1, worktreeCount: 1, checkout: { command: 'app-tool add {branch}', env: { MY_X: '1' } } },
+      'acme/api': { path: 'D:/code/api/main', ok: true, branchCount: 1, worktreeCount: 1 },
+    };
+    const user = userEvent.setup();
+    renderSection();
+    await user.click(await screen.findByText('Check out PRs with git'));
+    const save = screen.getByRole('button', { name: "Save how to check out acme/api's PRs" });
+    const form = within(save.closest('form') as HTMLElement);
+    // The only other repo with settings: acme/app (none to copy from in its own).
+    const copy = form.getByLabelText('Copy from');
+    expect(within(copy).getAllByRole('option').map((option) => option.textContent)).toEqual(["Another repo's settings…", 'acme/app']);
+    expect(screen.getAllByLabelText('Copy from')).toHaveLength(1);
+    await user.selectOptions(copy, 'acme/app');
+    expect(form.getByLabelText('Checkout command')).toHaveValue('app-tool add {branch}');
+    expect(form.getByLabelText('Variables')).toHaveValue('MY_X=1');
+
+    await user.type(form.getByLabelText("Folder for git's worktrees"), '../trees');
+    await user.click(save);
+    expect(await form.findByRole('alert')).toHaveTextContent('The worktree folder needs {branch} in it');
   });
 
   test("Remove forgets a repo's folder", async () => {

@@ -311,7 +311,12 @@ function PaneContent({
             </span>
           )}
         </p>
-        <PrLocalBranchLine repo={repo} prNumber={String(prNumber)} />
+        <PrLocalBranchLine
+          repo={repo}
+          prNumber={String(prNumber)}
+          canCheckOut={!pr.mergedAt && !pr.closedAt}
+          isFork={pr.crossRepository === true || (Boolean(sourceBranch) && sourceBranch === targetBranch)}
+        />
       </header>
 
       <div className="pr-pane-actions" role="group" aria-label="Actions">

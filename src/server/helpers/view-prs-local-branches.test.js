@@ -226,16 +226,16 @@ describe("each PR's local branch", () => {
       tree = path.join(root, "sites");
       cloneAt("app", "acme/app");
       cloneAt("group/api", "acme/api");
-      // wt's layout: the clone in main, a branch's worktree beside it.
+      // A clone in main, a branch's worktree beside it.
       const web = cloneAt("web/main", "acme/web");
       git(web, "worktree", "add", "-q", "-b", "feature/x", path.join(tree, "web", "feature_x"));
-      // wt's bare-repo layout: main is a worktree of .bare.
+      // The bare-repo layout: main is a worktree of .bare.
       const bare = path.join(tree, "docs");
       fs.mkdirSync(bare);
       git(bare, "clone", "-q", "--bare", path.join(tree, "app"), ".bare");
       git(path.join(bare, ".bare"), "remote", "set-url", "origin", "git@github.com:acme/docs.git");
       git(path.join(bare, ".bare"), "worktree", "add", "-q", path.join(bare, "main"));
-      // wt's layout grouped by owner, three levels down.
+      // That layout grouped by owner, three levels down.
       cloneAt("acme/tools/main", "acme/tools");
       // Not looked in: too deep, node_modules, hidden; and a repo not asked for.
       cloneAt("a/b/c/deep", "acme/deep");
@@ -244,7 +244,7 @@ describe("each PR's local branch", () => {
       cloneAt("other", "someone/else");
     });
 
-    test("finds the clones of the repos asked for, up to three levels down - a wt layout's main folder, not its worktrees", async () => {
+    test("finds the clones of the repos asked for, up to three levels down - a main folder, not the worktrees beside it", async () => {
       const helper = createViewPrsLocalBranches({ runCommand: run, fs });
       const repos = ["acme/app", "acme/api", "acme/web", "acme/docs", "acme/tools", "acme/deep", "acme/dep", "acme/secret", "ACME/Missing"];
       const result = await helper.findClones({ folder: tree, repos });
