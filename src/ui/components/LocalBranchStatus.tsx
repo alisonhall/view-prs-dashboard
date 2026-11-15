@@ -240,6 +240,20 @@ const listChangedFiles = (changes: WorktreeChanges) => {
 };
 
 /**
+ * Whether Pull can fast-forward the PR's local branch: behind, nothing
+ * ahead, not differing, tracking the PR's branch (not found by its name
+ * alone), no rebase under way - and, checked out, its uncommitted changes
+ * known and none (new files are fine: git stops if the pull would overwrite
+ * one). changes: the worktree's, or undefined for a branch not checked out.
+ */
+export const canPull = (info: LocalBranchInfo | null | undefined, changes: WorktreeChanges | null | undefined) => {
+  if (!info || info.nameOnly || info.diverged || info.rebasing) return false;
+  if ((info.ahead || 0) > 0 || !((info.behind || 0) > 0)) return false;
+  if (!info.worktreePath) return true;
+  return Boolean(changes && !changes.error && !changes.staged && !changes.changed && !changes.conflicted);
+};
+
+/**
  * The pane's line under "On this computer" for a worktree with uncommitted
  * changes: what kinds, each file in its hover text - conflicts (a merge or
  * rebase stopped part way) in the attention colour. Nothing when it's
@@ -365,7 +379,9 @@ function CopyCommandLine({ command, clone }: { command: string; clone: LocalRepo
  * command, or with git - its time shown while it runs, and what it printed
  * kept under the line when it failed or warned. An open PR whose count is
  * an estimate (or can't be told) has Fetch: the PR's branch fetched into
- * the clone (no files change), then checked again. A PR checked out in a
+ * the clone (no files change), then checked again. One behind with nothing
+ * ahead and no uncommitted changes has Pull: fast-forwarded, after asking.
+ * A PR checked out in a
  * worktree, merged and closed ones too, has a line under it for the
  * worktree's uncommitted changes, when it has any. One whose repo has no clone
  * here is "Not on this computer", with Copy checkout command: plain git to
@@ -398,6 +414,7 @@ export function PrLocalBranchLine({
   const [opening, setOpening] = useState(false);
   const [checkingOut, setCheckingOut] = useState(false);
   const [fetching, setFetching] = useState(false);
+  const [pulling, setPulling] = useState(false);
   const elapsed = useElapsedSeconds(checkingOut);
   // The worktree just made, until the next check shows it - and what a
   // checkout that failed or warned printed - this PR's only, should the
@@ -414,6 +431,13 @@ export function PrLocalBranchLine({
   // The count's an estimate, or can't be told: the PR's newest commit isn't
   // in the clone - Fetch brings it (no files change).
   const offerFetch = canCheckOut && Boolean(clone?.ok) && Boolean(info && (info.exact === false || info.diverged));
+  // Behind, nothing ahead, a branch tracking the PR's - and, checked out,
+  // no uncommitted changes (once they're known; new files are fine) and no
+  // rebase under way: Pull fast-forwards it, after asking.
+  const offerPull =
+    canCheckOut &&
+    Boolean(clone?.ok) &&
+    canPull(info, info?.worktreePath ? changes : undefined);
   // No clone here to check it out in (none saved, or it can't be read): the
   // commands to paste into a terminal in one, wherever it is - once the
   // server has said which clones there are.
@@ -456,6 +480,37 @@ export function PrLocalBranchLine({
       showError("Couldn't fetch the PR's branch", caught instanceof Error ? caught.message : String(caught));
     } finally {
       setFetching(false);
+    }
+  };
+
+  const pull = async () => {
+    if (!info) return;
+    const behind = `${info.behind}${info.exact === false ? '+' : ''}`;
+    const where = info.worktreePath ? ` in ${info.worktreePath}` : '';
+    if (
+      !window.confirm(
+        `Pull ${behind} commit${info.behind === 1 && info.exact !== false ? '' : 's'} into ${info.branch}${where}?\n\nFast-forward only: the PR's branch is fetched, then ${
+          info.worktreePath ? 'git merge --ff-only' : 'the branch moved to it'
+        } - nothing of yours is changed or lost, and it stops if the branch has commits the PR doesn't.`,
+      )
+    ) {
+      return;
+    }
+    setPulling(true);
+    try {
+      const { response, result } = await postJson<{ ok?: boolean; error?: string; output?: string }>('/view-prs/local-branches/pull', {
+        repo,
+        number: prNumber,
+      });
+      if (!response.ok || result.ok === false) {
+        showError("Couldn't pull", [result.error || `HTTP ${response.status}`, lastLines(result.output)].filter(Boolean).join('\n'));
+        return;
+      }
+      refresh();
+    } catch (caught) {
+      showError("Couldn't pull", caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setPulling(false);
     }
   };
 
@@ -520,6 +575,15 @@ export function PrLocalBranchLine({
             onClick={() => void fetchBranch()}
           >
             {fetching ? 'Fetching…' : 'Fetch'}
+          </Button>
+        )}
+        {offerPull && (
+          <Button
+            disabled={pulling}
+            title="Fast-forward the branch to the PR's - asks first; only with nothing ahead and no uncommitted changes"
+            onClick={() => void pull()}
+          >
+            {pulling ? 'Pulling…' : 'Pull'}
           </Button>
         )}
         {worktreePath && (

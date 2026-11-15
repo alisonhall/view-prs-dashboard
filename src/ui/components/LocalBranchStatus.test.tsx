@@ -5,7 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { LocalBranchesProvider, describeLocalBranch, useLocalBranches } from '../state/LocalBranchesContext';
 import { SnackbarContext, type SnackbarValue } from '../state/SnackbarContext';
 import { renderHook } from '@testing-library/react';
-import { PrLocalBranchChip, PrLocalBranchLine, describeCheckOut, useIsYourPr } from './LocalBranchStatus';
+import { PrLocalBranchChip, PrLocalBranchLine, canPull, describeCheckOut, useIsYourPr } from './LocalBranchStatus';
 
 const PRS = {
   'acme/app#7': { branch: 'feature/x', oid: 'abcdef1234567', worktreePath: 'D:/work/x', ahead: 0, behind: 2, exact: true },
@@ -18,6 +18,7 @@ let plans: Record<string, unknown>;
 let openAnswer: { status: number; body: Record<string, unknown> };
 let checkoutAnswer: { status: number; body: Record<string, unknown> };
 let fetchAnswer: { status: number; body: Record<string, unknown> };
+let pullAnswer: { status: number; body: Record<string, unknown> };
 // Each PR's worktree's uncommitted changes, by its number.
 let changesFor: Record<string, unknown>;
 const fetchMock = jest.fn(async (url: string, _init?: RequestInit) => {
@@ -26,6 +27,9 @@ const fetchMock = jest.fn(async (url: string, _init?: RequestInit) => {
     return { ok: true, status: 200, json: async () => ({ ok: true, changes: changesFor[number] ?? null }) };
   }
   if (url === '/view-prs/open-in-editor') return { ok: openAnswer.status < 400, status: openAnswer.status, json: async () => openAnswer.body };
+  if (url === '/view-prs/local-branches/pull') {
+    return { ok: pullAnswer.status < 400, status: pullAnswer.status, json: async () => pullAnswer.body };
+  }
   if (url === '/view-prs/local-branches/fetch') {
     return { ok: fetchAnswer.status < 400, status: fetchAnswer.status, json: async () => fetchAnswer.body };
   }
@@ -43,6 +47,7 @@ beforeEach(() => {
   checkoutAnswer = { status: 200, body: { ok: true, branch: 'feature/z', worktreePath: 'D:/work/feature_z', how: 'git' } };
   fetchAnswer = { status: 200, body: { ok: true, remote: 'origin', ref: 'refs/heads/feature/e' } };
   changesFor = {};
+  pullAnswer = { status: 200, body: { ok: true, branch: 'feature/x', from: 'a', to: 'b', commits: 2 } };
   showError.mockClear();
   showWarning.mockClear();
   fetchMock.mockClear();
@@ -515,6 +520,69 @@ describe('a PR’s local branch', () => {
     } finally {
       fetchMock.mockImplementation(realFetch);
     }
+  });
+
+  test('Pull only when behind with nothing ahead, tracking the PR\'s branch, no rebase - and, checked out, no uncommitted changes known', () => {
+    const base = { branch: 'b', oid: 'o', ahead: 0, behind: 2, exact: true };
+    const clean = { worktreePath: 'D:/w', staged: 0, changed: 0, untracked: 3, conflicted: 0, total: 3, files: [] };
+    expect(canPull(base, undefined)).toBe(true);
+    expect(canPull({ ...base, exact: false }, undefined)).toBe(true);
+    expect(canPull({ ...base, worktreePath: 'D:/w' }, clean)).toBe(true);
+    // Its changes not known yet, or some staged, changed or conflicted.
+    expect(canPull({ ...base, worktreePath: 'D:/w' }, null)).toBe(false);
+    expect(canPull({ ...base, worktreePath: 'D:/w' }, { ...clean, changed: 1 })).toBe(false);
+    expect(canPull({ ...base, worktreePath: 'D:/w' }, { ...clean, staged: 1 })).toBe(false);
+    expect(canPull({ ...base, worktreePath: 'D:/w' }, { ...clean, conflicted: 1 })).toBe(false);
+    expect(canPull({ ...base, worktreePath: 'D:/w' }, { worktreePath: 'D:/w', error: 'gone' })).toBe(false);
+    for (const info of [
+      { ...base, ahead: 1 },
+      { ...base, behind: 0 },
+      { ...base, diverged: true },
+      { ...base, nameOnly: true },
+      { ...base, rebasing: true },
+    ]) {
+      expect(canPull(info, undefined)).toBe(false);
+    }
+    expect(canPull(null, undefined)).toBe(false);
+  });
+
+  test('Pull asks first, then fast-forwards and checks again; says why when it can\'t; not offered with uncommitted changes', async () => {
+    changesFor = { 7: { worktreePath: 'D:/work/x', staged: 0, changed: 0, untracked: 0, conflicted: 0, total: 0, files: [] } };
+    const confirm = jest.spyOn(window, 'confirm').mockReturnValue(false);
+    try {
+      const user = userEvent.setup();
+      renderWith(<PrLocalBranchLine repo="acme/app" prNumber="7" canCheckOut />);
+      const button = await screen.findByRole('button', { name: 'Pull' });
+      const pulls = () => fetchMock.mock.calls.filter(([url]) => url === '/view-prs/local-branches/pull');
+      await user.click(button);
+      expect(confirm).toHaveBeenCalledWith(expect.stringMatching(/^Pull 2 commits into feature\/x in D:\/work\/x\?\n\nFast-forward only/));
+      expect(pulls()).toHaveLength(0);
+
+      confirm.mockReturnValue(true);
+      const checks = () => fetchMock.mock.calls.filter(([url]) => url === '/view-prs/local-branches').length;
+      const before = checks();
+      await user.click(button);
+      await waitFor(() => expect(pulls()).toHaveLength(1));
+      expect(JSON.parse(String(pulls()[0]?.[1]?.body))).toEqual({ repo: 'acme/app', number: '7' });
+      await waitFor(() => expect(checks()).toBeGreaterThan(before));
+
+      pullAnswer = { status: 409, body: { ok: false, error: 'Uncommitted changes in D:/work/x - commit or stash them first' } };
+      await user.click(screen.getByRole('button', { name: 'Pull' }));
+      await waitFor(() => expect(showError).toHaveBeenCalledWith("Couldn't pull", 'Uncommitted changes in D:/work/x - commit or stash them first'));
+
+      // A change made since: no Pull.
+      changesFor = { 7: { worktreePath: 'D:/work/x', staged: 0, changed: 1, untracked: 0, conflicted: 0, total: 1, files: [] } };
+      window.dispatchEvent(new Event('focus'));
+      await waitFor(() => expect(screen.queryByRole('button', { name: 'Pull' })).not.toBeInTheDocument());
+    } finally {
+      confirm.mockRestore();
+    }
+  });
+
+  test('a merged or closed PR has no Pull', async () => {
+    renderWith(<PrLocalBranchLine repo="acme/app" prNumber="7" />);
+    expect(await screen.findByText('D:/work/x')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Pull' })).not.toBeInTheDocument();
   });
 
   test('a check asked for while one is running (a clone just saved) runs once that one is done', async () => {

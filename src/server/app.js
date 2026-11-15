@@ -4200,6 +4200,7 @@ const createViewPrsApp = ({ production = isProductionEnv } = {}) => {
     openInEditor: (...args) => (module.exports.openFolderInEditor || openFolderInEditor)(...args),
     checkOut: (...args) => viewPrsLocalCheckout.checkOut(...args),
     fetchPr: (...args) => viewPrsLocalCheckout.fetchPr(...args),
+    pullPr: (...args) => viewPrsLocalCheckout.pullPr(...args),
     checkCommands: (...args) => viewPrsLocalCheckout.checkCommands(...args),
     // Overridable, as a test's requests always come from this computer.
     isFromThisComputer: (req) => (module.exports.isFromThisComputer || ((r) => isLoopbackAddress(r.socket?.remoteAddress)))(req),

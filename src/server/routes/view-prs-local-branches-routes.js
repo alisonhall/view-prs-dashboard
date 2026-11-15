@@ -15,9 +15,10 @@ const registerViewPrsLocalBranchesRoutes = ({
   readViewPrsRows,
   // (folder) => resolves once the editor is started, rejects with why not.
   openInEditor,
-  // view-prs-local-checkout.js's checkOut, fetchPr and checkCommands.
+  // view-prs-local-checkout.js's checkOut, fetchPr, pullPr and checkCommands.
   checkOut,
   fetchPr,
+  pullPr,
   checkCommands,
   sendInternalError = ({ res, error }) => res.status(500).json({ ok: false, error: error?.message || String(error) }),
   homeDir = () => os.homedir(),
@@ -299,6 +300,38 @@ const registerViewPrsLocalBranchesRoutes = ({
         return;
       }
       res.json({ ok: true, ...(await fetchPr({ repo, cloneFolder: entry.path, pr })) });
+    } catch (error) {
+      if (error?.status) {
+        res.status(error.status).json({ ok: false, error: error.message, output: error.output || "" });
+        return;
+      }
+      sendInternalError({ res, error });
+    }
+  });
+
+  // { repo, number } - the PR's local branch fast-forwarded to the PR's
+  // branch (view-prs-local-checkout.js' pullPr; the pane asks first):
+  // { branch, from, to, commits, worktreePath?, already? } - or { error }.
+  // Open PRs only, as Check out and Fetch.
+  app.post(["/local-branches/pull", "/view-prs/local-branches/pull"], async (req, res) => {
+    const repo = String(req.body?.repo || "").trim();
+    const number = String(req.body?.number || "").trim();
+    try {
+      const entry = localReposStorage.loadLocalRepoEntries()[repo];
+      if (!entry) {
+        res.status(404).json({ ok: false, error: `No clone of ${repo} saved (Settings › Local clones)` });
+        return;
+      }
+      const pr = listPrs({ [repo]: entry.path }).find((item) => item.number === number);
+      if (!pr) {
+        res.status(404).json({ ok: false, error: `No PR #${number} in ${repo}` });
+        return;
+      }
+      if (pr.done) {
+        res.status(409).json({ ok: false, error: `#${number} is merged or closed` });
+        return;
+      }
+      res.json({ ok: true, ...(await pullPr({ repo, cloneFolder: entry.path, pr })) });
     } catch (error) {
       if (error?.status) {
         res.status(error.status).json({ ok: false, error: error.message, output: error.output || "" });

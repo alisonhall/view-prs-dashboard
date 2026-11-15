@@ -405,7 +405,7 @@ describe("checking out a PR into a worktree", () => {
     expect(commandNameOf("")).toBe("");
   });
 
-  test("one checkout or fetch at a time per clone", async () => {
+  test("one checkout, fetch or pull at a time per clone", async () => {
     const clone = freshClone();
     let release;
     const held = new Promise((resolve) => {
@@ -433,6 +433,11 @@ describe("checking out a PR into a worktree", () => {
     const fetching = other.fetchPr({ repo: "acme/app", cloneFolder: clone, pr: pr() });
     await new Promise((resolve) => setTimeout(resolve, 200));
     await expect(other.checkOut({ repo: "acme/app", cloneFolder: clone, settings: null, pr: pr() })).rejects.toMatchObject({ status: 409 });
+    // And a pull.
+    await expect(other.pullPr({ repo: "acme/app", cloneFolder: clone, pr: pr() })).rejects.toMatchObject({
+      status: 409,
+      message: "A checkout, fetch or pull in acme/app's clone is already running",
+    });
     releaseFetch();
     await expect(fetching).resolves.toEqual(expect.objectContaining({ remote: "origin" }));
   });
@@ -508,6 +513,78 @@ describe("checking out a PR into a worktree", () => {
         message: expect.stringMatching(/^git fetch failed: couldn't find remote ref/),
       });
       await expect(checkout.fetchPr({ repo: "acme/app", cloneFolder: clone, pr: pr({ branch: "" }) })).rejects.toMatchObject({ status: 422 });
+    });
+  });
+
+  describe("Pull: the PR's local branch fast-forwarded to the PR's branch", () => {
+    // As Fetch's: a local branch tracking a branch the remote has moved on
+    // since, a commit behind - here checked out in a worktree, or not.
+    const movedOn = (name, { worktree = true } = {}) => {
+      const seed = path.join(root, "seed");
+      git(seed, "push", "-q", remote, `${oids.feature}:refs/heads/${name}`);
+      const clone = freshClone();
+      git(clone, "branch", "-q", "--track", name, `origin/${name}`);
+      const tree = path.join(path.dirname(clone), folderNameFor(name));
+      if (worktree) git(clone, "worktree", "add", "-q", tree, name);
+      git(seed, "checkout", "-q", "--detach", oids.feature);
+      const head = commit(seed, `more on ${name}`);
+      git(seed, "push", "-q", remote, `${head}:refs/heads/${name}`);
+      git(seed, "checkout", "-q", "main");
+      return { clone, tree, head };
+    };
+    const rowFor = (name, head) => ({ number: "4", branch: name, targetBranch: "main", crossRepository: false, headOid: head, commitOids: [oids.feature, head] });
+
+    test("in its worktree: fast-forwarded to the PR's newest commit, then up to date - a new file there doesn't stop it", async () => {
+      const { clone, tree, head } = movedOn("feature/p");
+      fs.writeFileSync(path.join(tree, "notes.txt"), "mine\n");
+      const { localBranches, checkout } = setUp();
+      const result = await checkout.pullPr({ repo: "acme/app", cloneFolder: clone, pr: rowFor("feature/p", head) });
+      expect(result).toEqual({ branch: "feature/p", from: oids.feature, to: head, commits: 1, worktreePath: expect.any(String) });
+      samePath(result.worktreePath, tree);
+      expect(git(tree, "rev-parse", "HEAD")).toBe(head);
+      expect(fs.readFileSync(path.join(tree, "notes.txt"), "utf8")).toBe("mine\n");
+      const { prs } = await localBranches.getLocalBranches({ localRepos: { "acme/app": clone }, prs: [{ key: "k", repo: "acme/app", ...rowFor("feature/p", head) }] });
+      expect(prs.k).toMatchObject({ ahead: 0, behind: 0, exact: true });
+      // Again: nothing to do.
+      expect(await checkout.pullPr({ repo: "acme/app", cloneFolder: clone, pr: rowFor("feature/p", head) })).toMatchObject({ already: true, commits: 0 });
+    });
+
+    test("a branch not checked out has its ref moved, no files touched", async () => {
+      const { clone, head } = movedOn("feature/q", { worktree: false });
+      const { checkout } = setUp();
+      const result = await checkout.pullPr({ repo: "acme/app", cloneFolder: clone, pr: rowFor("feature/q", head) });
+      expect(result).toEqual({ branch: "feature/q", from: oids.feature, to: head, commits: 1 });
+      expect(git(clone, "rev-parse", "refs/heads/feature/q")).toBe(head);
+      expect(git(clone, "status", "--porcelain")).toBe("");
+    });
+
+    test("refused, nothing changed: uncommitted changes, commits of its own, no local branch, or one tracking nothing", async () => {
+      const { clone, tree, head } = movedOn("feature/r");
+      const { checkout } = setUp();
+      const pull = (row) => checkout.pullPr({ repo: "acme/app", cloneFolder: clone, pr: row });
+      // A change staged in the worktree.
+      fs.writeFileSync(path.join(tree, "staged.txt"), "x\n");
+      git(tree, "add", "staged.txt");
+      await expect(pull(rowFor("feature/r", head))).rejects.toMatchObject({
+        status: 409,
+        message: expect.stringMatching(/^Uncommitted changes in .* - commit or stash them first$/),
+      });
+      expect(git(tree, "rev-parse", "HEAD")).toBe(oids.feature);
+      // Committed: now a commit the PR's branch doesn't have.
+      git(tree, "commit", "-q", "-m", "mine");
+      const mine = git(tree, "rev-parse", "HEAD");
+      await expect(pull(rowFor("feature/r", head))).rejects.toMatchObject({
+        status: 409,
+        message: "feature/r has commits refs/heads/feature/r on origin doesn't, so it can't be fast-forwarded - nothing was changed (merge or rebase it yourself)",
+      });
+      expect(git(tree, "rev-parse", "HEAD")).toBe(mine);
+      await expect(pull(rowFor("no/branch", head))).rejects.toMatchObject({ status: 409, message: "No local branch for #4 in acme/app's clone" });
+      // Same name, tracking nothing: perhaps not the PR's.
+      git(clone, "branch", "-q", "lonely", oids.base);
+      await expect(pull(rowFor("lonely", head))).rejects.toMatchObject({
+        status: 409,
+        message: "lonely tracks no branch of acme/app, so it may not be the PR's - pull it yourself",
+      });
     });
   });
 

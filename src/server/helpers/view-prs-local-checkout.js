@@ -174,6 +174,8 @@ const createViewPrsLocalCheckout = ({
 }) => {
   const run = (command, args, options = {}) => runCommand(command, args, 8 * 1024 * 1024, { timeoutMs, ...options });
   const git = async (folder, args) => String((await run("git", ["-C", folder, ...args]))?.stdout || "");
+  // One checkout, fetch or pull at a time per clone.
+  const busyMessage = (repo) => `A checkout, fetch or pull in ${repo}'s clone is already running`;
 
   // bash on Windows: Git Bash - found from git's own folder, never
   // Windows' bash.exe (WSL's), which can't run Windows' git.
@@ -243,7 +245,7 @@ const createViewPrsLocalCheckout = ({
   // worktreePath, how: "command" | "git", already?, warning?, output } -
   // or throws with .status and .output.
   const checkOut = async ({ repo, cloneFolder, settings, pr }) => {
-    if (busy.has(repo)) throw checkoutError(`A checkout or fetch in ${repo}'s clone is already running`, { status: 409 });
+    if (busy.has(repo)) throw checkoutError(busyMessage(repo), { status: 409 });
     busy.add(repo);
     const outputs = [];
     const record = (result) => {
@@ -344,26 +346,36 @@ const createViewPrsLocalCheckout = ({
   // => { remote, ref, warning? } - warning when the PR's newest commit, as
   // last fetched by the dashboard, still isn't in the clone (pushed over
   // since: update the PR), or isn't known - or throws with .status.
+  // Where the PR's branch is fetched from: the remote and ref its local
+  // branch tracks, when that's one of the repo's remotes; else origin (or
+  // the repo's first remote), its branch - a fork's pull ref.
+  const fetchSource = (clone, pr, existing) => {
+    const tracked = existing && existing.remote && clone.repoRemotes.includes(existing.remote) && existing.remoteRef;
+    const remote = tracked ? existing.remote : clone.repoRemotes.includes("origin") ? "origin" : clone.repoRemotes[0];
+    const ref = tracked ? existing.remoteRef : isForkPr(pr) ? `refs/pull/${pr.number}/head` : `refs/heads/${pr.branch}`;
+    return { remote, ref };
+  };
+  const fetchInto = async (clone, remote, ref) => {
+    try {
+      await git(clone.folder, ["fetch", "--no-tags", remote, ref]);
+    } catch (failure) {
+      throw checkoutError(failure?.didTimeout ? "git fetch took too long" : `git fetch failed: ${reasonOf(failure)}`, {
+        status: 502,
+        output: outputOf(failure),
+      });
+    }
+  };
+
   const fetchPr = async ({ repo, cloneFolder, pr }) => {
-    if (busy.has(repo)) throw checkoutError(`A checkout or fetch in ${repo}'s clone is already running`, { status: 409 });
+    if (busy.has(repo)) throw checkoutError(busyMessage(repo), { status: 409 });
     busy.add(repo);
     try {
       const clone = await localBranches.readCloneFresh(repo, cloneFolder);
       if (!clone.ok) throw checkoutError(clone.error);
       const isFork = isForkPr(pr);
       if (!isFork && !pr.branch) throw checkoutError("The PR's branch isn't known yet - update the PR first");
-      const existing = localBranches.findPrBranch(clone, pr);
-      const tracked = existing && existing.remote && clone.repoRemotes.includes(existing.remote) && existing.remoteRef;
-      const remote = tracked ? existing.remote : clone.repoRemotes.includes("origin") ? "origin" : clone.repoRemotes[0];
-      const ref = tracked ? existing.remoteRef : isFork ? `refs/pull/${pr.number}/head` : `refs/heads/${pr.branch}`;
-      try {
-        await git(clone.folder, ["fetch", "--no-tags", remote, ref]);
-      } catch (failure) {
-        throw checkoutError(failure?.didTimeout ? "git fetch took too long" : `git fetch failed: ${reasonOf(failure)}`, {
-          status: 502,
-          output: outputOf(failure),
-        });
-      }
+      const { remote, ref } = fetchSource(clone, pr, localBranches.findPrBranch(clone, pr));
+      await fetchInto(clone, remote, ref);
       // The commit the count compares with, as the rows do (an older row
       // without headOid: its newest stored commit) - only ever a commit id.
       const commitOids = Array.isArray(pr.commitOids) ? pr.commitOids : [];
@@ -417,7 +429,74 @@ const createViewPrsLocalCheckout = ({
     );
   };
 
-  return { checkOut, fetchPr, checkCommands };
+  // The PR's local branch brought up to the PR's branch, fast-forward only
+  // (the pane's Pull, which asks first): refused - nothing changed - for a
+  // branch tracking no remote branch, a worktree mid-rebase or with
+  // uncommitted changes (new files are fine, unless the pull would
+  // overwrite one: git refuses then), or a branch with commits the PR's
+  // doesn't have. The PR's branch is fetched as Fetch does, then: in its
+  // worktree, git merge --ff-only; a branch not checked out has its ref
+  // moved, only from the commit it was read at. One at a time per clone,
+  // with Check out and Fetch. => { branch, from, to, commits, worktreePath?,
+  // already? } - or throws with .status and .output.
+  const pullPr = async ({ repo, cloneFolder, pr }) => {
+    if (busy.has(repo)) throw checkoutError(busyMessage(repo), { status: 409 });
+    busy.add(repo);
+    try {
+      const clone = await localBranches.readCloneFresh(repo, cloneFolder);
+      if (!clone.ok) throw checkoutError(clone.error);
+      if (!isForkPr(pr) && !pr.branch) throw checkoutError("The PR's branch isn't known yet - update the PR first");
+      const branch = localBranches.findPrBranch(clone, pr);
+      if (!branch) throw checkoutError(`No local branch for #${pr.number} in ${repo}'s clone`, { status: 409 });
+      if (!branch.remote || !clone.repoRemotes.includes(branch.remote)) {
+        throw checkoutError(`${branch.name} tracks no branch of ${repo}, so it may not be the PR's - pull it yourself`, { status: 409 });
+      }
+      const worktree = clone.worktrees.find((item) => item.branch === branch.name);
+      if (worktree?.rebasing) throw checkoutError(`A rebase is in progress in ${worktree.path} - finish or abort it first`, { status: 409 });
+      if (worktree) {
+        let status;
+        try {
+          status = await git(worktree.path, ["--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=no"]);
+        } catch (failure) {
+          throw checkoutError(`git can't read ${worktree.path}: ${reasonOf(failure)}`, { output: outputOf(failure) });
+        }
+        if (status.replace(/\0/g, "").trim()) {
+          throw checkoutError(`Uncommitted changes in ${worktree.path} - commit or stash them first`, { status: 409 });
+        }
+      }
+      const { remote, ref } = fetchSource(clone, pr, branch);
+      await fetchInto(clone, remote, ref);
+      const to = (await git(clone.folder, ["rev-parse", "--verify", "-q", "FETCH_HEAD^{commit}"])).trim();
+      const from = branch.oid;
+      const result = { branch: branch.name, from, to, ...(worktree ? { worktreePath: worktree.path } : {}) };
+      if (to === from) return { ...result, commits: 0, already: true };
+      try {
+        await git(clone.folder, ["merge-base", "--is-ancestor", from, to]);
+      } catch (_notAncestor) {
+        throw checkoutError(
+          `${branch.name} has commits ${ref} on ${remote} doesn't, so it can't be fast-forwarded - nothing was changed (merge or rebase it yourself)`,
+          { status: 409 },
+        );
+      }
+      const commits = Number((await git(clone.folder, ["rev-list", "--count", `${from}..${to}`])).trim()) || 0;
+      try {
+        if (worktree) await git(worktree.path, ["merge", "--ff-only", to]);
+        // Only from the commit it was read at: a commit made meanwhile isn't lost.
+        else await git(clone.folder, ["update-ref", `refs/heads/${branch.name}`, to, from]);
+      } catch (failure) {
+        throw checkoutError(`git couldn't fast-forward ${branch.name}: ${reasonOf(failure)}`, { status: 409, output: outputOf(failure) });
+      } finally {
+        // The branch has moved (or may have): the page's check right after
+        // reads the clone afresh, not as it was before the pull.
+        localBranches.forgetClone(repo);
+      }
+      return { ...result, commits };
+    } finally {
+      busy.delete(repo);
+    }
+  };
+
+  return { checkOut, fetchPr, pullPr, checkCommands };
 };
 
 module.exports = {

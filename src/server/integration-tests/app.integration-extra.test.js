@@ -842,6 +842,41 @@ describe("integration behavior", () => {
       expect(merged.body.error).toBe("#5 is merged or closed");
     });
 
+    test("Pull: the PR's worktree fast-forwarded; one merged or closed, or not known, or without a clone, is refused", async () => {
+      expect((await request.post("/view-prs/local-branches/pull").send({ repo: "owner/repo", number: "5" })).status).toBe(404);
+      await request.put("/view-prs/local-repos").send({ repo: "owner/repo", path: clone });
+      expect((await request.post("/local-branches/pull").send({ repo: "owner/repo", number: "99" })).status).toBe(404);
+      // GitHub isn't reached: the fetch is answered here, with the PR's newest commit.
+      const fetched = [];
+      const realGit = appModule.runViewPrsCommand;
+      appModule.runViewPrsCommand = async (command, args, ...rest) => {
+        if (args.includes("fetch")) {
+          fetched.push(args.slice(args.indexOf("fetch")));
+          fs.writeFileSync(path.join(clone, ".git", "FETCH_HEAD"), `${oids.head}\t\tbranch 'feature' of https://github.com/owner/repo\n`);
+          return { stdout: "" };
+        }
+        return realGit(command, args, ...rest);
+      };
+      try {
+        const res = await request.post("/view-prs/local-branches/pull").send({ repo: "owner/repo", number: "5" });
+        expect(res.body).toEqual(expect.objectContaining({ ok: true, branch: "feature", from: oids.local, to: oids.head, commits: 1 }));
+        expect(fetched).toEqual([["fetch", "--no-tags", "origin", "refs/heads/feature"]]);
+        expect(git(worktree, "rev-parse", "HEAD")).toBe(oids.head);
+      } finally {
+        git(worktree, "reset", "-q", "--hard", oids.local);
+      }
+
+      writeViewPrsData({
+        byPrNumber: {
+          5: { prNumber: "5", repo: "owner/repo", section: "merged", data: { number: "5", sourceBranch: "feature", mergedAt: "2026-11-01T00:00:00Z" } },
+        },
+        lastRun: null,
+      });
+      const merged = await request.post("/view-prs/local-branches/pull").send({ repo: "owner/repo", number: "5" });
+      expect(merged.status).toBe(409);
+      expect(merged.body.error).toBe("#5 is merged or closed");
+    });
+
     test("Uncommitted changes: the PR's worktree's, a merged PR's too; not known, or without a clone, is refused", async () => {
       expect((await request.get("/view-prs/local-branches/changes?repo=owner/repo&number=5")).status).toBe(404);
       await request.put("/view-prs/local-repos").send({ repo: "owner/repo", path: clone });
