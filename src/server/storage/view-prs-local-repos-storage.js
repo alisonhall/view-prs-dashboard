@@ -11,7 +11,9 @@ const { writeFileReplacingSync } = require("../helpers/file-io-helpers");
 // (view-prs-local-checkout.js) - { command?, forks?, after?, folder?, env? }:
 // the user's own command instead of plain git (and whether for forks' PRs
 // too), a command to run in a worktree git made, the folder pattern for
-// git's worktrees, and variables to give the commands.
+// git's worktrees, and variables to give the commands. With them,
+// cleanupList? and cleanupRemove?: the repo's own commands for Clean up
+// (the worktrees safe to remove, and removing one), else plain git.
 
 const toTrimmed = (value) => (value === null || value === undefined ? "" : String(value).trim());
 const isPlainObject = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
@@ -28,6 +30,8 @@ const checkCheckoutSettings = (value) => {
   for (const [key, label] of [
     ["command", "The checkout command"],
     ["after", "The after-command"],
+    ["cleanupList", "The clean-up list command"],
+    ["cleanupRemove", "The clean-up remove command"],
   ]) {
     const command = toTrimmed(value[key]);
     if (!command) continue;

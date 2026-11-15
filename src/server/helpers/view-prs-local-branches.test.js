@@ -336,13 +336,17 @@ describe("each PR's local branch", () => {
     });
   });
 
-  test("worktree list's blocks: a detached one has no branch, a bare one is marked", () => {
+  test("worktree list's blocks: a detached one has no branch, a bare one is marked, the first is the main one, a locked one is marked", () => {
     expect(
-      parseWorktrees("worktree /a\nHEAD 1\nbranch refs/heads/x\n\nworktree /b\nHEAD 2\ndetached\n\nworktree /c\nbare\n"),
+      parseWorktrees(
+        "worktree /a\nHEAD 1\nbranch refs/heads/x\n\nworktree /b\nHEAD 2\ndetached\n\nworktree /c\nbare\n\nworktree /d\nHEAD 3\nbranch refs/heads/y\nlocked\n\nworktree /e\nHEAD 4\nbranch refs/heads/z\nlocked on a usb drive\n",
+      ),
     ).toEqual([
-      { path: "/a", head: "1", branch: "x", bare: false },
+      { path: "/a", head: "1", branch: "x", bare: false, main: true },
       { path: "/b", head: "2", branch: "", bare: false },
       { path: "/c", head: "", branch: "", bare: true },
+      { path: "/d", head: "3", branch: "y", bare: false, locked: true },
+      { path: "/e", head: "4", branch: "z", bare: false, locked: true },
     ]);
   });
 });

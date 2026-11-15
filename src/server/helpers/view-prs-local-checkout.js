@@ -23,7 +23,7 @@
 
 const os = require("os");
 const path = require("path");
-const { isForkPr } = require("./view-prs-local-branches");
+const { isForkPr, parseStatus } = require("./view-prs-local-branches");
 
 const MAX_OUTPUT = 4000;
 
@@ -496,7 +496,257 @@ const createViewPrsLocalCheckout = ({
     }
   };
 
-  return { checkOut, fetchPr, pullPr, checkCommands };
+  // Clean up after merged and closed PRs (Settings › Local clones): what's
+  // safe to remove, each removable.
+  //
+  // - By default, plain git: each local branch of a merged or closed PR
+  //   (found as the rows find it), with its worktree if it's checked out.
+  // - With the repo's list command: the worktrees it prints, one folder a
+  //   line (run as Check out's command is, given the clone as
+  //   VIEW_PRS_CLONE) - only those that are worktrees of the clone; any
+  //   other line is ignored and said so.
+  //
+  // Either way the dashboard's own checks apply: an item is safe only when
+  // no PR of its branch is still open, it isn't long-lived (a PR's base, or
+  // the source of more than one PR - develop into main), its worktree isn't
+  // the clone's own
+  // folder, locked or mid-rebase and has no uncommitted changes (new files
+  // included: they'd be lost), and its branch tracks the PR's branch and
+  // has no commits GitHub doesn't (as Not pushed counts them). A branch no
+  // PR has (the list command's) isn't checked for what's pushed - the
+  // command's own judgement - and says so.
+  //
+  // prs: the repo's rows (the routes' listPrs). => { by: "git" |
+  // "command", items: [{ branch?, oid?, worktreePath?, prs: [{ number,
+  // done }], safe, reasons, notes }], ignored?, output? } - or throws.
+  const statusOf = async (folder) =>
+    parseStatus(await git(folder, ["--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=normal"]));
+
+  // "1 staged, 2 changed, 3 new, 1 conflicted".
+  const describeChanges = (changes) =>
+    [
+      [changes.staged, "staged"],
+      [changes.changed, "changed"],
+      [changes.untracked, "new"],
+      [changes.conflicted, "conflicted"],
+    ]
+      .filter(([count]) => count > 0)
+      .map(([count, what]) => `${count} ${what}`)
+      .join(", ");
+
+  const assessCleanup = async (clone, { branch, worktree, prs, allPrs, byCommand }) => {
+    const reasons = [];
+    const notes = [];
+    const open = prs.filter((pr) => !pr.done);
+    if (open.length > 0) reasons.push(`${open.map((pr) => `#${pr.number}`).join(", ")} ${open.length === 1 ? "is" : "are"} still open`);
+    // A long-lived branch (develop, a release branch) a PR came from once
+    // merged: kept when it's a PR's base, or more than one PR has come from
+    // it.
+    if (branch) {
+      const remoteName = branch.remote && clone.repoRemotes.includes(branch.remote) && branch.remoteRef.startsWith("refs/heads/")
+        ? branch.remoteRef.slice("refs/heads/".length)
+        : "";
+      const bases = allPrs.filter((pr) => pr.targetBranch && (pr.targetBranch === remoteName || pr.targetBranch === branch.name));
+      if (bases.length > 0) {
+        const numbers = bases.slice(0, 3).map((pr) => `#${pr.number}`).join(", ");
+        reasons.push(`${branch.name} is the base of ${numbers}${bases.length > 3 ? ` and ${bases.length - 3} more` : ""} - a long-lived branch`);
+      } else if (prs.length > 1 && open.length === 0) {
+        reasons.push(`${prs.length} PRs have come from ${branch.name} - a long-lived branch?`);
+      }
+    }
+    if (worktree) {
+      if (worktree.main || localBranches.isCloneFolder(clone, worktree.path)) reasons.push("It's the clone's own folder");
+      if (worktree.locked) reasons.push("Its worktree is locked (git worktree unlock it first)");
+      if (worktree.rebasing) reasons.push("A rebase is in progress there");
+      if (!fs.existsSync(worktree.path)) {
+        notes.push("Its folder is gone already - git still lists it");
+      } else {
+        try {
+          const changes = await statusOf(worktree.path);
+          if (changes.total > 0) reasons.push(`Uncommitted: ${describeChanges(changes)}`);
+        } catch (failure) {
+          reasons.push(`git can't read it: ${reasonOf(failure)}`);
+        }
+      }
+    }
+    if (branch) {
+      const done = prs.filter((pr) => pr.done);
+      if (done.length === 0) {
+        if (byCommand) notes.push("No PR on the page has this branch, so what's pushed isn't checked");
+      } else if (!branch.remote) {
+        reasons.push(`${branch.name} tracks nothing - found by its name alone, so it may not be the PR's`);
+      } else {
+        const described = await Promise.all(done.map((pr) => localBranches.describePrBranch(clone, pr)));
+        const counts = described.map((info) => info?.unpushed).filter((value) => typeof value === "number");
+        if (counts.includes(0)) {
+          // All on GitHub, as one of its PRs has them.
+        } else if (counts.length > 0) {
+          const fewest = Math.min(...counts);
+          reasons.push(`${fewest} commit${fewest === 1 ? "" : "s"} not on GitHub`);
+        } else {
+          reasons.push("Can't tell whether its commits are all on GitHub (the PR's newest commit isn't in the clone)");
+        }
+      }
+    }
+    return { safe: reasons.length === 0, reasons, notes };
+  };
+
+  // At most a few git statuses at once.
+  const mapFew = async (items, mapper, limit = 4) => {
+    const results = new Array(items.length);
+    let next = 0;
+    const worker = async () => {
+      while (next < items.length) {
+        const index = next;
+        next += 1;
+        results[index] = await mapper(items[index]);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+    return results;
+  };
+
+  const listCleanup = async ({ repo, cloneFolder, settings, prs }) => {
+    const clone = await localBranches.readCloneFresh(repo, cloneFolder);
+    if (!clone.ok) throw checkoutError(clone.error);
+    // Each local branch's PRs, as the rows find them.
+    const prsOf = new Map();
+    (prs || []).forEach((pr) => {
+      const branch = localBranches.findPrBranch(clone, pr);
+      if (!branch) return;
+      prsOf.set(branch.name, [...(prsOf.get(branch.name) || []), pr]);
+    });
+    const worktreeOfBranch = (name) => clone.worktrees.find((worktree) => worktree.branch === name) || null;
+    const byCommand = Boolean(settings?.cleanupList);
+    let candidates;
+    let ignored = [];
+    let output = "";
+    if (byCommand) {
+      let result;
+      try {
+        result = await runUserCommand(settings.cleanupList, cloneFolder, { ...(settings.env || {}), VIEW_PRS_CLONE: toPosix(cloneFolder), VIEW_PRS_REPO: repo });
+      } catch (failure) {
+        if (failure instanceof Error && failure.status) throw failure;
+        throw checkoutError(failure?.didTimeout ? "The list command took too long" : `The list command failed: ${reasonOf(failure)}`, {
+          status: 502,
+          output: outputOf(failure),
+        });
+      }
+      output = outputOf({ stderr: result?.stderr });
+      const seen = new Set();
+      candidates = [];
+      String(result?.stdout || "")
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => line && !isShellNoise(line))
+        .forEach((line) => {
+          const worktree = localBranches.worktreeAt(clone, line);
+          if (!worktree) {
+            ignored.push(line);
+            return;
+          }
+          if (seen.has(worktree.path)) return;
+          seen.add(worktree.path);
+          candidates.push({ worktree, branch: clone.branches.find((item) => item.name === worktree.branch) || null });
+        });
+      ignored = ignored.slice(0, 50);
+    } else {
+      candidates = clone.branches
+        .filter((branch) => (prsOf.get(branch.name) || []).some((pr) => pr.done))
+        .map((branch) => ({ branch, worktree: worktreeOfBranch(branch.name) }));
+    }
+    const items = await mapFew(candidates, async ({ branch, worktree }) => {
+      const itsPrs = branch ? prsOf.get(branch.name) || [] : [];
+      const assessed = await assessCleanup(clone, { branch, worktree, prs: itsPrs, allPrs: prs || [], byCommand });
+      return {
+        ...(branch ? { branch: branch.name, oid: branch.oid } : {}),
+        ...(worktree ? { worktreePath: worktree.path } : {}),
+        prs: itsPrs.map((pr) => ({ number: pr.number, done: Boolean(pr.done) })),
+        ...assessed,
+      };
+    });
+    items.sort((a, b) => Number(b.safe) - Number(a.safe) || String(a.branch || a.worktreePath).localeCompare(String(b.branch || b.worktreePath)));
+    return { by: byCommand ? "command" : "git", items, ...(ignored.length ? { ignored } : {}), ...(output ? { output } : {}) };
+  };
+
+  // Removes one of the list's items - { branch?, worktreePath? } as listed -
+  // once it's listed again and still safe: its worktree (by the repo's
+  // remove command, given VIEW_PRS_WORKTREE and VIEW_PRS_LOCAL_BRANCH, else
+  // git worktree remove - never forced, so git refuses a worktree changed
+  // since; one whose folder is gone, git worktree prune), then, by git
+  // only, its branch - only from the commit it was listed at, its tracking
+  // settings with it. With the remove command, the branch is its to remove.
+  // One at a time per clone, with Check out, Fetch and Pull. => { removed:
+  // { worktreePath?, branch? }, how: "git" | "command", output } - or throws.
+  const removeCleanup = async ({ repo, cloneFolder, settings, prs, branch, worktreePath }) => {
+    if (busy.has(repo)) throw checkoutError(busyMessage(repo), { status: 409 });
+    busy.add(repo);
+    try {
+      const listed = await listCleanup({ repo, cloneFolder, settings, prs });
+      const item = listed.items.find((candidate) => (candidate.branch || "") === (branch || "") && (candidate.worktreePath || "") === (worktreePath || ""));
+      if (!item) throw checkoutError("It's no longer in the list - look again", { status: 409 });
+      if (!item.safe) throw checkoutError(`Not safe to remove: ${item.reasons.join("; ")}`, { status: 409 });
+      const outputs = [];
+      const removed = {};
+      const byCommand = Boolean(item.worktreePath && settings?.cleanupRemove);
+      try {
+        if (item.worktreePath) {
+          if (byCommand) {
+            try {
+              const result = await runUserCommand(settings.cleanupRemove, cloneFolder, {
+                ...(settings.env || {}),
+                VIEW_PRS_CLONE: toPosix(cloneFolder),
+                VIEW_PRS_REPO: repo,
+                VIEW_PRS_WORKTREE: toPosix(item.worktreePath),
+                VIEW_PRS_LOCAL_BRANCH: item.branch || "",
+              });
+              const text = outputOf(result);
+              if (text) outputs.push(text);
+            } catch (failure) {
+              if (failure instanceof Error && failure.status) throw failure;
+              throw checkoutError(failure?.didTimeout ? "The remove command took too long" : `The remove command failed: ${reasonOf(failure)}`, {
+                status: 502,
+                output: outputOf(failure),
+              });
+            }
+            const after = await localBranches.readCloneFresh(repo, cloneFolder);
+            if (after.ok && localBranches.worktreeAt(after, item.worktreePath)) {
+              throw checkoutError(`The remove command finished, but ${item.worktreePath} is still a worktree of the clone`, {
+                status: 502,
+                output: outputs.join("\n"),
+              });
+            }
+          } else if (fs.existsSync(item.worktreePath)) {
+            await git(cloneFolder, ["worktree", "remove", item.worktreePath]);
+          } else {
+            await git(cloneFolder, ["worktree", "prune"]);
+          }
+          removed.worktreePath = item.worktreePath;
+        }
+        if (item.branch && !byCommand) {
+          // Only from the commit it was listed at: one made since isn't lost.
+          await git(cloneFolder, ["update-ref", "-d", `refs/heads/${item.branch}`, item.oid]);
+          await git(cloneFolder, ["config", "--remove-section", `branch.${item.branch}`]).catch(() => "");
+          removed.branch = item.branch;
+        }
+      } catch (failure) {
+        if (failure instanceof Error && failure.status) throw failure;
+        throw checkoutError(
+          failure?.didTimeout
+            ? "git took too long"
+            : `git couldn't remove ${removed.worktreePath ? item.branch : item.worktreePath || item.branch}: ${reasonOf(failure)}`,
+          { status: 409, output: outputOf(failure) },
+        );
+      } finally {
+        localBranches.forgetClone(repo);
+      }
+      return { removed, how: byCommand ? "command" : "git", output: outputs.join("\n") };
+    } finally {
+      busy.delete(repo);
+    }
+  };
+
+  return { checkOut, fetchPr, pullPr, checkCommands, listCleanup, removeCleanup };
 };
 
 module.exports = {

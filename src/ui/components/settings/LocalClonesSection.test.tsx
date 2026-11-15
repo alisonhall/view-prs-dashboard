@@ -10,6 +10,8 @@ import { LocalClonesSection } from './LocalClonesSection';
 const payload = { byPrNumber: { 1: { repo: 'acme/app' }, 2: { repo: 'acme/api' }, 3: { repo: 'acme/a-b' }, 4: { repo: 'acme-a/b' } } };
 
 let saved: Record<string, unknown>;
+let cleanupAnswer: { status: number; body: Record<string, unknown> };
+let removeAnswer: { status: number; body: Record<string, unknown> };
 const requests: Array<{ url: string; method: string; body: unknown }> = [];
 const fetchMock = jest.fn(async (url: string, init: RequestInit = {}) => {
   const method = init.method || 'GET';
@@ -55,6 +57,12 @@ const fetchMock = jest.fn(async (url: string, init: RequestInit = {}) => {
     const { checkout: _dropped, ...rest } = saved[body.repo] as Record<string, unknown>;
     saved = { ...saved, [body.repo]: Object.keys(kept).length > 0 ? { ...rest, checkout: kept } : rest };
   }
+  if (url.startsWith('/view-prs/local-repos/cleanup?')) {
+    return { ok: cleanupAnswer.status < 400, status: cleanupAnswer.status, json: async () => cleanupAnswer.body };
+  }
+  if (url === '/view-prs/local-repos/cleanup/remove') {
+    return { ok: removeAnswer.status < 400, status: removeAnswer.status, json: async () => removeAnswer.body };
+  }
   if (url === '/view-prs/local-repos' && method === 'DELETE') {
     const { [body.repo]: _dropped, ...rest } = saved;
     saved = rest;
@@ -66,6 +74,19 @@ beforeEach(() => {
   saved = { 'acme/api': { path: 'D:/code/api', ok: false, error: 'No such folder: D:/code/api' } };
   requests.length = 0;
   (global as unknown as { fetch: unknown }).fetch = fetchMock;
+  cleanupAnswer = {
+    status: 200,
+    body: {
+      ok: true,
+      by: 'git',
+      items: [
+        { branch: 'old/done', oid: 'a1', worktreePath: 'D:/code/app-old_done', prs: [{ number: '3', done: true }], safe: true, reasons: [], notes: [] },
+        { branch: 'only/branch', oid: 'b2', prs: [{ number: '4', done: true }], safe: true, reasons: [], notes: ['Its folder is gone already - git still lists it'] },
+        { branch: 'wip', oid: 'c3', worktreePath: 'D:/code/app-wip', prs: [{ number: '5', done: true }], safe: false, reasons: ['Uncommitted: 2 changed', '1 commit not on GitHub'], notes: [] },
+      ],
+    },
+  };
+  removeAnswer = { status: 200, body: { ok: true, removed: { branch: 'old/done', worktreePath: 'D:/code/app-old_done' }, how: 'git', output: '' } };
 });
 
 const renderSection = () =>
@@ -172,6 +193,8 @@ describe('Settings › Local clones', () => {
     await user.click(forks);
     await user.type(screen.getByLabelText('After git makes a worktree, run'), 'my-tool link {{local}');
     await user.type(screen.getByLabelText("Folder for git's worktrees"), '../{{branch}');
+    await user.type(screen.getByLabelText('Clean up: list command'), 'my-tool clean --porcelain');
+    await user.type(screen.getByLabelText('Clean up: remove command'), 'my-tool rm {{worktree} --yes');
     await user.type(screen.getByLabelText('Variables'), 'export MY_DEV_BRANCH="develop"{Enter}# a note{Enter}MY_LINKS=.env .cache');
     await user.click(screen.getByRole('button', { name: "Save how to check out acme/app's PRs" }));
     expect(await screen.findByText('my-tool add {branch}')).toBeInTheDocument();
@@ -183,6 +206,8 @@ describe('Settings › Local clones', () => {
         after: 'my-tool link {local}',
         folder: '../{branch}',
         env: { MY_DEV_BRANCH: 'develop', MY_LINKS: '.env .cache' },
+        cleanupList: 'my-tool clean --porcelain',
+        cleanupRemove: 'my-tool rm {worktree} --yes',
       },
     });
 
@@ -247,6 +272,87 @@ describe('Settings › Local clones', () => {
       repo: 'acme/app',
       commands: ['my-tool add {branch}', "nope '{local}' x"],
     });
+  });
+
+  test("Clean up: looks when asked; each safe item removable after asking, the rest kept with why; a refusal says why", async () => {
+    saved = { 'acme/app': { path: 'D:/code/app/main', ok: true, branchCount: 3, worktreeCount: 3 } };
+    const confirm = jest.spyOn(window, 'confirm').mockReturnValue(false);
+    try {
+      const user = userEvent.setup();
+      renderSection();
+      await user.click(await screen.findByText('Clean up after merged and closed PRs'));
+      expect(requests.some((request) => request.url.startsWith('/view-prs/local-repos/cleanup'))).toBe(false);
+      await user.click(screen.getByRole('button', { name: 'Look' }));
+      expect(await screen.findByText('2 of 3 safe to remove.')).toBeInTheDocument();
+      expect(requests.find((request) => request.url.startsWith('/view-prs/local-repos/cleanup'))?.url).toBe('/view-prs/local-repos/cleanup?repo=acme%2Fapp');
+      const list = screen.getByRole('list', { name: "What can be cleaned up in acme/app's clone" });
+      expect(within(list).getByText('Kept: Uncommitted: 2 changed; 1 commit not on GitHub')).toBeInTheDocument();
+      expect(within(list).queryByRole('button', { name: 'Remove wip' })).toBeNull();
+
+      await user.click(within(list).getByRole('button', { name: 'Remove old/done' }));
+      expect(confirm).toHaveBeenCalledWith('Remove the worktree D:/code/app-old_done and the branch old/done?');
+      expect(requests.some((request) => request.url === '/view-prs/local-repos/cleanup/remove')).toBe(false);
+
+      confirm.mockReturnValue(true);
+      await user.click(within(list).getByRole('button', { name: 'Remove old/done' }));
+      await waitFor(() => expect(within(list).queryByText('old/done')).toBeNull());
+      expect(requests.find((request) => request.url === '/view-prs/local-repos/cleanup/remove')?.body).toEqual({
+        repo: 'acme/app',
+        branch: 'old/done',
+        worktreePath: 'D:/code/app-old_done',
+      });
+
+      removeAnswer = { status: 409, body: { ok: false, error: 'Not safe to remove: Uncommitted: 1 new' } };
+      await user.click(within(list).getByRole('button', { name: 'Remove only/branch' }));
+      expect(confirm).toHaveBeenLastCalledWith('Remove the branch only/branch?\n\nIts folder is gone already - git still lists it');
+      expect(await within(list).findByRole('alert')).toHaveTextContent('Not safe to remove: Uncommitted: 1 new');
+      expect(within(list).getByText('only/branch')).toBeInTheDocument();
+    } finally {
+      confirm.mockRestore();
+    }
+  });
+
+  test("Clean up with the repo's own commands: their worktrees, lines that aren't left out, and what the command said; a failure says why", async () => {
+    saved = {
+      'acme/app': {
+        path: 'D:/code/app/main',
+        ok: true,
+        branchCount: 1,
+        worktreeCount: 2,
+        checkout: { cleanupList: 'my-tool clean --porcelain', cleanupRemove: 'my-tool rm {worktree}' },
+      },
+    };
+    cleanupAnswer = {
+      status: 200,
+      body: {
+        ok: true,
+        by: 'command',
+        items: [{ branch: 'mine', oid: 'a', worktreePath: 'D:/code/mine', prs: [], safe: true, reasons: [], notes: ["No PR on the page has this branch, so what's pushed isn't checked"] }],
+        ignored: ['/not/one'],
+        output: 'why: old',
+      },
+    };
+    const confirm = jest.spyOn(window, 'confirm').mockReturnValue(false);
+    try {
+      const user = userEvent.setup();
+      renderSection();
+      await user.click(await screen.findByText('Clean up after merged and closed PRs'));
+      expect(screen.getByText(/^The worktrees your list command printed/)).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Look' }));
+      expect(await screen.findByText('Not worktrees of the clone, so left out: "/not/one"')).toBeInTheDocument();
+      expect(screen.getByText('why: old')).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Remove mine' }));
+      // The branch is the command's: only the worktree is named.
+      expect(confirm).toHaveBeenCalledWith(
+        "Remove the worktree D:/code/mine (by your remove command)?\n\nNo PR on the page has this branch, so what's pushed isn't checked",
+      );
+
+      cleanupAnswer = { status: 502, body: { ok: false, error: 'The list command failed: no such layout' } };
+      await user.click(screen.getByRole('button', { name: 'Look again' }));
+      expect(await screen.findByRole('alert')).toHaveTextContent('The list command failed: no such layout');
+    } finally {
+      confirm.mockRestore();
+    }
   });
 
   test("Remove forgets a repo's folder", async () => {

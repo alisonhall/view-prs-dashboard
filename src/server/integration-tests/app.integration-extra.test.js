@@ -742,6 +742,8 @@ describe("integration behavior", () => {
         command: "my-tool add {branch}",
         forks: true,
         after: "my-tool link {local}",
+        cleanupList: "my-tool clean --porcelain",
+        cleanupRemove: "my-tool rm {worktree} --yes",
         folder: "../{branch}",
         env: { MY_DEV_BRANCH: "develop", MY_LINKS: ".env .cache" },
       };
@@ -763,6 +765,8 @@ describe("integration behavior", () => {
         return res.body.error;
       };
       expect(await refused({ command: "a\nb" })).toBe("The checkout command should be one line");
+      expect(await refused({ cleanupList: "a\nb" })).toBe("The clean-up list command should be one line");
+      expect(await refused({ cleanupRemove: "a\rb" })).toBe("The clean-up remove command should be one line");
       expect(await refused({ folder: "../trees" })).toBe("The worktree folder needs {branch} in it, so each PR's branch has its own");
       // Inside the clone's folder, caught when saved.
       for (const folder of ["{branch}", "trees/{clone}-{branch}", "./{branch}", "a/../{branch}"]) {
@@ -875,6 +879,56 @@ describe("integration behavior", () => {
       const merged = await request.post("/view-prs/local-branches/pull").send({ repo: "owner/repo", number: "5" });
       expect(merged.status).toBe(409);
       expect(merged.body.error).toBe("#5 is merged or closed");
+    });
+
+    test("Clean up: a merged PR's branch and worktree listed as safe, then removed; only from this computer", async () => {
+      expect((await request.get("/view-prs/local-repos/cleanup?repo=owner/repo")).status).toBe(404);
+      await request.put("/view-prs/local-repos").send({ repo: "owner/repo", path: clone });
+      const doneTree = path.join(root, "done-tree");
+      git(clone, "branch", "done", oids.local);
+      git(clone, "config", "branch.done.remote", "origin");
+      git(clone, "config", "branch.done.merge", "refs/heads/done");
+      git(clone, "worktree", "add", "-q", doneTree, "done");
+      writeViewPrsData({
+        byPrNumber: {
+          5: { prNumber: "5", repo: "owner/repo", section: "open", data: { number: "5", sourceBranch: "feature", headOid: oids.head } },
+          8: {
+            prNumber: "8",
+            repo: "owner/repo",
+            section: "merged",
+            data: { number: "8", sourceBranch: "done", headOid: oids.local, commits: [{ oid: oids.local }], mergedAt: "2026-11-01T00:00:00Z" },
+          },
+        },
+        lastRun: null,
+      });
+      const listed = await request.get("/local-repos/cleanup?repo=owner/repo");
+      expect(listed.body).toEqual({
+        ok: true,
+        by: "git",
+        items: [{ branch: "done", oid: oids.local, worktreePath: expect.any(String), prs: [{ number: "8", done: true }], safe: true, reasons: [], notes: [] }],
+      });
+      const [item] = listed.body.items;
+      expect(fs.realpathSync.native(item.worktreePath)).toBe(fs.realpathSync.native(doneTree));
+      expect((await request.post("/view-prs/local-repos/cleanup/remove").send({ repo: "owner/repo" })).status).toBe(400);
+
+      appModule.isFromThisComputer = () => false;
+      try {
+        expect((await request.get("/view-prs/local-repos/cleanup?repo=owner/repo")).status).toBe(403);
+        const refused = await request.post("/view-prs/local-repos/cleanup/remove").send({ repo: "owner/repo", branch: "done", worktreePath: item.worktreePath });
+        expect(refused.status).toBe(403);
+        expect(refused.body.error).toBe("Clean up is only on this computer");
+      } finally {
+        delete appModule.isFromThisComputer;
+      }
+      expect(fs.existsSync(doneTree)).toBe(true);
+
+      const removed = await request.post("/view-prs/local-repos/cleanup/remove").send({ repo: "owner/repo", branch: "done", worktreePath: item.worktreePath });
+      expect(removed.body).toEqual({ ok: true, removed: { branch: "done", worktreePath: item.worktreePath }, how: "git", output: "" });
+      expect(fs.existsSync(doneTree)).toBe(false);
+      expect(git(clone, "branch", "--list", "done")).toBe("");
+      const again = await request.post("/view-prs/local-repos/cleanup/remove").send({ repo: "owner/repo", branch: "done", worktreePath: item.worktreePath });
+      expect(again.status).toBe(409);
+      expect(again.body.error).toBe("It's no longer in the list - look again");
     });
 
     test("Uncommitted changes: the PR's worktree's, a merged PR's too; not known, or without a clone, is refused", async () => {

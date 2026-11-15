@@ -566,6 +566,44 @@
   gap: var(--space-2);
 }
 
+/* Clean up's list: each branch and worktree, Remove beside a safe one. */
+.local-clone-cleanup-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.local-clone-cleanup-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.local-clone-cleanup-item code {
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.local-clone-cleanup-list .settings-hint {
+  margin: 0;
+}
+
+.local-clone-cleanup-list li[data-safe="false"] .local-clone-cleanup-why {
+  color: var(--color-attention-text);
+}
+
+.local-clone-cleanup-output {
+  margin: 0;
+  white-space: pre-wrap;
+  font: var(--font-size-sm) var(--font-mono);
+  color: var(--color-text-muted);
+}
+
 /* Check commands' answers: one line per command. */
 .local-clone-checks {
   margin: 0;

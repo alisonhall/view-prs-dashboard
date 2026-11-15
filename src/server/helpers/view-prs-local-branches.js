@@ -60,11 +60,12 @@ const parseConfig = (stdout) => {
   };
 };
 
-// git worktree list --porcelain: blank-line separated blocks.
+// git worktree list --porcelain: blank-line separated blocks, the main
+// worktree (or the bare repo) first.
 const parseWorktrees = (stdout) =>
   String(stdout || "")
     .split(/\r?\n\r?\n/)
-    .map((block) => {
+    .map((block, index) => {
       const lines = block.split(/\r?\n/);
       const value = (key) => {
         const line = lines.find((item) => item === key || item.startsWith(`${key} `));
@@ -78,6 +79,8 @@ const parseWorktrees = (stdout) =>
         head: value("HEAD") || "",
         branch: branchRef.startsWith("refs/heads/") ? branchRef.slice("refs/heads/".length) : "",
         bare: value("bare") !== null,
+        ...(index === 0 ? { main: true } : {}),
+        ...(value("locked") !== null ? { locked: true } : {}),
       };
     })
     .filter(Boolean);
@@ -594,7 +597,27 @@ const createViewPrsLocalBranches = ({
   };
   const statusRuns = new Map();
 
-  return { getLocalBranches, getWorktreeChanges, isOpenableFolder, checkClone, forgetClone, findClones, readCloneFresh, findPrBranch: findBranch };
+  // The clone's worktree at folder, however it's written, else null.
+  const worktreeAt = (clone, folder) => {
+    const asked = realFolder(fs, folder);
+    return clone.worktrees.find((worktree) => sameFolder(realFolder(fs, worktree.path), asked)) || null;
+  };
+  // Whether folder is the clone's own (the folder its settings name).
+  const isCloneFolder = (clone, folder) => sameFolder(realFolder(fs, clone.folder), realFolder(fs, folder));
+
+  return {
+    getLocalBranches,
+    getWorktreeChanges,
+    isOpenableFolder,
+    checkClone,
+    forgetClone,
+    findClones,
+    readCloneFresh,
+    findPrBranch: findBranch,
+    describePrBranch: describePr,
+    worktreeAt,
+    isCloneFolder,
+  };
 };
 
 module.exports = {

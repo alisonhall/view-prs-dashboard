@@ -92,6 +92,8 @@ export function CheckoutSettings({
   const [forks, setForks] = useState(saved?.forks === true);
   const [after, setAfter] = useState(saved?.after || '');
   const [folder, setFolder] = useState(saved?.folder || '');
+  const [cleanupList, setCleanupList] = useState(saved?.cleanupList || '');
+  const [cleanupRemove, setCleanupRemove] = useState(saved?.cleanupRemove || '');
   const [variables, setVariables] = useState(variablesToText(saved?.env));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -104,7 +106,7 @@ export function CheckoutSettings({
     setChecks(null);
     setError('');
     try {
-      const commands = [command.trim(), after.trim()].filter(Boolean);
+      const commands = [command.trim(), after.trim(), cleanupList.trim(), cleanupRemove.trim()].filter(Boolean);
       const { response, result } = await postJson<{ ok?: boolean; error?: string; results?: CommandCheck[] }>(
         '/view-prs/local-repos/checkout/check',
         { repo, commands },
@@ -126,6 +128,8 @@ export function CheckoutSettings({
     setForks(checkout?.forks === true);
     setAfter(checkout?.after || '');
     setFolder(checkout?.folder || '');
+    setCleanupList(checkout?.cleanupList || '');
+    setCleanupRemove(checkout?.cleanupRemove || '');
     setVariables(variablesToText(checkout?.env));
   };
 
@@ -137,7 +141,15 @@ export function CheckoutSettings({
       setError(`Not NAME=value: ${invalid.join(', ')}`);
       return;
     }
-    const checkout = { command: command.trim(), forks: Boolean(command.trim()) && forks, after: after.trim(), folder: folder.trim(), env };
+    const checkout = {
+      command: command.trim(),
+      forks: Boolean(command.trim()) && forks,
+      after: after.trim(),
+      folder: folder.trim(),
+      env,
+      cleanupList: cleanupList.trim(),
+      cleanupRemove: cleanupRemove.trim(),
+    };
     setBusy(true);
     try {
       const { response, result } = await sendJson<LocalReposResult>('PUT', '/view-prs/local-repos/checkout', { repo, checkout });
@@ -220,6 +232,35 @@ export function CheckoutSettings({
           Relative to the clone&apos;s folder, or a full path (<code>~</code> is your home folder), but not inside the clone.{' '}
           <code>{'{branch}'}</code> is the branch&apos;s name with / as _, <code>{'{clone}'}</code> the clone folder&apos;s name.
         </p>
+        <label htmlFor={`${id}-cleanup-list`}>Clean up: list command</label>
+        <input
+          id={`${id}-cleanup-list`}
+          type="text"
+          placeholder="Empty for git's checks, or your own, like my-clean --porcelain"
+          {...NON_CREDENTIAL_INPUT_PROPS}
+          value={cleanupList}
+          onChange={(event) => setCleanupList(event.target.value)}
+        />
+        <p className="settings-hint">
+          Run in the clone&apos;s folder, given it as <code>{'{clone}'}</code>: it prints the worktree folders it would remove, one a line, and
+          nothing else, and exits 0. Only the clone&apos;s worktrees are offered, with the dashboard&apos;s checks still applied (no open PR, no
+          uncommitted changes, nothing not on GitHub).
+        </p>
+        <QuotedPlaceholders command={cleanupList} />
+        <label htmlFor={`${id}-cleanup-remove`}>Clean up: remove command</label>
+        <input
+          id={`${id}-cleanup-remove`}
+          type="text"
+          placeholder="Empty for git worktree remove, or your own, like my-rm {worktree} --yes"
+          {...NON_CREDENTIAL_INPUT_PROPS}
+          value={cleanupRemove}
+          onChange={(event) => setCleanupRemove(event.target.value)}
+        />
+        <p className="settings-hint">
+          Removes one worktree, given as <code>{'{worktree}'}</code> with its branch as <code>{'{local}'}</code> - and the branch too, if
+          you want it gone: git only removes a branch when it removes the worktree itself. It mustn&apos;t prompt.
+        </p>
+        <QuotedPlaceholders command={cleanupRemove} />
         <label htmlFor={`${id}-variables`}>Variables</label>
         <textarea
           id={`${id}-variables`}
@@ -230,7 +271,7 @@ export function CheckoutSettings({
           onChange={(event) => setVariables(event.target.value)}
         />
         <p className="settings-hint">
-          Given to both commands. In a command, {PLACEHOLDER_NAMES} are the PR&apos;s, quoted for you, so leave them out of quotes of your own (<code>{'{local}'}</code> and{' '}
+          Given to all the commands. In a command, {PLACEHOLDER_NAMES} are the PR&apos;s, quoted for you, so leave them out of quotes of your own (<code>{'{local}'}</code> and{' '}
           <code>{'{worktree}'}</code> in the after-command); scripts get them as VIEW_PRS_ variables, with VIEW_PRS_IS_FORK and
           VIEW_PRS_HEAD_OID.
         </p>
@@ -253,7 +294,7 @@ export function CheckoutSettings({
             {busy ? 'Saving…' : 'Save'}
           </Button>
           <Button
-            disabled={checking || (!command.trim() && !after.trim())}
+            disabled={checking || ![command, after, cleanupList, cleanupRemove].some((item) => item.trim())}
             title="Whether your shell knows each command's first word, as Check out would run it"
             onClick={() => void check()}
           >

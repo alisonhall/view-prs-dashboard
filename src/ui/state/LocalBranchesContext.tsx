@@ -14,13 +14,16 @@ export interface LocalRepoStatus {
 
 // The user's own checkout command instead of git (forks: for forks' PRs
 // too), a command run in a worktree git made, the folder pattern for git's
-// worktrees, and variables given to the commands.
+// worktrees, and variables given to the commands. cleanupList and
+// cleanupRemove: the repo's own commands for Clean up, else plain git.
 export interface LocalRepoCheckout {
   command?: string;
   forks?: boolean;
   after?: string;
   folder?: string;
   env?: Record<string, string>;
+  cleanupList?: string;
+  cleanupRemove?: string;
 }
 
 // What this computer has of a PR's branch (GET /view-prs/local-branches):

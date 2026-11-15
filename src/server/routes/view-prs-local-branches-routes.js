@@ -15,11 +15,14 @@ const registerViewPrsLocalBranchesRoutes = ({
   readViewPrsRows,
   // (folder) => resolves once the editor is started, rejects with why not.
   openInEditor,
-  // view-prs-local-checkout.js's checkOut, fetchPr, pullPr and checkCommands.
+  // view-prs-local-checkout.js's checkOut, fetchPr, pullPr, checkCommands,
+  // listCleanup and removeCleanup.
   checkOut,
   fetchPr,
   pullPr,
   checkCommands,
+  listCleanup,
+  removeCleanup,
   sendInternalError = ({ res, error }) => res.status(500).json({ ok: false, error: error?.message || String(error) }),
   homeDir = () => os.homedir(),
   // (req) => whether the request came from this computer, not the network
@@ -175,6 +178,65 @@ const registerViewPrsLocalBranchesRoutes = ({
       const cloneFolder = localReposStorage.loadLocalRepoEntries()[repo]?.path || "";
       res.json({ ok: true, results: await checkCommands({ cloneFolder, commands }) });
     } catch (error) {
+      sendInternalError({ res, error });
+    }
+  });
+
+  // ?repo= - what's safe to remove after merged and closed PRs, and what
+  // isn't and why (view-prs-local-checkout.js' listCleanup): { by, items,
+  // ignored?, output? }. Only from this computer: it may run the repo's
+  // list command, and removing is from Settings, as changing the commands is.
+  app.get(["/local-repos/cleanup", "/view-prs/local-repos/cleanup"], async (req, res) => {
+    if (!isFromThisComputer(req)) {
+      res.status(403).json({ ok: false, error: "Clean up is only on this computer" });
+      return;
+    }
+    const repo = String(req.query?.repo || "").trim();
+    try {
+      const entry = localReposStorage.loadLocalRepoEntries()[repo];
+      if (!entry) {
+        res.status(404).json({ ok: false, error: `No clone of ${repo} saved (Settings › Local clones)` });
+        return;
+      }
+      const prs = listPrs({ [repo]: entry.path });
+      res.json({ ok: true, ...(await listCleanup({ repo, cloneFolder: entry.path, settings: entry.checkout, prs })) });
+    } catch (error) {
+      if (error?.status) {
+        res.status(error.status).json({ ok: false, error: error.message, output: error.output || "" });
+        return;
+      }
+      sendInternalError({ res, error });
+    }
+  });
+
+  // { repo, branch?, worktreePath? } - one item of the list removed, once
+  // listed again and still safe (removeCleanup): { removed, how, output } -
+  // or { error, output }. Only from this computer.
+  app.post(["/local-repos/cleanup/remove", "/view-prs/local-repos/cleanup/remove"], async (req, res) => {
+    if (!isFromThisComputer(req)) {
+      res.status(403).json({ ok: false, error: "Clean up is only on this computer" });
+      return;
+    }
+    const repo = String(req.body?.repo || "").trim();
+    const branch = String(req.body?.branch || "");
+    const worktreePath = String(req.body?.worktreePath || "");
+    if (!branch && !worktreePath) {
+      res.status(400).json({ ok: false, error: "Nothing to remove" });
+      return;
+    }
+    try {
+      const entry = localReposStorage.loadLocalRepoEntries()[repo];
+      if (!entry) {
+        res.status(404).json({ ok: false, error: `No clone of ${repo} saved (Settings › Local clones)` });
+        return;
+      }
+      const prs = listPrs({ [repo]: entry.path });
+      res.json({ ok: true, ...(await removeCleanup({ repo, cloneFolder: entry.path, settings: entry.checkout, prs, branch, worktreePath })) });
+    } catch (error) {
+      if (error?.status) {
+        res.status(error.status).json({ ok: false, error: error.message, output: error.output || "" });
+        return;
+      }
       sendInternalError({ res, error });
     }
   });

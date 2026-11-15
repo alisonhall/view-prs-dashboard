@@ -7,6 +7,7 @@ import { NON_CREDENTIAL_INPUT_PROPS } from '../../helpers/form-parsing.helpers.t
 import { listKnownRepos } from '../../helpers/pr-known-repos.helpers.ts';
 import { Button } from '../ui/Button';
 import { CheckoutSettings } from './CheckoutSettings';
+import { CleanupSettings } from './CleanupSettings';
 
 interface LocalReposResult {
   ok?: boolean;
@@ -266,6 +267,9 @@ export function LocalClonesSection() {
                   </span>
                 )}
                 {status?.ok && <CheckoutSettings repo={repo} status={status} others={checkoutsBesides(repo)} onSaved={setRepos} />}
+                {status?.ok && (
+                  <CleanupSettings repo={repo} hasListCommand={Boolean(status.checkout?.cleanupList)} hasRemoveCommand={Boolean(status.checkout?.cleanupRemove)} />
+                )}
               </li>
             );
           })}

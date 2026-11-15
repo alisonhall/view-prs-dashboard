@@ -588,6 +588,183 @@ describe("checking out a PR into a worktree", () => {
     });
   });
 
+  describe("Clean up after merged and closed PRs", () => {
+    // A branch on the remote at the feature commit, tracked by a local one
+    // - in a worktree beside the clone, or not.
+    const tracked = (clone, name, { worktree = true } = {}) => {
+      git(path.join(root, "seed"), "push", "-q", "-f", remote, `${oids.feature}:refs/heads/${name}`);
+      git(clone, "fetch", "-q", "origin", `+refs/heads/${name}:refs/remotes/origin/${name}`);
+      git(clone, "branch", "-q", "--track", name, `origin/${name}`);
+      const tree = path.join(path.dirname(clone), folderNameFor(name));
+      if (worktree) git(clone, "worktree", "add", "-q", tree, name);
+      return tree;
+    };
+    const row = (number, name, { done = true } = {}) => ({
+      key: `acme/app#${number}`,
+      repo: "acme/app",
+      number: String(number),
+      branch: name,
+      targetBranch: "main",
+      crossRepository: false,
+      headOid: oids.feature,
+      commitOids: [oids.feature],
+      done,
+    });
+    const byBranch = (result) => Object.fromEntries(result.items.map((item) => [item.branch || item.worktreePath, item]));
+
+    test("plain git: merged and closed PRs' branches, with their worktrees - safe, or not and why; open PRs' not listed", async () => {
+      const clone = freshClone();
+      const merged = tracked(clone, "done/merged");
+      tracked(clone, "done/only", { worktree: false });
+      const dirty = tracked(clone, "done/dirty");
+      fs.writeFileSync(path.join(dirty, "new.txt"), "x\n");
+      const ahead = tracked(clone, "done/ahead");
+      commit(ahead, "mine");
+      tracked(clone, "still/open");
+      tracked(clone, "shared");
+      git(clone, "branch", "-q", "lonely", oids.feature);
+      const locked = tracked(clone, "done/locked");
+      git(clone, "worktree", "lock", locked);
+      const prs = [
+        row(1, "done/merged"),
+        row(2, "done/only"),
+        row(3, "done/dirty"),
+        row(4, "done/ahead"),
+        row(5, "still/open", { done: false }),
+        row(6, "shared"),
+        row(7, "shared", { done: false }),
+        row(8, "lonely"),
+        row(9, "done/locked"),
+      ];
+      const { checkout } = setUp();
+      const result = await checkout.listCleanup({ repo: "acme/app", cloneFolder: clone, settings: null, prs });
+      expect(result.by).toBe("git");
+      const items = byBranch(result);
+      expect(Object.keys(items).sort()).toEqual(["done/ahead", "done/dirty", "done/locked", "done/merged", "done/only", "lonely", "shared"]);
+      expect(items["done/merged"]).toMatchObject({ safe: true, reasons: [], prs: [{ number: "1", done: true }] });
+      samePath(items["done/merged"].worktreePath, merged);
+      expect(items["done/only"]).toMatchObject({ safe: true, oid: oids.feature });
+      expect(items["done/only"].worktreePath).toBeUndefined();
+      expect(items["done/dirty"]).toMatchObject({ safe: false, reasons: ["Uncommitted: 1 new"] });
+      expect(items["done/ahead"]).toMatchObject({ safe: false, reasons: ["1 commit not on GitHub"] });
+      expect(items.shared).toMatchObject({ safe: false, reasons: ["#7 is still open"] });
+      expect(items.lonely).toMatchObject({ safe: false, reasons: ["lonely tracks nothing - found by its name alone, so it may not be the PR's"] });
+      expect(items["done/locked"]).toMatchObject({ safe: false, reasons: ["Its worktree is locked (git worktree unlock it first)"] });
+      // The safe ones first.
+      expect(result.items.slice(0, 2).map((item) => item.branch)).toEqual(["done/merged", "done/only"]);
+    });
+
+    test("a long-lived branch a merged PR came from - a PR's base, or the source of several - is kept, though clean and pushed", async () => {
+      const clone = freshClone();
+      tracked(clone, "develop");
+      tracked(clone, "release/1", { worktree: false });
+      tracked(clone, "done/one", { worktree: false });
+      const prs = [
+        // develop into main, merged twice.
+        row(1, "develop"),
+        row(2, "develop"),
+        // A release branch merged, and the base of a PR still open.
+        row(3, "release/1"),
+        { ...row(4, "feature/y", { done: false }), targetBranch: "release/1" },
+        row(5, "done/one"),
+      ];
+      const { checkout } = setUp();
+      const items = byBranch(await checkout.listCleanup({ repo: "acme/app", cloneFolder: clone, settings: null, prs }));
+      expect(items.develop).toMatchObject({ safe: false, reasons: ["2 PRs have come from develop - a long-lived branch?"] });
+      expect(items["release/1"]).toMatchObject({ safe: false, reasons: ["release/1 is the base of #4 - a long-lived branch"] });
+      expect(items["done/one"]).toMatchObject({ safe: true });
+      await expect(
+        checkout.removeCleanup({ repo: "acme/app", cloneFolder: clone, settings: null, prs, branch: "release/1", worktreePath: "" }),
+      ).rejects.toMatchObject({ status: 409, message: "Not safe to remove: release/1 is the base of #4 - a long-lived branch" });
+      expect(git(clone, "branch", "--list", "release/1")).toContain("release/1");
+    });
+
+    test("a branch checked out in the clone's own folder is never safe", async () => {
+      const clone = freshClone();
+      tracked(clone, "done/here", { worktree: false });
+      git(clone, "checkout", "-q", "done/here");
+      const { checkout } = setUp();
+      const result = await checkout.listCleanup({ repo: "acme/app", cloneFolder: clone, settings: null, prs: [row(1, "done/here")] });
+      expect(byBranch(result)["done/here"]).toMatchObject({ safe: false, reasons: ["It's the clone's own folder"] });
+    });
+
+    test("removing: the worktree and the branch with its tracking settings - only once listed again and still safe", async () => {
+      const clone = freshClone();
+      const tree = tracked(clone, "done/merged");
+      tracked(clone, "done/only", { worktree: false });
+      const gone = tracked(clone, "done/gone");
+      fs.rmSync(gone, { recursive: true, force: true });
+      const prs = [row(1, "done/merged"), row(2, "done/only"), row(3, "done/gone")];
+      const { checkout, localBranches } = setUp();
+      const listed = byBranch(await checkout.listCleanup({ repo: "acme/app", cloneFolder: clone, settings: null, prs }));
+      expect(listed["done/gone"]).toMatchObject({ safe: true, notes: ["Its folder is gone already - git still lists it"] });
+      const remove = (item) =>
+        checkout.removeCleanup({ repo: "acme/app", cloneFolder: clone, settings: null, prs, branch: item.branch, worktreePath: item.worktreePath });
+
+      // A change made since it was listed: refused, nothing removed.
+      fs.writeFileSync(path.join(tree, "late.txt"), "x\n");
+      await expect(remove(listed["done/merged"])).rejects.toMatchObject({ status: 409, message: "Not safe to remove: Uncommitted: 1 new" });
+      expect(fs.existsSync(tree)).toBe(true);
+      fs.rmSync(path.join(tree, "late.txt"));
+
+      expect(await remove(listed["done/merged"])).toEqual({
+        removed: { worktreePath: listed["done/merged"].worktreePath, branch: "done/merged" },
+        how: "git",
+        output: "",
+      });
+      expect(fs.existsSync(tree)).toBe(false);
+      expect(git(clone, "branch", "--list", "done/merged")).toBe("");
+      expect(() => git(clone, "config", "branch.done/merged.remote")).toThrow();
+      expect(await remove(listed["done/only"])).toMatchObject({ removed: { branch: "done/only" } });
+      expect(await remove(listed["done/gone"])).toMatchObject({ removed: { branch: "done/gone" } });
+      expect(git(clone, "worktree", "list", "--porcelain")).not.toContain("done_gone");
+      // Gone now: no longer listed.
+      await expect(remove(listed["done/only"])).rejects.toMatchObject({ status: 409, message: "It's no longer in the list - look again" });
+      const { prs: after } = await localBranches.getLocalBranches({ localRepos: { "acme/app": clone }, prs });
+      expect(after).toEqual({});
+    });
+
+    test("the repo's list and remove commands: the worktrees it prints that are the clone's, the dashboard's checks still applied", async () => {
+      const clone = freshClone();
+      const tree = tracked(clone, "mine/old");
+      const open = tracked(clone, "still/open");
+      const log = path.join(root, "clean-log");
+      const settings = {
+        cleanupList: `printf '%s\\n' "$VIEW_PRS_CLONE" "${toPosix(tree)}" "${toPosix(open)}" /not/a/worktree; echo "why: they're old" >&2`,
+        cleanupRemove: `printf '%s|%s\\n' "$VIEW_PRS_WORKTREE" "$VIEW_PRS_LOCAL_BRANCH" >> "${toPosix(log)}" && git worktree remove {worktree}`,
+      };
+      const prs = [row(5, "still/open", { done: false })];
+      const { checkout } = setUp();
+      const result = await checkout.listCleanup({ repo: "acme/app", cloneFolder: clone, settings, prs });
+      expect(result).toMatchObject({ by: "command", ignored: ["/not/a/worktree"], output: "why: they're old" });
+      const items = byBranch(result);
+      expect(items["mine/old"]).toMatchObject({ safe: true, notes: ["No PR on the page has this branch, so what's pushed isn't checked"] });
+      expect(items["still/open"]).toMatchObject({ safe: false, reasons: ["#5 is still open"] });
+      expect(items.main).toMatchObject({ safe: false, reasons: ["main is the base of #5 - a long-lived branch", "It's the clone's own folder"] });
+
+      const removed = await checkout.removeCleanup({ repo: "acme/app", cloneFolder: clone, settings, prs, branch: "mine/old", worktreePath: items["mine/old"].worktreePath });
+      expect(removed).toMatchObject({ removed: { worktreePath: items["mine/old"].worktreePath }, how: "command" });
+      expect(fs.readFileSync(log, "utf8").trim()).toBe(`${toPosix(items["mine/old"].worktreePath)}|mine/old`);
+      expect(fs.existsSync(tree)).toBe(false);
+      // The branch is the command's to remove: left as it is.
+      expect(git(clone, "branch", "--list", "mine/old")).toContain("mine/old");
+    });
+
+    test("a remove command that leaves the worktree there says so; a list command that fails says why", async () => {
+      const clone = freshClone();
+      const tree = tracked(clone, "mine/kept");
+      const { checkout } = setUp();
+      const settings = { cleanupList: `echo "${toPosix(tree)}"`, cleanupRemove: "echo did nothing" };
+      const [item] = (await checkout.listCleanup({ repo: "acme/app", cloneFolder: clone, settings, prs: [] })).items;
+      await expect(
+        checkout.removeCleanup({ repo: "acme/app", cloneFolder: clone, settings, prs: [], branch: item.branch, worktreePath: item.worktreePath }),
+      ).rejects.toMatchObject({ status: 502, message: `The remove command finished, but ${item.worktreePath} is still a worktree of the clone`, output: "did nothing" });
+      await expect(
+        checkout.listCleanup({ repo: "acme/app", cloneFolder: clone, settings: { cleanupList: "echo 'error: no such layout' >&2; exit 3" }, prs: [] }),
+      ).rejects.toMatchObject({ status: 502, message: "The list command failed: no such layout" });
+    });
+  });
+
   test("placeholders are the quoted variables; folder names have no / nor anything Windows refuses; the reason skips a shell's complaints", () => {
     expect(expandPlaceholders("my-tool add {branch} --pr {number} {unknown}")).toBe('my-tool add "$VIEW_PRS_BRANCH" --pr "$VIEW_PRS_NUMBER" {unknown}');
     expect(worktreeFolderFor("", path.join(root, "app"), "feature/a")).toBe(path.join(root, "app-feature_a"));
