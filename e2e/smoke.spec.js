@@ -1034,7 +1034,7 @@ test("Settings › Local clones finds and saves a repo's clone and how to check 
     return route.fulfill({ json: { ok: true, branch: "feature/two", worktreePath: root, how: "command", output: "" } });
   });
   const opened = [];
-  await page.route("**/view-prs/open-in-editor", (route) => {
+  await page.route("**/view-prs/open-folder", (route) => {
     opened.push(route.request().postDataJSON());
     return route.fulfill({ json: { ok: true } });
   });
@@ -1082,7 +1082,9 @@ test("Settings › Local clones finds and saves a repo's clone and how to check 
     expect(checkouts).toEqual([{ repo: "octocat/hello-world", number: "2" }]);
     await expect(pane.getByRole("button", { name: "Check out", exact: true })).toHaveCount(0);
     await pane.getByRole("button", { name: "Open in editor", exact: true }).click();
-    await expect.poll(() => opened).toEqual([{ repo: "octocat/hello-world", path: root }]);
+    await expect.poll(() => opened).toEqual([{ repo: "octocat/hello-world", path: root, with: "editor" }]);
+    await pane.getByRole("button", { name: "Open a terminal here", exact: true }).click();
+    await expect.poll(() => opened.map((body) => body.with)).toEqual(["editor", "terminal"]);
   } finally {
     await page.request.delete("/view-prs/local-repos", { data: { repo: "octocat/hello-world" } });
     fs.rmSync(root, { recursive: true, force: true });

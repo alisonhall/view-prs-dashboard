@@ -1,18 +1,21 @@
 import { useEffect, useId, useMemo, useState, type FormEvent } from 'react';
 import { postJson } from '../../helpers/pr-http.helpers.ts';
 import { useOptionalPrData } from '../../state/PrDataContext';
-import { useLocalBranches, type LocalRepoStatus, type LocalRepoCheckout } from '../../state/LocalBranchesContext';
+import { useLocalBranches, type LocalRepoStatus, type LocalRepoCheckout, type OpenWithSettings as OpenWith } from '../../state/LocalBranchesContext';
 import { sendJson } from '../../helpers/pr-http.helpers.ts';
 import { NON_CREDENTIAL_INPUT_PROPS } from '../../helpers/form-parsing.helpers.ts';
 import { listKnownRepos } from '../../helpers/pr-known-repos.helpers.ts';
 import { Button } from '../ui/Button';
 import { CheckoutSettings } from './CheckoutSettings';
 import { CleanupSettings } from './CleanupSettings';
+import { OpenWithSettings } from './OpenWithSettings';
 
 interface LocalReposResult {
   ok?: boolean;
   error?: string;
   repos?: Record<string, LocalRepoStatus>;
+  openWith?: OpenWith;
+  platform?: string;
 }
 
 // "3 branches, 2 worktrees".
@@ -162,6 +165,8 @@ export function LocalClonesSection() {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busyRepo, setBusyRepo] = useState('');
+  // This computer's editor and terminal commands, once the server says.
+  const [computer, setComputer] = useState<{ openWith: OpenWith; platform: string } | null>(null);
   const idPrefix = useId();
 
   // The clones' state afresh when the section opens.
@@ -171,7 +176,9 @@ export function LocalClonesSection() {
       try {
         const response = await fetch('/view-prs/local-repos', { cache: 'no-store' });
         const result = (await response.json()) as LocalReposResult;
-        if (!cancelled && result.repos) setRepos(result.repos);
+        if (cancelled) return;
+        if (result.repos) setRepos(result.repos);
+        setComputer({ openWith: result.openWith || {}, platform: result.platform || '' });
       } catch (_error) {
         // The last check's stays.
       }
@@ -217,7 +224,8 @@ export function LocalClonesSection() {
       <p className="settings-hint">
         Where a repo is cloned on this computer. With it, each PR whose branch you have locally shows it: whether it&apos;s
         ahead of or behind the PR on GitHub (as last fetched by the dashboard - nothing is fetched into the clone), the
-        worktree it&apos;s checked out in, and Open in editor in the PR&apos;s details. Saved on this computer only.
+        worktree it&apos;s checked out in, and Open in editor, Terminal and Show in Explorer/Finder in the PR&apos;s details. Saved on
+        this computer only.
       </p>
       <FindClones repos={knownRepos} statuses={statuses} onUse={(repo, path) => change(repo, 'PUT', { repo, path })} />
       {repos.length === 0 ? (
@@ -274,6 +282,17 @@ export function LocalClonesSection() {
             );
           })}
         </ul>
+      )}
+      {computer && Object.values(statuses).some((status) => status?.ok) && (
+        <OpenWithSettings
+          initial={computer.openWith}
+          platform={computer.platform}
+          onSaved={(openWith) => {
+            setComputer((previous) => (previous ? { ...previous, openWith } : previous));
+            // The pane's hover text says what each button starts.
+            refresh();
+          }}
+        />
       )}
     </div>
   );

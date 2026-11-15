@@ -1,6 +1,6 @@
 const os = require("os");
 const path = require("path");
-const { checkCheckoutSettings } = require("../storage/view-prs-local-repos-storage");
+const { checkCheckoutSettings, checkOpenWithSettings } = require("../storage/view-prs-local-repos-storage");
 const { isForkPr } = require("../helpers/view-prs-local-branches");
 const { planCheckout } = require("../helpers/view-prs-local-checkout");
 
@@ -13,8 +13,13 @@ const registerViewPrsLocalBranchesRoutes = ({
   isRepoSlug,
   // () => the data's rows in view (byPrNumber's entries).
   readViewPrsRows,
-  // (folder) => resolves once the editor is started, rejects with why not.
-  openInEditor,
+  // view-prs-local-open.js' openFolder: ({ kind, folder, settings }) =>
+  // resolves once the editor, terminal or file manager is started, rejects
+  // with .status and why not.
+  openFolder,
+  // The server's platform (process.platform): the page names Explorer or
+  // Finder by it, and says what Terminal opens.
+  platform = process.platform,
   // view-prs-local-checkout.js's checkOut, fetchPr, pullPr, checkCommands,
   // listCleanup and removeCleanup.
   checkOut,
@@ -72,10 +77,11 @@ const registerViewPrsLocalBranchesRoutes = ({
     );
   };
 
-  // { repos: repo => { path, ok, error?, branchCount, worktreeCount } }.
+  // { repos: repo => { path, ok, error?, branchCount, worktreeCount },
+  // openWith: { editor?, terminal? }, platform }.
   app.get(["/local-repos", "/view-prs/local-repos"], async (_req, res) => {
     try {
-      res.json({ ok: true, repos: await reposStatus() });
+      res.json({ ok: true, repos: await reposStatus(), openWith: localReposStorage.loadOpenWith(), platform });
     } catch (error) {
       sendInternalError({ res, error });
     }
@@ -241,6 +247,28 @@ const registerViewPrsLocalBranchesRoutes = ({
     }
   });
 
+  // { openWith: { editor?, terminal? } } - this computer's commands for
+  // the pane's Open in editor and Terminal, empty for VS Code's code and
+  // the system's terminal: { openWith }. Only from this computer, as the
+  // checkout commands are: they're run on it, as the user.
+  app.put(["/local-repos/open-with", "/view-prs/local-repos/open-with"], async (req, res) => {
+    if (!isFromThisComputer(req)) {
+      res.status(403).json({ ok: false, error: "The editor and terminal can only be changed on this computer" });
+      return;
+    }
+    const { openWith, error } = checkOpenWithSettings(req.body?.openWith);
+    if (error) {
+      res.status(400).json({ ok: false, error });
+      return;
+    }
+    try {
+      localReposStorage.setOpenWith(openWith);
+      res.json({ ok: true, openWith: localReposStorage.loadOpenWith() });
+    } catch (caught) {
+      sendInternalError({ res, error: caught });
+    }
+  });
+
   // { repo } - forgets its clone's folder.
   app.delete(["/local-repos", "/view-prs/local-repos"], async (req, res) => {
     const repo = String(req.body?.repo || "").trim();
@@ -277,7 +305,7 @@ const registerViewPrsLocalBranchesRoutes = ({
             return [pr.key, { how: planCheckout({ existing: Boolean(result.prs[pr.key]), isFork: fork, settings: entries[pr.repo]?.checkout }), fork }];
           }),
       );
-      res.json({ ok: true, ...result, plans });
+      res.json({ ok: true, ...result, plans, platform, openWith: localReposStorage.loadOpenWith() });
     } catch (error) {
       sendInternalError({ res, error });
     }
@@ -403,21 +431,29 @@ const registerViewPrsLocalBranchesRoutes = ({
     }
   });
 
-  // { repo, path } - opens the folder in the code editor (`code`): only the
-  // repo's clone or one of its worktrees, never another path.
-  app.post(["/open-in-editor", "/view-prs/open-in-editor"], async (req, res) => {
+  // { repo, path, with } - opens the folder (view-prs-local-open.js): with
+  // "editor" (the default; /open-in-editor), "terminal" or "files" (Explorer,
+  // Finder) - only the repo's clone or one of its worktrees, never another
+  // path. Only from this computer: what it opens is on this computer's
+  // screen, and the commands are run on it.
+  app.post(["/open-folder", "/view-prs/open-folder", "/open-in-editor", "/view-prs/open-in-editor"], async (req, res) => {
+    if (!isFromThisComputer(req)) {
+      res.status(403).json({ ok: false, error: "Folders can only be opened on this computer" });
+      return;
+    }
     const repo = String(req.body?.repo || "").trim();
     const folder = String(req.body?.path || "").trim();
+    const kind = String(req.body?.with || "editor");
     try {
       const cloneFolder = localReposStorage.loadLocalRepos()[repo];
       if (!(await localBranches.isOpenableFolder(repo, cloneFolder, folder))) {
         res.status(400).json({ ok: false, error: `Not ${repo}'s clone or one of its worktrees` });
         return;
       }
-      await openInEditor(folder);
+      await openFolder({ kind, folder, settings: localReposStorage.loadOpenWith() });
       res.json({ ok: true });
     } catch (error) {
-      res.status(502).json({ ok: false, error: error?.message || String(error) });
+      res.status(error?.status || 502).json({ ok: false, error: error?.message || String(error) });
     }
   });
 };

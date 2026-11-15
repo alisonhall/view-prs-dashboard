@@ -14,6 +14,10 @@ const { writeFileReplacingSync } = require("../helpers/file-io-helpers");
 // git's worktrees, and variables to give the commands. With them,
 // cleanupList? and cleanupRemove?: the repo's own commands for Clean up
 // (the worktrees safe to remove, and removing one), else plain git.
+//
+// openWith: this computer's { editor?, terminal? } commands for the pane's
+// Open in editor and Terminal (view-prs-local-open.js), else VS Code's
+// `code` and the system's terminal - beside repos, for every repo.
 
 const toTrimmed = (value) => (value === null || value === undefined ? "" : String(value).trim());
 const isPlainObject = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
@@ -74,15 +78,41 @@ const checkCheckoutSettings = (value) => {
 // Checkout settings as saved, or null when there are none usable.
 const normalizeCheckout = (value) => checkCheckoutSettings(value).checkout || null;
 
+// The editor and terminal commands as given: { openWith } ({} when neither
+// is set), or { error } saying what's wrong.
+const checkOpenWithSettings = (value) => {
+  if (value === null || value === undefined) return { openWith: {} };
+  if (!isPlainObject(value)) return { error: "The editor and terminal commands should be an object" };
+  const openWith = {};
+  for (const [key, label] of [
+    ["editor", "The editor command"],
+    ["terminal", "The terminal command"],
+  ]) {
+    const command = toTrimmed(value[key]);
+    if (!command) continue;
+    if (/[\r\n\0]/.test(command)) return { error: `${label} should be one line` };
+    if (command.length > MAX_COMMAND_LENGTH) return { error: `${label} is too long` };
+    openWith[key] = command;
+  }
+  return { openWith };
+};
+
 const createViewPrsLocalReposStorage = ({ fs, localReposFile, isRepoSlug }) => {
-  // repo => { path, checkout? }, the ones that look valid.
-  const loadLocalRepoEntries = () => {
-    let raw;
+  const readRaw = () => {
     try {
-      raw = JSON.parse(fs.readFileSync(localReposFile, "utf8"));
+      const raw = JSON.parse(fs.readFileSync(localReposFile, "utf8"));
+      return isPlainObject(raw) ? raw : {};
     } catch (_error) {
       return {};
     }
+  };
+
+  // { editor?, terminal? }, the ones that look valid.
+  const loadOpenWith = () => checkOpenWithSettings(readRaw().openWith).openWith || {};
+
+  // repo => { path, checkout? }, the ones that look valid.
+  const loadLocalRepoEntries = () => {
+    const raw = readRaw();
     const repos = isPlainObject(raw?.repos) ? raw.repos : {};
     return Object.fromEntries(
       Object.entries(repos)
@@ -98,15 +128,21 @@ const createViewPrsLocalReposStorage = ({ fs, localReposFile, isRepoSlug }) => {
   const loadLocalRepos = () =>
     Object.fromEntries(Object.entries(loadLocalRepoEntries()).map(([repo, entry]) => [repo, entry.path]));
 
-  const save = (entries) => {
+  // The repos' entries, keeping the editor and terminal commands (or
+  // those, keeping the repos).
+  const save = (entries, openWith = loadOpenWith()) => {
     fs.mkdirSync(path.dirname(localReposFile), { recursive: true });
     const sorted = Object.fromEntries(
       Object.keys(entries)
         .sort()
         .map((repo) => [repo, entries[repo]]),
     );
-    writeFileReplacingSync(fs, localReposFile, `${JSON.stringify({ repos: sorted }, null, 2)}\n`);
+    const file = Object.keys(openWith).length > 0 ? { repos: sorted, openWith } : { repos: sorted };
+    writeFileReplacingSync(fs, localReposFile, `${JSON.stringify(file, null, 2)}\n`);
   };
+
+  // openWith: { editor?, terminal? }, as checkOpenWithSettings gives it.
+  const setOpenWith = (openWith) => save(loadLocalRepoEntries(), checkOpenWithSettings(openWith).openWith || {});
 
   // Keeps the repo's checkout settings.
   const setLocalRepo = (repo, folder) => {
@@ -134,7 +170,7 @@ const createViewPrsLocalReposStorage = ({ fs, localReposFile, isRepoSlug }) => {
     return true;
   };
 
-  return { loadLocalRepos, loadLocalRepoEntries, setLocalRepo, setLocalRepoCheckout, removeLocalRepo };
+  return { loadLocalRepos, loadLocalRepoEntries, setLocalRepo, setLocalRepoCheckout, removeLocalRepo, loadOpenWith, setOpenWith };
 };
 
-module.exports = { createViewPrsLocalReposStorage, checkCheckoutSettings, normalizeCheckout };
+module.exports = { createViewPrsLocalReposStorage, checkCheckoutSettings, normalizeCheckout, checkOpenWithSettings };

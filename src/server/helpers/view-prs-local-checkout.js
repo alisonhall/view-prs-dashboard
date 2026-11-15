@@ -746,7 +746,8 @@ const createViewPrsLocalCheckout = ({
     }
   };
 
-  return { checkOut, fetchPr, pullPr, checkCommands, listCleanup, removeCleanup };
+  // userShell: for Open in editor and Terminal's own commands, run the same way.
+  return { checkOut, fetchPr, pullPr, checkCommands, listCleanup, removeCleanup, userShell };
 };
 
 module.exports = {

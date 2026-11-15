@@ -622,9 +622,9 @@ describe("integration behavior", () => {
         new Promise((resolve, reject) =>
           execFile(command, args, { encoding: "utf8" }, (error, stdout, stderr) => (error ? reject({ error, stderr }) : resolve({ stdout }))),
         );
-      originalOpen = appModule.openFolderInEditor;
-      appModule.openFolderInEditor = async (folder) => {
-        opened.push(folder);
+      originalOpen = appModule.openLocalFolder;
+      appModule.openLocalFolder = async ({ kind, folder, settings }) => {
+        opened.push(kind === "editor" ? folder : { kind, folder, settings });
       };
       writeViewPrsData({
         byPrNumber: {
@@ -640,7 +640,7 @@ describe("integration behavior", () => {
       });
     });
     afterEach(() => {
-      appModule.openFolderInEditor = originalOpen;
+      appModule.openLocalFolder = originalOpen;
       appModule.runViewPrsCommand = originalRunViewPrsCommand;
     });
 
@@ -734,6 +734,46 @@ describe("integration behavior", () => {
       expect(elsewhere.status).toBe(400);
       expect((await request.post("/view-prs/open-in-editor").send({ repo: "other/repo", path: clone })).status).toBe(400);
       expect(opened).toEqual([worktree, clone]);
+    });
+
+    test("opens a terminal or the file manager in the clone or a worktree, with this computer's editor and terminal commands; not from the network", async () => {
+      await request.put("/view-prs/local-repos").send({ repo: "owner/repo", path: clone });
+      expect((await request.get("/view-prs/local-repos")).body).toMatchObject({ openWith: {}, platform: process.platform });
+      const saved = await request.put("/view-prs/local-repos/open-with").send({ openWith: { editor: " cursor ", terminal: "wezterm start --cwd {folder}" } });
+      expect(saved.body).toEqual({ ok: true, openWith: { editor: "cursor", terminal: "wezterm start --cwd {folder}" } });
+      // Kept beside the repos: saving a clone or its checkout settings keeps it, and the other way round.
+      await request.put("/view-prs/local-repos/checkout").send({ repo: "owner/repo", checkout: { command: "my-tool {branch}" } });
+      const status = (await request.get("/view-prs/local-repos")).body;
+      expect(status.openWith).toEqual({ editor: "cursor", terminal: "wezterm start --cwd {folder}" });
+      expect(status.repos["owner/repo"].checkout).toEqual({ command: "my-tool {branch}" });
+      expect((await request.get("/view-prs/local-branches")).body).toMatchObject({ platform: process.platform, openWith: { editor: "cursor" } });
+
+      expect((await request.post("/view-prs/open-folder").send({ repo: "owner/repo", path: worktree, with: "terminal" })).body).toEqual({ ok: true });
+      expect((await request.post("/view-prs/open-folder").send({ repo: "owner/repo", path: clone, with: "files" })).status).toBe(200);
+      expect((await request.post("/view-prs/open-folder").send({ repo: "owner/repo", path: root, with: "files" })).status).toBe(400);
+      const settings = { editor: "cursor", terminal: "wezterm start --cwd {folder}" };
+      expect(opened).toEqual([
+        { kind: "terminal", folder: worktree, settings },
+        { kind: "files", folder: clone, settings },
+      ]);
+
+      const multiLine = await request.put("/view-prs/local-repos/open-with").send({ openWith: { terminal: "a\nb" } });
+      expect(multiLine.status).toBe(400);
+      expect(multiLine.body.error).toBe("The terminal command should be one line");
+      expect((await request.put("/view-prs/local-repos/open-with").send({ openWith: {} })).body.openWith).toEqual({});
+      expect(JSON.parse(fs.readFileSync(process.env.VIEW_PRS_LOCAL_REPOS_FILE, "utf8")).openWith).toBeUndefined();
+
+      appModule.isFromThisComputer = () => false;
+      try {
+        const res = await request.put("/view-prs/local-repos/open-with").send({ openWith: { editor: "anything" } });
+        expect(res.status).toBe(403);
+        expect((await request.post("/view-prs/open-folder").send({ repo: "owner/repo", path: clone, with: "terminal" })).status).toBe(403);
+        expect((await request.post("/view-prs/open-in-editor").send({ repo: "owner/repo", path: clone })).status).toBe(403);
+      } finally {
+        delete appModule.isFromThisComputer;
+      }
+      expect(opened).toHaveLength(2);
+      expect((await request.get("/view-prs/local-repos")).body.openWith).toEqual({});
     });
 
     test("a repo's checkout settings: saved as given, kept when the clone's folder is saved again; one that can't work refused, saying why", async () => {

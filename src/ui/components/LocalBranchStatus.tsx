@@ -8,6 +8,7 @@ import {
   type CheckoutPlan,
   type LocalBranchInfo,
   type LocalRepoStatus,
+  type OpenWithSettings,
 } from '../state/LocalBranchesContext';
 import { useSnackbar } from '../state/SnackbarContext';
 import { postJson } from '../helpers/pr-http.helpers.ts';
@@ -26,6 +27,28 @@ export const useIsYourPr = (pr: PrData | null | undefined) => {
   const viewer = getEffectiveViewerKey(pr || {});
   const author = pr?.authorLogin ? String(getPreferredActorKey(pr.authorLogin) || '').toLowerCase() : '';
   return Boolean(viewer && author && author === viewer);
+};
+
+export type OpenKind = 'editor' | 'terminal' | 'files';
+
+// The file manager the server's computer has: Explorer, Finder, or the
+// desktop's.
+export const filesAppName = (platform: string) => (platform === 'win32' ? 'Explorer' : platform === 'darwin' ? 'Finder' : 'Files');
+
+// What each of the pane's open buttons starts, for its hover text.
+export const describeOpenWith = (kind: OpenKind, folder: string, platform: string, openWith: OpenWithSettings) => {
+  if (kind === 'files') return `Show ${folder} in ${platform === 'win32' || platform === 'darwin' ? filesAppName(platform) : 'the file manager'}`;
+  const command = openWith[kind];
+  if (command) return `${kind === 'editor' ? 'Open' : 'Open a terminal in'} ${folder} with ${command} (Settings › Local clones)`;
+  if (kind === 'editor') return `Open ${folder} in VS Code (code) - or set your editor in Settings › Local clones`;
+  const terminal = platform === 'win32' ? 'Windows Terminal (or a Command Prompt)' : platform === 'darwin' ? 'Terminal' : 'x-terminal-emulator';
+  return `Open ${terminal} in ${folder} - or set your terminal in Settings › Local clones`;
+};
+
+const OPEN_FAILED: Record<OpenKind, string> = {
+  editor: "Couldn't open the editor",
+  terminal: "Couldn't open a terminal",
+  files: "Couldn't show the folder",
 };
 
 const NAME_ONLY_NOTE = "It has the PR's branch's name but tracks no remote branch, so it may not be the PR's code.";
@@ -372,8 +395,10 @@ function CopyCommandLine({ command, clone }: { command: string; clone: LocalRepo
 
 /**
  * The pane's "On this computer" line: the local branch, ahead/behind, the
- * worktree it's checked out in, and Open in editor (VS Code's `code`, run
- * by the server for the worktree's folder). An open PR not checked out in
+ * worktree it's checked out in, and Open in editor, Terminal and Show in
+ * Explorer/Finder for the worktree's folder (started by the server: the
+ * editor and terminal Settings › Local clones gives, else VS Code's `code`
+ * and the system's terminal). An open PR not checked out in
  * a worktree has Check out: a worktree for its branch, made as the repo's
  * checkout settings say (Settings › Local clones) - by the user's own
  * command, or with git - its time shown while it runs, and what it printed
@@ -408,10 +433,10 @@ export function PrLocalBranchLine({
   const key = `${repo}#${prNumber}`;
   const info = useLocalBranch(repo, prNumber);
   const plan = useCheckoutPlan(repo, prNumber);
-  const { repos, refresh, loaded } = useLocalBranches();
+  const { repos, refresh, loaded, platform, openWith } = useLocalBranches();
   const clone = repos[repo];
   const { showError, showWarning } = useSnackbar();
-  const [opening, setOpening] = useState(false);
+  const [opening, setOpening] = useState<OpenKind | ''>('');
   const [checkingOut, setCheckingOut] = useState(false);
   const [fetching, setFetching] = useState(false);
   const [pulling, setPulling] = useState(false);
@@ -446,20 +471,21 @@ export function PrLocalBranchLine({
   if (copyCommand) return <CopyCommandLine key={key} command={copyCommand} clone={clone} />;
   if (!info && !made && !offerCheckOut) return null;
 
-  const open = async () => {
+  const open = async (kind: OpenKind) => {
     const folder = worktreePath;
     if (!folder) return;
-    setOpening(true);
+    setOpening(kind);
     try {
-      const { response, result } = await postJson<{ ok?: boolean; error?: string }>('/view-prs/open-in-editor', {
+      const { response, result } = await postJson<{ ok?: boolean; error?: string }>('/view-prs/open-folder', {
         repo,
         path: folder,
+        with: kind,
       });
-      if (!response.ok || result.ok === false) showError("Couldn't open the editor", result.error || `HTTP ${response.status}`);
+      if (!response.ok || result.ok === false) showError(OPEN_FAILED[kind], result.error || `HTTP ${response.status}`);
     } catch (caught) {
-      showError("Couldn't open the editor", caught instanceof Error ? caught.message : String(caught));
+      showError(OPEN_FAILED[kind], caught instanceof Error ? caught.message : String(caught));
     } finally {
-      setOpening(false);
+      setOpening('');
     }
   };
 
@@ -587,9 +613,27 @@ export function PrLocalBranchLine({
           </Button>
         )}
         {worktreePath && (
-          <Button disabled={opening} onClick={() => void open()}>
-            {opening ? 'Opening…' : 'Open in editor'}
-          </Button>
+          <>
+            <Button disabled={Boolean(opening)} title={describeOpenWith('editor', worktreePath, platform, openWith)} onClick={() => void open('editor')}>
+              {opening === 'editor' ? 'Opening…' : 'Open in editor'}
+            </Button>
+            <Button
+              disabled={Boolean(opening)}
+              aria-label="Open a terminal here"
+              title={describeOpenWith('terminal', worktreePath, platform, openWith)}
+              onClick={() => void open('terminal')}
+            >
+              {opening === 'terminal' ? 'Opening…' : 'Terminal'}
+            </Button>
+            <Button
+              disabled={Boolean(opening)}
+              aria-label={`Show in ${filesAppName(platform)}`}
+              title={describeOpenWith('files', worktreePath, platform, openWith)}
+              onClick={() => void open('files')}
+            >
+              {opening === 'files' ? 'Opening…' : filesAppName(platform)}
+            </Button>
+          </>
         )}
         {offerCheckOut && (
           <Button

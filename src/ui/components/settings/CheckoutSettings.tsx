@@ -33,7 +33,7 @@ const PLACEHOLDER_PATTERN = /^\{(branch|number|repo|remote|ref|clone|local|workt
 // The placeholders inside the command's own single quotes, where the shell
 // takes them as written, not as the PR's values ("{branch}" as the text
 // "$VIEW_PRS_BRANCH").
-export const placeholdersInSingleQuotes = (command: string): string[] => {
+export const placeholdersInSingleQuotes = (command: string, pattern: RegExp = PLACEHOLDER_PATTERN): string[] => {
   const found: string[] = [];
   let quote = '';
   for (let index = 0; index < command.length; index += 1) {
@@ -41,7 +41,7 @@ export const placeholdersInSingleQuotes = (command: string): string[] => {
     if (quote === "'") {
       if (char === "'") quote = '';
       else {
-        const match = command.slice(index).match(PLACEHOLDER_PATTERN);
+        const match = command.slice(index).match(pattern);
         if (match) found.push(match[0]);
       }
     } else if (char === '\\') {

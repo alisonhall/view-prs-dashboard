@@ -48,6 +48,7 @@ const { registerViewPrsSourcesRoutes } = require("./routes/view-prs-sources-rout
 const { registerViewPrsLocalBranchesRoutes } = require("./routes/view-prs-local-branches-routes");
 const { createViewPrsLocalBranches } = require("./helpers/view-prs-local-branches");
 const { createViewPrsLocalCheckout } = require("./helpers/view-prs-local-checkout");
+const { createViewPrsLocalOpen } = require("./helpers/view-prs-local-open");
 const {
   isViewPrsFixtureRow,
   parseTimestamp,
@@ -513,35 +514,10 @@ const viewPrsLocalReposStorage = createViewPrsLocalReposStorage({
 const viewPrsLocalBranches = createViewPrsLocalBranches({ runCommand: callRunViewPrsCommand, fs });
 const viewPrsLocalCheckout = createViewPrsLocalCheckout({ runCommand: callRunViewPrsCommand, fs, localBranches: viewPrsLocalBranches });
 
-// Opens a folder in the code editor: VS Code's `code` command, a .cmd file
-// on Windows, so started through cmd there (the folder quoted; one with a
-// quote or % in it refused, as cmd would read them). Resolves once `code`
-// has handed the folder to the editor, which it does in a second or two.
-const openFolderInEditor = (folder) =>
-  new Promise((resolve, reject) => {
-    const isWindows = process.platform === "win32";
-    if (isWindows && /["%]/.test(folder)) {
-      reject(new Error("Can't open a folder whose path has a quote or % in it"));
-      return;
-    }
-    const child = isWindows
-      ? spawn("cmd.exe", ["/d", "/s", "/c", `"code "${folder}""`], {
-          stdio: "ignore",
-          windowsHide: true,
-          windowsVerbatimArguments: true,
-        })
-      : spawn("code", [folder], { stdio: "ignore" });
-    const timer = setTimeout(() => resolve(), 15000);
-    child.once("error", (error) => {
-      clearTimeout(timer);
-      reject(new Error(error.code === "ENOENT" ? "The code command wasn't found (VS Code's Shell Command: Install 'code' command in PATH)" : error.message));
-    });
-    child.once("exit", (code) => {
-      clearTimeout(timer);
-      if (code === 0) resolve();
-      else reject(new Error("The code command wasn't found or failed (VS Code's Shell Command: Install 'code' command in PATH)"));
-    });
-  });
+// The pane's Open in editor, Terminal and Show in Explorer/Finder
+// (view-prs-local-open.js): the user's own commands run in the shell Check
+// out runs theirs in.
+const viewPrsLocalOpen = createViewPrsLocalOpen({ spawn, fs, userShell: () => viewPrsLocalCheckout.userShell() });
 
 // Open PRs' live summary, listed with each quick check and laid over the
 // rows in readViewPrsData (see view-prs-live-summary-helpers.js).
@@ -4197,7 +4173,8 @@ const createViewPrsApp = ({ production = isProductionEnv } = {}) => {
     localBranches: viewPrsLocalBranches,
     isRepoSlug,
     readViewPrsRows: () => Object.values(readVisibleViewPrsData()?.byPrNumber || {}),
-    openInEditor: (...args) => (module.exports.openFolderInEditor || openFolderInEditor)(...args),
+    // Overridable, as the tests' setup refuses spawn.
+    openFolder: (...args) => (module.exports.openLocalFolder || viewPrsLocalOpen.openFolder)(...args),
     checkOut: (...args) => viewPrsLocalCheckout.checkOut(...args),
     fetchPr: (...args) => viewPrsLocalCheckout.fetchPr(...args),
     pullPr: (...args) => viewPrsLocalCheckout.pullPr(...args),

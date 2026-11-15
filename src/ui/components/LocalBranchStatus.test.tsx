@@ -5,7 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { LocalBranchesProvider, describeLocalBranch, useLocalBranches } from '../state/LocalBranchesContext';
 import { SnackbarContext, type SnackbarValue } from '../state/SnackbarContext';
 import { renderHook } from '@testing-library/react';
-import { PrLocalBranchChip, PrLocalBranchLine, canPull, describeCheckOut, useIsYourPr } from './LocalBranchStatus';
+import { PrLocalBranchChip, PrLocalBranchLine, canPull, describeCheckOut, describeOpenWith, useIsYourPr } from './LocalBranchStatus';
 
 const PRS = {
   'acme/app#7': { branch: 'feature/x', oid: 'abcdef1234567', worktreePath: 'D:/work/x', ahead: 0, behind: 2, exact: true },
@@ -15,6 +15,7 @@ const PRS = {
 let localBranches: Record<string, unknown>;
 let localRepos: Record<string, unknown>;
 let plans: Record<string, unknown>;
+let computer: Record<string, unknown>;
 let openAnswer: { status: number; body: Record<string, unknown> };
 let checkoutAnswer: { status: number; body: Record<string, unknown> };
 let fetchAnswer: { status: number; body: Record<string, unknown> };
@@ -26,7 +27,7 @@ const fetchMock = jest.fn(async (url: string, _init?: RequestInit) => {
     const number = new URLSearchParams(url.split('?')[1]).get('number') || '';
     return { ok: true, status: 200, json: async () => ({ ok: true, changes: changesFor[number] ?? null }) };
   }
-  if (url === '/view-prs/open-in-editor') return { ok: openAnswer.status < 400, status: openAnswer.status, json: async () => openAnswer.body };
+  if (url === '/view-prs/open-folder') return { ok: openAnswer.status < 400, status: openAnswer.status, json: async () => openAnswer.body };
   if (url === '/view-prs/local-branches/pull') {
     return { ok: pullAnswer.status < 400, status: pullAnswer.status, json: async () => pullAnswer.body };
   }
@@ -36,7 +37,7 @@ const fetchMock = jest.fn(async (url: string, _init?: RequestInit) => {
   if (url === '/view-prs/local-branches/checkout') {
     return { ok: checkoutAnswer.status < 400, status: checkoutAnswer.status, json: async () => checkoutAnswer.body };
   }
-  return { ok: true, status: 200, json: async () => ({ ok: true, repos: localRepos, prs: localBranches, plans }) };
+  return { ok: true, status: 200, json: async () => ({ ok: true, repos: localRepos, prs: localBranches, plans, ...computer }) };
 });
 
 beforeEach(() => {
@@ -44,6 +45,7 @@ beforeEach(() => {
   plans = { 'acme/app#8': { how: 'git', fork: false }, 'acme/app#9': { how: 'git', fork: false } };
   localRepos = { 'acme/app': { path: 'D:/work/main', ok: true }, 'acme/broken': { path: 'D:/gone', ok: false, error: 'No such folder' } };
   openAnswer = { status: 200, body: { ok: true } };
+  computer = { platform: 'win32', openWith: {} };
   checkoutAnswer = { status: 200, body: { ok: true, branch: 'feature/z', worktreePath: 'D:/work/feature_z', how: 'git' } };
   fetchAnswer = { status: 200, body: { ok: true, remote: 'origin', ref: 'refs/heads/feature/e' } };
   changesFor = {};
@@ -101,15 +103,50 @@ describe('a PR’s local branch', () => {
 
     await user.click(screen.getByRole('button', { name: 'Open in editor' }));
     await waitFor(() =>
-      expect(fetchMock).toHaveBeenCalledWith('/view-prs/open-in-editor', expect.objectContaining({ method: 'POST' })),
+      expect(fetchMock).toHaveBeenCalledWith('/view-prs/open-folder', expect.objectContaining({ method: 'POST' })),
     );
-    const call = fetchMock.mock.calls.find(([url]) => url === '/view-prs/open-in-editor');
-    expect(JSON.parse(String(call?.[1]?.body))).toEqual({ repo: 'acme/app', path: 'D:/work/x' });
+    const call = fetchMock.mock.calls.find(([url]) => url === '/view-prs/open-folder');
+    expect(JSON.parse(String(call?.[1]?.body))).toEqual({ repo: 'acme/app', path: 'D:/work/x', with: 'editor' });
     expect(showError).not.toHaveBeenCalled();
 
     openAnswer = { status: 502, body: { ok: false, error: "The code command wasn't found" } };
     await user.click(screen.getByRole('button', { name: 'Open in editor' }));
     await waitFor(() => expect(showError).toHaveBeenCalledWith("Couldn't open the editor", "The code command wasn't found"));
+  });
+
+  test("the pane's line opens a terminal in the worktree and shows it in Explorer or Finder, as the server's computer has; the hover says with what", async () => {
+    const user = userEvent.setup();
+    computer = { platform: 'win32', openWith: { editor: 'cursor' } };
+    const { unmount } = renderWith(<PrLocalBranchLine repo="acme/app" prNumber="7" />);
+    const explorer = await screen.findByRole('button', { name: 'Show in Explorer' });
+    expect(screen.getByRole('button', { name: 'Open in editor' })).toHaveAttribute('title', 'Open D:/work/x with cursor (Settings › Local clones)');
+    const terminal = screen.getByRole('button', { name: 'Open a terminal here' });
+    expect(terminal).toHaveTextContent('Terminal');
+    expect(terminal).toHaveAttribute('title', 'Open Windows Terminal (or a Command Prompt) in D:/work/x - or set your terminal in Settings › Local clones');
+    await user.click(terminal);
+    await user.click(explorer);
+    const bodies = fetchMock.mock.calls.filter(([url]) => url === '/view-prs/open-folder').map(([, init]) => JSON.parse(String(init?.body)));
+    expect(bodies).toEqual([
+      { repo: 'acme/app', path: 'D:/work/x', with: 'terminal' },
+      { repo: 'acme/app', path: 'D:/work/x', with: 'files' },
+    ]);
+    openAnswer = { status: 502, body: { ok: false, error: "wezterm isn't known to your shell (bash)" } };
+    await user.click(terminal);
+    await waitFor(() => expect(showError).toHaveBeenCalledWith("Couldn't open a terminal", "wezterm isn't known to your shell (bash)"));
+    unmount();
+
+    computer = { platform: 'darwin', openWith: {} };
+    renderWith(<PrLocalBranchLine repo="acme/app" prNumber="7" />);
+    expect(await screen.findByRole('button', { name: 'Show in Finder' })).toHaveTextContent('Finder');
+  });
+
+  test('describes what each open button starts: the command set, else the default', () => {
+    expect(describeOpenWith('editor', 'D:/x', 'win32', {})).toBe('Open D:/x in VS Code (code) - or set your editor in Settings › Local clones');
+    expect(describeOpenWith('terminal', '/x', 'darwin', { terminal: 'open -a iTerm {folder}' })).toBe(
+      'Open a terminal in /x with open -a iTerm {folder} (Settings › Local clones)',
+    );
+    expect(describeOpenWith('terminal', '/x', 'linux', {})).toBe('Open x-terminal-emulator in /x - or set your terminal in Settings › Local clones');
+    expect(describeOpenWith('files', '/x', 'linux', {})).toBe('Show /x in the file manager');
   });
 
   test("an open PR not checked out has Check out: a worktree made, its folder shown with Open in editor, and the branches checked again", async () => {
@@ -128,8 +165,8 @@ describe('a PR’s local branch', () => {
     await waitFor(() => expect(checks()).toBeGreaterThan(before));
 
     await user.click(screen.getByRole('button', { name: 'Open in editor' }));
-    const open = fetchMock.mock.calls.find(([url]) => url === '/view-prs/open-in-editor');
-    expect(JSON.parse(String(open?.[1]?.body))).toEqual({ repo: 'acme/app', path: 'D:/work/feature_z' });
+    const open = fetchMock.mock.calls.find(([url]) => url === '/view-prs/open-folder');
+    expect(JSON.parse(String(open?.[1]?.body))).toEqual({ repo: 'acme/app', path: 'D:/work/feature_z', with: 'editor' });
   });
 
   test('a local branch not checked out can be checked out too; not a merged or closed PR, nor one whose clone can\'t be read', async () => {

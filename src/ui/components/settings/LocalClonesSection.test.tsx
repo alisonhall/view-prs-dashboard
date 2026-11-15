@@ -10,6 +10,7 @@ import { LocalClonesSection } from './LocalClonesSection';
 const payload = { byPrNumber: { 1: { repo: 'acme/app' }, 2: { repo: 'acme/api' }, 3: { repo: 'acme/a-b' }, 4: { repo: 'acme-a/b' } } };
 
 let saved: Record<string, unknown>;
+let openWith: Record<string, string>;
 let cleanupAnswer: { status: number; body: Record<string, unknown> };
 let removeAnswer: { status: number; body: Record<string, unknown> };
 const requests: Array<{ url: string; method: string; body: unknown }> = [];
@@ -63,15 +64,20 @@ const fetchMock = jest.fn(async (url: string, init: RequestInit = {}) => {
   if (url === '/view-prs/local-repos/cleanup/remove') {
     return { ok: removeAnswer.status < 400, status: removeAnswer.status, json: async () => removeAnswer.body };
   }
+  if (url === '/view-prs/local-repos/open-with') {
+    openWith = Object.fromEntries(Object.entries(body.openWith as Record<string, string>).filter(([, value]) => value));
+    return { ok: true, status: 200, json: async () => ({ ok: true, openWith }) };
+  }
   if (url === '/view-prs/local-repos' && method === 'DELETE') {
     const { [body.repo]: _dropped, ...rest } = saved;
     saved = rest;
   }
-  return { ok: true, status: 200, json: async () => ({ ok: true, repos: saved, prs: {} }) };
+  return { ok: true, status: 200, json: async () => ({ ok: true, repos: saved, prs: {}, openWith, platform: 'win32' }) };
 });
 
 beforeEach(() => {
   saved = { 'acme/api': { path: 'D:/code/api', ok: false, error: 'No such folder: D:/code/api' } };
+  openWith = {};
   requests.length = 0;
   (global as unknown as { fetch: unknown }).fetch = fetchMock;
   cleanupAnswer = {
@@ -353,6 +359,55 @@ describe('Settings › Local clones', () => {
     } finally {
       confirm.mockRestore();
     }
+  });
+
+  test("this computer's editor and terminal: once a clone can be read; saved, checked, and the PRs asked again so the pane says it", async () => {
+    const user = userEvent.setup();
+    const { unmount } = renderSection();
+    await screen.findByRole('alert');
+    // Only an unreadable clone: nothing to open.
+    expect(screen.queryByText(/Open worktrees with/)).toBeNull();
+    unmount();
+
+    saved = { 'acme/app': { path: 'D:/code/app', ok: true, branchCount: 1, worktreeCount: 1 } };
+    openWith = { terminal: 'wezterm start --cwd {folder}' };
+    renderSection();
+    const summary = await screen.findByText(/Open worktrees with/);
+    expect(summary).toHaveTextContent("Open worktrees with VS Code and wezterm start --cwd {folder}");
+    await user.click(summary);
+    expect(screen.getByLabelText('Terminal command')).toHaveValue('wezterm start --cwd {folder}');
+    expect(screen.getByLabelText('Editor command')).toHaveAttribute('placeholder', expect.stringContaining('VS Code (code)'));
+    expect(screen.getByText(/in an interactive shell \(Git Bash\)/)).toBeInTheDocument();
+    // {folder} in the command's own single quotes is taken as written: warned of.
+    expect(screen.queryByText(/inside single quotes is taken as written, not as the folder/)).toBeNull();
+    await user.type(screen.getByLabelText('Editor command'), "cmd '{{folder}'");
+    expect(screen.getByText(/inside single quotes is taken as written, not as the folder/)).toBeInTheDocument();
+    await user.clear(screen.getByLabelText('Editor command'));
+
+    await user.type(screen.getByLabelText('Editor command'), 'my-tool open');
+    await user.click(screen.getByRole('button', { name: 'Check the editor and terminal commands' }));
+    expect(await screen.findByText(/my-tool is a function/)).toBeInTheDocument();
+    expect(screen.getByText(/wezterm isn't known to your shell/)).toBeInTheDocument();
+    expect(requests.find((request) => request.url === '/view-prs/local-repos/checkout/check')?.body).toEqual({
+      repo: '',
+      commands: ['my-tool open', 'wezterm start --cwd {folder}'],
+    });
+
+    await user.clear(screen.getByLabelText('Terminal command'));
+    requests.length = 0;
+    await user.click(screen.getByRole('button', { name: 'Save the editor and terminal commands' }));
+    await waitFor(() => expect(summary).toHaveTextContent("Open worktrees with my-tool open and the system's terminal"));
+    expect(requests[0]).toEqual({ url: '/view-prs/local-repos/open-with', method: 'PUT', body: { openWith: { editor: 'my-tool open', terminal: '' } } });
+    await waitFor(() => expect(requests.some((request) => request.url === '/view-prs/local-branches')).toBe(true));
+
+    await user.clear(screen.getByLabelText('Editor command'));
+    await user.type(screen.getByLabelText('Editor command'), 'two');
+    // As if pasted with a newline: the server says what's wrong.
+    openWith = {};
+    fetchMock.mockImplementationOnce(async () => ({ ok: false, status: 400, json: async () => ({ ok: false, error: 'The editor command should be one line' }) }) as never);
+    await user.click(screen.getByRole('button', { name: 'Save the editor and terminal commands' }));
+    expect(await screen.findByText('The editor command should be one line')).toBeInTheDocument();
+    expect(summary).toHaveTextContent('Open worktrees with my-tool open');
   });
 
   test("Remove forgets a repo's folder", async () => {

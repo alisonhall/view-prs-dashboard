@@ -26,6 +26,13 @@ export interface LocalRepoCheckout {
   cleanupRemove?: string;
 }
 
+// This computer's commands for the pane's Open in editor and Terminal;
+// VS Code's code and the system's terminal without.
+export interface OpenWithSettings {
+  editor?: string;
+  terminal?: string;
+}
+
 // What this computer has of a PR's branch (GET /view-prs/local-branches):
 // ahead/behind compared with the PR's newest commit as last fetched -
 // exact false when counted from the PR's commits (its newest isn't in the
@@ -60,6 +67,10 @@ export interface LocalBranchesValue {
   repos: Record<string, LocalRepoStatus>;
   prs: Record<string, LocalBranchInfo>;
   plans: Record<string, CheckoutPlan>;
+  // The server's platform (win32, darwin, linux), '' until known: Explorer
+  // or Finder by it.
+  platform: string;
+  openWith: OpenWithSettings;
   // Whether the server has answered yet: until then no repo has a clone.
   loaded: boolean;
   // Asks again now (after a clone is saved or removed).
@@ -68,7 +79,16 @@ export interface LocalBranchesValue {
   setRepos: (repos: Record<string, LocalRepoStatus>) => void;
 }
 
-export const EMPTY_LOCAL_BRANCHES: LocalBranchesValue = { repos: {}, prs: {}, plans: {}, loaded: false, refresh: () => {}, setRepos: () => {} };
+export const EMPTY_LOCAL_BRANCHES: LocalBranchesValue = {
+  repos: {},
+  prs: {},
+  plans: {},
+  platform: '',
+  openWith: {},
+  loaded: false,
+  refresh: () => {},
+  setRepos: () => {},
+};
 const EMPTY = EMPTY_LOCAL_BRANCHES;
 // Exported for tests, which give it a value of their own.
 export const LocalBranchesContext = createContext<LocalBranchesValue>(EMPTY);
@@ -84,6 +104,8 @@ interface LocalBranchesResult {
   repos?: Record<string, LocalRepoStatus>;
   prs?: Record<string, LocalBranchInfo>;
   plans?: Record<string, CheckoutPlan>;
+  platform?: string;
+  openWith?: OpenWithSettings;
 }
 
 /**
@@ -97,11 +119,15 @@ export function LocalBranchesProvider({ children, pollMs = POLL_MS }: { children
     repos: Record<string, LocalRepoStatus>;
     prs: Record<string, LocalBranchInfo>;
     plans: Record<string, CheckoutPlan>;
+    platform: string;
+    openWith: OpenWithSettings;
     loaded: boolean;
   }>({
     repos: {},
     prs: {},
     plans: {},
+    platform: '',
+    openWith: {},
     loaded: false,
   });
   const lastText = useRef('');
@@ -119,7 +145,14 @@ export function LocalBranchesProvider({ children, pollMs = POLL_MS }: { children
       const response = await fetch('/view-prs/local-branches', { cache: 'no-store' });
       if (!response.ok) return;
       const result = (await response.json()) as LocalBranchesResult;
-      const next = { repos: result.repos || {}, prs: result.prs || {}, plans: result.plans || {}, loaded: true };
+      const next = {
+        repos: result.repos || {},
+        prs: result.prs || {},
+        plans: result.plans || {},
+        platform: result.platform || '',
+        openWith: result.openWith || {},
+        loaded: true,
+      };
       const text = JSON.stringify(next);
       if (text === lastText.current) return;
       lastText.current = text;
