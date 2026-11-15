@@ -1,4 +1,4 @@
-import { PrLocalBranchLine } from '../LocalBranchStatus';
+import { PrLocalBranchLine, useIsYourPr } from '../LocalBranchStatus';
 import { Fragment, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import type { PrData, PrDataPayload, PrEntry } from '../../types/pr-data.ts';
 import type { ActorsMap } from '../../helpers/pr-actor-identity.helpers.ts';
@@ -221,6 +221,7 @@ function PaneContent({
   // looked, and is when you last did.
   const ackHistory = useOptionalPrData()?.payload?.ackHistoryByRepo?.[repo]?.[prNumber];
   const viewerLogin = String(getEffectiveViewerLogin(pr) || '');
+  const isYours = useIsYourPr(pr);
   const ackEvents = useMemo(() => buildAckEvents(ackHistory, ackedAt || '', viewerLogin), [ackHistory, ackedAt, viewerLogin]);
   const lastAckedAt = String(ackEvents[0]?.occurredAt || '');
   const lastLookedAt = getLastLookedAt(pr.baseline, lastAckedAt);
@@ -318,6 +319,7 @@ function PaneContent({
           branch={pr.sourceBranch}
           targetBranch={pr.targetBranch}
           crossRepository={pr.crossRepository}
+          mine={isYours}
         />
       </header>
 

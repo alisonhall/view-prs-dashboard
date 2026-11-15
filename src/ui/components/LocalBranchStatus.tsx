@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   describeLocalBranch,
+  unpushedOf,
   useCheckoutPlan,
   useLocalBranch,
   useLocalBranches,
@@ -13,11 +14,37 @@ import { postJson } from '../helpers/pr-http.helpers.ts';
 import { Icon } from './ui/Icon';
 import { Button } from './ui/Button';
 import { checkoutCommandFor } from '../helpers/checkout-command.helpers.ts';
+import { useActorIdentity } from '../state/ActorIdentityContext';
+import type { PrData } from '../types/pr-data.ts';
+
+/**
+ * Whether the PR is the viewer's own: its author's person is theirs (by
+ * key, so any of their logins is them).
+ */
+export const useIsYourPr = (pr: PrData | null | undefined) => {
+  const { getPreferredActorKey, getEffectiveViewerKey } = useActorIdentity();
+  const viewer = getEffectiveViewerKey(pr || {});
+  const author = pr?.authorLogin ? String(getPreferredActorKey(pr.authorLogin) || '').toLowerCase() : '';
+  return Boolean(viewer && author && author === viewer);
+};
 
 const NAME_ONLY_NOTE = "It has the PR's branch's name but tracks no remote branch, so it may not be the PR's code.";
 
+const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`;
+
+// For your own PR: what isn't pushed, or that its commits past the PR's
+// are pushed but not yet on the dashboard's copy of the PR.
+const describePushed = (info: LocalBranchInfo, mine: boolean) => {
+  if (!mine || info.unpushed === undefined) return '';
+  const unpushed = unpushedOf(info, mine);
+  if (unpushed) {
+    return `${plural(unpushed, 'commit')} here GitHub doesn't have - on neither the PR nor the clone's copy of the remote branch: push to share ${unpushed === 1 ? 'it' : 'them'}.`;
+  }
+  return (info.ahead || 0) > 0 ? "Its commits past the PR's are pushed (the clone's copy of the remote branch has them) - update the PR to see them on it." : '';
+};
+
 // The hover text: where it is, and what the count compares.
-const describeInDetail = (info: LocalBranchInfo) => {
+const describeInDetail = (info: LocalBranchInfo, mine = false) => {
   const where = info.worktreePath
     ? `Checked out in ${info.worktreePath}${info.rebasing ? ', a rebase in progress there (git rebase --continue or --abort)' : ''}`
     : 'Not checked out in a worktree';
@@ -26,32 +53,36 @@ const describeInDetail = (info: LocalBranchInfo) => {
     : info.exact === false
       ? "Behind by the PR's commits after the local one (the PR's newest isn't in the clone yet - fetch for an exact count; merges from the base branch aren't counted)."
       : 'Compared with the PR’s newest commit as last fetched.';
-  return `Local branch ${info.branch} (${info.oid.slice(0, 7)}).\n${where}.\n${how}${info.nameOnly ? `\n${NAME_ONLY_NOTE}` : ''}`;
+  const pushed = describePushed(info, mine);
+  return `Local branch ${info.branch} (${info.oid.slice(0, 7)}).\n${where}.\n${how}${pushed ? `\n${pushed}` : ''}${info.nameOnly ? `\n${NAME_ONLY_NOTE}` : ''}`;
 };
 
 // Behind or differing: something to pull - not for a branch that only has
-// the PR's branch's name, which may not be the PR's at all.
-const toneOf = (info: LocalBranchInfo) => (!info.nameOnly && (info.diverged || (info.behind || 0) > 0) ? 'attention' : undefined);
+// the PR's branch's name, which may not be the PR's at all. Your own PR's
+// commits not pushed: something to push.
+const toneOf = (info: LocalBranchInfo, mine = false) =>
+  !info.nameOnly && (info.diverged || (info.behind || 0) > 0 || unpushedOf(info, mine) > 0) ? 'attention' : undefined;
 
 /**
  * The row's "Local · 2 behind" chip, on a line of its own under the title,
  * when this computer has the PR's branch (Settings › Local clones) - "same
  * name only", muted, for a branch found by its name alone. Its own
- * component, so a new check re-renders the chips, not the rows.
+ * component, so a new check re-renders the chips, not the rows. For your
+ * own PR (mine), "2 not pushed" in place of ahead, in the attention colour.
  */
-export function PrLocalBranchChip({ repo, prNumber }: { repo: string; prNumber: string }) {
+export function PrLocalBranchChip({ repo, prNumber, mine = false }: { repo: string; prNumber: string; mine?: boolean }) {
   const info = useLocalBranch(repo, prNumber);
   if (!info) return null;
   return (
     <div className="pr-title-meta">
       <span
         className="pr-meta-chip pr-local-branch"
-        data-tone={toneOf(info)}
+        data-tone={toneOf(info, mine)}
         data-name-only={info.nameOnly ? 'true' : undefined}
-        title={describeInDetail(info)}
+        title={describeInDetail(info, mine)}
       >
         <Icon name="branch" size={12} />
-        Local · {describeLocalBranch(info)}
+        Local · {describeLocalBranch(info, { mine })}
         {info.nameOnly && ' · same name only'}
       </span>
     </div>
@@ -87,16 +118,19 @@ export const describeCheckOut = ({
   command,
   after,
   prNumber,
+  mine = false,
 }: {
   info: LocalBranchInfo | null | undefined;
   plan: CheckoutPlan | null | undefined;
   command: string | undefined;
   after: string | undefined;
   prNumber: string;
+  // Your own PR: what isn't pushed, as the line says it.
+  mine?: boolean;
 }) => {
   const then = after ? `, then ${after}` : '';
   if (info) {
-    const state = describeLocalBranch(info);
+    const state = describeLocalBranch(info, { mine });
     const stale = Boolean(info.diverged) || (info.behind || 0) > 0;
     return `A worktree for your branch ${info.branch} as it is (${state.charAt(0).toLowerCase()}${state.slice(1)}${
       info.nameOnly ? ", same name only - it doesn't track the PR's branch" : ''
@@ -344,10 +378,13 @@ export function PrLocalBranchLine({
   branch,
   targetBranch,
   crossRepository,
+  mine = false,
 }: {
   repo: string;
   prNumber: string;
   canCheckOut?: boolean;
+  // Your own PR: what isn't pushed, in the attention colour.
+  mine?: boolean;
   branch?: string;
   targetBranch?: string;
   crossRepository?: boolean;
@@ -451,15 +488,15 @@ export function PrLocalBranchLine({
 
   return (
     <>
-      <p className="pr-pane-local" data-tone={info ? toneOf(info) : undefined}>
-        <span className="pr-pane-local-text" title={info ? describeInDetail(info) : undefined}>
+      <p className="pr-pane-local" data-tone={info ? toneOf(info, mine) : undefined}>
+        <span className="pr-pane-local-text" title={info ? describeInDetail(info, mine) : undefined}>
           <Icon name="branch" size={12} />
           On this computer:{' '}
           {info ? (
             <>
               <code>{info.branch}</code>
               {info.nameOnly && <span className="pr-pane-local-name-only">(same name, not tracking the PR&apos;s branch)</span>} ·{' '}
-              {describeLocalBranch(info)}
+              {describeLocalBranch(info, { mine })}
             </>
           ) : made ? (
             <code>{made.branch}</code>
@@ -493,7 +530,7 @@ export function PrLocalBranchLine({
         {offerCheckOut && (
           <Button
             disabled={checkingOut}
-            title={describeCheckOut({ info, plan, command: clone?.checkout?.command, after: clone?.checkout?.after, prNumber })}
+            title={describeCheckOut({ info, plan, command: clone?.checkout?.command, after: clone?.checkout?.after, prNumber, mine })}
             onClick={() => void checkOut()}
           >
             {checkingOut ? `Checking out…${elapsed >= 2 ? ` ${elapsed}s` : ''}` : 'Check out'}

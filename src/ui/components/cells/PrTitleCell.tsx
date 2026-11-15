@@ -12,7 +12,7 @@ import { matchRowSearch, SEARCH_FIELD_LABELS } from '../../helpers/pr-row-search
 import { describeRowRefreshProblem } from '../../helpers/pr-row-freshness.helpers.ts';
 import { useNow } from '../../state/NowContext';
 import { useRepoFreshness } from '../../state/RepoFreshnessContext';
-import { PrLocalBranchChip } from '../LocalBranchStatus';
+import { PrLocalBranchChip, useIsYourPr } from '../LocalBranchStatus';
 
 const { formatTitleWithIcons } = createPrStatusDisplayHelpers();
 const { escapeHtml } = createPrFormattingHelpers();
@@ -116,6 +116,7 @@ export function PrTitleCell({
   onRetry,
 }: PrTitleCellProps) {
   const prNumber = String(pr?.number || '');
+  const isYours = useIsYourPr(pr);
   // With rows from several repos in view, the number alone doesn't say
   // which PR this is.
   const repoName = useRowRepoName(repo);
@@ -244,7 +245,7 @@ export function PrTitleCell({
             </div>
           )}
           {/* This computer's copy of its branch (Settings › Local clones). */}
-          <PrLocalBranchChip repo={repo} prNumber={prNumber} />
+          <PrLocalBranchChip repo={repo} prNumber={prNumber} mine={isYours} />
           {entry && <PrRefreshProblem entry={entry} prNumber={prNumber} isBusy={isActive || isQueued} onRetry={onRetry} />}
         </div>
       </div>

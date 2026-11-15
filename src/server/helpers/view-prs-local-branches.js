@@ -124,6 +124,16 @@ const parseStatus = (stdout, maxFiles = 50) => {
   return result;
 };
 
+// for-each-ref's remote-tracking refs: refname => oid - each
+// remote branch as the clone last fetched or pushed it.
+const parseRemoteRefs = (stdout) =>
+  new Map(
+    String(stdout || "")
+      .split(/\r?\n/)
+      .map((line) => line.split(FIELD))
+      .filter(([ref, oid]) => ref && ref.startsWith("refs/remotes/") && oid),
+  );
+
 // Why git couldn't read a folder, from what it printed (a failed command
 // rejects with { error, stderr }): "Not a git repository", or git's own
 // words - such as a clone another user owns, which git refuses until it's
@@ -191,11 +201,17 @@ const createViewPrsLocalBranches = ({
       return { ok: false, error: error.message };
     }
     let refs;
+    let remoteRefs;
     let worktreeList;
     let config;
     try {
-      [refs, worktreeList, config] = await Promise.all([
+      [refs, remoteRefs, worktreeList, config] = await Promise.all([
         git(folder, ["for-each-ref", `--format=%(refname)${FIELD}%(objectname)`, "refs/heads"]),
+        // The remote branches as the clone has them, for what's not pushed
+        // only - a call of its own, as a repo with very many could fail it
+        // (too much output): then nothing else fails, and what's not pushed
+        // is told from the PR alone.
+        git(folder, ["for-each-ref", `--format=%(refname)${FIELD}%(objectname)`, "refs/remotes"]).catch(() => ""),
         git(folder, ["worktree", "list", "--porcelain"]),
         // Exits 1 when nothing matches (no remotes, no upstreams).
         git(folder, ["config", "-z", "--get-regexp", "^(remote\\..*\\.url|branch\\..*\\.(remote|merge))$"]).catch(() => ""),
@@ -218,6 +234,7 @@ const createViewPrsLocalBranches = ({
       remotes,
       repoRemotes,
       branches: parseBranches(refs, upstreams),
+      remoteRefs: parseRemoteRefs(remoteRefs),
       worktrees: parseWorktrees(worktreeList)
         .filter((worktree) => !worktree.bare)
         .map((worktree) => (worktree.branch ? worktree : withRebasedBranch(worktree))),
@@ -316,6 +333,39 @@ const createViewPrsLocalBranches = ({
     return counts;
   };
 
+  // The local commits GitHub doesn't have, as far as the clone can tell:
+  // those in neither the PR's newest commit (as the dashboard last fetched
+  // it - given only when it's in the clone) nor the clone's copy of the
+  // remote branch the local one tracks (as old as its last fetch or push -
+  // so a push from here counts at once, before the dashboard sees it).
+  // Never changes for the same commits: kept, as the counts are. null when
+  // git can't say.
+  const countUnpushed = async (folder, localOid, excluded) => {
+    const key = `unpushed\n${folder}\n${localOid}\n${excluded.join(" ")}`;
+    if (countCache.has(key)) return countCache.get(key);
+    const count = git(folder, ["rev-list", "--count", localOid, "--not", ...excluded]).then(
+      (stdout) => {
+        const value = Number(stdout.trim());
+        return Number.isInteger(value) ? value : null;
+      },
+      () => null,
+    );
+    if (countCache.size >= MAX_COUNTS) countCache.delete(countCache.keys().next().value);
+    countCache.set(key, count);
+    count.then((result) => {
+      if (result === null && countCache.get(key) === count) countCache.delete(key);
+    });
+    return count;
+  };
+
+  // The commit of the clone's copy of the remote branch a local branch
+  // tracks (refs/remotes/<remote>/<branch>, as git's default fetch maps
+  // it), else "" - none for a pull ref, which no fetch maps.
+  const trackedOid = (clone, branch) => {
+    if (!branch.remote || !branch.remoteRef.startsWith("refs/heads/")) return "";
+    return clone.remoteRefs.get(`refs/remotes/${branch.remote}/${branch.remoteRef.slice("refs/heads/".length)}`) || "";
+  };
+
   // A PR's local branch: { branch, oid, worktreePath?, ahead, behind,
   // exact } - exact false when the count comes from the row's commits
   // (the PR's head isn't in the clone yet: behind by the commits after the
@@ -338,13 +388,30 @@ const createViewPrsLocalBranches = ({
       ...(branch.remote ? {} : { nameOnly: true }),
     };
     const headOid = pr.headOid || pr.commitOids[pr.commitOids.length - 1] || "";
-    if (!headOid) return { ...base, diverged: true };
-    if (branch.oid === headOid) return { ...base, ahead: 0, behind: 0, exact: true };
+    // Not pushed: for a branch tracking the PR's (not one found by its name
+    // alone, which may not be the PR's at all). Its commits on the PR, or
+    // on the clone's copy of the remote branch, are pushed.
+    const tracked = branch.remote ? trackedOid(clone, branch) : "";
+    const unpushedPast = async (excluded) => {
+      if (!branch.remote) return {};
+      const list = excluded.filter(Boolean);
+      if (list.length === 0) return {};
+      const unpushed = await countUnpushed(clone.folder, branch.oid, list);
+      return unpushed === null ? {} : { unpushed };
+    };
+    if (!headOid) return { ...base, diverged: true, ...(await unpushedPast([tracked])) };
+    if (branch.oid === headOid) return { ...base, ahead: 0, behind: 0, exact: true, ...(branch.remote ? { unpushed: 0 } : {}) };
     const counts = await countAheadBehind(clone.folder, branch.oid, headOid);
-    if (counts) return { ...base, ...counts, exact: true };
+    if (counts) {
+      if (counts.ahead === 0) return { ...base, ...counts, exact: true, ...(branch.remote ? { unpushed: 0 } : {}) };
+      return { ...base, ...counts, exact: true, ...(await unpushedPast([headOid, tracked])) };
+    }
     const index = pr.commitOids.indexOf(branch.oid);
-    if (index >= 0) return { ...base, ahead: 0, behind: pr.commitOids.length - 1 - index, exact: false };
-    return { ...base, diverged: true };
+    // One of the PR's commits: on GitHub.
+    if (index >= 0) return { ...base, ahead: 0, behind: pr.commitOids.length - 1 - index, exact: false, ...(branch.remote ? { unpushed: 0 } : {}) };
+    // The PR's newest isn't in the clone: only the clone's copy of the remote
+    // branch can say.
+    return { ...base, diverged: true, ...(await unpushedPast([tracked])) };
   };
 
   const mapLimited = async (items, limit, mapper) => {

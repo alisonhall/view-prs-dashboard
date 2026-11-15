@@ -40,6 +40,10 @@ export interface LocalBranchInfo {
   // Found by the PR's branch's name alone, tracking nothing: perhaps not
   // the PR's code.
   nameOnly?: boolean;
+  // Its commits on neither the PR (as last fetched) nor the clone's copy of
+  // the remote branch it tracks; absent when the clone can't tell, or for
+  // a branch found by its name alone.
+  unpushed?: number;
 }
 
 // How Check out would make an open PR's worktree, as the server decides
@@ -163,12 +167,20 @@ export const useLocalBranch = (repo: string, prNumber: string | number | undefin
 export const useCheckoutPlan = (repo: string, prNumber: string | number | undefined): CheckoutPlan | null =>
   useContext(LocalBranchesContext).plans[`${repo}#${prNumber}`] || null;
 
-// "Up to date", "2 behind", "1 ahead, 3 behind", "Differs from GitHub".
-export const describeLocalBranch = (info: LocalBranchInfo): string => {
-  if (info.diverged) return 'Differs from GitHub';
+// Your own PR's local commits GitHub doesn't have (as far as the clone can
+// tell): the count, else 0.
+export const unpushedOf = (info: LocalBranchInfo, mine: boolean): number => (mine ? info.unpushed || 0 : 0);
+
+// "Up to date", "2 behind", "1 ahead, 3 behind", "Differs from GitHub" -
+// for your own PR, what isn't pushed in place of ahead: "2 not pushed, 1
+// behind", "Differs from GitHub, 2 not pushed".
+export const describeLocalBranch = (info: LocalBranchInfo, { mine = false }: { mine?: boolean } = {}): string => {
+  const unpushed = unpushedOf(info, mine);
+  const notPushed = unpushed ? `${unpushed} not pushed` : '';
+  if (info.diverged) return ['Differs from GitHub', notPushed].filter(Boolean).join(', ');
   const ahead = info.ahead || 0;
   const behind = info.behind || 0;
   if (!ahead && !behind) return 'Up to date';
-  const parts = [ahead ? `${ahead} ahead` : '', behind ? `${behind}${info.exact === false ? '+' : ''} behind` : ''].filter(Boolean);
+  const parts = [notPushed || (ahead ? `${ahead} ahead` : ''), behind ? `${behind}${info.exact === false ? '+' : ''} behind` : ''].filter(Boolean);
   return parts.join(', ');
 };

@@ -109,10 +109,46 @@ describe("each PR's local branch", () => {
       pr({ key: "behind", branch: "other-name", headOid: oids.feature2 }),
     ]);
     const worktreePath = expect.stringMatching(/feature-tree$/);
-    expect(prs.same).toEqual({ branch: "feature", oid: oids.feature2, worktreePath, ahead: 0, behind: 0, exact: true });
-    expect(prs.ahead).toEqual({ branch: "feature", oid: oids.feature2, worktreePath, ahead: 1, behind: 0, exact: true });
+    expect(prs.same).toEqual({ branch: "feature", oid: oids.feature2, worktreePath, ahead: 0, behind: 0, exact: true, unpushed: 0 });
+    // The clone has no copy of origin's feature: its commit past the PR's
+    // isn't pushed, as far as it can tell.
+    expect(prs.ahead).toEqual({ branch: "feature", oid: oids.feature2, worktreePath, ahead: 1, behind: 0, exact: true, unpushed: 1 });
     // Renamed locally, found by what it tracks; not checked out.
-    expect(prs.behind).toEqual({ branch: "local-name", oid: oids.feature1, ahead: 0, behind: 1, exact: true });
+    expect(prs.behind).toEqual({ branch: "local-name", oid: oids.feature1, ahead: 0, behind: 1, exact: true, unpushed: 0 });
+  });
+
+  test("not pushed: commits on neither the PR nor the clone's copy of the remote branch - a push from here counts at once", async () => {
+    try {
+      // Pushed from here: origin's feature, as the clone has it, is the local one.
+      git(clone, "update-ref", "refs/remotes/origin/feature", oids.feature2);
+      const missing = "f".repeat(40);
+      let { prs } = await lookUp([
+        pr({ key: "pushed", branch: "feature", headOid: oids.feature1 }),
+        pr({ key: "unfetched", branch: "feature", headOid: missing, commitOids: ["c1", missing] }),
+      ]);
+      // Ahead of the PR as the dashboard last fetched it, but pushed.
+      expect(prs.pushed).toMatchObject({ ahead: 1, unpushed: 0 });
+      expect(prs.unfetched).toMatchObject({ diverged: true, unpushed: 0 });
+
+      // Last fetched a commit back: one local commit past both.
+      git(clone, "update-ref", "refs/remotes/origin/feature", oids.feature1);
+      ({ prs } = await lookUp([
+        pr({ key: "ahead", branch: "feature", headOid: oids.base }),
+        pr({ key: "unfetched", branch: "feature", headOid: missing, commitOids: ["c1", missing] }),
+        pr({ key: "name-only", branch: "untracked", headOid: missing }),
+      ]));
+      expect(prs.ahead).toMatchObject({ ahead: 2, unpushed: 1 });
+      expect(prs.unfetched).toMatchObject({ diverged: true, unpushed: 1 });
+      // Found by its name alone: perhaps not the PR's, so not said.
+      expect(prs["name-only"].unpushed).toBeUndefined();
+    } finally {
+      git(clone, "update-ref", "-d", "refs/remotes/origin/feature");
+    }
+    // Neither the PR's newest nor a copy of the remote branch in the clone:
+    // it can't say.
+    const { prs } = await lookUp([pr({ key: "unknown", branch: "feature", headOid: "f".repeat(40), commitOids: ["c1"] })]);
+    expect(prs.unknown).toMatchObject({ diverged: true });
+    expect(prs.unknown.unpushed).toBeUndefined();
   });
 
   test("the PR's newest commit not in the clone: behind by the PR's commits after the local one, else it differs", async () => {
@@ -175,7 +211,7 @@ describe("each PR's local branch", () => {
     expect(Object.keys(prs).sort()).toEqual(["fork", "untracked"]);
   });
 
-  test("two git calls per clone however many PRs, shared for a few seconds; a count between two commits worked out once", async () => {
+  test("four git calls per clone however many PRs, shared for a few seconds; the counts between commits worked out once", async () => {
     const runCommand = jest.fn(run);
     let nowMs = 1000;
     const helper = createViewPrsLocalBranches({ runCommand, fs, now: () => nowMs });
@@ -183,12 +219,31 @@ describe("each PR's local branch", () => {
     await lookUp(prs, helper);
     await lookUp(prs, helper);
     const calls = () => runCommand.mock.calls.map(([, args]) => args[2]);
-    // config, for-each-ref, worktree list; one rev-list for the pair.
-    expect(calls().sort()).toEqual(["config", "for-each-ref", "rev-list", "worktree"]);
+    // config, for-each-ref (local branches, remote ones), worktree list;
+    // for the pair one rev-list for ahead/behind, one for what's not pushed.
+    expect(calls().sort()).toEqual(["config", "for-each-ref", "for-each-ref", "rev-list", "rev-list", "worktree"]);
     nowMs += 60 * 1000;
     await lookUp(prs, helper);
-    expect(calls().filter((name) => name === "rev-list")).toHaveLength(1);
+    expect(calls().filter((name) => name === "rev-list")).toHaveLength(2);
     expect(calls().filter((name) => name === "worktree")).toHaveLength(2);
+  });
+
+  test("remote branches git can't list (too many, say) fail nothing else: what's not pushed is told from the PR alone", async () => {
+    try {
+      git(clone, "update-ref", "refs/remotes/origin/feature", oids.feature2);
+      const runCommand = async (command, args, ...rest) => {
+        if (args.includes("refs/remotes")) throw { error: new Error("stdout maxBuffer length exceeded"), stderr: "" };
+        return run(command, args, ...rest);
+      };
+      const helper = createViewPrsLocalBranches({ runCommand, fs });
+      const result = await lookUp([pr({ key: "ahead", branch: "feature", headOid: oids.feature1 })], helper);
+      expect(result.repos["acme/app"]).toMatchObject({ ok: true });
+      // Pushed, but without the clone's copy of origin's feature it can't
+      // tell: counted against the PR alone.
+      expect(result.prs.ahead).toMatchObject({ branch: "feature", ahead: 1, unpushed: 1 });
+    } finally {
+      git(clone, "update-ref", "-d", "refs/remotes/origin/feature");
+    }
   });
 
   test("only the clone's own folder or one of its worktrees can be opened", async () => {

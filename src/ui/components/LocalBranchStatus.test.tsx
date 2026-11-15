@@ -4,7 +4,8 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { LocalBranchesProvider, describeLocalBranch, useLocalBranches } from '../state/LocalBranchesContext';
 import { SnackbarContext, type SnackbarValue } from '../state/SnackbarContext';
-import { PrLocalBranchChip, PrLocalBranchLine, describeCheckOut } from './LocalBranchStatus';
+import { renderHook } from '@testing-library/react';
+import { PrLocalBranchChip, PrLocalBranchLine, describeCheckOut, useIsYourPr } from './LocalBranchStatus';
 
 const PRS = {
   'acme/app#7': { branch: 'feature/x', oid: 'abcdef1234567', worktreePath: 'D:/work/x', ahead: 0, behind: 2, exact: true },
@@ -296,6 +297,64 @@ describe('a PR’s local branch', () => {
     expect(describeCheckOut({ info: { ...branch, ahead: 0, behind: 0, nameOnly: true }, plan: byGit, command: undefined, after: undefined, prNumber: '9' })).toBe(
       "A worktree for your branch mine as it is (up to date, same name only - it doesn't track the PR's branch), with git",
     );
+    // Your own PR: what isn't pushed, as the pane's line says it.
+    const unpushed = { ...branch, ahead: 1, behind: 0, exact: true, unpushed: 1 };
+    expect(describeCheckOut({ info: unpushed, plan: byGit, command: undefined, after: undefined, prNumber: '9', mine: true })).toBe(
+      'A worktree for your branch mine as it is (1 not pushed), with git',
+    );
+    expect(describeCheckOut({ info: unpushed, plan: byGit, command: undefined, after: undefined, prNumber: '9' })).toBe(
+      'A worktree for your branch mine as it is (1 ahead), with git',
+    );
+  });
+
+  test("your own PR says what isn't pushed in place of ahead; anyone else's says ahead, as before", () => {
+    const base = { branch: 'b', oid: 'o', exact: true };
+    expect(describeLocalBranch({ ...base, ahead: 2, behind: 1, unpushed: 2 }, { mine: true })).toBe('2 not pushed, 1 behind');
+    expect(describeLocalBranch({ ...base, ahead: 2, behind: 1, unpushed: 2 })).toBe('2 ahead, 1 behind');
+    // Pushed, but the dashboard's copy of the PR is older: ahead of it still.
+    expect(describeLocalBranch({ ...base, ahead: 2, behind: 0, unpushed: 0 }, { mine: true })).toBe('2 ahead');
+    expect(describeLocalBranch({ branch: 'b', oid: 'o', diverged: true, unpushed: 3 }, { mine: true })).toBe('Differs from GitHub, 3 not pushed');
+    expect(describeLocalBranch({ branch: 'b', oid: 'o', diverged: true }, { mine: true })).toBe('Differs from GitHub');
+  });
+
+  test("your own PR's commits not pushed are in the attention colour, in the chip and the pane, with why on hover", async () => {
+    localBranches = {
+      'acme/app#7': { ...PRS['acme/app#7'], ahead: 1, behind: 0, unpushed: 1 },
+      'acme/app#8': { ...PRS['acme/app#8'], ahead: 2, behind: 0, unpushed: 0 },
+    };
+    renderWith(
+      <>
+        <PrLocalBranchChip repo="acme/app" prNumber="7" mine />
+        <PrLocalBranchChip repo="acme/app" prNumber="8" mine />
+        <PrLocalBranchLine repo="acme/app" prNumber="7" mine />
+      </>,
+    );
+    const chip = await screen.findByText(/Local · 1 not pushed/);
+    expect(chip).toHaveAttribute('data-tone', 'attention');
+    expect(chip.getAttribute('title')).toContain("1 commit here GitHub doesn't have - on neither the PR nor the clone's copy of the remote branch: push to share it.");
+    // Pushed already: not in the attention colour, and the hover says so.
+    const pushed = screen.getByText(/Local · 2 ahead/);
+    expect(pushed).not.toHaveAttribute('data-tone');
+    expect(pushed.getAttribute('title')).toContain("Its commits past the PR's are pushed");
+    const line = screen.getByText(/On this computer:/).closest('p');
+    expect(line).toHaveTextContent('1 not pushed');
+    expect(line).toHaveAttribute('data-tone', 'attention');
+  });
+
+  test("someone else's PR's local commits are ahead, not in the attention colour", async () => {
+    localBranches = { 'acme/app#7': { ...PRS['acme/app#7'], ahead: 1, behind: 0, unpushed: 1 } };
+    renderWith(<PrLocalBranchChip repo="acme/app" prNumber="7" />);
+    const chip = await screen.findByText(/Local · 1 ahead/);
+    expect(chip).not.toHaveAttribute('data-tone');
+    expect(chip.getAttribute('title')).not.toContain('push');
+  });
+
+  test("a PR is yours when its author is you, whatever the case; not when it's someone else's or you aren't known", () => {
+    const yours = (pr: Record<string, unknown>) => renderHook(() => useIsYourPr(pr)).result.current;
+    expect(yours({ authorLogin: 'Alice', viewerLogin: 'alice' })).toBe(true);
+    expect(yours({ authorLogin: 'bob', viewerLogin: 'alice' })).toBe(false);
+    expect(yours({ authorLogin: 'alice' })).toBe(false);
+    expect(yours({ viewerLogin: 'alice' })).toBe(false);
   });
 
   test("a branch found by the PR's branch's name alone is marked so, in the chip and the pane, not in the attention colour", async () => {
