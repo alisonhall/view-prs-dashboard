@@ -92,6 +92,7 @@ const { usePrTableUiState, usePrTableOpenSections } = require('../state/PrTableU
 const { NotesDirtyContext } = require('../state/NotesDirtyContext');
 const { PrSectionPreferencesProvider } = require('../state/PrSectionPreferencesProvider');
 const { SettingsDrawerProvider, useSettingsDrawer } = require('../state/SettingsDrawerContext');
+const { LocalBranchesContext, EMPTY_LOCAL_BRANCHES } = require('../state/LocalBranchesContext');
 let capturedSettingsDrawer;
 function SettingsDrawerProbe() {
   capturedSettingsDrawer = useSettingsDrawer();
@@ -195,9 +196,17 @@ const renderPrTableApp = ({
   sectionPreferencesHeld,
   sectionOrder,
   customSections,
+  localBranches,
   ...tableProps
 } = {}) => {
-  const table = <PrTableApp {...tableProps} />;
+  // `localBranches`: { repos, prs } as GET /view-prs/local-branches gives them.
+  const table = localBranches ? (
+    <LocalBranchesContext.Provider value={{ ...EMPTY_LOCAL_BRANCHES, loaded: true, ...localBranches }}>
+      <PrTableApp {...tableProps} />
+    </LocalBranchesContext.Provider>
+  ) : (
+    <PrTableApp {...tableProps} />
+  );
   if (sectionPreferences) {
     global.fetch = jest.fn(async () => {
       await sectionPreferencesHeld;
@@ -1161,6 +1170,75 @@ describe('PrTableApp', () => {
     expect(numbersIn('mine')).toEqual(['1']);
     expect(numbersIn('assigned-to-me')).toEqual(['2']);
     expect(numbersIn('review-requested')).toEqual(['3']);
+  });
+
+  describe('On this computer', () => {
+    const pr = (prNumber, section) => ({ prNumber, repo: 'owner/repo', section, data: { number: prNumber, viewerLogin: 'me', authorLogin: 'someone' } });
+    const payload = {
+      byPrNumber: { 1: pr('1', 'open'), 2: pr('2', 'open'), 3: pr('3', 'merged'), 4: pr('4', 'open'), 5: pr('5', 'open') },
+    };
+    const localBranches = {
+      repos: { 'owner/repo': { path: 'D:/code/repo', ok: true } },
+      prs: {
+        // Checked out, behind.
+        'owner/repo#1': { branch: 'a', oid: 'o1', worktreePath: 'D:/code/repo-a', ahead: 0, behind: 2, exact: true },
+        // Not checked out, behind by the estimate.
+        'owner/repo#2': { branch: 'b', oid: 'o2', ahead: 0, behind: 1, exact: false },
+        // A merged PR's worktree, level.
+        'owner/repo#3': { branch: 'c', oid: 'o3', worktreePath: 'D:/code/repo-c', ahead: 0, behind: 0, exact: true },
+        // Found by its name alone, or differing: not "behind".
+        'owner/repo#4': { branch: 'd', oid: 'o4', behind: 3, ahead: 0, exact: true, nameOnly: true },
+        'owner/repo#5': { branch: 'e', oid: 'o5', diverged: true },
+      },
+    };
+    const realHelpers = () =>
+      createPrSmartGroupsHelpers.mockImplementation(jest.requireActual('../helpers/pr-smart-groups.helpers.ts').createPrSmartGroupsHelpers);
+    const numbersIn = (key) =>
+      capturedSectionProps
+        .filter((props) => props.section.key === key)
+        .at(-1)
+        ?.section.prs.map((entry) => entry.prNumber)
+        .sort();
+
+    test('the On This Computer smart group: every PR with a local branch, merged ones too - none without a clone saved', () => {
+      realHelpers();
+      renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', localBranches });
+      expect(numbersIn('on-this-computer')).toEqual(['1', '2', '3', '4', '5']);
+
+      capturedSectionProps.length = 0;
+      renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo' });
+      expect(capturedSectionProps.some((props) => props.section.key === 'on-this-computer')).toBe(false);
+
+      // Only a clone that can't be read (its folder gone): none either.
+      capturedSectionProps.length = 0;
+      renderPrTableApp({
+        initialPayload: payload,
+        selectedRepo: 'owner/repo',
+        localBranches: { repos: { 'owner/repo': { path: 'D:/gone', ok: false, error: 'No such folder: D:/gone' } }, prs: {} },
+      });
+      expect(capturedSectionProps.some((props) => props.section.key === 'on-this-computer')).toBe(false);
+    });
+
+    test('Checked out locally: PRs whose branch is in a worktree; Behind locally: a branch tracking the PR, behind it; both: the PRs that are both', () => {
+      realHelpers();
+      renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', localBranches, filterStateValues: { onlyCheckedOutLocally: true } });
+      expect(numbersIn('open')).toEqual(['1']);
+      expect(numbersIn('merged')).toEqual(['3']);
+
+      capturedSectionProps.length = 0;
+      renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', localBranches, filterStateValues: { onlyBehindLocally: true } });
+      expect(numbersIn('open')).toEqual(['1', '2']);
+      expect(numbersIn('merged')).toEqual([]);
+
+      capturedSectionProps.length = 0;
+      renderPrTableApp({
+        initialPayload: payload,
+        selectedRepo: 'owner/repo',
+        localBranches,
+        filterStateValues: { onlyBehindLocally: true, onlyCheckedOutLocally: true },
+      });
+      expect(numbersIn('open')).toEqual(['1']);
+    });
   });
 
   test('given smart groups are available, when a PR needs attention, then it also appears in the smart-group section', () => {

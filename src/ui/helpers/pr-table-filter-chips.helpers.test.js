@@ -41,6 +41,8 @@ describe("pr table filter chips helpers", () => {
         onlyOpenConversationsWithMe: true,
         onlyWaitingOnMe: true,
         onlyThreadsToCheck: true,
+        onlyCheckedOutLocally: true,
+        onlyBehindLocally: true,
       });
 
       expect(chips).toEqual([
@@ -63,6 +65,16 @@ describe("pr table filter chips helpers", () => {
           id: "onlyThreadsToCheck",
           label: "Conversations resolved for you",
           clear: { kind: "field", key: "onlyThreadsToCheck", value: false },
+        },
+        {
+          id: "onlyCheckedOutLocally",
+          label: "Checked out locally",
+          clear: { kind: "field", key: "onlyCheckedOutLocally", value: false },
+        },
+        {
+          id: "onlyBehindLocally",
+          label: "Behind locally",
+          clear: { kind: "field", key: "onlyBehindLocally", value: false },
         },
       ]);
     });

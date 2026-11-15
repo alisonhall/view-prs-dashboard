@@ -16,6 +16,7 @@ import { useNeedsAttention } from '../state/NeedsAttentionContext';
 import { useActorIdentity } from '../state/ActorIdentityContext';
 import { usePrInsightsDisplay } from '../state/PrInsightsDisplayContext';
 import { useVisiblePrKeys } from '../state/useVisiblePrNumbers';
+import { useLocalBranches } from '../state/LocalBranchesContext';
 import { usePrActivityQueue } from '../state/PrActivityQueueContext';
 import { useSinglePrUpdate } from '../state/useSinglePrUpdate';
 import { useStableCallback } from '../state/useStableCallback';
@@ -106,6 +107,14 @@ export function PrTableApp() {
   // PR data payload/selectedRepo - owned by <PrDataProvider />
   // (state/PrDataProvider.tsx).
   const { payload, selectedRepo, setPayload, applyFreshTablePayload } = usePrData();
+  // Each PR's local branch, for the On This Computer smart group - shown
+  // once a clone is saved (Settings › Local clones).
+  const { prs: localBranches, repos: localRepos } = useLocalBranches();
+  // A clone that can be read: one whose folder is gone has no branches.
+  const hasLocalClones = Object.values(localRepos).some((status) => status?.ok);
+  // Only which PRs have one: a count changing doesn't rebuild the sections.
+  const localBranchKeysText = useMemo(() => Object.keys(localBranches).sort().join('\n'), [localBranches]);
+  const localBranchKeys = useMemo(() => new Set(localBranchKeysText ? localBranchKeysText.split('\n') : []), [localBranchKeysText]);
   // Phase 7 (see REACT_MIGRATION_PLAN.md, "live filtering"): visiblePrKeys
   // used to come from usePrData() itself (imperatively pushed by the
   // vanilla "Apply filters" pipeline) - now reactively derived live from
@@ -651,6 +660,7 @@ export function PrTableApp() {
         getAssigneeLogins: (entry) => collectAssignedUsers(entry?.data || {}).map((person) => person.login),
         // Outstanding requests only, not the broad reviewers list.
         getRequestedReviewerLogins: (entry) => collectPendingReviewRequests(entry?.data || {}).map((person) => person.login),
+        hasLocalBranch: (entry) => localBranchKeys.has(`${entry?.repo}#${String(entry?.data?.number ?? entry?.prNumber ?? '').trim()}`),
       });
 
       // Deliberately not passing `repo` here: isFlagged/isInReview
@@ -665,7 +675,11 @@ export function PrTableApp() {
         inReviewByRepo: payload.inReviewByRepo || {},
       });
 
-      smartGroups = smartGroupHelpers.applySmartGroups(allEntriesForSmartGroups, configs);
+      smartGroups = smartGroupHelpers.applySmartGroups(
+        allEntriesForSmartGroups,
+        // Without a clone saved, no On This Computer: it could only be empty.
+        hasLocalClones || !Array.isArray(configs) ? configs : configs.filter((config) => config.groupKey !== 'on-this-computer'),
+      );
       // The custom sections, after the built-in smart groups: the PRs
       // added to each (the user state's customSectionsByRepo), of every
       // status, like Flagged.
@@ -728,6 +742,8 @@ export function PrTableApp() {
     collectAssignedUsers,
     collectPendingReviewRequests,
     customSections,
+    localBranchKeys,
+    hasLocalClones,
   ]);
 
   // Settings › Appearance's choices: the sections in its order (so

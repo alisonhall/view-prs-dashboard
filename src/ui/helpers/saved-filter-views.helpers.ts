@@ -21,6 +21,8 @@ export const VIEW_FIELD_DEFAULTS = {
   onlyOpenConversationsWithMe: false,
   onlyWaitingOnMe: false,
   onlyThreadsToCheck: false,
+  onlyCheckedOutLocally: false,
+  onlyBehindLocally: false,
   filterCustomComments: "",
   filterOtherNotes: "",
   filterPrDifficulty: "",

@@ -26,6 +26,8 @@ interface NarrowRowsInput {
   onlyOpenConversationsWithMe: boolean;
   onlyWaitingOnMe: boolean;
   onlyThreadsToCheck: boolean;
+  onlyCheckedOutLocally: boolean;
+  onlyBehindLocally: boolean;
   attentionConfig: AttentionConfig | undefined;
 }
 
@@ -44,6 +46,9 @@ export interface VisiblePrNumbersInput {
   onlyOpenConversationsWithMe?: boolean;
   onlyWaitingOnMe?: boolean;
   onlyThreadsToCheck?: boolean;
+  // On this computer's "Checked out locally" and "Behind locally".
+  onlyCheckedOutLocally?: boolean;
+  onlyBehindLocally?: boolean;
   filterPrNumbersRaw?: string;
   attentionConfig?: AttentionConfig;
   rowFilterSelections?: RowFilterSelections;
@@ -92,6 +97,8 @@ const createPrVisiblePrNumbersHelpers = ({
     onlyOpenConversationsWithMe = false,
     onlyWaitingOnMe = false,
     onlyThreadsToCheck = false,
+    onlyCheckedOutLocally = false,
+    onlyBehindLocally = false,
     filterPrNumbersRaw,
     attentionConfig,
     rowFilterSelections = {},
@@ -121,6 +128,8 @@ const createPrVisiblePrNumbersHelpers = ({
       onlyOpenConversationsWithMe: Boolean(onlyOpenConversationsWithMe),
       onlyWaitingOnMe: Boolean(onlyWaitingOnMe),
       onlyThreadsToCheck: Boolean(onlyThreadsToCheck),
+      onlyCheckedOutLocally: Boolean(onlyCheckedOutLocally),
+      onlyBehindLocally: Boolean(onlyBehindLocally),
       attentionConfig,
     });
 

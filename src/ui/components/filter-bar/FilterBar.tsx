@@ -3,6 +3,8 @@ import { Button } from '../ui/Button';
 import { Icon } from '../ui/Icon';
 import { useTableFilterChips } from '../../state/useTableFilterChips';
 import { useSavedFilterViews } from '../../state/useSavedFilterViews';
+import { useFilterState } from '../../state/FilterStateContext';
+import { useLocalBranches } from '../../state/LocalBranchesContext';
 import { SavedFilterViewsBar, SavedFilterViewsManager } from './SavedFilterViews';
 import { FilterCheckbox } from './FilterCheckbox';
 import { FilterMultiSelect } from './FilterMultiSelect';
@@ -70,7 +72,13 @@ export function FilterBar({ shownCount, totalCount, loaded, hiddenCount = 0, arc
   const savedViews = useSavedFilterViews();
   const [open, setOpen] = useState(readOpen);
   const panelId = useId();
-  const headingIds = { rows: useId(), people: useId(), notes: useId(), conversations: useId(), views: useId() };
+  const headingIds = { rows: useId(), people: useId(), notes: useId(), conversations: useId(), local: useId(), views: useId() };
+  const { repos: localRepos } = useLocalBranches();
+  const { values: filterValues } = useFilterState();
+  // A clone that can be read (one whose folder is gone has no branches),
+  // or one of its boxes ticked - so a saved one can be unticked.
+  const showLocal =
+    Object.values(localRepos).some((status) => status?.ok) || Boolean(filterValues.onlyCheckedOutLocally || filterValues.onlyBehindLocally);
 
   const toggleOpen = () => {
     setOpen(!open);
@@ -220,6 +228,32 @@ export function FilterBar({ shownCount, totalCount, loaded, hiddenCount = 0, arc
             </p>
           </div>
         </div>
+
+        {showLocal && (
+          <div className="filter-bar-group" role="group" aria-labelledby={headingIds.local}>
+            <h3 id={headingIds.local} className="filter-bar-heading">
+              On this computer
+            </h3>
+            <div className="filter-bar-field">
+              <label className="filter-bar-check">
+                <FilterCheckbox id="only-checked-out-locally" valueKey="onlyCheckedOutLocally" />
+                Checked out locally
+              </label>
+              <p id="only-checked-out-locally-hint" className="filter-bar-hint">
+                Only PRs whose branch is checked out in a worktree of a clone saved in Settings › Local clones.
+              </p>
+            </div>
+            <div className="filter-bar-field">
+              <label className="filter-bar-check">
+                <FilterCheckbox id="only-behind-locally" valueKey="onlyBehindLocally" />
+                Behind locally
+              </label>
+              <p id="only-behind-locally-hint" className="filter-bar-hint">
+                Only PRs whose local branch is behind the PR on GitHub (as last fetched by the dashboard).
+              </p>
+            </div>
+          </div>
+        )}
 
         <SavedFilterViewsManager value={savedViews} headingId={headingIds.views} />
       </div>

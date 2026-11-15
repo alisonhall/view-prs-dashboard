@@ -68,8 +68,10 @@ export interface LocalBranchesValue {
   setRepos: (repos: Record<string, LocalRepoStatus>) => void;
 }
 
-const EMPTY: LocalBranchesValue = { repos: {}, prs: {}, plans: {}, loaded: false, refresh: () => {}, setRepos: () => {} };
-const LocalBranchesContext = createContext<LocalBranchesValue>(EMPTY);
+export const EMPTY_LOCAL_BRANCHES: LocalBranchesValue = { repos: {}, prs: {}, plans: {}, loaded: false, refresh: () => {}, setRepos: () => {} };
+const EMPTY = EMPTY_LOCAL_BRANCHES;
+// Exported for tests, which give it a value of their own.
+export const LocalBranchesContext = createContext<LocalBranchesValue>(EMPTY);
 
 // How often it looks again while the page is open: branches change as
 // you work, not with the PR data - not while the page is hidden. Also when

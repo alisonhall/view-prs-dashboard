@@ -34,6 +34,16 @@ describe("the filter bar's \"only\" checkboxes (narrowRows)", () => {
     expect(ids(conversations({ rows, onlyOpenConversationsWithMe: true, onlyThreadsToCheck: true }))).toEqual([1]);
   });
 
+  test("On this computer's Checked out locally and Behind locally: by the checks given, both when both are checked", () => {
+    const { narrowRows: local } = createPrScopeSelectionHelpers({
+      entryCheckedOutLocally: (entry) => entry.id !== 2,
+      entryBehindLocally: (entry) => entry.id !== 3,
+    });
+    expect(ids(local({ rows, onlyCheckedOutLocally: true }))).toEqual([1, 3]);
+    expect(ids(local({ rows, onlyBehindLocally: true }))).toEqual([1, 2]);
+    expect(ids(local({ rows, onlyCheckedOutLocally: true, onlyBehindLocally: true }))).toEqual([1]);
+  });
+
   test("both: the PRs that are both", () => {
     expect(ids(narrowRows({ rows, onlyNeedsAttention: true, onlyThreadsToCheck: true, attentionConfig: { marker: "rules" } }))).toEqual([3]);
   });

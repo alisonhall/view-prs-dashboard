@@ -4,6 +4,8 @@ import { FilterStateContext } from './FilterStateContext';
 import { useNeedsAttention } from './NeedsAttentionContext';
 import { useRowFilterSelection } from './RowFilterSelectionContext';
 import { useActorIdentity } from './ActorIdentityContext';
+import { useLocalBranches, type LocalBranchInfo } from './LocalBranchesContext';
+import { isBehindLocally } from '../helpers/pr-local-branch-filters.helpers.ts';
 import { useDebouncedValue } from './useDebouncedValue';
 import type { FilterValues } from './filterValuesStore';
 import { createPrScopeSelectionHelpers } from '../helpers/pr-scope-selection.helpers.ts';
@@ -25,6 +27,10 @@ import { countThreadsToCheck, threadConfirmationsFor } from '../helpers/pr-revie
 import type { PrData, PrEntry } from '../types/pr-data.ts';
 
 const { formatIsoDatetime } = createPrFormattingHelpers();
+
+// The local branches while neither On this computer box is ticked: one
+// object, so the filtering isn't redone when they change.
+const NO_LOCAL_BRANCHES: Record<string, LocalBranchInfo> = {};
 
 // `inReview` is stored as a STRING throughout the data pipeline
 // (view-prs-data-helpers.js's "false" default; view-prs-mutation-route-
@@ -51,6 +57,8 @@ const DEFAULT_FILTER_STATE_VALUES: FilterValues = {
   onlyOpenConversationsWithMe: false,
   onlyWaitingOnMe: false,
   onlyThreadsToCheck: false,
+  onlyCheckedOutLocally: false,
+  onlyBehindLocally: false,
   filterPrNumbers: '',
   alwaysShowInReview: false,
   filterCustomComments: '',
@@ -93,6 +101,12 @@ export function useFilteredPrRows(): VisiblePrNumbersResult {
   const { attentionConfig, entryNeedsAttention } = useNeedsAttention();
   const { checkedByListId } = useRowFilterSelection();
   const { normalizeActorLogin, resolveActorDisplayName, getPreferredActorKey, getEffectiveViewerLogin } = useActorIdentity();
+  // Each PR's local branch (none without a clone saved, or outside the
+  // Provider), for On this computer's checkboxes.
+  // Only while one of them is ticked: a branch's count changing otherwise
+  // doesn't filter every row again.
+  const { prs: allLocalBranches } = useLocalBranches();
+  const localBranches = values.onlyCheckedOutLocally || values.onlyBehindLocally ? allLocalBranches : NO_LOCAL_BRANCHES;
   const debouncedFilterPrNumbers = useDebouncedValue(values.filterPrNumbers, FILTER_PR_NUMBERS_DEBOUNCE_MS);
   const debouncedSearch = useDebouncedValue(values.filterSearch, FILTER_SEARCH_DEBOUNCE_MS);
 
@@ -121,7 +135,11 @@ export function useFilteredPrRows(): VisiblePrNumbersResult {
       }
       return counts;
     };
+    const localBranchOf = (entry: PrEntry) =>
+      localBranches[`${entry?.repo}#${String(entry?.data?.number ?? entry?.prNumber ?? '').trim()}`] || null;
     const { narrowRows } = createPrScopeSelectionHelpers({
+      entryCheckedOutLocally: (entry) => Boolean(localBranchOf(entry)?.worktreePath),
+      entryBehindLocally: (entry) => isBehindLocally(localBranchOf(entry)),
       entryNeedsAttention,
       isInReviewEnabled,
       entryHasOpenConversationsWithMe: (entry) => conversationsWithMe(entry).count > 0,
@@ -182,6 +200,7 @@ export function useFilteredPrRows(): VisiblePrNumbersResult {
     getEffectiveViewerLogin,
     threadChecksByRepo,
     actorsMap,
+    localBranches,
   ]);
 
   return useMemo(
@@ -192,6 +211,8 @@ export function useFilteredPrRows(): VisiblePrNumbersResult {
         onlyOpenConversationsWithMe: Boolean(values.onlyOpenConversationsWithMe),
         onlyWaitingOnMe: Boolean(values.onlyWaitingOnMe),
         onlyThreadsToCheck: Boolean(values.onlyThreadsToCheck),
+        onlyCheckedOutLocally: Boolean(values.onlyCheckedOutLocally),
+        onlyBehindLocally: Boolean(values.onlyBehindLocally),
         filterPrNumbersRaw: debouncedFilterPrNumbers,
         attentionConfig,
         rowFilterSelections: {

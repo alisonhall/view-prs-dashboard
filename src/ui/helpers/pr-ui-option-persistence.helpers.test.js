@@ -19,6 +19,8 @@ describe("pr-ui-option-persistence helpers", () => {
     expect(FILTER_STATE_FIELD_MAP["only-open-conversations-with-me"]).toBe("onlyOpenConversationsWithMe");
     expect(FILTER_STATE_FIELD_MAP["only-waiting-on-me"]).toBe("onlyWaitingOnMe");
     expect(FILTER_STATE_FIELD_MAP["only-threads-to-check"]).toBe("onlyThreadsToCheck");
+    expect(FILTER_STATE_FIELD_MAP["only-checked-out-locally"]).toBe("onlyCheckedOutLocally");
+    expect(FILTER_STATE_FIELD_MAP["only-behind-locally"]).toBe("onlyBehindLocally");
     expect(FILTER_STATE_FIELD_MAP["scope-mode"]).toBeUndefined();
     expect(FILTER_STATE_FIELD_MAP["change-filter-ignore-commit-patterns"]).toBe(
       "changeFilterIgnoreCommitPatterns",

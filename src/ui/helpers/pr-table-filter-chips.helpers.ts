@@ -21,6 +21,8 @@ export interface TableFilterChipsInput {
   onlyOpenConversationsWithMe?: boolean;
   onlyWaitingOnMe?: boolean;
   onlyThreadsToCheck?: boolean;
+  onlyCheckedOutLocally?: boolean;
+  onlyBehindLocally?: boolean;
   filterPrNumbers?: string;
   repoNames?: string[];
   filterLastActivityFrom?: string;
@@ -75,6 +77,8 @@ const createPrTableFilterChipsHelpers = () => {
     onlyOpenConversationsWithMe,
     onlyWaitingOnMe,
     onlyThreadsToCheck,
+    onlyCheckedOutLocally,
+    onlyBehindLocally,
     filterPrNumbers,
     repoNames,
     filterLastActivityFrom,
@@ -110,6 +114,12 @@ const createPrTableFilterChipsHelpers = () => {
     }
     if (onlyThreadsToCheck) {
       chips.push(fieldChip("onlyThreadsToCheck", "Conversations resolved for you", "onlyThreadsToCheck", false));
+    }
+    if (onlyCheckedOutLocally) {
+      chips.push(fieldChip("onlyCheckedOutLocally", "Checked out locally", "onlyCheckedOutLocally", false));
+    }
+    if (onlyBehindLocally) {
+      chips.push(fieldChip("onlyBehindLocally", "Behind locally", "onlyBehindLocally", false));
     }
     if (String(filterPrNumbers || "").trim()) {
       chips.push(

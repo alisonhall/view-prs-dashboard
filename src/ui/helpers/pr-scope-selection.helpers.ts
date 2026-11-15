@@ -7,7 +7,9 @@ import type { AttentionConfig } from "./pr-needs-attention.helpers.ts";
 // with me", "Waiting on me" (the Review column's speech bubble, and its
 // filled one) and "Resolved for you to check" (conversations you started
 // that someone else resolved, until you confirm them). They replaced the
-// "View scope" select (2026-11-05).
+// "View scope" select (2026-11-05). And On this computer's "Checked out
+// locally" (the PR's local branch is in a worktree) and "Behind locally"
+// (its local branch is behind the PR on GitHub).
 
 export interface PrScopeSelectionDeps {
   entryNeedsAttention?: (entry: PrEntry, attentionConfig: AttentionConfig | undefined) => boolean;
@@ -17,6 +19,9 @@ export interface PrScopeSelectionDeps {
   entryHasConversationWaitingOnMe?: (entry: PrEntry) => boolean;
   // Threads you started that someone else resolved, not confirmed yet.
   entryHasThreadsToCheck?: (entry: PrEntry) => boolean;
+  // The PR's local branch checked out in a worktree; behind the PR.
+  entryCheckedOutLocally?: (entry: PrEntry) => boolean;
+  entryBehindLocally?: (entry: PrEntry) => boolean;
   // Whether a PR is marked In review: with "Always show PRs in review",
   // it shows whatever these say.
   isInReviewEnabled?: (row: NonNullable<PrEntry["data"]>) => boolean;
@@ -32,6 +37,8 @@ export interface NarrowRowsInput<E extends PrEntry> {
   onlyOpenConversationsWithMe?: boolean;
   onlyWaitingOnMe?: boolean;
   onlyThreadsToCheck?: boolean;
+  onlyCheckedOutLocally?: boolean;
+  onlyBehindLocally?: boolean;
   attentionConfig?: AttentionConfig;
 }
 
@@ -42,6 +49,8 @@ const createPrScopeSelectionHelpers = ({
   entryHasOpenConversationsWithMe,
   entryHasConversationWaitingOnMe,
   entryHasThreadsToCheck,
+  entryCheckedOutLocally,
+  entryBehindLocally,
   isInReviewEnabled,
 }: PrScopeSelectionDeps = {}) => {
   const entryNeedsAttentionSafe = typeof entryNeedsAttention === "function" ? entryNeedsAttention : never;
@@ -50,6 +59,8 @@ const createPrScopeSelectionHelpers = ({
   const entryHasConversationWaitingOnMeSafe =
     typeof entryHasConversationWaitingOnMe === "function" ? entryHasConversationWaitingOnMe : never;
   const entryHasThreadsToCheckSafe = typeof entryHasThreadsToCheck === "function" ? entryHasThreadsToCheck : never;
+  const entryCheckedOutLocallySafe = typeof entryCheckedOutLocally === "function" ? entryCheckedOutLocally : never;
+  const entryBehindLocallySafe = typeof entryBehindLocally === "function" ? entryBehindLocally : never;
   const isInReviewEnabledSafe = typeof isInReviewEnabled === "function" ? isInReviewEnabled : never;
 
   const narrowRows = <E extends PrEntry>({
@@ -60,6 +71,8 @@ const createPrScopeSelectionHelpers = ({
     onlyOpenConversationsWithMe,
     onlyWaitingOnMe,
     onlyThreadsToCheck,
+    onlyCheckedOutLocally,
+    onlyBehindLocally,
     attentionConfig,
   }: NarrowRowsInput<E> = {}): E[] => {
     const safeRows = Array.isArray(rows) ? rows : [];
@@ -68,6 +81,8 @@ const createPrScopeSelectionHelpers = ({
       onlyOpenConversationsWithMe && entryHasOpenConversationsWithMeSafe,
       onlyWaitingOnMe && entryHasConversationWaitingOnMeSafe,
       onlyThreadsToCheck && entryHasThreadsToCheckSafe,
+      onlyCheckedOutLocally && entryCheckedOutLocallySafe,
+      onlyBehindLocally && entryBehindLocallySafe,
     ].filter((check): check is (entry: E) => boolean => typeof check === "function");
     if (picksPrs || checks.length === 0) return safeRows;
     return safeRows.filter(

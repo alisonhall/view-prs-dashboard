@@ -31,7 +31,7 @@ describe('PR section preferences', () => {
   });
 
   describe('section order', () => {
-    const smart = ['flagged', 'in-review', 'needs-attention', 'mine', 'assigned-to-me', 'review-requested', 'interacted'];
+    const smart = ['flagged', 'in-review', 'needs-attention', 'mine', 'assigned-to-me', 'review-requested', 'interacted', 'on-this-computer'];
     const status = ['open', 'draft', 'closed', 'merged'];
 
     test('the default is the catalog order, smart groups first', () => {
@@ -49,6 +49,7 @@ describe('PR section preferences', () => {
         'mine',
         'assigned-to-me',
         'review-requested',
+        'on-this-computer',
         'merged',
         'open',
         'draft',
@@ -61,7 +62,7 @@ describe('PR section preferences', () => {
       expect(movePrSection(DEFAULT_PR_SECTION_ORDER, 'in-review', -1).slice(0, 2)).toEqual(['in-review', 'flagged']);
       expect(movePrSection(DEFAULT_PR_SECTION_ORDER, 'merged', -1).slice(-2)).toEqual(['merged', 'closed']);
       // Not across into the other kind, nor past either end.
-      expect(movePrSection(DEFAULT_PR_SECTION_ORDER, 'interacted', 1)).toEqual(DEFAULT_PR_SECTION_ORDER);
+      expect(movePrSection(DEFAULT_PR_SECTION_ORDER, 'on-this-computer', 1)).toEqual(DEFAULT_PR_SECTION_ORDER);
       expect(movePrSection(DEFAULT_PR_SECTION_ORDER, 'open', -1)).toEqual(DEFAULT_PR_SECTION_ORDER);
       expect(movePrSection(DEFAULT_PR_SECTION_ORDER, 'flagged', -1)).toEqual(DEFAULT_PR_SECTION_ORDER);
       expect(movePrSection(DEFAULT_PR_SECTION_ORDER, 'merged', 1)).toEqual(DEFAULT_PR_SECTION_ORDER);
@@ -81,7 +82,7 @@ describe('PR section preferences', () => {
       expect(normalizePrSectionOrder(["custom-abc", "flagged"], catalog).slice(0, 2)).toEqual(["custom-abc", "flagged"]);
       expect(normalizePrSectionOrder(["custom-abc", "flagged"])).toEqual(DEFAULT_PR_SECTION_ORDER);
       expect(isDefaultPrSectionOrder(catalog.map((entry) => entry.key), catalog)).toBe(true);
-      expect(movePrSection(catalog.map((entry) => entry.key), "custom-abc", -1, catalog).slice(6, 8)).toEqual(["custom-abc", "interacted"]);
+      expect(movePrSection(catalog.map((entry) => entry.key), "custom-abc", -1, catalog).slice(7, 9)).toEqual(["custom-abc", "on-this-computer"]);
       expect(movePrSection(catalog.map((entry) => entry.key), "custom-abc", 1, catalog)).toEqual(catalog.map((entry) => entry.key));
       expect(normalizePrSectionPreferences({ "custom-abc": { hidden: true, open: true } }, catalog)).toEqual({ "custom-abc": { hidden: true } });
       expect(normalizePrSectionPreferences({ "custom-abc": { hidden: true } })).toEqual({});

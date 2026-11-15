@@ -43,6 +43,9 @@ export interface FilterValues {
   onlyOpenConversationsWithMe?: boolean;
   onlyWaitingOnMe?: boolean;
   onlyThreadsToCheck?: boolean;
+  // On this computer's "Checked out locally" and "Behind locally".
+  onlyCheckedOutLocally?: boolean;
+  onlyBehindLocally?: boolean;
   filterPrNumbers?: string;
   // The Last activity range: date inputs' values ("2026-11-03"), "" for no
   // limit on that side (pr-last-activity-range.helpers.ts).

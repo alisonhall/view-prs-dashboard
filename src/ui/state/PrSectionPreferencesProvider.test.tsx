@@ -39,7 +39,7 @@ const sectionTitles = () =>
     .getAllByRole('row')
     .filter((row) => within(row).queryAllByRole('checkbox').length > 0)
     .map((row) => within(row).getByRole('rowheader').textContent);
-const SMART = ['Flagged', 'In Review', 'Needs Attention', 'My Open & Draft PRs', 'Assigned to Me', 'Me as Reviewer', "Open PRs I'm Involved In"];
+const SMART = ['Flagged', 'In Review', 'Needs Attention', 'My Open & Draft PRs', 'Assigned to Me', 'Me as Reviewer', "Open PRs I'm Involved In", 'On This Computer'];
 const STATUS = ['Open PRs', 'Draft PRs', 'Closed PRs', 'Latest Merged PRs'];
 
 describe('Settings › Appearance sections', () => {
@@ -130,14 +130,14 @@ describe('Settings › Appearance sections', () => {
     renderSettings();
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     expect(moveButton('Flagged', 'up')).toBeDisabled();
-    expect(moveButton("Open PRs I'm Involved In", 'down')).toBeDisabled();
+    expect(moveButton('On This Computer', 'down')).toBeDisabled();
     expect(moveButton('Open PRs', 'up')).toBeDisabled();
     expect(moveButton('Latest Merged PRs', 'down')).toBeDisabled();
 
     await user.click(moveButton('Latest Merged PRs', 'up'));
     await user.click(moveButton('In Review', 'up'));
 
-    const order = ['in-review', 'flagged', 'needs-attention', 'mine', 'assigned-to-me', 'review-requested', 'interacted', 'open', 'draft', 'merged', 'closed'];
+    const order = ['in-review', 'flagged', 'needs-attention', 'mine', 'assigned-to-me', 'review-requested', 'interacted', 'on-this-computer', 'open', 'draft', 'merged', 'closed'];
     expect(sectionTitles()).toEqual(['In Review', 'Flagged', ...SMART.slice(2), 'Open PRs', 'Draft PRs', 'Latest Merged PRs', 'Closed PRs']);
     await waitFor(() => expect(saved).toEqual({ repo: 'owner/repo', prSectionOrder: order }));
     expect(JSON.parse(window.localStorage.getItem(PR_SECTION_ORDER_STORAGE_KEY) ?? 'null')).toEqual(order);

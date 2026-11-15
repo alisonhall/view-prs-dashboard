@@ -34,6 +34,8 @@ const createPrUiOptionPersistenceHelpers = ({ fetch: fetchFn }: PrUiOptionPersis
     "only-open-conversations-with-me": false,
     "only-waiting-on-me": false,
     "only-threads-to-check": false,
+    "only-checked-out-locally": false,
+    "only-behind-locally": false,
     "filter-pr-numbers": "",
     // The Repos list's repos ("repo" is Run & check's repo).
     repos: [],
@@ -70,6 +72,8 @@ const createPrUiOptionPersistenceHelpers = ({ fetch: fetchFn }: PrUiOptionPersis
     "only-open-conversations-with-me": "onlyOpenConversationsWithMe",
     "only-waiting-on-me": "onlyWaitingOnMe",
     "only-threads-to-check": "onlyThreadsToCheck",
+    "only-checked-out-locally": "onlyCheckedOutLocally",
+    "only-behind-locally": "onlyBehindLocally",
     "always-show-in-review": "alwaysShowInReview",
     "attention-no-activity-mode": "attentionNoActivityMode",
     "attention-include-pending-comments": "attentionIncludePendingComments",

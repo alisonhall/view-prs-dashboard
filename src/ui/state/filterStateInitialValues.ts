@@ -15,6 +15,8 @@ export function buildFilterStateInitialValues(): FilterValues {
     onlyOpenConversationsWithMe: false,
     onlyWaitingOnMe: false,
     onlyThreadsToCheck: false,
+    onlyCheckedOutLocally: false,
+    onlyBehindLocally: false,
     alwaysShowInReview: false,
     attentionNoActivityMode: 'all',
     openMode: 'none',

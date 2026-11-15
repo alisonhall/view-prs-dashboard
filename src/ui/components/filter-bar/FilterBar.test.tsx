@@ -11,6 +11,7 @@ import { FilterOptionsContext, type FilterOptionsValue } from '../../state/Filte
 import { useRowFilterSelection } from '../../state/RowFilterSelectionContext';
 import { setPendingMultiSelectSelection } from '../../helpers/pr-pending-multi-select-selections.helpers.ts';
 import { ListSelectionSeeding } from '../../state/useListSelectionSeeding';
+import { EMPTY_LOCAL_BRANCHES, LocalBranchesContext } from '../../state/LocalBranchesContext';
 import { FILTER_BAR_OPEN_STORAGE_KEY, FilterBar, type FilterBarProps } from './FilterBar';
 
 const NO_OPTIONS: FilterOptionsValue = {
@@ -209,6 +210,37 @@ describe('FilterBar panel', () => {
       'only-waiting-on-me',
       'only-threads-to-check',
     ]);
+  });
+
+  test('On this computer: its checkboxes once a clone is saved (or while one is ticked), each with a chip that unticks it', async () => {
+    const user = userEvent.setup();
+    const { unmount } = renderBar();
+    await open(user);
+    expect(screen.queryByRole('group', { name: 'On this computer' })).toBeNull();
+    unmount();
+
+    // A box ticked in a saved view, with no clone: there to untick.
+    const restored = renderBar(LABELS, {}, { onlyBehindLocally: true });
+    expect(within(screen.getByRole('group', { name: 'On this computer' })).getByRole('checkbox', { name: 'Behind locally' })).toBeChecked();
+    restored.unmount();
+
+    // Only a clone that can't be read (its folder gone): not there either.
+    const unreadable = { ...EMPTY_LOCAL_BRANCHES, loaded: true, repos: { 'acme/app': { path: 'D:/gone', ok: false, error: 'No such folder: D:/gone' } } };
+    const gone = render(<LocalBranchesContext.Provider value={unreadable}>{tree(LABELS, {})}</LocalBranchesContext.Provider>);
+    expect(screen.queryByRole('group', { name: 'On this computer' })).toBeNull();
+    gone.unmount();
+
+    const withClone = { ...EMPTY_LOCAL_BRANCHES, loaded: true, repos: { 'acme/app': { path: 'D:/code/app', ok: true } } };
+    render(<LocalBranchesContext.Provider value={withClone}>{tree(LABELS, {})}</LocalBranchesContext.Provider>);
+    const local = screen.getByRole('group', { name: 'On this computer' });
+    expect(within(local).getAllByRole('checkbox').map((checkbox) => checkbox.getAttribute('id'))).toEqual(['only-checked-out-locally', 'only-behind-locally']);
+    await user.click(within(local).getByRole('checkbox', { name: 'Checked out locally' }));
+    await user.click(within(local).getByRole('checkbox', { name: 'Behind locally' }));
+    const chips = screen.getByRole('group', { name: 'Applied table filters' });
+    await user.click(within(chips).getByRole('button', { name: 'Remove filter: Behind locally' }));
+    expect(within(local).getByRole('checkbox', { name: 'Behind locally' })).not.toBeChecked();
+    expect(within(local).getByRole('checkbox', { name: 'Checked out locally' })).toBeChecked();
+    expect(within(chips).getByRole('button', { name: 'Remove filter: Checked out locally' })).toBeInTheDocument();
   });
 
   test('the "only" checkboxes set their filter, and add a chip that unchecks them', async () => {
