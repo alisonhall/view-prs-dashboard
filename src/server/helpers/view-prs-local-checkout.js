@@ -21,6 +21,7 @@
 // variables from its settings); {name} in a command is that variable,
 // quoted.
 
+const crypto = require("crypto");
 const os = require("os");
 const path = require("path");
 const { isForkPr, parseStatus } = require("./view-prs-local-branches");
@@ -67,9 +68,20 @@ const isInside = (folder, parent) => {
   return !relative || (!relative.startsWith("..") && !path.isAbsolute(relative));
 };
 
-// An interactive shell's complaint about having no terminal - not the
-// command's.
-const isShellNoise = (line) => /no job control|cannot set terminal process group|inappropriate ioctl/i.test(line);
+// What a run printed after its marker line: the shell's startup (the
+// user's rc file's greeting, say) prints before it. All of it when the
+// marker never came - the shell stopped while starting, which is what to
+// show then.
+const afterMarker = (text, marker) => {
+  if (text === undefined || text === null) return text;
+  const value = String(text);
+  const at = value.indexOf(marker);
+  return at < 0 ? value : value.slice(at + marker.length).replace(/^\r?\n/, "");
+};
+
+// An interactive shell's complaint about having no terminal, or the
+// "exit" it prints when a command exits it - not the command's.
+const isShellNoise = (line) => /no job control|cannot set terminal process group|inappropriate ioctl|^\s*exit\s*$/i.test(line);
 
 // What a command printed, the end of it if long.
 const outputOf = (result) => {
@@ -210,11 +222,30 @@ const createViewPrsLocalCheckout = ({
   };
 
   // Runs one of the repo's commands in an interactive shell (so the rc
-  // file that defines it is read), in folder, with the variables.
-  const runUserCommand = async (command, folder, variables) =>
-    run(await userShell(), ["-ic", `exec </dev/null\ncd -- "$VIEW_PRS_FOLDER" || exit 1\n${expandPlaceholders(command)}`], {
-      env: { ...variables, VIEW_PRS_FOLDER: toPosix(folder) },
-    });
+  // file that defines it is read), in folder, with the variables. Once
+  // the shell has started it prints a marker line, new each run, to
+  // stdout and stderr, and what came before it is dropped from both -
+  // whatever the rc file printed - on success and failure alike.
+  const runUserCommand = async (command, folder, variables) => {
+    const id = crypto.randomBytes(8).toString("hex");
+    const marker = `@@view-prs-${id}@@`;
+    const fromMarker = (result) => {
+      if (!result || typeof result !== "object") return result;
+      if ("stdout" in result) result.stdout = afterMarker(result.stdout, marker);
+      if ("stderr" in result) result.stderr = afterMarker(result.stderr, marker);
+      return result;
+    };
+    // printf puts the marker together, so the script never holds it whole:
+    // an rc file's set -x or set -v echoes the script's lines to stderr.
+    const script = `exec </dev/null\nprintf '@@view-prs-%s@@\\n' ${id}; printf '@@view-prs-%s@@\\n' ${id} >&2\ncd -- "$VIEW_PRS_FOLDER" || exit 1\n${expandPlaceholders(command)}`;
+    let result;
+    try {
+      result = await run(await userShell(), ["-ic", script], { env: { ...variables, VIEW_PRS_FOLDER: toPosix(folder) } });
+    } catch (failure) {
+      throw fromMarker(failure);
+    }
+    return fromMarker(result && typeof result === "object" ? { ...result } : result);
+  };
 
   const worktreeOf = (clone, branchName) => clone.worktrees.find((worktree) => worktree.branch === branchName);
 
@@ -411,13 +442,10 @@ const createViewPrsLocalCheckout = ({
       commands.map(async (command) => {
         const name = commandNameOf(command);
         if (!name) return { command, name, found: null, detail: "Its first word is only known when it runs, so it isn't checked" };
-        // The answer after a marker: an rc file may print its own lines first.
-        const script = 'out=$(type -- "$VIEW_PRS_CHECK" 2>&1); status=$?; printf \'%s\\n\' "@@view-prs@@" "$out"; exit $status';
-        const answer = (result) => {
-          const text = String(result?.stdout || "");
-          const at = text.lastIndexOf("@@view-prs@@");
-          return (at >= 0 ? text.slice(at + "@@view-prs@@".length) : "").trim().split(/\r?\n/)[0] || "";
-        };
+        // type's first line ("my-fn is a function"); the rc file's own
+        // lines are already left out (runUserCommand's marker).
+        const script = 'type -- "$VIEW_PRS_CHECK"';
+        const answer = (result) => String(result?.stdout || "").trim().split(/\r?\n/)[0] || "";
         try {
           const result = await runUserCommand(script, cloneFolder || homeDir(), { VIEW_PRS_CHECK: name });
           return { command, name, found: true, detail: answer(result) || `${name} is known to your shell (${shellName})` };

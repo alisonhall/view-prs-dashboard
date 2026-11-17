@@ -336,7 +336,11 @@ describe("checking out a PR into a worktree", () => {
     const zsh = createViewPrsLocalCheckout({ runCommand: fakeShell, fs, localBranches, platform: "darwin", env: { SHELL: "/bin/zsh" } });
     await expect(zsh.checkOut({ repo: "acme/app", cloneFolder: clone, settings, pr: pr() })).rejects.toMatchObject({ message: "The checkout command failed: stop here" });
     expect(calls[0].command).toBe("/bin/zsh");
-    expect(calls[0].args).toEqual(["-ic", 'exec </dev/null\ncd -- "$VIEW_PRS_FOLDER" || exit 1\nmy-tool add "$VIEW_PRS_BRANCH"']);
+    // A marker line printed to stdout and stderr once the shell's started (new each run), then the command
+    expect(calls[0].args).toEqual([
+      "-ic",
+      expect.stringMatching(/^exec <\/dev\/null\nprintf '@@view-prs-%s@@\\n' ([0-9a-f]{16}); printf '@@view-prs-%s@@\\n' \1 >&2\ncd -- "\$VIEW_PRS_FOLDER" \|\| exit 1\nmy-tool add "\$VIEW_PRS_BRANCH"$/),
+    ]);
     expect(calls[0].env).toEqual(expect.objectContaining({ VIEW_PRS_FOLDER: toPosix(clone), VIEW_PRS_BRANCH: "feature/x" }));
 
     const fish = createViewPrsLocalCheckout({ runCommand: fakeShell, fs, localBranches, platform: "linux", env: { SHELL: "/usr/bin/fish" } });
@@ -750,6 +754,41 @@ describe("checking out a PR into a worktree", () => {
       expect(git(clone, "branch", "--list", "mine/old")).toContain("mine/old");
     });
 
+    test("what the user's shell prints as it starts - their rc file's greeting - is left out of the commands' output; all kept when it stops while starting", async () => {
+      const rc = path.join(root, "home", ".bashrc");
+      // Like a greeting, and like a version manager's complaint on stderr
+      fs.writeFileSync(rc, "echo 'Hello from the rc file'\necho 'error: the rc file complains' >&2\n");
+      try {
+        const clone = freshClone();
+        const tree = tracked(clone, "mine/old");
+        const settings = { cleanupList: `echo "${toPosix(tree)}"; echo "why: it's old" >&2`, cleanupRemove: "echo removing it; git worktree remove {worktree}" };
+        const { checkout } = setUp();
+        const listed = await checkout.listCleanup({ repo: "acme/app", cloneFolder: clone, settings, prs: [] });
+        expect(listed.ignored).toBeUndefined();
+        expect(listed.output).toBe("why: it's old");
+        const [item] = listed.items;
+        const removed = await checkout.removeCleanup({ repo: "acme/app", cloneFolder: clone, settings, prs: [], branch: item.branch, worktreePath: item.worktreePath });
+        expect(removed.output).toBe("removing it");
+        // A failing command's reason is its own, not the rc file's error line
+        await expect(
+          checkout.listCleanup({ repo: "acme/app", cloneFolder: clone, settings: { cleanupList: "echo 'no such layout' >&2; exit 3" }, prs: [] }),
+        ).rejects.toMatchObject({ status: 502, message: "The list command failed: no such layout", output: "no such layout" });
+        // An rc file's set -x traces the script's lines to stderr: the marker's isn't taken for it
+        fs.writeFileSync(rc, "echo 'Hello from the rc file'\nset -x\n");
+        const traced = await checkout.listCleanup({ repo: "acme/app", cloneFolder: clone, settings: { cleanupList: "echo 'why: it is traced' >&2" }, prs: [] });
+        expect(traced.output).not.toMatch(/@@view-prs|printf|Hello/);
+        expect(traced.output).toMatch(/why: it is traced$/);
+        // A shell that stops as it starts prints no marker: all of it is kept, to say why
+        fs.writeFileSync(rc, "echo 'error: the rc file gave up' >&2\nexit 3\n");
+        await expect(checkout.listCleanup({ repo: "acme/app", cloneFolder: clone, settings, prs: [] })).rejects.toMatchObject({
+          status: 502,
+          message: "The list command failed: the rc file gave up",
+        });
+      } finally {
+        fs.rmSync(rc, { force: true });
+      }
+    });
+
     test("a remove command that leaves the worktree there says so; a list command that fails says why", async () => {
       const clone = freshClone();
       const tree = tracked(clone, "mine/kept");
@@ -776,5 +815,7 @@ describe("checking out a PR into a worktree", () => {
     expect(
       reasonOf({ stderr: "bash: cannot set terminal process group (-1): Inappropriate ioctl for device\nbash: no job control in this shell\nfatal: couldn't find remote ref gone\n" }),
     ).toBe("couldn't find remote ref gone");
+    // The "exit" an interactive shell prints when a command exits it
+    expect(reasonOf({ stderr: "no such layout\nexit\n" })).toBe("no such layout");
   });
 });
