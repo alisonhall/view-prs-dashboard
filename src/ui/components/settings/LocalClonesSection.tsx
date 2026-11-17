@@ -260,7 +260,15 @@ export function LocalClonesSection() {
                   {busy ? 'Checking…' : 'Save'}
                 </Button>
                 {status && (
-                  <Button disabled={busy} aria-label={`Remove the clone's folder for ${repo}`} onClick={() => void change(repo, 'DELETE', { repo })}>
+                  <Button
+                    disabled={busy}
+                    aria-label={`Remove the clone's folder for ${repo}`}
+                    onClick={() => {
+                      // Its checkout and clean-up settings go with it.
+                      if (status.checkout && !window.confirm(`Remove ${repo}'s clone folder? Its checkout and clean-up commands and variables are removed too.`)) return;
+                      void change(repo, 'DELETE', { repo });
+                    }}
+                  >
                     Remove
                   </Button>
                 )}

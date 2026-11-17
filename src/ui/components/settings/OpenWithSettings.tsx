@@ -1,4 +1,4 @@
-import { useId, useState, type FormEvent } from 'react';
+import { useEffect, useId, useState, type FormEvent } from 'react';
 import { type OpenWithSettings as OpenWith } from '../../state/LocalBranchesContext';
 import { postJson, sendJson } from '../../helpers/pr-http.helpers.ts';
 import { NON_CREDENTIAL_INPUT_PROPS } from '../../helpers/form-parsing.helpers.ts';
@@ -56,6 +56,16 @@ export function OpenWithSettings({
   const [checking, setChecking] = useState(false);
   const [checks, setChecks] = useState<CommandCheck[] | null>(null);
 
+  const dirty = editor.trim() !== (saved.editor || '') || terminal.trim() !== (saved.terminal || '');
+  const [justSaved, setJustSaved] = useState(false);
+  useEffect(() => {
+    if (dirty) setJustSaved(false);
+  }, [dirty]);
+  // Check's answers are for the commands as they were.
+  useEffect(() => {
+    setChecks(null);
+  }, [editor, terminal]);
+
   const save = async (event: FormEvent) => {
     event.preventDefault();
     setError('');
@@ -70,6 +80,7 @@ export function OpenWithSettings({
       }
       const next = result.openWith || {};
       setSaved(next);
+      setJustSaved(true);
       onSaved(next);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
@@ -162,6 +173,17 @@ export function OpenWithSettings({
           >
             {checking ? 'Checking…' : 'Check commands'}
           </Button>
+          {dirty ? (
+            <span className="settings-hint" data-tone="warning">
+              Not saved yet
+            </span>
+          ) : (
+            justSaved && (
+              <span className="settings-hint" role="status">
+                Saved
+              </span>
+            )
+          )}
         </div>
       </form>
     </details>

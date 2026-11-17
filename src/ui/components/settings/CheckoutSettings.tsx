@@ -147,6 +147,28 @@ export function CheckoutSettings({
     }
   };
 
+  // Check's answers are for the commands as they were: gone once one changes.
+  useEffect(() => {
+    setChecks(null);
+  }, [command, after, cleanupList, cleanupRemove]);
+
+  // Whether the fields differ from what's saved (as the server keeps it:
+  // trimmed, forks only with a command, the variables as pairs).
+  const parsedVariables = parseVariables(variables);
+  const dirty =
+    command.trim() !== (saved?.command || '') ||
+    (Boolean(command.trim()) && forks) !== (saved?.forks === true) ||
+    after.trim() !== (saved?.after || '') ||
+    folder.trim() !== (saved?.folder || '') ||
+    cleanupList.trim() !== (saved?.cleanupList || '') ||
+    cleanupRemove.trim() !== (saved?.cleanupRemove || '') ||
+    parsedVariables.invalid.length > 0 ||
+    JSON.stringify(parsedVariables.env) !== JSON.stringify(saved?.env || {});
+  const [justSaved, setJustSaved] = useState(false);
+  useEffect(() => {
+    if (dirty) setJustSaved(false);
+  }, [dirty]);
+
   const fillFrom = (checkout: LocalRepoCheckout | undefined) => {
     setCommand(checkout?.command || '');
     setForks(checkout?.forks === true);
@@ -182,6 +204,7 @@ export function CheckoutSettings({
         return;
       }
       if (result.repos) onSaved(result.repos);
+      setJustSaved(true);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
@@ -369,6 +392,17 @@ export function CheckoutSettings({
           >
             {checking ? 'Checking…' : 'Check commands'}
           </Button>
+          {dirty ? (
+            <span className="settings-hint" data-tone="warning">
+              Not saved yet
+            </span>
+          ) : (
+            justSaved && (
+              <span className="settings-hint" role="status">
+                Saved
+              </span>
+            )
+          )}
         </div>
       </form>
     </details>

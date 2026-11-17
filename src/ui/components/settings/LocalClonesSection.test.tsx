@@ -268,6 +268,24 @@ describe('Settings › Local clones', () => {
     window.dispatchEvent(new Event('focus'));
     await waitFor(() => expect(screen.getByLabelText('Checkout command')).toHaveValue('later-tool {branch}'));
     expect(screen.getByLabelText('After git makes a worktree, run')).toHaveValue('npm ci');
+    expect(screen.queryByText('Not saved yet')).toBeNull();
+
+    // Changed: said so until saved, then Saved
+    await user.type(screen.getByLabelText('After git makes a worktree, run'), ' --silent');
+    expect(screen.getByText('Not saved yet')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: "Save how to check out acme/app's PRs" }));
+    expect(await screen.findByText('Saved')).toBeInTheDocument();
+    expect(screen.queryByText('Not saved yet')).toBeNull();
+
+    // Removing the clone's folder takes its settings with it: asked first
+    const confirm = jest.spyOn(window, 'confirm').mockReturnValue(false);
+    try {
+      await user.click(screen.getByRole('button', { name: "Remove the clone's folder for acme/app" }));
+      expect(confirm).toHaveBeenCalledWith(expect.stringMatching(/checkout and clean-up commands and variables are removed too/));
+      expect(requests.some((request) => request.method === 'DELETE')).toBe(false);
+    } finally {
+      confirm.mockRestore();
+    }
   });
 
   test("Check commands asks whether the user's shell knows each command; a placeholder in single quotes is warned of", async () => {

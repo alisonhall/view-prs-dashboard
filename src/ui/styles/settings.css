@@ -570,6 +570,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
+  align-items: center;
 }
 
 /* Clean up's list: each branch and worktree, Remove beside a safe one. */
