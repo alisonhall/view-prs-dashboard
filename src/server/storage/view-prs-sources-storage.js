@@ -348,16 +348,21 @@ const createViewPrsSourcesStorage = ({ fs, sourcesFile, isRepoSlug, console: log
   const findTrackedBranch = (sources, repo, branch) =>
     (sources?.trackedBranches || []).find((entry) => entry.repo === repo && entry.branch === branch) || null;
 
-  // Tracks a branch with no PR. { added, entry }: added false when it was
-  // tracked already. Throws when it isn't a repo and branch, or the sources
-  // can't be told.
-  const addTrackedBranch = ({ repo, branch, base }, { seedRepos = () => null, now = () => new Date() } = {}) => {
+  // Tracks a branch with no PR, with a base and note when given (Untrack's
+  // Undo gives back both, and when it was first tracked). { added, entry }:
+  // added false when it was tracked already. Throws when it isn't a repo
+  // and branch, or the sources can't be told.
+  const addTrackedBranch = ({ repo, branch, base, note, addedAt }, { seedRepos = () => null, now = () => new Date() } = {}) => {
     const safeRepo = toTrimmed(repo);
     const safeBranch = toTrimmed(branch);
     if (!isRepoSlug(safeRepo)) throw new Error(`Not a repo: ${safeRepo}`);
     if (!isBranchName(safeBranch)) throw new Error(`Not a branch name: ${safeBranch}`);
     const safeBase = toTrimmed(base);
     if (safeBase && !isBranchName(safeBase)) throw new Error(`Not a branch name: ${safeBase}`);
+    if (note !== undefined && note !== null && typeof note !== "string") throw new Error("Not a note: give text");
+    if (typeof note === "string" && note.length > MAX_NOTE_LENGTH) throw new Error(`The note is too long (over ${MAX_NOTE_LENGTH} characters)`);
+    const safeNote = typeof note === "string" && note.trim() ? note : "";
+    const safeAddedAt = toTrimmed(addedAt) && !Number.isNaN(Date.parse(toTrimmed(addedAt))) ? toTrimmed(addedAt) : now().toISOString();
     const sources = sourcesToChange(seedRepos);
     const existing = findTrackedBranch(sources, safeRepo, safeBranch);
     if (existing) return { added: false, entry: existing };
@@ -365,7 +370,7 @@ const createViewPrsSourcesStorage = ({ fs, sourcesFile, isRepoSlug, console: log
       ...sources,
       trackedBranches: [
         ...(sources.trackedBranches || []),
-        { repo: safeRepo, branch: safeBranch, ...(safeBase ? { base: safeBase } : {}), addedAt: now().toISOString() },
+        { repo: safeRepo, branch: safeBranch, ...(safeBase ? { base: safeBase } : {}), ...(safeNote ? { note: safeNote } : {}), addedAt: safeAddedAt },
       ],
     });
     return { added: true, entry: findTrackedBranch(written, safeRepo, safeBranch) };

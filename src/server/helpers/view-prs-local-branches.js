@@ -14,6 +14,7 @@
 // that have a local branch.
 
 const path = require("path");
+const crypto = require("crypto");
 
 const FIELD = "\t";
 
@@ -260,14 +261,18 @@ const createViewPrsLocalBranches = ({
         error: `None of its remotes is ${repo}${others.length ? ` (it has ${others.join(", ")})` : " (it has no remotes)"}`,
       };
     }
+    const branches = parseBranches(refs, upstreams);
     return {
       ok: true,
       folder,
       remotes,
       repoRemotes,
-      branches: parseBranches(refs, upstreams),
+      branches,
       remoteRefs: parseRemoteRefs(remoteRefs),
-      defaultBranch: findDefaultBranch(remoteRefs, repoRemotes, parseBranches(refs)),
+      // Changes when a fetch, push or prune changes the remote branches:
+      // what's not pushed is kept until then.
+      remoteRefsKey: crypto.createHash("sha1").update(String(remoteRefs || "")).digest("hex"),
+      defaultBranch: findDefaultBranch(remoteRefs, repoRemotes, branches),
       worktrees: parseWorktrees(worktreeList)
         .filter((worktree) => !worktree.bare)
         .map((worktree) => (worktree.branch ? worktree : withRebasedBranch(worktree))),
@@ -470,16 +475,27 @@ const createViewPrsLocalBranches = ({
 
   // The local commits on none of the repo's remote branches (as the clone
   // last fetched or pushed them): what isn't on GitHub. null when git
-  // can't say. Not kept by commit, as a fetch or push changes it.
-  const countNotOnRemotes = async (clone, oid) => {
-    if (clone.repoRemotes.length === 0) return null;
-    try {
-      const stdout = await git(clone.folder, ["rev-list", "--count", oid, "--not", ...clone.repoRemotes.map((remote) => `--remotes=${remote}`)]);
-      const value = Number(stdout.trim());
-      return Number.isInteger(value) ? value : null;
-    } catch (_error) {
-      return null;
-    }
+  // can't say. Kept by commit and the remote branches as they are (a
+  // fetch, push or prune changes them), so a minute's poll asks git only
+  // for what moved.
+  const notOnRemotesCache = new Map();
+  const countNotOnRemotes = (clone, oid) => {
+    if (clone.repoRemotes.length === 0) return Promise.resolve(null);
+    const key = `${clone.folder}\n${clone.repoRemotes.join(",")}\n${clone.remoteRefsKey || ""}\n${oid}`;
+    if (notOnRemotesCache.has(key)) return notOnRemotesCache.get(key);
+    const count = git(clone.folder, ["rev-list", "--count", oid, "--not", ...clone.repoRemotes.map((remote) => `--remotes=${remote}`)]).then(
+      (stdout) => {
+        const value = Number(stdout.trim());
+        return Number.isInteger(value) ? value : null;
+      },
+      () => null,
+    );
+    if (notOnRemotesCache.size >= MAX_COUNTS) notOnRemotesCache.delete(notOnRemotesCache.keys().next().value);
+    notOnRemotesCache.set(key, count);
+    count.then((result) => {
+      if (result === null && notOnRemotesCache.get(key) === count) notOnRemotesCache.delete(key);
+    });
+    return count;
   };
 
   // A tracked branch (no PR) as the clone has it: { found: false } when the

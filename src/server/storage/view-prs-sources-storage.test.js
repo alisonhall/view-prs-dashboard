@@ -296,6 +296,11 @@ describe("view-prs sources storage", () => {
     expect(storage.removeTrackedBranch("acme/api", "wip")).toMatchObject({ branch: "wip" });
     expect(storage.removeTrackedBranch("acme/api", "wip")).toBeNull();
     expect(JSON.parse(fs.readFileSync(sourcesFile, "utf8"))).not.toHaveProperty("trackedBranches");
+
+    // Put back as it was (Untrack's Undo): its base, note and first-tracked time.
+    expect(
+      storage.addTrackedBranch({ repo: "acme/api", branch: "wip", base: "development", note: "Spike", addedAt: "2026-11-01T00:00:00.000Z" }, { seedRepos, now }).entry,
+    ).toEqual({ repo: "acme/api", branch: "wip", base: "development", note: "Spike", addedAt: "2026-11-01T00:00:00.000Z" });
   });
 
   test("a branch isn't tracked while the sources can't be told", () => {

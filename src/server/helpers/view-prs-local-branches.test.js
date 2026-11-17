@@ -629,6 +629,27 @@ describe("branches tracked without a PR", () => {
     expect(found["other/repo:x"]).toBeUndefined();
   });
 
+  test("what isn't pushed is asked of git again only once the commit or the remote branches change", async () => {
+    const asked = [];
+    const counting = (command, args) => {
+      if (args.includes("--not")) asked.push(args.join(" "));
+      return run(command, args);
+    };
+    const tracker = createViewPrsLocalBranches({ runCommand: counting, fs, cacheMs: 0 });
+    const look = () => tracker.getTrackedBranches({ localRepos: { "acme/app": clone }, branches: [{ repo: "acme/app", branch: "local-only" }] });
+    expect((await look())["acme/app:local-only"].unpushed).toBe(2);
+    expect((await look())["acme/app:local-only"].unpushed).toBe(2);
+    expect(asked).toHaveLength(1);
+    // A remote branch with one of its commits (as a push would leave it).
+    git(clone, "update-ref", "refs/remotes/origin/local-only", "local-only~1");
+    try {
+      expect((await look())["acme/app:local-only"].unpushed).toBe(1);
+      expect(asked).toHaveLength(2);
+    } finally {
+      git(clone, "update-ref", "-d", "refs/remotes/origin/local-only");
+    }
+  });
+
   test("a branch tracking another local branch (remote \".\") has no remote branch, rather than one gone", async () => {
     git(clone, "branch", "--track", "on-main", "main");
     const found = await helper().getTrackedBranches({ localRepos: { "acme/app": clone }, branches: [{ repo: "acme/app", branch: "on-main" }] });

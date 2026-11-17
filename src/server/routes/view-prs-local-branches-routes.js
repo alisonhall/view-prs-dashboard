@@ -385,33 +385,40 @@ const registerViewPrsLocalBranchesRoutes = ({
   const readSourcesForResponse = () => sourcesStorage.loadSources({ seedRepos: seedSubscriptionRepos }) || sourcesStorage.normalizeSources({});
   const changeError = (res, error) => res.status(/^Not a /.test(error.message) ? 400 : 500).json({ ok: false, error: error.message });
 
-  // { repo, branch, base? } - tracks a local branch of the repo's clone that
-  // has no PR: { added, trackedBranch, sources }. Only a branch the clone
-  // has (read afresh).
+  // { repo, branch, base?, note? } - tracks a local branch of the repo's
+  // clone that has no PR: { added, trackedBranch, sources }. Only a branch
+  // the clone has (read afresh) - unless restore (Untrack's Undo, with the
+  // entry as it was, addedAt too), which puts back what was tracked
+  // whether or not this computer has it.
   app.post(["/tracked-branches", "/view-prs/tracked-branches"], async (req, res) => {
     const repo = String(req.body?.repo || "").trim();
     const branch = String(req.body?.branch || "").trim();
     const base = String(req.body?.base || "").trim();
+    const note = typeof req.body?.note === "string" ? req.body.note : undefined;
+    const restore = req.body?.restore === true;
     if (!sourcesStorage) {
       res.status(500).json({ ok: false, error: "No sources file" });
       return;
     }
     try {
-      const folder = localReposStorage.loadLocalRepos()[repo];
-      if (!folder) {
-        res.status(404).json({ ok: false, error: `No clone of ${repo} saved (Settings › Local clones)` });
-        return;
+      if (!restore) {
+        const folder = localReposStorage.loadLocalRepos()[repo];
+        if (!folder) {
+          res.status(404).json({ ok: false, error: `No clone of ${repo} saved (Settings › Local clones)` });
+          return;
+        }
+        const clone = await localBranches.readCloneFresh(repo, folder);
+        if (!clone.ok) {
+          res.status(422).json({ ok: false, error: clone.error });
+          return;
+        }
+        if (!clone.branches.some((item) => item.name === branch)) {
+          res.status(422).json({ ok: false, error: `The clone of ${repo} has no branch ${branch}` });
+          return;
+        }
       }
-      const clone = await localBranches.readCloneFresh(repo, folder);
-      if (!clone.ok) {
-        res.status(422).json({ ok: false, error: clone.error });
-        return;
-      }
-      if (!clone.branches.some((item) => item.name === branch)) {
-        res.status(422).json({ ok: false, error: `The clone of ${repo} has no branch ${branch}` });
-        return;
-      }
-      const result = sourcesStorage.addTrackedBranch({ repo, branch, base }, { seedRepos: seedSubscriptionRepos });
+      const addedAt = restore ? String(req.body?.addedAt || "") : "";
+      const result = sourcesStorage.addTrackedBranch({ repo, branch, base, note, addedAt }, { seedRepos: seedSubscriptionRepos });
       res.json({ ok: true, added: result.added, trackedBranch: result.entry, sources: readSourcesForResponse() });
       if (result.added) emitDataChanged();
     } catch (error) {

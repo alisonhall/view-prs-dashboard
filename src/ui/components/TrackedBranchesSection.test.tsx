@@ -103,12 +103,45 @@ describe('TrackedBranchesSection', () => {
     expect(screen.getByText(/No branches tracked yet/)).toBeInTheDocument();
   });
 
-  test('Untrack stops tracking it', async () => {
+  test('Untrack stops tracking it, and Undo puts it back as it was, note and all', async () => {
     const user = userEvent.setup();
     render(wrap(<TrackedBranchesSection trackedBranches={TRACKED} isOpen onToggleSection={jest.fn()} />, local({ branches: STATUSES })));
-    await user.click(screen.getByRole('button', { name: 'Untrack wip' }));
-    expect(posted).toEqual([{ url: '/view-prs/tracked-branches', method: 'DELETE', body: { repo: 'acme/app', branch: 'wip' } }]);
+    await user.click(screen.getByRole('button', { name: 'Untrack spike/cache' }));
+    expect(posted).toEqual([{ url: '/view-prs/tracked-branches', method: 'DELETE', body: { repo: 'acme/app', branch: 'spike/cache' } }]);
     await waitFor(() => expect(refresh).toHaveBeenCalled());
+    expect(await screen.findByText('Untracked spike/cache (and its note).')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(posted[1]).toEqual({
+      url: '/view-prs/tracked-branches',
+      method: 'POST',
+      body: { repo: 'acme/app', branch: 'spike/cache', note: 'Try Redis', restore: true },
+    });
+    expect(screen.queryByRole('button', { name: 'Undo' })).not.toBeInTheDocument();
+  });
+
+  test("a row's note is written there: added, changed, cleared; Escape leaves it as it was", async () => {
+    const user = userEvent.setup();
+    render(wrap(<TrackedBranchesSection trackedBranches={TRACKED} isOpen onToggleSection={jest.fn()} />, local({ branches: STATUSES })));
+    await user.click(screen.getByRole('button', { name: 'Add a note to wip' }));
+    const box = screen.getByRole('textbox', { name: 'Note on wip' });
+    await user.type(box, 'Half done');
+    await user.click(screen.getByRole('button', { name: 'Save note' }));
+    expect(posted).toEqual([{ url: '/view-prs/tracked-branches', method: 'PATCH', body: { repo: 'acme/app', branch: 'wip', note: 'Half done' } }]);
+    expect(await screen.findByLabelText('Note: Half done')).toBeInTheDocument();
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+
+    await user.click(screen.getByLabelText('Note: Try Redis'));
+    const existing = screen.getByRole('textbox', { name: 'Note on spike/cache' });
+    expect(existing).toHaveValue('Try Redis');
+    await user.type(existing, ' later{Escape}');
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    expect(posted).toHaveLength(1);
+
+    await user.click(screen.getByLabelText('Note: Try Redis'));
+    await user.clear(screen.getByRole('textbox', { name: 'Note on spike/cache' }));
+    await user.keyboard('{Control>}{Enter}{/Control}');
+    expect(posted[1]).toEqual({ url: '/view-prs/tracked-branches', method: 'PATCH', body: { repo: 'acme/app', branch: 'spike/cache', note: '' } });
+    expect(await screen.findByRole('button', { name: 'Add a note to spike/cache' })).toBeInTheDocument();
   });
 
   test("closed, the header says how many local branches could still be tracked; it opens the section with the picker", async () => {
@@ -163,5 +196,19 @@ describe('TrackBranchPicker', () => {
     unmount();
     render(wrap(<TrackBranchPicker />, local({ repos: {} })));
     expect(screen.getByText(/Save a clone in Settings › Local clones first/)).toBeInTheDocument();
+  });
+
+  test('a clone with many branches gets a filter: by name or commit subject', async () => {
+    const user = userEvent.setup();
+    candidates['acme/app'] = Array.from({ length: 8 }, (_, index) => ({ name: `feature-${index}`, oid: String(index), subject: index === 3 ? 'Fix login' : 'Work' }));
+    render(wrap(<TrackBranchPicker />));
+    const filter = await screen.findByRole('searchbox', { name: "Filter acme/app's branches" });
+    await user.type(filter, 'login');
+    expect(screen.getAllByRole('button', { name: /^Track / }).map((button) => button.getAttribute('aria-label'))).toEqual(['Track feature-3']);
+    await user.clear(filter);
+    await user.type(filter, 'feature-7');
+    expect(screen.getAllByRole('button', { name: /^Track / })).toHaveLength(1);
+    await user.type(filter, 'x');
+    expect(screen.getByText('No branch matches “feature-7x”.')).toBeInTheDocument();
   });
 });

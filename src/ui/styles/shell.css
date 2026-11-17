@@ -377,6 +377,18 @@
   font: var(--font-size-md) var(--font-sans);
 }
 
+.track-branch-filter input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 28px;
+  padding: 4px 8px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: var(--font-size-md) var(--font-sans);
+}
+
 .track-branch-empty {
   margin: 0;
   color: var(--color-text-muted);

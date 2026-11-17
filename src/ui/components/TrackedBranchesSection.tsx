@@ -21,7 +21,7 @@
  * @module components/TrackedBranchesSection
  */
 
-import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { PrTrackedBranch } from '../types/pr-data.ts';
 import { Icon, type IconName } from './ui/Icon';
 import { Button, IconButton } from './ui/Button';
@@ -47,7 +47,11 @@ import {
 export const TRACKED_BRANCHES_SECTION_KEY = 'tracked-branches';
 
 const CHANGES_POLL_MS = 60 * 1000;
+// How long Undo is offered after Untrack.
+const UNDO_MS = 15 * 1000;
 const NO_BRANCHES: PrTrackedBranch[] = [];
+// As the server takes it (view-prs-sources-storage.js).
+const MAX_NOTE_LENGTH = 4000;
 
 // The uncommitted changes of each tracked branch checked out here, asked
 // for while any is: { key => changes }.
@@ -114,6 +118,18 @@ export function TrackedBranchesSection({
   const repoNames = useMemo(() => Array.from(repoFilter || []), [repoFilter]);
   const [showPicker, setShowPicker] = useState(false);
   const [busyKey, setBusyKey] = useState('');
+  // The note being written: whose (key), and its text so far.
+  const [noteEditor, setNoteEditor] = useState<{ key: string; text: string; saving: boolean } | null>(null);
+  // Notes saved here, shown until the data (the sources) has them.
+  const [savedNotes, setSavedNotes] = useState<Record<string, string>>({});
+  useEffect(() => setSavedNotes({}), [trackedBranches]);
+  // The branch just untracked, for a while: Undo puts it back as it was.
+  const [untracked, setUntracked] = useState<PrTrackedBranch | null>(null);
+  useEffect(() => {
+    if (!untracked) return undefined;
+    const timer = window.setTimeout(() => setUntracked(null), UNDO_MS);
+    return () => window.clearTimeout(timer);
+  }, [untracked]);
   const sectionIcon = icon ?? BUILT_IN_SECTION_LOOKS[TRACKED_BRANCHES_SECTION_KEY];
 
   const shown = useMemo(
@@ -155,11 +171,52 @@ export function TrackedBranchesSection({
         branch: entry.branch,
       });
       if (!response.ok || result.ok === false) showError(`Couldn't untrack ${entry.branch}`, result.error || `HTTP ${response.status}`);
-      else refresh();
+      else {
+        setUntracked(entry);
+        if (noteEditor?.key === key) setNoteEditor(null);
+        refresh();
+      }
     } catch (error) {
       showError(`Couldn't untrack ${entry.branch}`, error instanceof Error ? error.message : String(error));
     } finally {
       setBusyKey('');
+    }
+  };
+
+  // Untrack's Undo: back as it was - its base, note and when it was first
+  // tracked - whether or not this computer still has the branch.
+  const undoUntrack = async () => {
+    const entry = untracked;
+    if (!entry) return;
+    setUntracked(null);
+    try {
+      const { response, result } = await postJson<{ ok?: boolean; error?: string }>('/view-prs/tracked-branches', { ...entry, restore: true });
+      if (!response.ok || result.ok === false) showError(`Couldn't track ${entry.branch} again`, result.error || `HTTP ${response.status}`);
+      else refresh();
+    } catch (error) {
+      showError(`Couldn't track ${entry.branch} again`, error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const saveNote = async (entry: PrTrackedBranch, text: string) => {
+    const key = trackedBranchKey(entry.repo, entry.branch);
+    setNoteEditor({ key, text, saving: true });
+    try {
+      const { response, result } = await sendJson<{ ok?: boolean; error?: string }>('PATCH', '/view-prs/tracked-branches', {
+        repo: entry.repo,
+        branch: entry.branch,
+        note: text,
+      });
+      if (!response.ok || result.ok === false) {
+        showError(`Couldn't save the note on ${entry.branch}`, result.error || `HTTP ${response.status}`);
+        setNoteEditor({ key, text, saving: false });
+        return;
+      }
+      setSavedNotes((previous) => ({ ...previous, [key]: text.trim() ? text : '' }));
+      setNoteEditor(null);
+    } catch (error) {
+      showError(`Couldn't save the note on ${entry.branch}`, error instanceof Error ? error.message : String(error));
+      setNoteEditor({ key, text, saving: false });
     }
   };
 
@@ -223,6 +280,15 @@ export function TrackedBranchesSection({
             Track a branch
           </Button>
         </div>
+        {untracked && (
+          <p className="tracked-branches-undo" role="status">
+            <span>
+              Untracked {untracked.branch}
+              {untracked.note ? ' (and its note)' : ''}.
+            </span>
+            <Button onClick={() => void undoUntrack()}>Undo</Button>
+          </p>
+        )}
         {showPicker && (
           <div className="tracked-branches-picker">
             <TrackBranchPicker version={trackedVersion} />
@@ -256,17 +322,31 @@ export function TrackedBranchesSection({
                 const chips = describeBranchChips(status, changes[key]);
                 const folder = status?.worktreePath || '';
                 const age = formatCommitAge(formatShortAge(status?.committedAt, now));
+                const note = key in savedNotes ? savedNotes[key] ?? '' : entry.note || '';
+                const editing = noteEditor?.key === key ? noteEditor : null;
+                const editNote = () => setNoteEditor({ key, text: note, saving: false });
                 return (
-                  <tr key={key} className="tracked-branch-row" data-branch-key={key}>
+                  <Fragment key={key}>
+                  <tr className="tracked-branch-row" data-branch-key={key}>
                     <td className="tracked-branch-name-cell">
                       <span className="tracked-branch-name">{entry.branch}</span>
                       <span className="tracked-branch-repo">{entry.repo}</span>
-                      {entry.note && (
-                        <Tooltip content={entry.note}>
-                          <span className="tracked-branch-note" tabIndex={0} aria-label={`Note: ${entry.note}`}>
+                      {note && editing ? (
+                        // No hover text while it's being written: that would
+                        // take the first Escape (tooltip-controller.ts).
+                        <button type="button" className="tracked-branch-note" aria-label={`Note: ${note}`} aria-expanded onClick={() => setNoteEditor(null)}>
+                          <Icon name="note" size={14} />
+                        </button>
+                      ) : note ? (
+                        <Tooltip content={`${note}\n(click to edit)`}>
+                          <button type="button" className="tracked-branch-note" aria-label={`Note: ${note}`} aria-expanded={false} onClick={editNote}>
                             <Icon name="note" size={14} />
-                          </span>
+                          </button>
                         </Tooltip>
+                      ) : (
+                        !editing && (
+                          <IconButton className="tracked-branch-add-note" icon="pencil" label={`Add a note to ${entry.branch}`} onClick={editNote} />
+                        )
                       )}
                     </td>
                     <td className="tracked-branch-where">
@@ -312,6 +392,47 @@ export function TrackedBranchesSection({
                       </div>
                     </td>
                   </tr>
+                  {editing && (
+                    <tr className="tracked-branch-note-row">
+                      <td colSpan={5}>
+                        <form
+                          className="tracked-branch-note-form"
+                          onSubmit={(event) => {
+                            event.preventDefault();
+                            void saveNote(entry, editing.text);
+                          }}
+                        >
+                          <textarea
+                            aria-label={`Note on ${entry.branch}`}
+                            value={editing.text}
+                            maxLength={MAX_NOTE_LENGTH}
+                            rows={2}
+                            autoFocus
+                            placeholder="What it's for, what's left to do…"
+                            onChange={(event) => setNoteEditor({ key, text: event.target.value, saving: false })}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Escape') {
+                                event.preventDefault();
+                                setNoteEditor(null);
+                              } else if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+                                event.preventDefault();
+                                void saveNote(entry, editing.text);
+                              }
+                            }}
+                          />
+                          <div className="tracked-branch-note-actions">
+                            <Button type="submit" disabled={editing.saving || editing.text === note}>
+                              {editing.saving ? 'Saving…' : 'Save note'}
+                            </Button>
+                            <Button onClick={() => setNoteEditor(null)} disabled={editing.saving}>
+                              Cancel
+                            </Button>
+                          </div>
+                        </form>
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 );
               })}
             </tbody>

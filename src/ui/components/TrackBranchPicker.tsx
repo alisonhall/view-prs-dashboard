@@ -71,6 +71,9 @@ export function useBranchCandidates(repos: ReadonlyArray<string>, version = '') 
   return { ...state, refresh };
 }
 
+// A filter box once a clone has more branches than this to pick from.
+const FILTER_FROM = 6;
+
 // The repos with a clone this computer can read, A-Z.
 export const useReadableCloneRepos = () => {
   const { repos } = useLocalBranches();
@@ -101,6 +104,8 @@ export function TrackBranchPicker({ version = '', onTracked }: { version?: strin
   const { byRepo, errors, loading, refresh } = useBranchCandidates(repo ? [repo] : [], version);
   const [tracking, setTracking] = useState('');
   const [outcome, setOutcome] = useState<{ tone: 'done' | 'error'; text: string } | null>(null);
+  const filterId = useId();
+  const [filter, setFilter] = useState('');
 
   if (repos.length === 0) {
     return (
@@ -131,6 +136,9 @@ export function TrackBranchPicker({ version = '', onTracked }: { version?: strin
   };
 
   const branches = byRepo[repo] || [];
+  // Each word of the filter in the branch's name or newest commit's subject.
+  const words = filter.toLowerCase().split(/\s+/).filter(Boolean);
+  const listed = words.length === 0 ? branches : branches.filter((branch) => words.every((word) => `${branch.name}\n${branch.subject || ''}`.toLowerCase().includes(word)));
   const now = Date.now();
   return (
     <div className="track-branch-picker">
@@ -159,8 +167,28 @@ export function TrackBranchPicker({ version = '', onTracked }: { version?: strin
           No local branches without a PR in {repo} (the default branch, PRs' base branches and those tracked already aren't listed).
         </p>
       ) : (
+        <>
+        {branches.length > FILTER_FROM && (
+          <div className="track-branch-filter">
+            <label htmlFor={filterId} className="ui-visually-hidden">
+              Filter {repo}'s branches
+            </label>
+            <input
+              id={filterId}
+              type="search"
+              value={filter}
+              placeholder={`Filter ${branches.length} branches…`}
+              autoComplete="off"
+              spellCheck={false}
+              onChange={(event) => setFilter(event.target.value)}
+            />
+          </div>
+        )}
+        {listed.length === 0 ? (
+          <p className="track-branch-empty">No branch matches “{filter.trim()}”.</p>
+        ) : (
         <ul className="track-branch-list" aria-label={`${repo}'s local branches with no PR`}>
-          {branches.map((branch) => (
+          {listed.map((branch) => (
             <li key={branch.name} className="track-branch-item">
               <span className="track-branch-text">
                 <span className="track-branch-name">{branch.name}</span>
@@ -181,6 +209,8 @@ export function TrackBranchPicker({ version = '', onTracked }: { version?: strin
             </li>
           ))}
         </ul>
+        )}
+        </>
       )}
       {outcome && (
         <p className="add-pr-outcome" data-tone={outcome.tone} role={outcome.tone === 'error' ? 'alert' : 'status'}>

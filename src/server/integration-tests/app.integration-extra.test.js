@@ -1011,6 +1011,16 @@ describe("integration behavior", () => {
         const removed = await request.delete("/view-prs/tracked-branches").send({ repo: "owner/repo", branch: "wip" });
         expect(removed.body).toMatchObject({ ok: true, removed: true });
         expect((await request.get("/view-prs/local-branches")).body.branches).toEqual({});
+
+        // Untrack's Undo puts it back as it was, even one the clone hasn't got.
+        const restored = await request
+          .post("/view-prs/tracked-branches")
+          .send({ repo: "owner/repo", branch: "gone-here", base: "feature", note: "Kept", addedAt: "2026-11-01T00:00:00.000Z", restore: true });
+        expect(restored.body).toMatchObject({
+          ok: true,
+          added: true,
+          trackedBranch: { repo: "owner/repo", branch: "gone-here", base: "feature", note: "Kept", addedAt: "2026-11-01T00:00:00.000Z" },
+        });
       } finally {
         git(clone, "branch", "-D", "wip");
         fs.rmSync(sourcesFile, { force: true });

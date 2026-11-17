@@ -942,8 +942,81 @@ a.pr-summary-file {
 .tracked-branch-note {
   display: inline-flex;
   margin-left: 6px;
+  padding: 2px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
   color: var(--color-text-muted);
   vertical-align: middle;
+  cursor: pointer;
+}
+
+.tracked-branch-note:hover {
+  color: var(--color-text);
+}
+
+.tracked-branch-note:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* Add a note: there on hover or focus, so quiet rows stay quiet. */
+.tracked-branch-add-note {
+  margin-left: 2px;
+  vertical-align: middle;
+  opacity: 0;
+}
+
+.tracked-branch-row:hover .tracked-branch-add-note,
+.tracked-branch-add-note:focus-visible {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .tracked-branch-add-note {
+    opacity: 1;
+  }
+}
+
+.tracked-branch-note-row td {
+  padding-top: 0;
+}
+
+.tracked-branch-note-form {
+  display: grid;
+  gap: 6px;
+  max-width: 640px;
+}
+
+.tracked-branch-note-form textarea {
+  min-height: 52px;
+  padding: 6px 8px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: var(--font-size-md) var(--font-sans);
+  resize: vertical;
+}
+
+.tracked-branch-note-form textarea:focus-visible {
+  border-color: var(--color-accent);
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.tracked-branch-note-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.tracked-branches-undo {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-2) 14px 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
 }
 
 .tracked-branch-where,
