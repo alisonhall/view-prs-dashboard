@@ -259,6 +259,19 @@ describe('Settings › Local clones', () => {
     expect(await form.findByRole('alert')).toHaveTextContent('The worktree folder needs {branch} in it');
   });
 
+  test("the checkout fields follow the saved settings when they arrive after the section opens, and after a save", async () => {
+    saved = { 'acme/app': { path: 'D:/code/app/main', ok: true, branchCount: 1, worktreeCount: 1 } };
+    const user = userEvent.setup();
+    renderSection();
+    await user.click(await screen.findByText('Check out PRs with git'));
+    expect(screen.getByLabelText('Checkout command')).toHaveValue('');
+    // Saved meanwhile (another window): the page's copy is refreshed when the window gets focus.
+    saved = { 'acme/app': { path: 'D:/code/app/main', ok: true, branchCount: 1, worktreeCount: 1, checkout: { command: 'later-tool {branch}', after: 'npm ci' } } };
+    window.dispatchEvent(new Event('focus'));
+    await waitFor(() => expect(screen.getByLabelText('Checkout command')).toHaveValue('later-tool {branch}'));
+    expect(screen.getByLabelText('After git makes a worktree, run')).toHaveValue('npm ci');
+  });
+
   test("Check commands asks whether the user's shell knows each command; a placeholder in single quotes is warned of", async () => {
     saved = { 'acme/app': { path: 'D:/code/app/main', ok: true, branchCount: 1, worktreeCount: 1 } };
     const user = userEvent.setup();

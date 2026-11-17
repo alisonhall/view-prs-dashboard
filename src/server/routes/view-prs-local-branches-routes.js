@@ -68,13 +68,16 @@ const registerViewPrsLocalBranchesRoutes = ({
     return /^~(?=$|[\\/])/.test(folder) ? path.join(homeDir(), folder.slice(1)) : folder;
   };
 
-  // Each clone's state, with its checkout settings.
-  const reposStatus = async () => {
-    const entries = localReposStorage.loadLocalRepoEntries();
-    const { repos } = await localBranches.getLocalBranches({ localRepos: localReposStorage.loadLocalRepos(), prs: [] });
-    return Object.fromEntries(
-      Object.entries(repos).map(([repo, status]) => [repo, entries[repo]?.checkout ? { ...status, checkout: entries[repo].checkout } : status]),
+  // Each clone's state with its checkout settings - in every answer with
+  // the clones' states, /local-branches' too: the page keeps one copy of
+  // them, and an answer without the settings would drop them from it.
+  const withCheckout = (repos, entries = localReposStorage.loadLocalRepoEntries()) =>
+    Object.fromEntries(
+      Object.entries(repos || {}).map(([repo, status]) => [repo, entries[repo]?.checkout ? { ...status, checkout: entries[repo].checkout } : status]),
     );
+  const reposStatus = async () => {
+    const { repos } = await localBranches.getLocalBranches({ localRepos: localReposStorage.loadLocalRepos(), prs: [] });
+    return withCheckout(repos);
   };
 
   // { repos: repo => { path, ok, error?, branchCount, worktreeCount },
@@ -319,7 +322,7 @@ const registerViewPrsLocalBranchesRoutes = ({
             return [pr.key, { how: planCheckout({ existing: Boolean(result.prs[pr.key]), isFork: fork, settings: entries[pr.repo]?.checkout }), fork }];
           }),
       );
-      res.json({ ok: true, ...result, plans, platform, openWith: localReposStorage.loadOpenWith() });
+      res.json({ ok: true, ...result, repos: withCheckout(result.repos, entries), plans, platform, openWith: localReposStorage.loadOpenWith() });
     } catch (error) {
       sendInternalError({ res, error });
     }

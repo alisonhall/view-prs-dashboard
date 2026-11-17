@@ -1,4 +1,4 @@
-import { useId, useState, type FormEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { type LocalRepoStatus, type LocalRepoCheckout } from '../../state/LocalBranchesContext';
 import { postJson, sendJson } from '../../helpers/pr-http.helpers.ts';
 import { NON_CREDENTIAL_INPUT_PROPS } from '../../helpers/form-parsing.helpers.ts';
@@ -111,6 +111,19 @@ export function CheckoutSettings({
   const [error, setError] = useState('');
   const [checking, setChecking] = useState(false);
   const [checks, setChecks] = useState<CommandCheck[] | null>(null);
+
+  // The fields follow the saved settings when they change - once the
+  // page's copy of them arrives (it may come after this opens) or after a
+  // save - not only as they were when this was first shown.
+  const savedKey = JSON.stringify(saved || null);
+  const shownKey = useRef(savedKey);
+  useEffect(() => {
+    if (shownKey.current === savedKey) return;
+    shownKey.current = savedKey;
+    fillFrom(saved);
+    // fillFrom and saved are as savedKey says.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [savedKey]);
 
   // Whether the user's shell knows each command, as Check out would run it.
   const check = async () => {

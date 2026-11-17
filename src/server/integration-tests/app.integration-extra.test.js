@@ -724,6 +724,8 @@ describe("integration behavior", () => {
         "owner/repo#5": { how: "git", fork: false },
         "owner/repo#6": { how: "command", fork: false },
       });
+      // The saved settings come with the clones' states here too: the page's copy is refreshed from this answer.
+      expect((await request.get("/view-prs/local-branches")).body.repos["owner/repo"].checkout).toEqual({ command: "my-tool {branch}" });
     });
 
     test("opens the clone or one of its worktrees in the editor, and no other folder", async () => {
