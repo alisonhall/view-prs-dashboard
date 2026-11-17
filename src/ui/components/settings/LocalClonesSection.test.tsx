@@ -116,6 +116,24 @@ describe('Settings › Local clones', () => {
     expect(screen.getByLabelText('acme/a-b')).not.toBe(screen.getByLabelText('acme-a/b'));
   });
 
+  test("each repo is a row that opens: open when it has no clone saved or one can't be read, closed once one can; its summary says what the clone has", async () => {
+    saved = {
+      'acme/api': { path: 'D:/code/api', ok: false, error: 'No such folder: D:/code/api' },
+      'acme/app': { path: 'D:/code/app', ok: true, branchCount: 2, worktreeCount: 1, checkout: { command: 'my-tool add {branch}' } },
+    };
+    const user = userEvent.setup();
+    renderSection();
+    const rowOf = async (repo: string) => (await screen.findByLabelText(repo)).closest('details') as HTMLDetailsElement;
+    await waitFor(async () => expect((await rowOf('acme/app')).open).toBe(false));
+    expect((await rowOf('acme/api')).open).toBe(true);
+    expect((await rowOf('acme/a-b')).open).toBe(true);
+    const appSummary = (await rowOf('acme/app')).querySelector('summary') as HTMLElement;
+    expect(appSummary).toHaveTextContent('acme/app2 branches, 1 worktreeOwn checkout command');
+    expect((await rowOf('acme/a-b')).querySelector('summary')).toHaveTextContent('No clone saved');
+    await user.click(appSummary);
+    expect((await rowOf('acme/app')).open).toBe(true);
+  });
+
   test('saves a folder once the server finds the clone, shows what it has, and checks the PRs again', async () => {
     const user = userEvent.setup();
     renderSection();
@@ -270,12 +288,18 @@ describe('Settings › Local clones', () => {
     expect(screen.getByLabelText('After git makes a worktree, run')).toHaveValue('npm ci');
     expect(screen.queryByText('Not saved yet')).toBeNull();
 
-    // Changed: said so until saved, then Saved
+    // Changed: said so until saved - and the browser asks before the page is left - then Saved
     await user.type(screen.getByLabelText('After git makes a worktree, run'), ' --silent');
     expect(screen.getByText('Not saved yet')).toBeInTheDocument();
+    const leaving = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(leaving);
+    expect(leaving.defaultPrevented).toBe(true);
     await user.click(screen.getByRole('button', { name: "Save how to check out acme/app's PRs" }));
     expect(await screen.findByText('Saved')).toBeInTheDocument();
     expect(screen.queryByText('Not saved yet')).toBeNull();
+    const left = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(left);
+    expect(left.defaultPrevented).toBe(false);
 
     // Removing the clone's folder takes its settings with it: asked first
     const confirm = jest.spyOn(window, 'confirm').mockReturnValue(false);
@@ -383,6 +407,7 @@ describe('Settings › Local clones', () => {
         items: [{ branch: 'mine', oid: 'a', worktreePath: 'D:/code/mine', prs: [], safe: true, reasons: [], notes: ["No PR on the page has this branch, so what's pushed isn't checked"] }],
         ignored: ['/not/one'],
         output: 'why: old',
+        printed: 'D:/code/mine\n/not/one',
       },
     };
     const confirm = jest.spyOn(window, 'confirm').mockReturnValue(false);
@@ -394,6 +419,7 @@ describe('Settings › Local clones', () => {
       await user.click(screen.getByRole('button', { name: 'Look' }));
       expect(await screen.findByText('Not worktrees of the clone, so left out: "/not/one"')).toBeInTheDocument();
       expect(screen.getByText('why: old')).toBeInTheDocument();
+      expect(screen.getByLabelText('What your list command printed')).toHaveTextContent('D:/code/mine /not/one');
       await user.click(screen.getByRole('button', { name: 'Remove mine' }));
       // The branch is the command's: only the worktree is named.
       expect(confirm).toHaveBeenCalledWith(
@@ -433,11 +459,14 @@ describe('Settings › Local clones', () => {
 
     await user.type(screen.getByLabelText('Editor command'), 'my-tool open');
     await user.click(screen.getByRole('button', { name: 'Check the editor and terminal commands' }));
-    expect(await screen.findByText(/my-tool is a function/)).toBeInTheDocument();
-    expect(screen.getByText(/wezterm isn't known to your shell/)).toBeInTheDocument();
+    expect((await screen.findByText(/my-tool is a function/)).closest('li')).toHaveTextContent('Editor command: ✓ my-tool: my-tool is a function');
+    expect(screen.getByText(/wezterm isn't known to your shell/).closest('li')).toHaveTextContent(/^Terminal command: ✗ wezterm/);
     expect(requests.find((request) => request.url === '/view-prs/local-repos/checkout/check')?.body).toEqual({
       repo: '',
-      commands: ['my-tool open', 'wezterm start --cwd {folder}'],
+      commands: [
+        { field: 'editor', command: 'my-tool open' },
+        { field: 'terminal', command: 'wezterm start --cwd {folder}' },
+      ],
     });
 
     await user.clear(screen.getByLabelText('Terminal command'));

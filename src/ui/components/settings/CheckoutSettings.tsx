@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { type LocalRepoStatus, type LocalRepoCheckout } from '../../state/LocalBranchesContext';
 import { postJson, sendJson } from '../../helpers/pr-http.helpers.ts';
 import { NON_CREDENTIAL_INPUT_PROPS } from '../../helpers/form-parsing.helpers.ts';
+import { useWarnBeforeLeaving } from '../../helpers/unsaved-changes.helpers.ts';
 import { Button } from '../ui/Button';
 import { CommandFieldHelp, FIELD_DOCS, FIELD_LABELS, exampleValues, type CommandField } from './CommandFieldHelp';
 
@@ -168,6 +169,7 @@ export function CheckoutSettings({
   useEffect(() => {
     if (dirty) setJustSaved(false);
   }, [dirty]);
+  useWarnBeforeLeaving(dirty);
 
   const fillFrom = (checkout: LocalRepoCheckout | undefined) => {
     setCommand(checkout?.command || '');
@@ -243,6 +245,7 @@ export function CheckoutSettings({
                 </option>
               ))}
             </select>
+            <p className="settings-hint">Fills in the fields below from that repo&apos;s settings. Nothing is saved until you press Save.</p>
           </>
         )}
         <label htmlFor={`${id}-command`}>Checkout command</label>

@@ -168,8 +168,8 @@ const registerViewPrsLocalBranchesRoutes = ({
   // { repo, commands } - whether the user's shell knows each command's
   // first word (Settings' Check), run as Check out would run it, in the
   // repo's clone's folder; none is run. A command is a string, or {
-  // field, command } (field: command, after, cleanupList or
-  // cleanupRemove). { results: [{ command, field?, name, found, detail }] }.
+  // field, command } (field: command, after, cleanupList, cleanupRemove,
+  // editor or terminal). { results: [{ command, field?, name, found, detail }] }.
   // Only from this computer, as saving the commands is.
   app.post(["/local-repos/checkout/check", "/view-prs/local-repos/checkout/check"], async (req, res) => {
     if (!isFromThisComputer(req)) {
@@ -177,7 +177,7 @@ const registerViewPrsLocalBranchesRoutes = ({
       return;
     }
     const repo = String(req.body?.repo || "").trim();
-    const fields = ["command", "after", "cleanupList", "cleanupRemove"];
+    const fields = ["command", "after", "cleanupList", "cleanupRemove", "editor", "terminal"];
     const commands = (Array.isArray(req.body?.commands) ? req.body.commands : [])
       .map((item) =>
         item && typeof item === "object"

@@ -693,3 +693,57 @@
 .local-clone-checks li[data-found="true"] {
   color: var(--color-text);
 }
+
+/* Each repo's row: a summary line (name, what its clone has, how it
+   checks out), opening to the folder and its settings. */
+.local-clone-repo {
+  flex-basis: 100%;
+  min-width: 0;
+  border-bottom: 1px solid var(--color-border);
+  padding: var(--space-1) 0;
+}
+
+.local-clone-repo > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  cursor: pointer;
+}
+
+.local-clone-repo > summary code {
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.local-clone-repo-body {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-2) 0 var(--space-1) var(--space-3);
+}
+
+.local-clone-path-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* A flex summary drops the marker: drawn here instead. */
+.local-clone-repo > summary {
+  list-style: none;
+}
+
+.local-clone-repo > summary::-webkit-details-marker {
+  display: none;
+}
+
+.local-clone-repo > summary::before {
+  content: "▸";
+  width: 1em;
+  color: var(--color-text-muted);
+}
+
+.local-clone-repo[open] > summary::before {
+  content: "▾";
+}

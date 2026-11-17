@@ -562,7 +562,8 @@ const createViewPrsLocalCheckout = ({
   //
   // prs: the repo's rows (the routes' listPrs). => { by: "git" |
   // "command", items: [{ branch?, oid?, worktreePath?, prs: [{ number,
-  // done }], safe, reasons, notes }], ignored?, output? } - or throws.
+  // done }], safe, reasons, notes }], ignored?, output?, printed? } - or
+  // throws. printed: the list command's stdout (by command only).
   const statusOf = async (folder) =>
     parseStatus(await git(folder, ["--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=normal"]));
 
@@ -665,6 +666,9 @@ const createViewPrsLocalCheckout = ({
     let candidates;
     let ignored = [];
     let output = "";
+    // The list command's stdout as it printed it (the shell's startup left
+    // out), for Settings to show.
+    let printed = "";
     if (byCommand) {
       let result;
       try {
@@ -677,6 +681,7 @@ const createViewPrsLocalCheckout = ({
         });
       }
       output = outputOf({ stderr: result?.stderr });
+      printed = outputOf({ stdout: result?.stdout });
       const seen = new Set();
       candidates = [];
       String(result?.stdout || "")
@@ -710,7 +715,13 @@ const createViewPrsLocalCheckout = ({
       };
     });
     items.sort((a, b) => Number(b.safe) - Number(a.safe) || String(a.branch || a.worktreePath).localeCompare(String(b.branch || b.worktreePath)));
-    return { by: byCommand ? "command" : "git", items, ...(ignored.length ? { ignored } : {}), ...(output ? { output } : {}) };
+    return {
+      by: byCommand ? "command" : "git",
+      items,
+      ...(ignored.length ? { ignored } : {}),
+      ...(output ? { output } : {}),
+      ...(byCommand ? { printed } : {}),
+    };
   };
 
   // Removes one of the list's items - { branch?, worktreePath? } as listed -

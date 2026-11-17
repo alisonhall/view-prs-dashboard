@@ -775,6 +775,8 @@ describe("checking out a PR into a worktree", () => {
       const { checkout } = setUp();
       const result = await checkout.listCleanup({ repo: "acme/app", cloneFolder: clone, settings, prs });
       expect(result).toMatchObject({ by: "command", ignored: ["/not/a/worktree"], output: "why: they're old" });
+      // What it printed, as it printed it
+      expect(result.printed).toBe([toPosix(clone), toPosix(tree), toPosix(open), "/not/a/worktree"].join("\n"));
       const items = byBranch(result);
       expect(items["mine/old"]).toMatchObject({ safe: true, notes: ["No PR on the page has this branch, so what's pushed isn't checked"] });
       expect(items["still/open"]).toMatchObject({ safe: false, reasons: ["#5 is still open"] });
