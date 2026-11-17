@@ -996,7 +996,6 @@ a.pr-summary-file {
   background: var(--color-surface);
   color: var(--color-text);
   font: var(--font-size-md) var(--font-sans);
-  resize: vertical;
 }
 
 .tracked-branch-note-form textarea:focus-visible {
