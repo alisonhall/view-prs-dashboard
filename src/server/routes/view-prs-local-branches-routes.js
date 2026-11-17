@@ -33,7 +33,22 @@ const registerViewPrsLocalBranchesRoutes = ({
   // (req) => whether the request came from this computer, not the network
   // (VIEW_PRS_HOST).
   isFromThisComputer = () => true,
+  // The sources file (view-prs-sources-storage.js), for the branches
+  // tracked without a PR; and what it's seeded from, and the data-changed
+  // event a change to it sends (as the sources routes).
+  sourcesStorage = null,
+  seedSubscriptionRepos = () => null,
+  emitDataChanged = () => {},
 }) => {
+  // The branches tracked without a PR: [{ repo, branch, base?, note? }].
+  const listTrackedBranches = () => {
+    try {
+      return sourcesStorage?.readSources()?.trackedBranches || [];
+    } catch (_error) {
+      return [];
+    }
+  };
+
   // Each PR the server can look for locally: its branch, head commit and
   // commits, from its row.
   const listPrs = (localRepos) =>
@@ -299,11 +314,14 @@ const registerViewPrsLocalBranchesRoutes = ({
       const localRepos = localReposStorage.loadLocalRepos();
       // Without a clone (most of the time, for most), the rows aren't read.
       if (Object.keys(localRepos).length === 0) {
-        res.json({ ok: true, repos: {}, prs: {} });
+        res.json({ ok: true, repos: {}, prs: {}, branches: {} });
         return;
       }
       const prs = listPrs(localRepos);
-      const result = await localBranches.getLocalBranches({ localRepos, prs });
+      const [result, branches] = await Promise.all([
+        localBranches.getLocalBranches({ localRepos, prs }),
+        localBranches.getTrackedBranches({ localRepos, branches: listTrackedBranches(), prs }),
+      ]);
       // How Check out would make each open PR's worktree (planCheckout), so
       // the pane says it as the server will do it.
       const entries = localReposStorage.loadLocalRepoEntries();
@@ -315,9 +333,140 @@ const registerViewPrsLocalBranchesRoutes = ({
             return [pr.key, { how: planCheckout({ existing: Boolean(result.prs[pr.key]), isFork: fork, settings: entries[pr.repo]?.checkout }), fork }];
           }),
       );
-      res.json({ ok: true, ...result, repos: withCheckout(result.repos, entries), plans, platform, openWith: localReposStorage.loadOpenWith() });
+      res.json({ ok: true, ...result, branches, repos: withCheckout(result.repos, entries), plans, platform, openWith: localReposStorage.loadOpenWith() });
     } catch (error) {
       sendInternalError({ res, error });
+    }
+  });
+
+  // The uncommitted changes in the worktree each tracked branch (no PR) is
+  // checked out in, for their rows: { changes: key (repo:branch) => {
+  // worktreePath, staged, changed, untracked, conflicted, total, files } |
+  // { worktreePath, error } } - only those checked out on this computer.
+  app.get(["/tracked-branches/changes", "/view-prs/tracked-branches/changes"], async (_req, res) => {
+    try {
+      const localRepos = localReposStorage.loadLocalRepos();
+      const changes = await localBranches.getTrackedBranchChanges({ localRepos, branches: listTrackedBranches() });
+      res.json({ ok: true, changes });
+    } catch (error) {
+      sendInternalError({ res, error });
+    }
+  });
+
+  // ?repo= - the clone's local branches that could be tracked (Track a
+  // branch): no PR's, not a PR's base, not the default branch, not tracked
+  // already - { branches: [{ name, oid, committedAt?, subject?,
+  // worktreePath?, upstream? }], defaultBranch }, newest first.
+  app.get(["/local-repos/branches", "/view-prs/local-repos/branches"], async (req, res) => {
+    const repo = String(req.query?.repo || "").trim();
+    try {
+      const localRepos = localReposStorage.loadLocalRepos();
+      const folder = localRepos[repo];
+      if (!folder) {
+        res.status(404).json({ ok: false, error: `No clone of ${repo} saved (Settings › Local clones)` });
+        return;
+      }
+      const result = await localBranches.getBranchCandidates({
+        repo,
+        folder,
+        prs: listPrs({ [repo]: folder }),
+        tracked: listTrackedBranches().filter((entry) => entry.repo === repo).map((entry) => entry.branch),
+      });
+      if (!result.ok) {
+        res.status(422).json(result);
+        return;
+      }
+      res.json(result);
+    } catch (error) {
+      sendInternalError({ res, error });
+    }
+  });
+
+  const readSourcesForResponse = () => sourcesStorage.loadSources({ seedRepos: seedSubscriptionRepos }) || sourcesStorage.normalizeSources({});
+  const changeError = (res, error) => res.status(/^Not a /.test(error.message) ? 400 : 500).json({ ok: false, error: error.message });
+
+  // { repo, branch, base?, note? } - tracks a local branch of the repo's
+  // clone that has no PR: { added, trackedBranch, sources }. Only a branch
+  // the clone has (read afresh) - unless restore (Untrack's Undo, with the
+  // entry as it was, addedAt too), which puts back what was tracked
+  // whether or not this computer has it.
+  app.post(["/tracked-branches", "/view-prs/tracked-branches"], async (req, res) => {
+    const repo = String(req.body?.repo || "").trim();
+    const branch = String(req.body?.branch || "").trim();
+    const base = String(req.body?.base || "").trim();
+    const note = typeof req.body?.note === "string" ? req.body.note : undefined;
+    const restore = req.body?.restore === true;
+    if (!sourcesStorage) {
+      res.status(500).json({ ok: false, error: "No sources file" });
+      return;
+    }
+    try {
+      if (!restore) {
+        const folder = localReposStorage.loadLocalRepos()[repo];
+        if (!folder) {
+          res.status(404).json({ ok: false, error: `No clone of ${repo} saved (Settings › Local clones)` });
+          return;
+        }
+        const clone = await localBranches.readCloneFresh(repo, folder);
+        if (!clone.ok) {
+          res.status(422).json({ ok: false, error: clone.error });
+          return;
+        }
+        if (!clone.branches.some((item) => item.name === branch)) {
+          res.status(422).json({ ok: false, error: `The clone of ${repo} has no branch ${branch}` });
+          return;
+        }
+      }
+      const addedAt = restore ? String(req.body?.addedAt || "") : "";
+      const result = sourcesStorage.addTrackedBranch({ repo, branch, base, note, addedAt }, { seedRepos: seedSubscriptionRepos });
+      res.json({ ok: true, added: result.added, trackedBranch: result.entry, sources: readSourcesForResponse() });
+      if (result.added) emitDataChanged();
+    } catch (error) {
+      changeError(res, error);
+    }
+  });
+
+  // { repo, branch, base?, note? } - a tracked branch's base ("" for the
+  // repo's default branch) or note ("" clears it): { trackedBranch,
+  // sources }.
+  app.patch(["/tracked-branches", "/view-prs/tracked-branches"], (req, res) => {
+    const repo = String(req.body?.repo || "").trim();
+    const branch = String(req.body?.branch || "").trim();
+    if (!sourcesStorage) {
+      res.status(500).json({ ok: false, error: "No sources file" });
+      return;
+    }
+    try {
+      const entry = sourcesStorage.updateTrackedBranch(
+        { repo, branch, base: req.body?.base, note: req.body?.note },
+        { seedRepos: seedSubscriptionRepos },
+      );
+      if (!entry) {
+        res.status(404).json({ ok: false, error: `${branch} in ${repo} isn't tracked` });
+        return;
+      }
+      res.json({ ok: true, trackedBranch: entry, sources: readSourcesForResponse() });
+      emitDataChanged();
+    } catch (error) {
+      changeError(res, error);
+    }
+  });
+
+  // { repo, branch } - stops tracking a branch (the branch is untouched):
+  // { removed, sources }.
+  app.delete(["/tracked-branches", "/view-prs/tracked-branches"], (req, res) => {
+    const repo = String(req.body?.repo || "").trim();
+    const branch = String(req.body?.branch || "").trim();
+    if (!sourcesStorage) {
+      res.status(500).json({ ok: false, error: "No sources file" });
+      return;
+    }
+    try {
+      const removed = sourcesStorage.removeTrackedBranch(repo, branch);
+      res.json({ ok: true, removed: Boolean(removed), sources: readSourcesForResponse() });
+      if (removed) emitDataChanged();
+    } catch (error) {
+      changeError(res, error);
     }
   });
 

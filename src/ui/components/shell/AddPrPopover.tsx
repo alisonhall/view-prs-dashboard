@@ -3,6 +3,7 @@ import { Button, IconButton } from '../ui/Button';
 import { postJson } from '../../helpers/pr-http.helpers.ts';
 import { NON_CREDENTIAL_INPUT_PROPS } from '../../helpers/form-parsing.helpers.ts';
 import { useHeaderPopover } from './useHeaderPopover';
+import { TrackBranchPicker, useReadableCloneRepos } from '../TrackBranchPicker';
 
 // What POST /view-prs/tracked-prs returns.
 // fetched: whether its fetch worked, or null while it's still going.
@@ -32,6 +33,9 @@ const describeAdded = ({ key, added, fetched, error }: TrackedPrResult): Outcome
  * data's next change. The background updates keep it up to date while it's
  * open, or merged or closed within the last 30 days.
  *
+ * Its Branch tab tracks a branch with no PR instead (TrackBranchPicker),
+ * picked from this computer's clones - there once a clone is saved.
+ *
  * A header popover (useHeaderPopover); opening focuses the URL field.
  */
 export function AddPrPopover() {
@@ -44,6 +48,9 @@ export function AddPrPopover() {
   const [url, setUrl] = useState('');
   const [isAdding, setIsAdding] = useState(false);
   const [outcome, setOutcome] = useState<Outcome>(null);
+  const [tab, setTab] = useState<'pr' | 'branch'>('pr');
+  const hasClones = useReadableCloneRepos().length > 0;
+  const shownTab = hasClones ? tab : 'pr';
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -99,10 +106,25 @@ export function AddPrPopover() {
         >
           <div className="activity-popover-header">
             <h2 id={titleId} className="activity-popover-title">
-              Add a PR
+              {shownTab === 'branch' ? 'Track a branch' : 'Add a PR'}
             </h2>
             <IconButton icon="close" label="Close" tooltipPlacement="bottom" onClick={() => close(true)} />
           </div>
+          {hasClones && (
+            <div className="add-pr-tabs" role="group" aria-label="What to add">
+              <Button pressed={shownTab === 'pr'} onClick={() => setTab('pr')}>
+                PR
+              </Button>
+              <Button pressed={shownTab === 'branch'} onClick={() => setTab('branch')}>
+                Branch with no PR
+              </Button>
+            </div>
+          )}
+          {shownTab === 'branch' ? (
+            <div className="activity-popover-content">
+              <TrackBranchPicker />
+            </div>
+          ) : (
           <form className="activity-popover-content add-pr-form" onSubmit={handleSubmit}>
             <label htmlFor={inputId}>PR URL, from any repo</label>
             <div className="add-pr-row">
@@ -134,6 +156,7 @@ export function AddPrPopover() {
               </p>
             )}
           </form>
+          )}
         </div>
       )}
     </>

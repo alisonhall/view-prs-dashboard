@@ -871,3 +871,199 @@ a.pr-summary-file {
 .pr-legend-behind {
   opacity: 0.6;
 }
+
+/* Tracked Branches (TrackedBranchesSection): branches with no PR. */
+.tracked-branches-hint {
+  margin-left: auto;
+  padding: 2px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  color: var(--color-accent-text);
+  font: var(--font-size-sm) var(--font-sans);
+  cursor: pointer;
+}
+
+.tracked-branches-hint:hover {
+  background: var(--color-accent-subtle);
+}
+
+.tracked-branches-toolbar {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-2) 14px 0;
+}
+
+.tracked-branches-picker {
+  max-width: 640px;
+  margin: var(--space-2) 14px 0;
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-subtle);
+}
+
+.tracked-branches-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-md);
+}
+
+.tracked-branches-table th {
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  text-align: left;
+}
+
+.tracked-branches-table td {
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--color-border-subtle);
+  vertical-align: top;
+}
+
+.tracked-branch-name-cell {
+  min-width: 180px;
+}
+
+.tracked-branch-name {
+  display: block;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+}
+
+.tracked-branch-repo {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.tracked-branch-note {
+  display: inline-flex;
+  margin-left: 6px;
+  padding: 2px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--color-text-muted);
+  vertical-align: middle;
+  cursor: pointer;
+}
+
+.tracked-branch-note:hover {
+  color: var(--color-text);
+}
+
+.tracked-branch-note:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* Add a note: there on hover or focus, so quiet rows stay quiet. */
+.tracked-branch-add-note {
+  margin-left: 2px;
+  vertical-align: middle;
+  opacity: 0;
+}
+
+.tracked-branch-row:hover .tracked-branch-add-note,
+.tracked-branch-add-note:focus-visible {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .tracked-branch-add-note {
+    opacity: 1;
+  }
+}
+
+.tracked-branch-note-row td {
+  padding-top: 0;
+}
+
+.tracked-branch-note-form {
+  display: grid;
+  gap: 6px;
+  max-width: 640px;
+}
+
+.tracked-branch-note-form textarea {
+  min-height: 52px;
+  padding: 6px 8px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: var(--font-size-md) var(--font-sans);
+}
+
+.tracked-branch-note-form textarea:focus-visible {
+  border-color: var(--color-accent);
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.tracked-branch-note-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.tracked-branches-undo {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-2) 14px 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.tracked-branch-where,
+.tracked-branch-commit,
+.tracked-branch-quiet {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.tracked-branch-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.tracked-branch-chip {
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-muted);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+}
+
+.tracked-branch-chip[data-tone="attention"] {
+  background: var(--color-attention-subtle);
+  color: var(--color-attention-text);
+}
+
+.tracked-branch-chip[data-tone="danger"] {
+  background: var(--color-danger-subtle);
+  color: var(--color-danger);
+}
+
+.tracked-branch-chip[data-tone="accent"] {
+  background: var(--color-accent-subtle);
+  color: var(--color-accent-text);
+}
+
+.tracked-branch-chip[data-tone="success"] {
+  background: var(--color-success-subtle);
+  color: var(--color-success);
+}
+
+.tracked-branch-actions-inner {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  white-space: nowrap;
+}

@@ -4185,6 +4185,9 @@ const createViewPrsApp = ({ production = isProductionEnv } = {}) => {
     isFromThisComputer: (req) => (module.exports.isFromThisComputer || ((r) => isLoopbackAddress(r.socket?.remoteAddress)))(req),
     // Overridable, as a test can't move the real home folder.
     homeDir: () => (module.exports.homeDir || require("os").homedir)(),
+    sourcesStorage: viewPrsSourcesStorage,
+    seedSubscriptionRepos,
+    emitDataChanged: callEmitDataChanged,
   });
 
   registerViewPrsPrRoutes({

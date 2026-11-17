@@ -56,6 +56,35 @@ export interface LocalBranchInfo {
   unpushed?: number;
 }
 
+// A branch tracked without a PR, as this computer's clone has it (GET
+// /view-prs/local-branches' branches, keyed repo:branch). found false: the
+// clone has no local branch of that name. Absent: no readable clone of its
+// repo here.
+export interface TrackedBranchStatus {
+  found: boolean;
+  branch?: string;
+  oid?: string;
+  committedAt?: string;
+  subject?: string;
+  worktreePath?: string;
+  rebasing?: boolean;
+  // The remote branch it tracks, ahead/behind the clone's copy of it (as of
+  // its last fetch); gone when the clone has no copy.
+  upstream?: { remote: string; branch: string; ahead?: number; behind?: number; gone?: boolean };
+  // Its newest commit is on one of the repo's remote branches; unpushed:
+  // its commits on none of them.
+  pushed?: boolean;
+  unpushed?: number;
+  // What it's compared with (its own base, else the default branch), and
+  // how far ahead and behind; baseMissing when the clone hasn't got it.
+  base?: string;
+  baseAhead?: number;
+  baseBehind?: number;
+  baseMissing?: boolean;
+  // A PR's branch now: its PR.
+  pr?: { number: string; done: boolean };
+}
+
 // How Check out would make an open PR's worktree, as the server decides
 // it: with the repo's checkout command or with git; fork: a fork's PR.
 export interface CheckoutPlan {
@@ -66,6 +95,8 @@ export interface CheckoutPlan {
 export interface LocalBranchesValue {
   repos: Record<string, LocalRepoStatus>;
   prs: Record<string, LocalBranchInfo>;
+  // The branches tracked without a PR, by repo:branch.
+  branches: Record<string, TrackedBranchStatus>;
   plans: Record<string, CheckoutPlan>;
   // The server's platform (win32, darwin, linux), '' until known: Explorer
   // or Finder by it.
@@ -82,6 +113,7 @@ export interface LocalBranchesValue {
 export const EMPTY_LOCAL_BRANCHES: LocalBranchesValue = {
   repos: {},
   prs: {},
+  branches: {},
   plans: {},
   platform: '',
   openWith: {},
@@ -103,6 +135,7 @@ interface LocalBranchesResult {
   ok?: boolean;
   repos?: Record<string, LocalRepoStatus>;
   prs?: Record<string, LocalBranchInfo>;
+  branches?: Record<string, TrackedBranchStatus>;
   plans?: Record<string, CheckoutPlan>;
   platform?: string;
   openWith?: OpenWithSettings;
@@ -118,6 +151,7 @@ export function LocalBranchesProvider({ children, pollMs = POLL_MS }: { children
   const [state, setState] = useState<{
     repos: Record<string, LocalRepoStatus>;
     prs: Record<string, LocalBranchInfo>;
+    branches: Record<string, TrackedBranchStatus>;
     plans: Record<string, CheckoutPlan>;
     platform: string;
     openWith: OpenWithSettings;
@@ -125,6 +159,7 @@ export function LocalBranchesProvider({ children, pollMs = POLL_MS }: { children
   }>({
     repos: {},
     prs: {},
+    branches: {},
     plans: {},
     platform: '',
     openWith: {},
@@ -148,6 +183,7 @@ export function LocalBranchesProvider({ children, pollMs = POLL_MS }: { children
       const next = {
         repos: result.repos || {},
         prs: result.prs || {},
+        branches: result.branches || {},
         plans: result.plans || {},
         platform: result.platform || '',
         openWith: result.openWith || {},

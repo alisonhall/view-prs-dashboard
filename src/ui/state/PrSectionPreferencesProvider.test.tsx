@@ -39,7 +39,7 @@ const sectionTitles = () =>
     .getAllByRole('row')
     .filter((row) => within(row).queryAllByRole('checkbox').length > 0)
     .map((row) => within(row).getByRole('rowheader').textContent);
-const SMART = ['Flagged', 'In Review', 'Needs Attention', 'My Open & Draft PRs', 'Assigned to Me', 'Me as Reviewer', "Open PRs I'm Involved In", 'On This Computer'];
+const SMART = ['Tracked Branches', 'Flagged', 'In Review', 'Needs Attention', 'My Open & Draft PRs', 'Assigned to Me', 'Me as Reviewer', "Open PRs I'm Involved In", 'On This Computer'];
 const STATUS = ['Open PRs', 'Draft PRs', 'Closed PRs', 'Latest Merged PRs'];
 
 describe('Settings › Appearance sections', () => {
@@ -129,16 +129,17 @@ describe('Settings › Appearance sections', () => {
     const user = userEvent.setup();
     renderSettings();
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    expect(moveButton('Flagged', 'up')).toBeDisabled();
+    expect(moveButton('Tracked Branches', 'up')).toBeDisabled();
     expect(moveButton('On This Computer', 'down')).toBeDisabled();
     expect(moveButton('Open PRs', 'up')).toBeDisabled();
     expect(moveButton('Latest Merged PRs', 'down')).toBeDisabled();
 
     await user.click(moveButton('Latest Merged PRs', 'up'));
     await user.click(moveButton('In Review', 'up'));
+    await user.click(moveButton('In Review', 'up'));
 
-    const order = ['in-review', 'flagged', 'needs-attention', 'mine', 'assigned-to-me', 'review-requested', 'interacted', 'on-this-computer', 'open', 'draft', 'merged', 'closed'];
-    expect(sectionTitles()).toEqual(['In Review', 'Flagged', ...SMART.slice(2), 'Open PRs', 'Draft PRs', 'Latest Merged PRs', 'Closed PRs']);
+    const order = ['in-review', 'tracked-branches', 'flagged', 'needs-attention', 'mine', 'assigned-to-me', 'review-requested', 'interacted', 'on-this-computer', 'open', 'draft', 'merged', 'closed'];
+    expect(sectionTitles()).toEqual(['In Review', 'Tracked Branches', 'Flagged', ...SMART.slice(3), 'Open PRs', 'Draft PRs', 'Latest Merged PRs', 'Closed PRs']);
     await waitFor(() => expect(saved).toEqual({ repo: 'owner/repo', prSectionOrder: order }));
     expect(JSON.parse(window.localStorage.getItem(PR_SECTION_ORDER_STORAGE_KEY) ?? 'null')).toEqual(order);
     // Moved to the top, its up button is disabled, so focus is on its down button.
@@ -146,6 +147,7 @@ describe('Settings › Appearance sections', () => {
     await waitFor(() => expect(moveButton('In Review', 'down')).toHaveFocus());
 
     // Moved back, the default order isn't saved.
+    await user.click(moveButton('In Review', 'down'));
     await user.click(moveButton('In Review', 'down'));
     await user.click(moveButton('Latest Merged PRs', 'down'));
     await waitFor(() => expect(saved).toEqual({ repo: 'owner/repo' }));
@@ -155,10 +157,12 @@ describe('Settings › Appearance sections', () => {
     const user = userEvent.setup();
     saved = { repo: 'owner/repo', prSectionOrder: ['mine', 'merged'] };
     renderSettings();
-    await waitFor(() => expect(sectionTitles()[0]).toBe('My Open & Draft PRs'));
+    // Tracked Branches, added since the order was saved, goes first.
+    await waitFor(() => expect(sectionTitles()[1]).toBe('My Open & Draft PRs'));
     expect(sectionTitles()).toEqual([
+      'Tracked Branches',
       'My Open & Draft PRs',
-      ...SMART.filter((title) => title !== 'My Open & Draft PRs'),
+      ...SMART.filter((title) => title !== 'My Open & Draft PRs' && title !== 'Tracked Branches'),
       'Latest Merged PRs',
       ...STATUS.slice(0, 3),
     ]);
@@ -294,7 +298,7 @@ describe('Settings › Appearance custom sections', () => {
       prSectionOrder: ['custom-abc', 'flagged'],
     };
     renderSettings();
-    await waitFor(() => expect(sectionTitles()[0]).toBe('Blockers'));
+    await waitFor(() => expect(sectionTitles()[1]).toBe('Blockers'));
     const confirm = jest.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
 
     await user.click(within(group('Blockers')).getByRole('button', { name: 'Delete Blockers' }));

@@ -700,7 +700,7 @@ describe("integration behavior", () => {
         calls.push(args);
         return realRun(...args);
       };
-      expect((await request.get("/view-prs/local-branches")).body).toEqual({ ok: true, repos: {}, prs: {} });
+      expect((await request.get("/view-prs/local-branches")).body).toEqual({ ok: true, repos: {}, prs: {}, branches: {} });
       expect(calls).toEqual([]);
       await request.put("/view-prs/local-repos").send({ repo: "owner/repo", path: clone });
 
@@ -971,6 +971,61 @@ describe("integration behavior", () => {
       const again = await request.post("/view-prs/local-repos/cleanup/remove").send({ repo: "owner/repo", branch: "done", worktreePath: item.worktreePath });
       expect(again.status).toBe(409);
       expect(again.body.error).toBe("It's no longer in the list - look again");
+    });
+
+    test("branches tracked without a PR: picked from the clone's, their status and uncommitted changes, a base and note changed, untracked", async () => {
+      const { sourcesFile } = appModule.viewPrsSourcesStorage;
+      fs.rmSync(sourcesFile, { force: true });
+      fs.rmSync(`${sourcesFile}.seeded`, { force: true });
+      git(clone, "branch", "wip");
+      try {
+        // Without a clone, nothing to pick from or track.
+        expect((await request.get("/view-prs/local-repos/branches?repo=owner/repo")).status).toBe(404);
+        expect((await request.post("/view-prs/tracked-branches").send({ repo: "owner/repo", branch: "wip" })).status).toBe(404);
+        await request.put("/view-prs/local-repos").send({ repo: "owner/repo", path: clone });
+
+        // The PR's branch isn't offered.
+        const candidates = await request.get("/view-prs/local-repos/branches?repo=owner/repo");
+        expect(candidates.status).toBe(200);
+        const names = candidates.body.branches.map((branch) => branch.name);
+        expect(names).toContain("wip");
+        expect(names).not.toContain("feature");
+
+        expect((await request.post("/view-prs/tracked-branches").send({ repo: "owner/repo", branch: "nope" })).status).toBe(422);
+        const added = await request.post("/tracked-branches").send({ repo: "owner/repo", branch: "wip" });
+        expect(added.status).toBe(200);
+        expect(added.body).toMatchObject({ ok: true, added: true, trackedBranch: { repo: "owner/repo", branch: "wip" } });
+        expect(added.body.sources.trackedBranches.map((entry) => entry.branch)).toEqual(["wip"]);
+        expect((await request.get("/view-prs/local-repos/branches?repo=owner/repo")).body.branches.map((branch) => branch.name)).not.toContain("wip");
+
+        const local = await request.get("/view-prs/local-branches");
+        expect(local.body.branches["owner/repo:wip"]).toMatchObject({ found: true, branch: "wip" });
+        expect((await request.get("/view-prs/tracked-branches/changes")).body).toEqual({ ok: true, changes: {} });
+
+        const changed = await request.patch("/view-prs/tracked-branches").send({ repo: "owner/repo", branch: "wip", base: "feature", note: "Try this" });
+        expect(changed.body.trackedBranch).toMatchObject({ base: "feature", note: "Try this" });
+        expect((await request.get("/view-prs/local-branches")).body.branches["owner/repo:wip"]).toMatchObject({ base: "feature", baseAhead: 0, baseBehind: 0 });
+        expect((await request.patch("/view-prs/tracked-branches").send({ repo: "owner/repo", branch: "nope", note: "x" })).status).toBe(404);
+        expect((await request.patch("/view-prs/tracked-branches").send({ repo: "owner/repo", branch: "wip", base: "bad base" })).status).toBe(400);
+
+        const removed = await request.delete("/view-prs/tracked-branches").send({ repo: "owner/repo", branch: "wip" });
+        expect(removed.body).toMatchObject({ ok: true, removed: true });
+        expect((await request.get("/view-prs/local-branches")).body.branches).toEqual({});
+
+        // Untrack's Undo puts it back as it was, even one the clone hasn't got.
+        const restored = await request
+          .post("/view-prs/tracked-branches")
+          .send({ repo: "owner/repo", branch: "gone-here", base: "feature", note: "Kept", addedAt: "2026-11-01T00:00:00.000Z", restore: true });
+        expect(restored.body).toMatchObject({
+          ok: true,
+          added: true,
+          trackedBranch: { repo: "owner/repo", branch: "gone-here", base: "feature", note: "Kept", addedAt: "2026-11-01T00:00:00.000Z" },
+        });
+      } finally {
+        git(clone, "branch", "-D", "wip");
+        fs.rmSync(sourcesFile, { force: true });
+        fs.rmSync(`${sourcesFile}.seeded`, { force: true });
+      }
     });
 
     test("Uncommitted changes: the PR's worktree's, a merged PR's too; not known, or without a clone, is refused", async () => {
