@@ -437,49 +437,13 @@ const createViewPrsLocalCheckout = ({
     }
   };
 
-  // The exit code a failed run says it had, or null (it timed out, or
-  // couldn't start).
-  const exitCodeOf = (failure) => {
-    if (Number.isInteger(failure?.error?.code)) return failure.error.code;
-    const match = String(failure?.error?.message || "").match(/exited with code (\d+)/);
-    return match ? Number(match[1]) : null;
-  };
-
-  // Settings' Check of the list command: run as Clean up runs it (it only
-  // lists), its lines each said to be a worktree of the clone or not. =>
-  // { exitCode, timedOut?, lines: [{ text, worktree }], stderr } - or {
-  // error } when the clone can't be read.
-  const tryCleanupList = async ({ repo, cloneFolder, command, env }) => {
-    const clone = await localBranches.readCloneFresh(repo, cloneFolder);
-    if (!clone.ok) return { error: clone.error };
-    let result;
-    let exitCode = 0;
-    let timedOut = false;
-    try {
-      result = await runUserCommand(command, cloneFolder, { ...(env || {}), VIEW_PRS_CLONE: toPosix(cloneFolder), VIEW_PRS_REPO: repo });
-    } catch (failure) {
-      if (failure instanceof Error && failure.status) return { error: failure.message };
-      result = failure;
-      exitCode = exitCodeOf(failure);
-      timedOut = Boolean(failure?.didTimeout);
-    }
-    const lines = String(result?.stdout || "")
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line && !isShellNoise(line))
-      .slice(0, 50)
-      .map((text) => ({ text, worktree: Boolean(localBranches.worktreeAt(clone, text)) }));
-    return { exitCode, ...(timedOut ? { timedOut } : {}), lines, stderr: outputOf({ stderr: result?.stderr }) };
-  };
-
   // Settings' Check: whether the user's shell knows each command's first
-  // word, as Check out would run it (the same shell, rc file and folder) -
-  // and the list command (field "cleanupList"), which only lists, run for
-  // real. commands: strings, or { field, command }; env: the repo's
-  // variables, as typed. => [{ command, field?, name, found: true | false
-  // | null, detail, trial? }] - found null when the name can't be told
-  // without running the line.
-  const checkCommands = async ({ repo = "", cloneFolder, commands, env = {} }) => {
+  // word, as Check out would run it (the same shell, rc file and folder).
+  // None is run: Check out and Clean up run them. commands: strings, or {
+  // field, command }. => [{ command, field?, name, found: true | false |
+  // null, detail }] - found null when the name can't be told without
+  // running the line.
+  const checkCommands = async ({ cloneFolder, commands }) => {
     const items = commands.map((item) => (typeof item === "string" ? { command: item, field: "" } : { command: String(item?.command || ""), field: String(item?.field || "") }));
     let shellName = "";
     try {
@@ -490,10 +454,9 @@ const createViewPrsLocalCheckout = ({
     return Promise.all(
       items.map(async ({ command, field }) => {
         const base = { command, ...(field ? { field } : {}) };
-        const trial = field === "cleanupList" && repo && cloneFolder ? await tryCleanupList({ repo, cloneFolder, command, env }) : undefined;
-        const withTrial = (result) => ({ ...base, ...result, ...(trial ? { trial } : {}) });
+        const withField = (result) => ({ ...base, ...result });
         const name = commandNameOf(command);
-        if (!name) return withTrial({ name, found: null, detail: "Its first word is only known when it runs, so it isn't checked" });
+        if (!name) return withField({ name, found: null, detail: "Its first word is only known when it runs, so it isn't checked" });
         // type's first line ("my-fn is a function"); the rc file's own
         // lines, and what a cd hook printed, are already left out
         // (runUserCommand's markers).
@@ -501,10 +464,10 @@ const createViewPrsLocalCheckout = ({
         const answer = (result) => String(result?.stdout || "").trim().split(/\r?\n/)[0] || "";
         try {
           const result = await runUserCommand(script, cloneFolder || homeDir(), { VIEW_PRS_CHECK: name });
-          return withTrial({ name, found: true, detail: answer(result) || `${name} is known to your shell (${shellName})` });
+          return withField({ name, found: true, detail: answer(result) || `${name} is known to your shell (${shellName})` });
         } catch (failure) {
-          if (failure instanceof Error && failure.status) return withTrial({ name, found: false, detail: failure.message });
-          return withTrial({ name, found: false, detail: `${name} isn't known to your shell (${shellName}) - is it in the rc file an interactive ${shellName} reads?` });
+          if (failure instanceof Error && failure.status) return withField({ name, found: false, detail: failure.message });
+          return withField({ name, found: false, detail: `${name} isn't known to your shell (${shellName}) - is it in the rc file an interactive ${shellName} reads?` });
         }
       }),
     );
@@ -599,7 +562,8 @@ const createViewPrsLocalCheckout = ({
   //
   // prs: the repo's rows (the routes' listPrs). => { by: "git" |
   // "command", items: [{ branch?, oid?, worktreePath?, prs: [{ number,
-  // done }], safe, reasons, notes }], ignored?, output? } - or throws.
+  // done }], safe, reasons, notes }], ignored?, output?, printed? } - or
+  // throws. printed: the list command's stdout (by command only).
   const statusOf = async (folder) =>
     parseStatus(await git(folder, ["--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=normal"]));
 
@@ -702,6 +666,9 @@ const createViewPrsLocalCheckout = ({
     let candidates;
     let ignored = [];
     let output = "";
+    // The list command's stdout as it printed it (the shell's startup left
+    // out), for Settings to show.
+    let printed = "";
     if (byCommand) {
       let result;
       try {
@@ -714,6 +681,7 @@ const createViewPrsLocalCheckout = ({
         });
       }
       output = outputOf({ stderr: result?.stderr });
+      printed = outputOf({ stdout: result?.stdout });
       const seen = new Set();
       candidates = [];
       String(result?.stdout || "")
@@ -747,7 +715,13 @@ const createViewPrsLocalCheckout = ({
       };
     });
     items.sort((a, b) => Number(b.safe) - Number(a.safe) || String(a.branch || a.worktreePath).localeCompare(String(b.branch || b.worktreePath)));
-    return { by: byCommand ? "command" : "git", items, ...(ignored.length ? { ignored } : {}), ...(output ? { output } : {}) };
+    return {
+      by: byCommand ? "command" : "git",
+      items,
+      ...(ignored.length ? { ignored } : {}),
+      ...(output ? { output } : {}),
+      ...(byCommand ? { printed } : {}),
+    };
   };
 
   // Removes one of the list's items - { branch?, worktreePath? } as listed -

@@ -1,7 +1,8 @@
-import { useId, useState, type FormEvent } from 'react';
+import { useEffect, useId, useState, type FormEvent } from 'react';
 import { type OpenWithSettings as OpenWith } from '../../state/LocalBranchesContext';
 import { postJson, sendJson } from '../../helpers/pr-http.helpers.ts';
 import { NON_CREDENTIAL_INPUT_PROPS } from '../../helpers/form-parsing.helpers.ts';
+import { useWarnBeforeLeaving } from '../../helpers/unsaved-changes.helpers.ts';
 import { Button } from '../ui/Button';
 import { placeholdersInSingleQuotes } from './CheckoutSettings';
 
@@ -20,6 +21,7 @@ function QuotedFolder({ command }: { command: string }) {
 
 interface CommandCheck {
   command: string;
+  field?: string;
   name: string;
   found: boolean | null;
   detail: string;
@@ -56,6 +58,17 @@ export function OpenWithSettings({
   const [checking, setChecking] = useState(false);
   const [checks, setChecks] = useState<CommandCheck[] | null>(null);
 
+  const dirty = editor.trim() !== (saved.editor || '') || terminal.trim() !== (saved.terminal || '');
+  const [justSaved, setJustSaved] = useState(false);
+  useEffect(() => {
+    if (dirty) setJustSaved(false);
+  }, [dirty]);
+  useWarnBeforeLeaving(dirty);
+  // Check's answers are for the commands as they were.
+  useEffect(() => {
+    setChecks(null);
+  }, [editor, terminal]);
+
   const save = async (event: FormEvent) => {
     event.preventDefault();
     setError('');
@@ -70,6 +83,7 @@ export function OpenWithSettings({
       }
       const next = result.openWith || {};
       setSaved(next);
+      setJustSaved(true);
       onSaved(next);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
@@ -87,7 +101,13 @@ export function OpenWithSettings({
     try {
       const { response, result } = await postJson<{ ok?: boolean; error?: string; results?: CommandCheck[] }>(
         '/view-prs/local-repos/checkout/check',
-        { repo: '', commands: [editor.trim(), terminal.trim()].filter(Boolean) },
+        {
+          repo: '',
+          commands: [
+            { field: 'editor', command: editor.trim() },
+            { field: 'terminal', command: terminal.trim() },
+          ].filter((item) => item.command),
+        },
       );
       if (!response.ok || result.ok === false) {
         setError(result.error || `HTTP ${response.status}`);
@@ -143,7 +163,8 @@ export function OpenWithSettings({
           <div role="status">
             <ul className="local-clone-checks" aria-label="What your shell knows">
               {checks.map((item) => (
-                <li key={item.command} data-found={item.found === null ? 'unknown' : String(item.found)}>
+                <li key={`${item.field || ''}\n${item.command}`} data-found={item.found === null ? 'unknown' : String(item.found)}>
+                  {item.field && <strong>{item.field === 'editor' ? 'Editor command' : 'Terminal command'}: </strong>}
                   {item.found === true ? '✓' : item.found === false ? '✗' : '?'} <code>{item.name || item.command}</code>: {item.detail}
                 </li>
               ))}
@@ -162,6 +183,17 @@ export function OpenWithSettings({
           >
             {checking ? 'Checking…' : 'Check commands'}
           </Button>
+          {dirty ? (
+            <span className="settings-hint" data-tone="warning">
+              Not saved yet
+            </span>
+          ) : (
+            justSaved && (
+              <span className="settings-hint" role="status">
+                Saved
+              </span>
+            )
+          )}
         </div>
       </form>
     </details>

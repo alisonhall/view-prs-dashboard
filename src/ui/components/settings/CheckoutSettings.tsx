@@ -1,7 +1,8 @@
-import { useId, useState, type FormEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { type LocalRepoStatus, type LocalRepoCheckout } from '../../state/LocalBranchesContext';
 import { postJson, sendJson } from '../../helpers/pr-http.helpers.ts';
 import { NON_CREDENTIAL_INPUT_PROPS } from '../../helpers/form-parsing.helpers.ts';
+import { useWarnBeforeLeaving } from '../../helpers/unsaved-changes.helpers.ts';
 import { Button } from '../ui/Button';
 import { CommandFieldHelp, FIELD_DOCS, FIELD_LABELS, exampleValues, type CommandField } from './CommandFieldHelp';
 
@@ -56,22 +57,12 @@ export const placeholdersInSingleQuotes = (command: string, pattern: RegExp = PL
   return Array.from(new Set(found));
 };
 
-// The list command's run by Check commands.
-interface CommandTrial {
-  exitCode?: number | null;
-  timedOut?: boolean;
-  lines?: Array<{ text: string; worktree: boolean }>;
-  stderr?: string;
-  error?: string;
-}
-
 interface CommandCheck {
   command: string;
   field?: CommandField;
   name: string;
   found: boolean | null;
   detail: string;
-  trial?: CommandTrial;
 }
 
 const variablesToText = (env: Record<string, string> | undefined) =>
@@ -112,6 +103,19 @@ export function CheckoutSettings({
   const [checking, setChecking] = useState(false);
   const [checks, setChecks] = useState<CommandCheck[] | null>(null);
 
+  // The fields follow the saved settings when they change - once the
+  // page's copy of them arrives (it may come after this opens) or after a
+  // save - not only as they were when this was first shown.
+  const savedKey = JSON.stringify(saved || null);
+  const shownKey = useRef(savedKey);
+  useEffect(() => {
+    if (shownKey.current === savedKey) return;
+    shownKey.current = savedKey;
+    fillFrom(saved);
+    // fillFrom and saved are as savedKey says.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [savedKey]);
+
   // Whether the user's shell knows each command, as Check out would run it.
   const check = async () => {
     setChecking(true);
@@ -128,11 +132,9 @@ export function CheckoutSettings({
       )
         .map(([field, value]) => ({ field, command: value.trim() }))
         .filter((item) => item.command);
-      // The variables as typed - the list command runs with them.
-      const { env } = parseVariables(variables);
       const { response, result } = await postJson<{ ok?: boolean; error?: string; results?: CommandCheck[] }>(
         '/view-prs/local-repos/checkout/check',
-        { repo, commands, env },
+        { repo, commands },
       );
       if (!response.ok || result.ok === false) {
         setError(result.error || `HTTP ${response.status}`);
@@ -145,6 +147,29 @@ export function CheckoutSettings({
       setChecking(false);
     }
   };
+
+  // Check's answers are for the commands as they were: gone once one changes.
+  useEffect(() => {
+    setChecks(null);
+  }, [command, after, cleanupList, cleanupRemove]);
+
+  // Whether the fields differ from what's saved (as the server keeps it:
+  // trimmed, forks only with a command, the variables as pairs).
+  const parsedVariables = parseVariables(variables);
+  const dirty =
+    command.trim() !== (saved?.command || '') ||
+    (Boolean(command.trim()) && forks) !== (saved?.forks === true) ||
+    after.trim() !== (saved?.after || '') ||
+    folder.trim() !== (saved?.folder || '') ||
+    cleanupList.trim() !== (saved?.cleanupList || '') ||
+    cleanupRemove.trim() !== (saved?.cleanupRemove || '') ||
+    parsedVariables.invalid.length > 0 ||
+    JSON.stringify(parsedVariables.env) !== JSON.stringify(saved?.env || {});
+  const [justSaved, setJustSaved] = useState(false);
+  useEffect(() => {
+    if (dirty) setJustSaved(false);
+  }, [dirty]);
+  useWarnBeforeLeaving(dirty);
 
   const fillFrom = (checkout: LocalRepoCheckout | undefined) => {
     setCommand(checkout?.command || '');
@@ -181,6 +206,7 @@ export function CheckoutSettings({
         return;
       }
       if (result.repos) onSaved(result.repos);
+      setJustSaved(true);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
@@ -219,6 +245,7 @@ export function CheckoutSettings({
                 </option>
               ))}
             </select>
+            <p className="settings-hint">Fills in the fields below from that repo&apos;s settings. Nothing is saved until you press Save.</p>
           </>
         )}
         <label htmlFor={`${id}-command`}>Checkout command</label>
@@ -276,7 +303,7 @@ export function CheckoutSettings({
         />
         <p className="settings-hint">
           Prints the worktree folders it would remove, one full path a line on stdout and nothing else, and exits 0. It mustn&apos;t
-          change anything: Check commands runs it.
+          change anything. To try it, use Look in Clean up below.
         </p>
         <QuotedPlaceholders command={cleanupList} />
         <CommandFieldHelp field="cleanupList" command={cleanupList} values={values} />
@@ -325,8 +352,8 @@ export function CheckoutSettings({
             </dd>
             <dt>Given to</dt>
             <dd>
-              The checkout, after, list and remove commands of this repo only (Copy from copies them to another), and
-              Check commands&apos; run of the list command. Not to the editor and terminal commands.
+              The checkout, after, list and remove commands of this repo only (Copy from copies them to another). Not to the
+              editor and terminal commands.
             </dd>
             <dt>Order</dt>
             <dd>
@@ -363,11 +390,22 @@ export function CheckoutSettings({
           </Button>
           <Button
             disabled={checking || ![command, after, cleanupList, cleanupRemove].some((item) => item.trim())}
-            title="Whether your shell knows each command, as Check out would run it - and the list command's run for real, as it only lists"
+            title="Whether your shell knows each command's first word, as Check out and Clean up would run it - none of them is run"
             onClick={() => void check()}
           >
             {checking ? 'Checking…' : 'Check commands'}
           </Button>
+          {dirty ? (
+            <span className="settings-hint" data-tone="warning">
+              Not saved yet
+            </span>
+          ) : (
+            justSaved && (
+              <span className="settings-hint" role="status">
+                Saved
+              </span>
+            )
+          )}
         </div>
       </form>
     </details>
@@ -388,48 +426,14 @@ function QuotedPlaceholders({ command }: { command: string }) {
 
 const DEFAULT_WORKTREE_FOLDER = '../{clone}-{branch}';
 
-// "exited 0", "took too long".
-const describeExit = (trial: CommandTrial) =>
-  trial.timedOut ? 'took too long' : typeof trial.exitCode === 'number' ? `exited ${trial.exitCode}` : "couldn't run";
-
-// One command's answer: which field, whether the shell knows it, and - the
-// list command - what it printed when run, each line a worktree or not.
+// One command's answer: which field, whether the shell knows it, and that
+// it isn't run here.
 function CheckResult({ item }: { item: CommandCheck }) {
-  const trial = item.trial;
-  const lines = trial?.lines || [];
-  const trialOk = trial && !trial.error && trial.exitCode === 0 && lines.every((line) => line.worktree);
-  const found = item.found === false || (trial && !trialOk) ? 'false' : item.found === null ? 'unknown' : 'true';
   return (
-    <li data-found={found}>
+    <li data-found={item.found === null ? 'unknown' : String(item.found)}>
       {item.field && <strong>{FIELD_LABELS[item.field]}: </strong>}
       {item.found === true ? '✓' : item.found === false ? '✗' : '?'} <code>{item.name || item.command}</code>: {item.detail}
-      {item.field && FIELD_DOCS[item.field].notRun && <div className="settings-hint">{FIELD_DOCS[item.field].notRun}</div>}
-      {trial?.error && <div className="settings-hint">Not run: {trial.error}</div>}
-      {trial && !trial.error && (
-        <div className="local-clone-check-trial">
-          {trialOk ? '✓' : '✗'} Ran it in the clone: {describeExit(trial)}
-          {trial.exitCode === 0
-            ? lines.length === 0
-              ? ', and printed no folders - nothing to clean up.'
-              : `, and printed ${lines.length} line${lines.length === 1 ? '' : 's'}:`
-            : ' - Clean up would fail with this.'}
-          {lines.length > 0 && (
-            <ul aria-label="What the list command printed">
-              {lines.map((line) => (
-                <li key={line.text} data-found={String(line.worktree)}>
-                  {line.worktree ? '✓' : '✗'} <code>{line.text}</code>{' '}
-                  {line.worktree ? '- a worktree of the clone' : "- not a worktree of this clone, so it's ignored"}
-                </li>
-              ))}
-            </ul>
-          )}
-          {trial.stderr && (
-            <pre className="local-clone-cleanup-output" aria-label="What the list command printed to stderr">
-              {trial.stderr}
-            </pre>
-          )}
-        </div>
-      )}
+      {item.field && <div className="settings-hint">{FIELD_DOCS[item.field].notRun}</div>}
     </li>
   );
 }

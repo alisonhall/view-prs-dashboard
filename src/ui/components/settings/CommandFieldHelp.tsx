@@ -37,7 +37,7 @@ interface FieldDoc {
   // Variables only scripts get (no placeholder).
   extraVariables?: string;
   example: string;
-  // Why Check commands doesn't run it - or "" when it does.
+  // Why Check commands doesn't run it.
   notRun: string;
 }
 
@@ -74,7 +74,7 @@ export const FIELD_DOCS: Record<CommandField, FieldDoc> = {
     notRun: 'Not run here: it runs in a new worktree, once git has made one. Only its first word is checked.',
   },
   cleanupList: {
-    runs: 'When you press Look in Clean up, and when you press Check commands here.',
+    runs: 'When you press Look in Clean up after merged and closed PRs.',
     folder: "The clone's folder.",
     must: 'Print the worktree folders it would remove and exit 0, without changing anything.',
     output:
@@ -82,7 +82,7 @@ export const FIELD_DOCS: Record<CommandField, FieldDoc> = {
     empty: 'git: the local branches of the page’s merged and closed PRs, each with its worktree.',
     placeholders: ['clone', 'repo'],
     example: "git worktree list --porcelain | sed -n 's/^worktree //p'",
-    notRun: '',
+    notRun: "Not run here: Look in Clean up runs it and shows what it printed. Only its first word is checked.",
   },
   cleanupRemove: {
     runs: 'When you press Remove on a worktree in Clean up, and say yes.',

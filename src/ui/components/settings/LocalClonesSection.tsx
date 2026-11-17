@@ -165,6 +165,9 @@ export function LocalClonesSection() {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busyRepo, setBusyRepo] = useState('');
+  // Which repos' rows are open: as the user left them, else open when the
+  // repo has no clone saved, or one that can't be read.
+  const [openRepos, setOpenRepos] = useState<Record<string, boolean>>({});
   // This computer's editor and terminal commands, once the server says.
   const [computer, setComputer] = useState<{ openWith: OpenWith; platform: string } | null>(null);
   const idPrefix = useId();
@@ -209,6 +212,8 @@ export function LocalClonesSection() {
       }
       if (result.repos) setRepos(result.repos);
       setDrafts(({ [repo]: _dropped, ...rest }) => rest);
+      // A folder just saved: its row stays open, for its settings next.
+      if (method === 'PUT') setOpenRepos((previous) => ({ ...previous, [repo]: true }));
       refresh();
       return true;
     } catch (caught) {
@@ -238,46 +243,81 @@ export function LocalClonesSection() {
             const changed = draft.trim() !== (status?.path || '');
             const busy = busyRepo === repo;
             const inputId = `${idPrefix}-clone-${index}`;
+            const nameId = `${inputId}-name`;
+            const error = errors[repo] || (status && !status.ok ? status.error : '');
+            const open = openRepos[repo] ?? (!status?.ok || Boolean(errors[repo]));
             return (
               <li key={repo} className="sources-item local-clone-item">
-                <label className="sources-item-name" htmlFor={inputId}>
-                  {repo}
-                </label>
-                <input
-                  id={inputId}
-                  className="local-clone-path"
-                  type="text"
-                  placeholder="Full path of its clone"
-                  {...NON_CREDENTIAL_INPUT_PROPS}
-                  value={draft}
-                  onChange={(event) => setDrafts((previous) => ({ ...previous, [repo]: event.target.value }))}
-                />
-                <Button
-                  disabled={busy || !changed || !draft.trim()}
-                  aria-label={`Save the clone's folder for ${repo}`}
-                  onClick={() => void change(repo, 'PUT', { repo, path: draft.trim() })}
+                <details
+                  className="local-clone-repo"
+                  open={open}
+                  onToggle={(event) => {
+                    const isOpen = (event.currentTarget as HTMLDetailsElement).open;
+                    // Only the user's own toggle is kept: rendering it open
+                    // (or closed) fires toggle too.
+                    if (isOpen === open) return;
+                    setOpenRepos((previous) => (previous[repo] === isOpen ? previous : { ...previous, [repo]: isOpen }));
+                  }}
                 >
-                  {busy ? 'Checking…' : 'Save'}
-                </Button>
-                {status && (
-                  <Button disabled={busy} aria-label={`Remove the clone's folder for ${repo}`} onClick={() => void change(repo, 'DELETE', { repo })}>
-                    Remove
-                  </Button>
-                )}
-                {status && !errors[repo] && (
-                  <span className="sources-item-meta" data-tone={status.ok ? undefined : 'error'} role={status.ok ? undefined : 'alert'}>
-                    {status.ok ? describeClone(status) : status.error}
-                  </span>
-                )}
-                {errors[repo] && (
-                  <span className="sources-item-meta" data-tone="error" role="alert">
-                    {errors[repo]}
-                  </span>
-                )}
-                {status?.ok && <CheckoutSettings repo={repo} status={status} others={checkoutsBesides(repo)} onSaved={setRepos} />}
-                {status?.ok && (
-                  <CleanupSettings repo={repo} hasListCommand={Boolean(status.checkout?.cleanupList)} hasRemoveCommand={Boolean(status.checkout?.cleanupRemove)} />
-                )}
+                  <summary>
+                    <span className="sources-item-name" id={nameId}>
+                      {repo}
+                    </span>
+                    {error ? (
+                      <span className="sources-item-meta" data-tone="error" role="alert">
+                        {error}
+                      </span>
+                    ) : status?.ok ? (
+                      <>
+                        <span className="sources-item-meta">{describeClone(status)}</span>
+                        {status.checkout?.command && <span className="sources-item-meta">Own checkout command</span>}
+                      </>
+                    ) : (
+                      <span className="sources-item-meta">No clone saved</span>
+                    )}
+                  </summary>
+                  <div className="local-clone-repo-body">
+                    <div className="local-clone-path-row">
+                      <span className="settings-hint" aria-hidden="true">
+                        Clone folder
+                      </span>
+                      <input
+                        id={inputId}
+                        aria-labelledby={nameId}
+                        className="local-clone-path"
+                        type="text"
+                        placeholder="Full path of its clone"
+                        {...NON_CREDENTIAL_INPUT_PROPS}
+                        value={draft}
+                        onChange={(event) => setDrafts((previous) => ({ ...previous, [repo]: event.target.value }))}
+                      />
+                      <Button
+                        disabled={busy || !changed || !draft.trim()}
+                        aria-label={`Save the clone's folder for ${repo}`}
+                        onClick={() => void change(repo, 'PUT', { repo, path: draft.trim() })}
+                      >
+                        {busy ? 'Checking…' : 'Save'}
+                      </Button>
+                      {status && (
+                        <Button
+                          disabled={busy}
+                          aria-label={`Remove the clone's folder for ${repo}`}
+                          onClick={() => {
+                            // Its checkout and clean-up settings go with it.
+                            if (status.checkout && !window.confirm(`Remove ${repo}'s clone folder? Its checkout and clean-up commands and variables are removed too.`)) return;
+                            void change(repo, 'DELETE', { repo });
+                          }}
+                        >
+                          Remove
+                        </Button>
+                      )}
+                    </div>
+                    {status?.ok && <CheckoutSettings repo={repo} status={status} others={checkoutsBesides(repo)} onSaved={setRepos} />}
+                    {status?.ok && (
+                      <CleanupSettings repo={repo} hasListCommand={Boolean(status.checkout?.cleanupList)} hasRemoveCommand={Boolean(status.checkout?.cleanupRemove)} />
+                    )}
+                  </div>
+                </details>
               </li>
             );
           })}

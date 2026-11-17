@@ -68,13 +68,16 @@ const registerViewPrsLocalBranchesRoutes = ({
     return /^~(?=$|[\\/])/.test(folder) ? path.join(homeDir(), folder.slice(1)) : folder;
   };
 
-  // Each clone's state, with its checkout settings.
-  const reposStatus = async () => {
-    const entries = localReposStorage.loadLocalRepoEntries();
-    const { repos } = await localBranches.getLocalBranches({ localRepos: localReposStorage.loadLocalRepos(), prs: [] });
-    return Object.fromEntries(
-      Object.entries(repos).map(([repo, status]) => [repo, entries[repo]?.checkout ? { ...status, checkout: entries[repo].checkout } : status]),
+  // Each clone's state with its checkout settings - in every answer with
+  // the clones' states, /local-branches' too: the page keeps one copy of
+  // them, and an answer without the settings would drop them from it.
+  const withCheckout = (repos, entries = localReposStorage.loadLocalRepoEntries()) =>
+    Object.fromEntries(
+      Object.entries(repos || {}).map(([repo, status]) => [repo, entries[repo]?.checkout ? { ...status, checkout: entries[repo].checkout } : status]),
     );
+  const reposStatus = async () => {
+    const { repos } = await localBranches.getLocalBranches({ localRepos: localReposStorage.loadLocalRepos(), prs: [] });
+    return withCheckout(repos);
   };
 
   // { repos: repo => { path, ok, error?, branchCount, worktreeCount },
@@ -162,20 +165,19 @@ const registerViewPrsLocalBranchesRoutes = ({
     }
   });
 
-  // { repo, commands, env? } - whether the user's shell knows each
-  // command's first word (Settings' Check), run as Check out would run it,
-  // in the repo's clone's folder - and the list command run for real (it
-  // only lists). A command is a string, or { field, command } (field:
-  // command, after, cleanupList or cleanupRemove); env: the variables as
-  // typed, not yet saved. { results: [{ command, field?, name, found,
-  // detail, trial? }] }. Only from this computer, as saving the commands is.
+  // { repo, commands } - whether the user's shell knows each command's
+  // first word (Settings' Check), run as Check out would run it, in the
+  // repo's clone's folder; none is run. A command is a string, or {
+  // field, command } (field: command, after, cleanupList, cleanupRemove,
+  // editor or terminal). { results: [{ command, field?, name, found, detail }] }.
+  // Only from this computer, as saving the commands is.
   app.post(["/local-repos/checkout/check", "/view-prs/local-repos/checkout/check"], async (req, res) => {
     if (!isFromThisComputer(req)) {
       res.status(403).json({ ok: false, error: "Commands can only be checked on this computer" });
       return;
     }
     const repo = String(req.body?.repo || "").trim();
-    const fields = ["command", "after", "cleanupList", "cleanupRemove"];
+    const fields = ["command", "after", "cleanupList", "cleanupRemove", "editor", "terminal"];
     const commands = (Array.isArray(req.body?.commands) ? req.body.commands : [])
       .map((item) =>
         item && typeof item === "object"
@@ -188,15 +190,9 @@ const registerViewPrsLocalBranchesRoutes = ({
       res.status(400).json({ ok: false, error: "No command to check" });
       return;
     }
-    const rawEnv = req.body?.env && typeof req.body.env === "object" && !Array.isArray(req.body.env) ? req.body.env : {};
-    const env = Object.fromEntries(
-      Object.entries(rawEnv)
-        .filter(([name, value]) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(name) && !name.startsWith("VIEW_PRS_") && typeof value === "string" && !/\0/.test(value))
-        .slice(0, 50),
-    );
     try {
       const cloneFolder = localReposStorage.loadLocalRepoEntries()[repo]?.path || "";
-      res.json({ ok: true, results: await checkCommands({ repo, cloneFolder, commands: commands.map((item) => (item.field ? item : item.command)), env }) });
+      res.json({ ok: true, results: await checkCommands({ cloneFolder, commands: commands.map((item) => (item.field ? item : item.command)) }) });
     } catch (error) {
       sendInternalError({ res, error });
     }
@@ -319,7 +315,7 @@ const registerViewPrsLocalBranchesRoutes = ({
             return [pr.key, { how: planCheckout({ existing: Boolean(result.prs[pr.key]), isFork: fork, settings: entries[pr.repo]?.checkout }), fork }];
           }),
       );
-      res.json({ ok: true, ...result, plans, platform, openWith: localReposStorage.loadOpenWith() });
+      res.json({ ok: true, ...result, repos: withCheckout(result.repos, entries), plans, platform, openWith: localReposStorage.loadOpenWith() });
     } catch (error) {
       sendInternalError({ res, error });
     }

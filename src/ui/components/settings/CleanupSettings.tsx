@@ -19,6 +19,8 @@ interface CleanupList {
   ok?: boolean;
   error?: string;
   output?: string;
+  // The list command's stdout, as it printed it.
+  printed?: string;
   by?: 'git' | 'command';
   items?: CleanupItem[];
   ignored?: string[];
@@ -162,6 +164,18 @@ export function CleanupSettings({ repo, hasListCommand, hasRemoveCommand }: { re
           </p>
         )}
         {list?.ok && list.output && <pre className="local-clone-cleanup-output">{list.output}</pre>}
+        {list?.ok && list.by === 'command' && (
+          <details className="local-clone-command-help">
+            <summary>What your list command printed</summary>
+            {list.printed ? (
+              <pre className="local-clone-cleanup-output" aria-label="What your list command printed">
+                {list.printed}
+              </pre>
+            ) : (
+              <p className="settings-hint">Nothing on stdout.</p>
+            )}
+          </details>
+        )}
       </div>
     </details>
   );
