@@ -336,10 +336,12 @@ describe("checking out a PR into a worktree", () => {
     const zsh = createViewPrsLocalCheckout({ runCommand: fakeShell, fs, localBranches, platform: "darwin", env: { SHELL: "/bin/zsh" } });
     await expect(zsh.checkOut({ repo: "acme/app", cloneFolder: clone, settings, pr: pr() })).rejects.toMatchObject({ message: "The checkout command failed: stop here" });
     expect(calls[0].command).toBe("/bin/zsh");
-    // A marker line printed to stdout and stderr once the shell's started (new each run), then the command
+    // A marker line printed to stdout and stderr once the shell's started (new each run), another once it's in the folder, then the command
     expect(calls[0].args).toEqual([
       "-ic",
-      expect.stringMatching(/^exec <\/dev\/null\nprintf '@@view-prs-%s@@\\n' ([0-9a-f]{16}); printf '@@view-prs-%s@@\\n' \1 >&2\ncd -- "\$VIEW_PRS_FOLDER" \|\| exit 1\nmy-tool add "\$VIEW_PRS_BRANCH"$/),
+      expect.stringMatching(
+        /^exec <\/dev\/null\nprintf '@@view-prs-%s@@\\n' ([0-9a-f]{16}); printf '@@view-prs-%s@@\\n' \1 >&2\ncd -- "\$VIEW_PRS_FOLDER" \|\| exit 1\nprintf '@@view-prs-%s@@\\n' \1-in; printf '@@view-prs-%s@@\\n' \1-in >&2\nmy-tool add "\$VIEW_PRS_BRANCH"$/,
+      ),
     ]);
     expect(calls[0].env).toEqual(expect.objectContaining({ VIEW_PRS_FOLDER: toPosix(clone), VIEW_PRS_BRANCH: "feature/x" }));
 
@@ -386,6 +388,45 @@ describe("checking out a PR into a worktree", () => {
     } finally {
       fs.rmSync(rc, { force: true });
     }
+  });
+
+  test("Check commands: what a cd hook prints (nvm's) isn't taken for the command's answer", async () => {
+    const rc = path.join(root, "home", ".bashrc");
+    // As nvm's README's cdnvm: cd as a function that says which node it's using
+    fs.writeFileSync(rc, "cd() { builtin cd \"$@\" && echo 'Reverting to nvm default version'; }\nmy-fn() { :; }\n");
+    try {
+      const { checkout } = setUp();
+      const [result] = await checkout.checkCommands({ cloneFolder: freshClone(), commands: ["my-fn {branch}"] });
+      expect(result).toMatchObject({ name: "my-fn", found: true, detail: "my-fn is a function" });
+    } finally {
+      fs.rmSync(rc, { force: true });
+    }
+  });
+
+  test("Check commands: the list command is run for real, each line said to be a worktree of the clone or not, with its exit code", async () => {
+    const clone = freshClone();
+    const tree = path.join(root, `tree-${Date.now()}`);
+    git(clone, "worktree", "add", "-q", "-b", "mine/listed", tree);
+    const { checkout } = setUp();
+    const [listed, failed, other] = await checkout.checkCommands({
+      repo: "acme/app",
+      cloneFolder: clone,
+      env: { EXTRA: "not-a-worktree" },
+      commands: [
+        { field: "cleanupList", command: `echo "${toPosix(tree)}"; echo "$EXTRA"; echo note >&2` },
+        { field: "cleanupList", command: "echo 'no such layout' >&2; exit 3" },
+        { field: "cleanupRemove", command: "echo would-remove {worktree}" },
+      ],
+    });
+    expect(listed).toMatchObject({
+      field: "cleanupList",
+      found: true,
+      trial: { exitCode: 0, lines: [{ text: toPosix(tree), worktree: true }, { text: "not-a-worktree", worktree: false }], stderr: "note" },
+    });
+    expect(failed.trial).toEqual({ exitCode: 3, lines: [], stderr: "no such layout" });
+    // Only the list command runs: the others change things
+    expect(other.trial).toBeUndefined();
+    expect(other).toMatchObject({ field: "cleanupRemove", name: "echo", found: true });
   });
 
   test("the plan: the repo's command, unless the clone has a branch for the PR or it's a fork's PR the command isn't for", () => {
