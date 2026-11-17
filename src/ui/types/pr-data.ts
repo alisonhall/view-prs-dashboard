@@ -428,9 +428,20 @@ export interface PrTrackedPr {
   addedAt?: string;
 }
 
+// A branch tracked without a PR (picked from a clone's local branches):
+// base overrides the repo's default branch as what it's compared with.
+export interface PrTrackedBranch {
+  repo: string;
+  branch: string;
+  base?: string;
+  note?: string;
+  addedAt?: string;
+}
+
 export interface PrSources {
   subscriptions: PrSubscription[];
   trackedPrs: PrTrackedPr[];
+  trackedBranches?: PrTrackedBranch[];
   // PRs fetched on their own that their last run couldn't fetch:
   // "repo#number" => since when.
   unreachable?: Record<string, string>;

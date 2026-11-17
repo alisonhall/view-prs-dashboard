@@ -2,7 +2,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { execFile, execFileSync } = require("child_process");
-const { createViewPrsLocalBranches, repoFromRemoteUrl, parseWorktrees, parseStatus, describeGitFailure } = require("./view-prs-local-branches");
+const { createViewPrsLocalBranches, repoFromRemoteUrl, parseWorktrees, parseStatus, describeGitFailure, findDefaultBranch } = require("./view-prs-local-branches");
 
 // A real clone of acme/app in a temp folder: main with two commits, and
 // branches as a developer would have them.
@@ -510,5 +510,135 @@ describe("the uncommitted changes in a PR's worktree", () => {
     });
     expect(parseStatus(stdout, 2)).toMatchObject({ total: 5, files: [{ path: "both.txt" }, { path: "added.txt" }] });
     expect(parseStatus("")).toEqual({ staged: 0, changed: 0, untracked: 0, conflicted: 0, total: 0, files: [] });
+  });
+});
+
+// A clone made by git clone (so origin/HEAD names the default branch), with
+// branches that have no PR: pushed, local only, behind its upstream, and one
+// that is a PR's.
+describe("branches tracked without a PR", () => {
+  let root;
+  let remote;
+  let clone;
+  const helper = () => createViewPrsLocalBranches({ runCommand: run, fs });
+  beforeAll(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), "tracked-branches-"));
+    const seed = path.join(root, "seed");
+    remote = path.join(root, "remote.git");
+    fs.mkdirSync(seed);
+    git(seed, "init", "-q");
+    commit(seed, "base");
+    git(seed, "checkout", "-q", "-b", "pushed");
+    commit(seed, "pushed 1");
+    git(seed, "checkout", "-q", "-b", "stale");
+    commit(seed, "stale 1");
+    commit(seed, "stale 2");
+    git(seed, "checkout", "-q", "-b", "feature-pr", "main");
+    commit(seed, "pr work");
+    git(seed, "checkout", "-q", "main");
+    git(root, "clone", "-q", "--bare", seed, remote);
+    clone = path.join(root, "app");
+    git(root, "clone", "-q", remote, clone);
+    // The remote is a local folder; the repo is told by its URL, so name it
+    // as GitHub would.
+    git(clone, "remote", "set-url", "origin", "git@github.com:acme/app.git");
+    git(clone, "config", "remote.origin.pushurl", remote);
+    // pushed: tracks origin/pushed, one commit ahead of main.
+    git(clone, "checkout", "-q", "-b", "pushed", "origin/pushed");
+    // stale: tracks origin/stale but is a commit behind it.
+    git(clone, "branch", "stale", "origin/stale~1");
+    track(clone, "stale", "origin", "refs/heads/stale");
+    // local-only: two commits on none of the remote's branches, in a worktree.
+    git(clone, "checkout", "-q", "-b", "local-only", "main");
+    commit(clone, "local 1");
+    commit(clone, "local 2");
+    git(clone, "checkout", "-q", "main");
+    git(clone, "worktree", "add", "-q", path.join(root, "local-tree"), "local-only");
+    // feature-pr: the branch of an open PR.
+    git(clone, "branch", "feature-pr", "origin/feature-pr");
+    track(clone, "feature-pr", "origin", "refs/heads/feature-pr");
+  });
+  afterAll(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  const prs = [{ key: "acme/app#5", repo: "acme/app", number: "5", branch: "feature-pr", targetBranch: "main", headOid: "", crossRepository: false, commitOids: [], done: false }];
+
+  test("the default branch comes from origin/HEAD, else main or master", async () => {
+    const result = await helper().getBranchCandidates({ repo: "acme/app", folder: clone });
+    expect(result.defaultBranch).toBe("main");
+    expect(findDefaultBranch("", ["origin"], [{ name: "master" }])).toBe("master");
+    expect(findDefaultBranch("refs/remotes/origin/HEAD\tabc\trefs/remotes/origin/develop", ["origin"], [])).toBe("develop");
+    expect(findDefaultBranch("", ["origin"], [])).toBe("");
+  });
+
+  test("candidates: local branches with no PR, not the default or a PR's base, not tracked already, newest first", async () => {
+    const result = await helper().getBranchCandidates({ repo: "acme/app", folder: clone, prs, tracked: ["stale"] });
+    expect(result.ok).toBe(true);
+    const names = result.branches.map((branch) => branch.name);
+    expect(names.sort()).toEqual(["local-only", "pushed"]);
+    const localOnly = result.branches.find((branch) => branch.name === "local-only");
+    expect(localOnly).toMatchObject({ subject: "local 2", committedAt: expect.any(String), worktreePath: expect.stringContaining("local-tree") });
+    expect(localOnly.upstream).toBeUndefined();
+    expect(result.branches.find((branch) => branch.name === "pushed").upstream).toBe("origin/pushed");
+  });
+
+  test("a local-only branch: its worktree, nothing pushed, ahead of the default branch", async () => {
+    const found = await helper().getTrackedBranches({ localRepos: { "acme/app": clone }, branches: [{ repo: "acme/app", branch: "local-only" }] });
+    expect(found["acme/app:local-only"]).toMatchObject({
+      found: true,
+      branch: "local-only",
+      subject: "local 2",
+      worktreePath: expect.stringContaining("local-tree"),
+      pushed: false,
+      unpushed: 2,
+      base: "main",
+      baseAhead: 2,
+      baseBehind: 0,
+    });
+    expect(found["acme/app:local-only"].upstream).toBeUndefined();
+  });
+
+  test("a pushed branch, one behind its upstream, and one compared with a base of its own", async () => {
+    const found = await helper().getTrackedBranches({
+      localRepos: { "acme/app": clone },
+      branches: [
+        { repo: "acme/app", branch: "pushed" },
+        { repo: "acme/app", branch: "stale", base: "pushed" },
+      ],
+    });
+    expect(found["acme/app:pushed"]).toMatchObject({ pushed: true, unpushed: 0, upstream: { remote: "origin", branch: "pushed", ahead: 0, behind: 0 }, baseAhead: 1, baseBehind: 0 });
+    expect(found["acme/app:pushed"].worktreePath).toBeUndefined();
+    expect(found["acme/app:stale"]).toMatchObject({ pushed: true, upstream: { ahead: 0, behind: 1 }, base: "pushed", baseAhead: 1, baseBehind: 0 });
+  });
+
+  test("a branch the clone doesn't have, a base it doesn't have, an upstream gone, and a branch whose PR has opened", async () => {
+    git(clone, "branch", "orphan", "main");
+    track(clone, "orphan", "origin", "refs/heads/deleted-on-github");
+    const found = await helper().getTrackedBranches({
+      localRepos: { "acme/app": clone, "other/repo": path.join(root, "nowhere") },
+      branches: [
+        { repo: "acme/app", branch: "nope" },
+        { repo: "acme/app", branch: "orphan", base: "no-such-base" },
+        { repo: "acme/app", branch: "feature-pr" },
+        { repo: "other/repo", branch: "x" },
+      ],
+      prs,
+    });
+    expect(found["acme/app:nope"]).toEqual({ found: false });
+    expect(found["acme/app:orphan"]).toMatchObject({ upstream: { branch: "deleted-on-github", gone: true }, base: "no-such-base", baseMissing: true });
+    expect(found["acme/app:feature-pr"].pr).toEqual({ number: "5", done: false });
+    expect(found["other/repo:x"]).toBeUndefined();
+  });
+
+  test("uncommitted changes for each tracked branch checked out, none for one that isn't", async () => {
+    fs.writeFileSync(path.join(root, "local-tree", "new.txt"), "x");
+    const changes = await helper().getTrackedBranchChanges({
+      localRepos: { "acme/app": clone },
+      branches: [
+        { repo: "acme/app", branch: "local-only" },
+        { repo: "acme/app", branch: "stale" },
+      ],
+    });
+    expect(Object.keys(changes)).toEqual(["acme/app:local-only"]);
+    expect(changes["acme/app:local-only"]).toMatchObject({ untracked: 1, total: 1 });
   });
 });

@@ -241,4 +241,65 @@ describe("view-prs sources storage", () => {
     expect(storage.getRepoHost(sources, "corp/tool")).toBe("ghe.corp.example");
     expect(storage.getRepoHost(sources, "acme/api")).toBe("");
   });
+
+  test("tracked branches: valid names once each per repo, a base and a note kept only when set; none leaves the field out", () => {
+    const normalized = storage.normalizeSources({
+      trackedBranches: [
+        { repo: "acme/api", branch: "feature/x", base: "development", note: "WIP", addedAt: "2026-11-17T10:00:00Z" },
+        { repo: "acme/api", branch: "feature/x" },
+        { repo: "acme/web", branch: "feature/x", base: "bad base", note: "   " },
+        { repo: "acme/api", branch: "has space" },
+        { repo: "acme/api", branch: "-dash" },
+        { repo: "not a repo", branch: "ok" },
+      ],
+    });
+    expect(normalized.trackedBranches).toEqual([
+      { repo: "acme/api", branch: "feature/x", base: "development", note: "WIP", addedAt: "2026-11-17T10:00:00Z" },
+      { repo: "acme/web", branch: "feature/x" },
+    ]);
+    expect(storage.normalizeSources({})).not.toHaveProperty("trackedBranches");
+  });
+
+  test("tracks a branch, changes its base and note, and stops tracking it - written to the file each time", () => {
+    const now = () => new Date("2026-11-17T12:00:00Z");
+    const seedRepos = () => ["acme/api"];
+    expect(storage.addTrackedBranch({ repo: "acme/api", branch: "wip" }, { seedRepos, now })).toEqual({
+      added: true,
+      entry: { repo: "acme/api", branch: "wip", addedAt: "2026-11-17T12:00:00.000Z" },
+    });
+    expect(storage.addTrackedBranch({ repo: "acme/api", branch: "wip" }, { seedRepos, now }).added).toBe(false);
+    expect(() => storage.addTrackedBranch({ repo: "acme/api", branch: "a..b" }, { seedRepos })).toThrow("Not a branch name: a..b");
+    expect(() => storage.addTrackedBranch({ repo: "nope", branch: "wip" }, { seedRepos })).toThrow("Not a repo: nope");
+
+    expect(storage.updateTrackedBranch({ repo: "acme/api", branch: "wip", base: "development", note: "Spike" }, { seedRepos })).toEqual({
+      repo: "acme/api",
+      branch: "wip",
+      base: "development",
+      note: "Spike",
+      addedAt: "2026-11-17T12:00:00.000Z",
+    });
+    // What isn't given stays; "" puts the default base back and clears the note.
+    expect(storage.updateTrackedBranch({ repo: "acme/api", branch: "wip", note: "" }, { seedRepos })).toEqual({
+      repo: "acme/api",
+      branch: "wip",
+      base: "development",
+      addedAt: "2026-11-17T12:00:00.000Z",
+    });
+    expect(storage.updateTrackedBranch({ repo: "acme/api", branch: "wip", base: "" }, { seedRepos })).not.toHaveProperty("base");
+    expect(storage.updateTrackedBranch({ repo: "acme/api", branch: "other" }, { seedRepos })).toBeNull();
+    expect(() => storage.updateTrackedBranch({ repo: "acme/api", branch: "wip", base: "x y" }, { seedRepos })).toThrow("Not a branch name");
+
+    const stored = JSON.parse(fs.readFileSync(sourcesFile, "utf8"));
+    expect(stored.subscriptions).toEqual([{ repo: "acme/api", mode: "recent" }]);
+    expect(stored.trackedBranches).toEqual([{ repo: "acme/api", branch: "wip", addedAt: "2026-11-17T12:00:00.000Z" }]);
+
+    expect(storage.removeTrackedBranch("acme/api", "wip")).toMatchObject({ branch: "wip" });
+    expect(storage.removeTrackedBranch("acme/api", "wip")).toBeNull();
+    expect(JSON.parse(fs.readFileSync(sourcesFile, "utf8"))).not.toHaveProperty("trackedBranches");
+  });
+
+  test("a branch isn't tracked while the sources can't be told", () => {
+    expect(() => storage.addTrackedBranch({ repo: "acme/api", branch: "wip" }, { seedRepos: () => null })).toThrow("couldn't be read");
+    expect(fs.existsSync(sourcesFile)).toBe(false);
+  });
 });

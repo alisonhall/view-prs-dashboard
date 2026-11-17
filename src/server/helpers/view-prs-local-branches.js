@@ -85,18 +85,47 @@ const parseWorktrees = (stdout) =>
     })
     .filter(Boolean);
 
-// for-each-ref, one branch a line: refname, oid; with its upstream from
+// for-each-ref, one branch a line: refname, oid, then (when asked for) its
+// newest commit's time (unix seconds) and subject; with its upstream from
 // the config.
 const parseBranches = (stdout, upstreams = new Map()) =>
   String(stdout || "")
     .split(/\r?\n/)
     .map((line) => line.split(FIELD))
     .filter(([ref, oid]) => ref && ref.startsWith("refs/heads/") && oid)
-    .map(([ref, oid]) => {
+    .map(([ref, oid, time, ...subject]) => {
       const name = ref.slice("refs/heads/".length);
       const upstream = upstreams.get(name) || { remote: "", remoteRef: "" };
-      return { name, oid, remote: upstream.remote, remoteRef: upstream.remoteRef };
+      const seconds = Number(time);
+      return {
+        name,
+        oid,
+        remote: upstream.remote,
+        remoteRef: upstream.remoteRef,
+        ...(Number.isFinite(seconds) && seconds > 0 ? { committedAt: new Date(seconds * 1000).toISOString() } : {}),
+        ...(subject.length > 0 && subject.join(FIELD) ? { subject: subject.join(FIELD) } : {}),
+      };
     });
+
+// The repo's default branch, from what the clone's copy of a repo remote's
+// HEAD points to (refs/remotes/origin/HEAD -> refs/remotes/origin/main, as
+// git clone sets it): remote refs' lines are refname, oid, symref target.
+// Else main or master, whichever the clone has, else "".
+const findDefaultBranch = (remoteRefsStdout, repoRemotes, branches = []) => {
+  const lines = String(remoteRefsStdout || "")
+    .split(/\r?\n/)
+    .map((line) => line.split(FIELD));
+  for (const remote of repoRemotes) {
+    const head = lines.find(([ref]) => ref === `refs/remotes/${remote}/HEAD`);
+    const target = head?.[2] || "";
+    const prefix = `refs/remotes/${remote}/`;
+    if (target.startsWith(prefix)) return target.slice(prefix.length);
+  }
+  const has = (name) =>
+    branches.some((branch) => branch.name === name) ||
+    lines.some(([ref]) => repoRemotes.some((remote) => ref === `refs/remotes/${remote}/${name}`));
+  return ["main", "master"].find(has) || "";
+};
 
 // git status --porcelain=v1 -z: "XY path" entries, NUL-separated - X the
 // index (staged), Y the folder; a rename or copy is followed by its old
@@ -209,12 +238,12 @@ const createViewPrsLocalBranches = ({
     let config;
     try {
       [refs, remoteRefs, worktreeList, config] = await Promise.all([
-        git(folder, ["for-each-ref", `--format=%(refname)${FIELD}%(objectname)`, "refs/heads"]),
+        git(folder, ["for-each-ref", `--format=%(refname)${FIELD}%(objectname)${FIELD}%(committerdate:unix)${FIELD}%(contents:subject)`, "refs/heads"]),
         // The remote branches as the clone has them, for what's not pushed
         // only - a call of its own, as a repo with very many could fail it
         // (too much output): then nothing else fails, and what's not pushed
         // is told from the PR alone.
-        git(folder, ["for-each-ref", `--format=%(refname)${FIELD}%(objectname)`, "refs/remotes"]).catch(() => ""),
+        git(folder, ["for-each-ref", `--format=%(refname)${FIELD}%(objectname)${FIELD}%(symref)`, "refs/remotes"]).catch(() => ""),
         git(folder, ["worktree", "list", "--porcelain"]),
         // Exits 1 when nothing matches (no remotes, no upstreams).
         git(folder, ["config", "-z", "--get-regexp", "^(remote\\..*\\.url|branch\\..*\\.(remote|merge))$"]).catch(() => ""),
@@ -238,6 +267,7 @@ const createViewPrsLocalBranches = ({
       repoRemotes,
       branches: parseBranches(refs, upstreams),
       remoteRefs: parseRemoteRefs(remoteRefs),
+      defaultBranch: findDefaultBranch(remoteRefs, repoRemotes, parseBranches(refs)),
       worktrees: parseWorktrees(worktreeList)
         .filter((worktree) => !worktree.bare)
         .map((worktree) => (worktree.branch ? worktree : withRebasedBranch(worktree))),
@@ -417,6 +447,156 @@ const createViewPrsLocalBranches = ({
     return { ...base, diverged: true, ...(await unpushedPast([tracked])) };
   };
 
+  // The commit a base branch is at, as the clone has it: the clone's copy
+  // of it on one of the repo's remotes (as new as its last fetch, and what
+  // a PR would be compared with), else the local branch of that name. ""
+  // when the clone has neither.
+  const baseOid = (clone, name) => {
+    if (!name) return "";
+    for (const remote of clone.repoRemotes) {
+      const oid = clone.remoteRefs.get(`refs/remotes/${remote}/${name}`);
+      if (oid) return oid;
+    }
+    return clone.branches.find((branch) => branch.name === name)?.oid || "";
+  };
+
+  // The local commits on none of the repo's remote branches (as the clone
+  // last fetched or pushed them): what isn't on GitHub. null when git
+  // can't say. Not kept by commit, as a fetch or push changes it.
+  const countNotOnRemotes = async (clone, oid) => {
+    if (clone.repoRemotes.length === 0) return null;
+    try {
+      const stdout = await git(clone.folder, ["rev-list", "--count", oid, "--not", ...clone.repoRemotes.map((remote) => `--remotes=${remote}`)]);
+      const value = Number(stdout.trim());
+      return Number.isInteger(value) ? value : null;
+    } catch (_error) {
+      return null;
+    }
+  };
+
+  // A tracked branch (no PR) as the clone has it: { found: false } when the
+  // clone has no local branch of that name, else { found: true, branch,
+  // oid, committedAt?, subject?, worktreePath?, rebasing?, upstream?,
+  // pushed, unpushed?, base, baseAhead?, baseBehind? }:
+  // - upstream: { remote, branch, ahead?, behind?, gone? } - the remote
+  //   branch it tracks, ahead/behind the clone's copy of it (as of its
+  //   last fetch); gone when the clone has no copy (deleted on GitHub and
+  //   pruned, or never fetched).
+  // - pushed: its newest commit is on one of the repo's remote branches.
+  // - unpushed: its commits on none of them.
+  // - base: what it's compared with - the entry's own base, else the
+  //   repo's default branch ("" when that can't be told); baseAhead and
+  //   baseBehind against the clone's copy of it.
+  const describeBranch = async (clone, { branch: name, base: chosenBase }) => {
+    const branch = clone.branches.find((item) => item.name === name);
+    if (!branch) return { found: false };
+    const worktree = clone.worktrees.find((item) => item.branch === branch.name);
+    const result = {
+      found: true,
+      branch: branch.name,
+      oid: branch.oid,
+      ...(branch.committedAt ? { committedAt: branch.committedAt } : {}),
+      ...(branch.subject ? { subject: branch.subject } : {}),
+      ...(worktree ? { worktreePath: worktree.path } : {}),
+      ...(worktree?.rebasing ? { rebasing: true } : {}),
+    };
+    if (branch.remote && branch.remoteRef.startsWith("refs/heads/")) {
+      const upstream = { remote: branch.remote, branch: branch.remoteRef.slice("refs/heads/".length) };
+      const upstreamOid = trackedOid(clone, branch);
+      if (!upstreamOid) upstream.gone = true;
+      else {
+        const counts = branch.oid === upstreamOid ? { ahead: 0, behind: 0 } : await countAheadBehind(clone.folder, branch.oid, upstreamOid);
+        if (counts) Object.assign(upstream, counts);
+      }
+      result.upstream = upstream;
+    }
+    const unpushed = await countNotOnRemotes(clone, branch.oid);
+    result.pushed = unpushed === 0;
+    if (unpushed !== null) result.unpushed = unpushed;
+    const base = chosenBase || clone.defaultBranch || "";
+    result.base = base;
+    const onBase = base && base !== branch.name ? baseOid(clone, base) : "";
+    if (onBase) {
+      const counts = onBase === branch.oid ? { ahead: 0, behind: 0 } : await countAheadBehind(clone.folder, branch.oid, onBase);
+      if (counts) {
+        result.baseAhead = counts.ahead;
+        result.baseBehind = counts.behind;
+      }
+    } else if (base && base !== branch.name) {
+      result.baseMissing = true;
+    }
+    return result;
+  };
+
+  // The local branches that could be tracked, newest commit first: those
+  // no PR's branch is (findBranch, for each PR of the repo), not a PR's
+  // base, not the repo's default branch and not tracked already - { name,
+  // oid, committedAt?, subject?, worktreePath?, upstream? (the remote
+  // branch it tracks) }.
+  const listBranchCandidates = (clone, { prs = [], tracked = [] } = {}) => {
+    const excluded = new Set(tracked);
+    if (clone.defaultBranch) excluded.add(clone.defaultBranch);
+    prs.forEach((pr) => {
+      if (pr.targetBranch) excluded.add(pr.targetBranch);
+      const branch = findBranch(clone, pr);
+      if (branch) excluded.add(branch.name);
+    });
+    return clone.branches
+      .filter((branch) => !excluded.has(branch.name))
+      .map((branch) => {
+        const worktree = clone.worktrees.find((item) => item.branch === branch.name);
+        return {
+          name: branch.name,
+          oid: branch.oid,
+          ...(branch.committedAt ? { committedAt: branch.committedAt } : {}),
+          ...(branch.subject ? { subject: branch.subject } : {}),
+          ...(worktree ? { worktreePath: worktree.path } : {}),
+          ...(branch.remote && branch.remoteRef.startsWith("refs/heads/")
+            ? { upstream: `${branch.remote}/${branch.remoteRef.slice("refs/heads/".length)}` }
+            : {}),
+        };
+      })
+      .sort((a, b) => String(b.committedAt || "").localeCompare(String(a.committedAt || "")) || a.name.localeCompare(b.name));
+  };
+
+  // A PR's local branch is a tracked branch's, so its PR has opened: the
+  // PR (from prs) whose branch findBranch says the local branch named
+  // `name` is, open ones first; else null.
+  const findPrOfBranch = (clone, name, prs = []) => {
+    const matches = prs.filter((pr) => findBranch(clone, pr)?.name === name);
+    return matches.find((pr) => !pr.done) || matches[0] || null;
+  };
+
+  // localRepos: repo => folder. branches: [{ repo, branch, base? }]; prs as
+  // getLocalBranches'. => { key (repo:branch) => describeBranch's, with pr:
+  // { number, done } once a PR is the branch's } - nothing for a repo with
+  // no readable clone (the page says it isn't on this computer).
+  const getTrackedBranches = async ({ localRepos, branches, prs = [] }) => {
+    const wanted = (branches || []).filter((entry) => localRepos?.[entry.repo]);
+    const clones = Object.fromEntries(
+      await Promise.all(
+        [...new Set(wanted.map((entry) => entry.repo))].map(async (repo) => [repo, await getClone(repo, localRepos[repo])]),
+      ),
+    );
+    const readable = wanted.filter((entry) => clones[entry.repo]?.ok);
+    const described = await mapLimited(readable, concurrency, async (entry) => {
+      const clone = clones[entry.repo];
+      const status = await describeBranch(clone, entry);
+      if (!status.found) return status;
+      const pr = findPrOfBranch(clone, entry.branch, prs.filter((item) => item.repo === entry.repo));
+      return pr ? { ...status, pr: { number: pr.number, done: Boolean(pr.done) } } : status;
+    });
+    return Object.fromEntries(readable.map((entry, index) => [`${entry.repo}:${entry.branch}`, described[index]]));
+  };
+
+  // The branches a clone could track (Track a branch): { ok, branches,
+  // defaultBranch } - or { ok: false, error }.
+  const getBranchCandidates = async ({ repo, folder, prs = [], tracked = [] }) => {
+    const clone = await getClone(repo, folder);
+    if (!clone.ok) return { ok: false, error: clone.error };
+    return { ok: true, defaultBranch: clone.defaultBranch, branches: listBranchCandidates(clone, { prs, tracked }) };
+  };
+
   const mapLimited = async (items, limit, mapper) => {
     const results = new Array(items.length);
     let next = 0;
@@ -570,6 +750,27 @@ const createViewPrsLocalBranches = ({
     const branch = findBranch(clone, pr);
     const worktree = branch && clone.worktrees.find((item) => item.branch === branch.name);
     if (!worktree) return null;
+    return worktreeStatus(worktree);
+  };
+
+  // The same for tracked branches (no PR), the worktree each local branch
+  // is checked out in: { key (repo:branch) => changes } - only those
+  // checked out, a few at a time. localRepos: repo => folder; branches:
+  // [{ repo, branch }].
+  const getTrackedBranchChanges = async ({ localRepos, branches }) => {
+    const found = [];
+    for (const entry of branches || []) {
+      const folder = localRepos?.[entry.repo];
+      if (!folder) continue;
+      const clone = await getClone(entry.repo, folder);
+      const worktree = clone.ok && clone.worktrees.find((item) => item.branch === entry.branch);
+      if (worktree) found.push({ key: `${entry.repo}:${entry.branch}`, worktree });
+    }
+    const changes = await mapLimited(found, concurrency, ({ worktree }) => worktreeStatus(worktree));
+    return Object.fromEntries(found.map((item, index) => [item.key, changes[index]]));
+  };
+
+  const worktreeStatus = async (worktree) => {
     if (!fs.existsSync(worktree.path)) {
       return { worktreePath: worktree.path, error: "Its folder is gone (deleted without git worktree remove; git worktree prune forgets it)" };
     }
@@ -608,6 +809,10 @@ const createViewPrsLocalBranches = ({
   return {
     getLocalBranches,
     getWorktreeChanges,
+    getTrackedBranches,
+    getTrackedBranchChanges,
+    getBranchCandidates,
+    describeBranch,
     isOpenableFolder,
     checkClone,
     forgetClone,
@@ -626,6 +831,7 @@ module.exports = {
   repoFromRemoteUrl,
   parseWorktrees,
   parseBranches,
+  findDefaultBranch,
   parseConfig,
   parseStatus,
   describeGitFailure,

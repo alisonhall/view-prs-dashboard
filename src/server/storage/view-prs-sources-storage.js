@@ -6,6 +6,11 @@ const { writeFileReplacingSync } = require("../helpers/file-io-helpers");
 //   repo's recent PRs, as the dashboard always has; mode "numbers" only
 //   the PR numbers listed.
 // - trackedPrs: PRs added one by one (by URL), from any repo.
+// - trackedBranches: branches with no PR, chosen from a clone's local
+//   branches (Settings › Local clones) - { repo, branch, base?, note?,
+//   addedAt? }: base overrides the repo's default branch as what it's
+//   compared with. They don't change which PRs are fetched; their status
+//   is read from this computer's clone (view-prs-local-branches.js).
 // Rows are still keyed by repo and number in the data file; this says
 // which repos and PRs the background updates fetch. Only the server writes
 // it, whole (writeFileReplacingSync). A file that doesn't exist yet is
@@ -21,6 +26,30 @@ const SUBSCRIPTION_MODES = new Set(["recent", "numbers"]);
 const HOSTNAME_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i;
 
 const toTrimmed = (value) => (value === null || value === undefined ? "" : String(value).trim());
+
+// A branch name git would take (git check-ref-format's rules, near enough):
+// no spaces or control characters, none of ~^:?*[\, no "..", "@{" or "//",
+// not starting with - or /, not ending with /, . or .lock.
+const MAX_BRANCH_LENGTH = 255;
+const MAX_NOTE_LENGTH = 4000;
+const isBranchName = (value) => {
+  const name = String(value || "");
+  return (
+    name.length > 0 &&
+    name.length <= MAX_BRANCH_LENGTH &&
+    // eslint-disable-next-line no-control-regex
+    !/[\x00-\x20\x7f~^:?*[\\]/.test(name) &&
+    !/\.\.|@\{|\/\//.test(name) &&
+    !/^[-/]/.test(name) &&
+    !/(\/|\.|\.lock)$/.test(name) &&
+    !/(^|\/)\./.test(name) &&
+    name !== "@"
+  );
+};
+// A tracked branch's key, as the page and the routes name it: repo:branch
+// (git allows no ":" in a branch name).
+const trackedBranchKey = (repo, branch) => `${repo}:${branch}`;
+
 const isPlainObject = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
 
 const createViewPrsSourcesStorage = ({ fs, sourcesFile, isRepoSlug, console: logger = console }) => {
@@ -70,6 +99,25 @@ const createViewPrsSourcesStorage = ({ fs, sourcesFile, isRepoSlug, console: log
       });
     });
 
+    const trackedBranches = [];
+    const seenBranches = new Set();
+    (Array.isArray(source.trackedBranches) ? source.trackedBranches : []).forEach((entry) => {
+      const repo = toTrimmed(entry?.repo);
+      const branch = toTrimmed(entry?.branch);
+      const key = trackedBranchKey(repo, branch);
+      if (!isRepoSlug(repo) || !isBranchName(branch) || seenBranches.has(key)) return;
+      seenBranches.add(key);
+      const base = toTrimmed(entry?.base);
+      const note = typeof entry?.note === "string" ? entry.note.slice(0, MAX_NOTE_LENGTH) : "";
+      trackedBranches.push({
+        repo,
+        branch,
+        ...(base && isBranchName(base) ? { base } : {}),
+        ...(note.trim() ? { note } : {}),
+        ...(toTrimmed(entry?.addedAt) ? { addedAt: toTrimmed(entry.addedAt) } : {}),
+      });
+    });
+
     // When it started empty because the file was lost (see loadSources),
     // and where an unreadable one was set aside: until the next change.
     const lost =
@@ -80,7 +128,13 @@ const createViewPrsSourcesStorage = ({ fs, sourcesFile, isRepoSlug, console: log
           }
         : null;
 
-    return { version: SOURCES_VERSION, subscriptions, trackedPrs, ...(lost ? { lost } : {}) };
+    return {
+      version: SOURCES_VERSION,
+      subscriptions,
+      trackedPrs,
+      ...(trackedBranches.length > 0 ? { trackedBranches } : {}),
+      ...(lost ? { lost } : {}),
+    };
   };
 
   const seededMarkerFile = `${sourcesFile}.seeded`;
@@ -282,6 +336,83 @@ const createViewPrsSourcesStorage = ({ fs, sourcesFile, isRepoSlug, console: log
     return true;
   };
 
+  // The sources to change, or a throw saying why they can't be (as
+  // addTrackedPr).
+  const sourcesToChange = (seedRepos) => {
+    const sources = readOrStartSources(seedRepos);
+    if (!sources) {
+      throw new Error("The stored PR data couldn't be read, so the sources file wasn't written; try again once it can be");
+    }
+    return sources;
+  };
+  const findTrackedBranch = (sources, repo, branch) =>
+    (sources?.trackedBranches || []).find((entry) => entry.repo === repo && entry.branch === branch) || null;
+
+  // Tracks a branch with no PR. { added, entry }: added false when it was
+  // tracked already. Throws when it isn't a repo and branch, or the sources
+  // can't be told.
+  const addTrackedBranch = ({ repo, branch, base }, { seedRepos = () => null, now = () => new Date() } = {}) => {
+    const safeRepo = toTrimmed(repo);
+    const safeBranch = toTrimmed(branch);
+    if (!isRepoSlug(safeRepo)) throw new Error(`Not a repo: ${safeRepo}`);
+    if (!isBranchName(safeBranch)) throw new Error(`Not a branch name: ${safeBranch}`);
+    const safeBase = toTrimmed(base);
+    if (safeBase && !isBranchName(safeBase)) throw new Error(`Not a branch name: ${safeBase}`);
+    const sources = sourcesToChange(seedRepos);
+    const existing = findTrackedBranch(sources, safeRepo, safeBranch);
+    if (existing) return { added: false, entry: existing };
+    const written = writeChange({
+      ...sources,
+      trackedBranches: [
+        ...(sources.trackedBranches || []),
+        { repo: safeRepo, branch: safeBranch, ...(safeBase ? { base: safeBase } : {}), addedAt: now().toISOString() },
+      ],
+    });
+    return { added: true, entry: findTrackedBranch(written, safeRepo, safeBranch) };
+  };
+
+  // Changes a tracked branch's base ("" or null: the repo's default branch
+  // again) or note ("" clears it); what isn't given stays. The entry, or
+  // null when it isn't tracked. Throws as addTrackedBranch does.
+  const updateTrackedBranch = ({ repo, branch, base, note }, { seedRepos = () => null } = {}) => {
+    const safeRepo = toTrimmed(repo);
+    const safeBranch = toTrimmed(branch);
+    if (base !== undefined && base !== null && toTrimmed(base) && !isBranchName(toTrimmed(base))) {
+      throw new Error(`Not a branch name: ${toTrimmed(base)}`);
+    }
+    if (note !== undefined && note !== null && typeof note !== "string") throw new Error("Not a note: give text");
+    if (typeof note === "string" && note.length > MAX_NOTE_LENGTH) throw new Error(`The note is too long (over ${MAX_NOTE_LENGTH} characters)`);
+    const sources = sourcesToChange(seedRepos);
+    const existing = findTrackedBranch(sources, safeRepo, safeBranch);
+    if (!existing) return null;
+    const next = { ...existing };
+    if (base !== undefined) {
+      if (toTrimmed(base)) next.base = toTrimmed(base);
+      else delete next.base;
+    }
+    if (note !== undefined) {
+      if (typeof note === "string" && note.trim()) next.note = note;
+      else delete next.note;
+    }
+    const written = writeChange({
+      ...sources,
+      trackedBranches: sources.trackedBranches.map((entry) => (entry === existing ? next : entry)),
+    });
+    return findTrackedBranch(written, safeRepo, safeBranch);
+  };
+
+  // Stops tracking a branch (the branch itself is untouched). Returns the
+  // entry it was, or null when it wasn't tracked.
+  const removeTrackedBranch = (repo, branch) => {
+    const sources = readSources();
+    if (!sources) return null;
+    const existing = findTrackedBranch(sources, toTrimmed(repo), toTrimmed(branch));
+    if (!existing) return null;
+    const trackedBranches = sources.trackedBranches.filter((entry) => entry !== existing);
+    writeChange({ ...sources, trackedBranches });
+    return existing;
+  };
+
   return {
     sourcesFile,
     normalizeSources,
@@ -296,7 +427,10 @@ const createViewPrsSourcesStorage = ({ fs, sourcesFile, isRepoSlug, console: log
     removeSubscription,
     addTrackedPr,
     removeTrackedPr,
+    addTrackedBranch,
+    updateTrackedBranch,
+    removeTrackedBranch,
   };
 };
 
-module.exports = { createViewPrsSourcesStorage, SOURCES_VERSION };
+module.exports = { createViewPrsSourcesStorage, SOURCES_VERSION, isBranchName, trackedBranchKey };

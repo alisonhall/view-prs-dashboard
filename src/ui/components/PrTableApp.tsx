@@ -10,6 +10,7 @@
 
 import { Fragment, useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from 'react';
 import { PrSection } from './PrSection';
+import { TrackedBranchesSection, TRACKED_BRANCHES_SECTION_KEY } from './TrackedBranchesSection';
 import { PrJsonModal } from './PrJsonModal';
 import { usePrData } from '../state/PrDataContext';
 import { useNeedsAttention } from '../state/NeedsAttentionContext';
@@ -56,7 +57,7 @@ import { SearchTermsContext } from '../state/SearchTermsContext';
 import { PrLegendPopover } from './PrLegendPopover';
 import { groupRowsByRepo, rowRepoNamesFor } from '../helpers/pr-repo-grouping.helpers.ts';
 import { sortSectionRows } from '../helpers/pr-section-sort.helpers.ts';
-import type { PrData, PrDataPayload, PrEntry } from '../types/pr-data.ts';
+import type { PrData, PrDataPayload, PrEntry, PrTrackedBranch } from '../types/pr-data.ts';
 
 type PrNumber = string | number | undefined;
 
@@ -77,6 +78,7 @@ interface PendingNavigation {
 
 // Shared by every render without an actorsMap in the payload.
 const NO_ACTORS: Record<string, string | undefined> = {};
+const NO_TRACKED_BRANCHES: PrTrackedBranch[] = [];
 
 export const NARROW_SCREEN_QUERY = '(max-width: 899px)';
 
@@ -112,6 +114,8 @@ export function PrTableApp() {
   const { prs: localBranches, repos: localRepos } = useLocalBranches();
   // A clone that can be read: one whose folder is gone has no branches.
   const hasLocalClones = Object.values(localRepos).some((status) => status?.ok);
+  // The branches tracked without a PR (the sources file's), for Tracked Branches.
+  const trackedBranches = payload?.dataMeta?.sources?.trackedBranches || NO_TRACKED_BRANCHES;
   // Only which PRs have one: a count changing doesn't rebuild the sections.
   const localBranchKeysText = useMemo(() => Object.keys(localBranches).sort().join('\n'), [localBranches]);
   const localBranchKeys = useMemo(() => new Set(localBranchKeysText ? localBranchKeysText.split('\n') : []), [localBranchKeysText]);
@@ -706,7 +710,7 @@ export function PrTableApp() {
     });
 
     const customIcons = new Map(customSections.map((section) => [customSectionKey(section.id), { icon: section.icon, tone: section.tone }]));
-    return sectionConfigs.map(config => ({
+    const built = sectionConfigs.map(config => ({
       key: config.sectionKey,
       title: config.title,
       // A custom section's own icon and colour (the built-in ones' are PrSection's).
@@ -731,6 +735,24 @@ export function PrTableApp() {
       // headers showed no attention even when their rows did.
       attentionCount: (config.rows || []).filter((entry) => checkNeedsAttention(entry)).length,
     }));
+    // Tracked Branches: branches with no PR, not rows - TrackedBranchesSection
+    // draws it. Once there's a clone to pick from, or a branch tracked.
+    if (!hasLocalClones && trackedBranches.length === 0) return built;
+    return [
+      {
+        key: TRACKED_BRANCHES_SECTION_KEY,
+        title: 'Tracked Branches',
+        icon: undefined,
+        prs: [] as PrEntry[],
+        totalCount: trackedBranches.length,
+        isSmartGroup: true,
+        lifecycleSection: TRACKED_BRANCHES_SECTION_KEY,
+        dateHeader: undefined,
+        defaultOpen: true,
+        attentionCount: 0,
+      },
+      ...built,
+    ];
   }, [
     payload,
     visiblePrKeys,
@@ -744,6 +766,7 @@ export function PrTableApp() {
     customSections,
     localBranchKeys,
     hasLocalClones,
+    trackedBranches,
   ]);
 
   // Settings › Appearance's choices: the sections in its order (so
@@ -1265,6 +1288,15 @@ export function PrTableApp() {
                       {showsSectionKindHeadings && sections[index - 1]?.isSmartGroup !== section.isSmartGroup && (
                         <h2 className="pr-section-kind-heading">{section.isSmartGroup ? 'Smart groups' : 'By status'}</h2>
                       )}
+                      {section.key === TRACKED_BRANCHES_SECTION_KEY ? (
+                        <TrackedBranchesSection
+                          trackedBranches={trackedBranches}
+                          title={section.title}
+                          icon={section.icon}
+                          isOpen={isSectionOpen(section.key, Boolean(section.defaultOpen))}
+                          onToggleSection={handleToggleSection}
+                        />
+                      ) : (
                       <PrSection
                         section={section}
                         repo={effectiveRepo}
@@ -1290,6 +1322,7 @@ export function PrTableApp() {
                         activePrNumbers={combinedActivePrNumbers}
                         queuedPrNumbers={combinedQueuedPrNumbers}
                       />
+                      )}
                     </Fragment>
                   ))}
                 </div>

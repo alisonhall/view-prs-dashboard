@@ -34,6 +34,9 @@ export interface PrSectionCatalogEntry {
 // (pr-smart-groups.helpers.ts) and the lifecycle sections in
 // pr-section-config.helpers.ts (the test checks).
 export const PR_SECTION_CATALOG: ReadonlyArray<PrSectionCatalogEntry> = [
+  // Branches with no PR (TrackedBranchesSection), not PR rows - a smart
+  // group by where it sits and how it's shown, hidden and ordered.
+  { key: 'tracked-branches', title: 'Tracked Branches', defaultOpen: true, kind: 'smart' },
   { key: 'flagged', title: 'Flagged', defaultOpen: false, kind: 'smart' },
   { key: 'in-review', title: 'In Review', defaultOpen: true, kind: 'smart' },
   { key: 'needs-attention', title: 'Needs Attention', defaultOpen: true, kind: 'smart' },
@@ -61,6 +64,7 @@ export interface PrSectionLook {
 // changed in Settings › Appearance (saved as `icon` and `tone` with the
 // section's other choices, only when they differ from these).
 export const BUILT_IN_SECTION_LOOKS: Readonly<Record<string, PrSectionLook>> = {
+  'tracked-branches': { icon: 'commit', tone: 'accent' },
   flagged: { icon: 'flag', tone: 'danger' },
   'in-review': { icon: 'eye', tone: 'accent' },
   'needs-attention': { icon: 'alert', tone: 'attention' },
@@ -225,14 +229,19 @@ export const DEFAULT_PR_SECTION_ORDER: ReadonlyArray<string> = PR_SECTION_CATALO
 export const prSectionKind = (key: string, catalog: PrSectionCatalog = PR_SECTION_CATALOG): PrSectionKind | undefined =>
   catalog.find((entry) => entry.key === key)?.kind;
 
+// Sections that go first when missing from a saved order, rather than
+// last: Tracked Branches, added after orders were saved, starts at the top.
+const LEADING_SECTION_KEYS: ReadonlySet<string> = new Set(['tracked-branches']);
+
 // Known keys once each, in the saved order; a section missing from it (one
-// added since it was saved) goes last among its kind; then the smart
-// groups, then the status sections.
+// added since it was saved) goes last among its kind - or first, for one
+// of LEADING_SECTION_KEYS; then the smart groups, then the status sections.
 export const normalizePrSectionOrder = (value: unknown, catalog: PrSectionCatalog = PR_SECTION_CATALOG): string[] => {
   const defaults = catalog.map((entry) => entry.key);
   const known = new Set(defaults);
   const saved = Array.isArray(value) ? [...new Set(value.filter((key): key is string => typeof key === 'string' && known.has(key)))] : [];
-  const full = [...saved, ...defaults.filter((key) => !saved.includes(key))];
+  const missing = defaults.filter((key) => !saved.includes(key));
+  const full = [...missing.filter((key) => LEADING_SECTION_KEYS.has(key)), ...saved, ...missing.filter((key) => !LEADING_SECTION_KEYS.has(key))];
   return [
     ...full.filter((key) => prSectionKind(key, catalog) === 'smart'),
     ...full.filter((key) => prSectionKind(key, catalog) === 'status'),
