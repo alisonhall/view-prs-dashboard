@@ -447,6 +447,14 @@ const createViewPrsLocalBranches = ({
     return { ...base, diverged: true, ...(await unpushedPast([tracked])) };
   };
 
+  // The remote branch a local branch tracks: { remote, branch }, or null -
+  // also for one that tracks another local branch (remote ".", as git
+  // branch --track feature main sets up), which isn't on a remote.
+  const remoteUpstreamOf = (branch) =>
+    branch.remote && branch.remote !== "." && branch.remoteRef.startsWith("refs/heads/")
+      ? { remote: branch.remote, branch: branch.remoteRef.slice("refs/heads/".length) }
+      : null;
+
   // The commit a base branch is at, as the clone has it: the clone's copy
   // of it on one of the repo's remotes (as new as its last fetch, and what
   // a PR would be compared with), else the local branch of that name. ""
@@ -500,8 +508,8 @@ const createViewPrsLocalBranches = ({
       ...(worktree ? { worktreePath: worktree.path } : {}),
       ...(worktree?.rebasing ? { rebasing: true } : {}),
     };
-    if (branch.remote && branch.remoteRef.startsWith("refs/heads/")) {
-      const upstream = { remote: branch.remote, branch: branch.remoteRef.slice("refs/heads/".length) };
+    const upstream = remoteUpstreamOf(branch);
+    if (upstream) {
       const upstreamOid = trackedOid(clone, branch);
       if (!upstreamOid) upstream.gone = true;
       else {
@@ -551,9 +559,7 @@ const createViewPrsLocalBranches = ({
           ...(branch.committedAt ? { committedAt: branch.committedAt } : {}),
           ...(branch.subject ? { subject: branch.subject } : {}),
           ...(worktree ? { worktreePath: worktree.path } : {}),
-          ...(branch.remote && branch.remoteRef.startsWith("refs/heads/")
-            ? { upstream: `${branch.remote}/${branch.remoteRef.slice("refs/heads/".length)}` }
-            : {}),
+          ...(remoteUpstreamOf(branch) ? { upstream: `${branch.remote}/${remoteUpstreamOf(branch).branch}` } : {}),
         };
       })
       .sort((a, b) => String(b.committedAt || "").localeCompare(String(a.committedAt || "")) || a.name.localeCompare(b.name));

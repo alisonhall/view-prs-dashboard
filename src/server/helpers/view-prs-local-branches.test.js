@@ -629,6 +629,16 @@ describe("branches tracked without a PR", () => {
     expect(found["other/repo:x"]).toBeUndefined();
   });
 
+  test("a branch tracking another local branch (remote \".\") has no remote branch, rather than one gone", async () => {
+    git(clone, "branch", "--track", "on-main", "main");
+    const found = await helper().getTrackedBranches({ localRepos: { "acme/app": clone }, branches: [{ repo: "acme/app", branch: "on-main" }] });
+    expect(found["acme/app:on-main"]).toMatchObject({ found: true, pushed: true, unpushed: 0 });
+    expect(found["acme/app:on-main"].upstream).toBeUndefined();
+    const candidates = await helper().getBranchCandidates({ repo: "acme/app", folder: clone, prs });
+    expect(candidates.branches.find((branch) => branch.name === "on-main").upstream).toBeUndefined();
+    git(clone, "branch", "-q", "-D", "on-main");
+  });
+
   test("uncommitted changes for each tracked branch checked out, none for one that isn't", async () => {
     fs.writeFileSync(path.join(root, "local-tree", "new.txt"), "x");
     const changes = await helper().getTrackedBranchChanges({

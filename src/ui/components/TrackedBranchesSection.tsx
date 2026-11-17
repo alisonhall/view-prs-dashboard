@@ -15,7 +15,8 @@
  * search and repo filter apply; the other filters are about PRs.
  *
  * While closed, the header says how many local branches with no PR could
- * still be tracked; it opens the section with the picker shown.
+ * still be tracked (asked again when the page is focused); it opens the
+ * section with the picker shown.
  *
  * @module components/TrackedBranchesSection
  */
@@ -128,7 +129,15 @@ export function TrackedBranchesSection({
   // when it changes.
   const trackedVersion = useMemo(() => trackedBranches.map((entry) => trackedBranchKey(entry.repo, entry.branch)).join('\n'), [trackedBranches]);
   const cloneRepos = useReadableCloneRepos();
-  const { byRepo: candidatesByRepo } = useBranchCandidates(isOpen ? [] : cloneRepos, trackedVersion);
+  const { byRepo: candidatesByRepo, refresh: refreshCandidates } = useBranchCandidates(isOpen ? [] : cloneRepos, trackedVersion);
+  // A branch made since (in a terminal, an editor) counts once the page is
+  // back in front.
+  useEffect(() => {
+    if (isOpen || cloneRepos.length === 0) return undefined;
+    const onFocus = () => refreshCandidates();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [isOpen, cloneRepos.length, refreshCandidates]);
   const untrackedCount = isOpen ? 0 : Object.values(candidatesByRepo).reduce((sum, list) => sum + list.length, 0);
 
   const checkedOutKey = trackedBranches

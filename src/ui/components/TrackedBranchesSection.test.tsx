@@ -115,7 +115,11 @@ describe('TrackedBranchesSection', () => {
     const user = userEvent.setup();
     const onToggleSection = jest.fn();
     const { rerender } = render(wrap(<TrackedBranchesSection trackedBranches={[]} isOpen={false} onToggleSection={onToggleSection} />));
-    const hint = await screen.findByRole('button', { name: '1 local branch with no PR' });
+    await screen.findByRole('button', { name: '1 local branch with no PR' });
+    // A branch made since counts once the page is focused again.
+    candidates['acme/app'] = [...(candidates['acme/app'] || []), { name: 'newer', oid: 'def', subject: 'More' }];
+    window.dispatchEvent(new Event('focus'));
+    const hint = await screen.findByRole('button', { name: '2 local branches with no PR' });
     await user.click(hint);
     expect(onToggleSection).toHaveBeenCalledWith('tracked-branches', true);
     rerender(wrap(<TrackedBranchesSection trackedBranches={[]} isOpen onToggleSection={onToggleSection} />));
