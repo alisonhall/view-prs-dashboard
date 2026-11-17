@@ -308,6 +308,43 @@ export function CheckoutSettings({
           Environment variables for all four commands, like <code>NODE_ENV=development</code>. Use them in a command as{' '}
           <code>$NAME</code>. Names starting VIEW_PRS_ are the dashboard&apos;s own.
         </p>
+        <details className="local-clone-command-help">
+          <summary>How variables work</summary>
+          <dl>
+            <dt>Format</dt>
+            <dd>
+              One <code>NAME=value</code> a line. A name is letters, digits and _, not starting with a digit. Blank lines and lines
+              starting with <code>#</code> are skipped, and a leading <code>export</code> is allowed, so you can paste lines from a
+              shell file.
+            </dd>
+            <dt>Values</dt>
+            <dd>
+              Taken as written, on one line: <code>$OTHER</code>, <code>~</code> and <code>$(…)</code> aren&apos;t expanded here. One
+              pair of quotes around the whole value is dropped (<code>NAME=&quot;a b&quot;</code> is <code>a b</code>). To build one
+              from another, do it in the command: <code>{'MY_DIR="$HOME/trees" my-checkout {branch}'}</code>.
+            </dd>
+            <dt>Given to</dt>
+            <dd>
+              The checkout, after, list and remove commands of this repo only (Copy from copies them to another), and
+              Check commands&apos; run of the list command. Not to the editor and terminal commands.
+            </dd>
+            <dt>Order</dt>
+            <dd>
+              They&apos;re set before your shell starts, on top of the dashboard server&apos;s own environment, so a variable your rc
+              file sets wins over one here. The VIEW_PRS_ values always win.
+            </dd>
+            <dt>Kept</dt>
+            <dd>
+              In plain text, with the clone&apos;s folder, on this computer only (local-repos.json): don&apos;t put tokens or passwords
+              here.
+            </dd>
+            <dt>Example</dt>
+            <dd>
+              <code>NODE_ENV=development</code> for an after-command of <code>npm ci</code>, or <code>WORKTREES=D:/trees</code> for a
+              checkout command of <code>{'git fetch {remote} {ref} && git worktree add --track -b {branch} "$WORKTREES"/{number} {remote}/{branch}'}</code>.
+            </dd>
+          </dl>
+        </details>
         {error && (
           <p className="settings-error" role="alert">
             {error}

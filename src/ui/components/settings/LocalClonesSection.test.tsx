@@ -277,6 +277,8 @@ describe('Settings › Local clones', () => {
     await user.type(screen.getByLabelText('Clean up: list command'), 'my-tool list {{branch}');
     expect(screen.getByText(/\{branch\} isn't given to this command, so it's empty/)).toBeInTheDocument();
     await user.type(screen.getByLabelText('Variables'), 'MY_X=1');
+    expect(screen.getByText('How variables work')).toBeInTheDocument();
+    expect(screen.getByText(/aren.t expanded here/)).toBeInTheDocument();
 
     await user.click(checkButton);
     const answers = await screen.findByRole('status', { name: 'What your shell knows' });
