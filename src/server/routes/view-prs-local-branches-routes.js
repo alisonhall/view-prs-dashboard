@@ -162,27 +162,41 @@ const registerViewPrsLocalBranchesRoutes = ({
     }
   });
 
-  // { repo, commands } - whether the user's shell knows each command's
-  // first word (Settings' Check), run as Check out would run it, in the
-  // repo's clone's folder: { results: [{ command, name, found, detail }] }.
-  // Only from this computer, as saving the commands is.
+  // { repo, commands, env? } - whether the user's shell knows each
+  // command's first word (Settings' Check), run as Check out would run it,
+  // in the repo's clone's folder - and the list command run for real (it
+  // only lists). A command is a string, or { field, command } (field:
+  // command, after, cleanupList or cleanupRemove); env: the variables as
+  // typed, not yet saved. { results: [{ command, field?, name, found,
+  // detail, trial? }] }. Only from this computer, as saving the commands is.
   app.post(["/local-repos/checkout/check", "/view-prs/local-repos/checkout/check"], async (req, res) => {
     if (!isFromThisComputer(req)) {
       res.status(403).json({ ok: false, error: "Commands can only be checked on this computer" });
       return;
     }
     const repo = String(req.body?.repo || "").trim();
+    const fields = ["command", "after", "cleanupList", "cleanupRemove"];
     const commands = (Array.isArray(req.body?.commands) ? req.body.commands : [])
-      .map((command) => String(command || "").trim())
-      .filter((command) => command && !/[\r\n\0]/.test(command))
+      .map((item) =>
+        item && typeof item === "object"
+          ? { field: fields.includes(item.field) ? item.field : "", command: String(item.command || "").trim() }
+          : { field: "", command: String(item || "").trim() },
+      )
+      .filter(({ command }) => command && !/[\r\n\0]/.test(command))
       .slice(0, 4);
     if (commands.length === 0) {
       res.status(400).json({ ok: false, error: "No command to check" });
       return;
     }
+    const rawEnv = req.body?.env && typeof req.body.env === "object" && !Array.isArray(req.body.env) ? req.body.env : {};
+    const env = Object.fromEntries(
+      Object.entries(rawEnv)
+        .filter(([name, value]) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(name) && !name.startsWith("VIEW_PRS_") && typeof value === "string" && !/\0/.test(value))
+        .slice(0, 50),
+    );
     try {
       const cloneFolder = localReposStorage.loadLocalRepoEntries()[repo]?.path || "";
-      res.json({ ok: true, results: await checkCommands({ cloneFolder, commands }) });
+      res.json({ ok: true, results: await checkCommands({ repo, cloneFolder, commands: commands.map((item) => (item.field ? item : item.command)), env }) });
     } catch (error) {
       sendInternalError({ res, error });
     }

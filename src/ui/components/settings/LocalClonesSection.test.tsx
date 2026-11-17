@@ -40,11 +40,15 @@ const fetchMock = jest.fn(async (url: string, init: RequestInit = {}) => {
     };
   }
   if (url === '/view-prs/local-repos/checkout/check') {
-    const results = (body.commands as string[]).map((command) =>
-      command.startsWith('my-tool')
-        ? { command, name: 'my-tool', found: true, detail: 'my-tool is a function' }
-        : { command, name: command.split(' ')[0], found: false, detail: `${command.split(' ')[0]} isn't known to your shell (bash)` },
-    );
+    const results = (body.commands as Array<string | { field: string; command: string }>).map((item) => {
+      const { command, field } = typeof item === 'string' ? { command: item, field: undefined } : item;
+      const answer = command.startsWith('my-tool')
+        ? { command, field, name: 'my-tool', found: true, detail: 'my-tool is a function' }
+        : { command, field, name: command.split(' ')[0], found: false, detail: `${command.split(' ')[0]} isn't known to your shell (bash)` };
+      return field === 'cleanupList'
+        ? { ...answer, trial: { exitCode: 0, lines: [{ text: 'D:/code/app-old', worktree: true }, { text: 'hello', worktree: false }], stderr: '' } }
+        : answer;
+    });
     return { ok: true, status: 200, json: async () => ({ ok: true, results }) };
   }
   if (url === '/view-prs/local-repos/checkout') {
@@ -268,15 +272,33 @@ describe('Settings › Local clones', () => {
     expect(screen.getByText(/\{local\} inside single quotes is taken as written/)).toBeInTheDocument();
     expect(screen.getAllByText(/inside single quotes/)).toHaveLength(1);
 
+    // As it would run for an example PR
+    expect(screen.getByText('my-tool add feature/login')).toBeInTheDocument();
+    await user.type(screen.getByLabelText('Clean up: list command'), 'my-tool list {{branch}');
+    expect(screen.getByText(/\{branch\} isn't given to this command, so it's empty/)).toBeInTheDocument();
+    await user.type(screen.getByLabelText('Variables'), 'MY_X=1');
+
     await user.click(checkButton);
     const answers = await screen.findByRole('status', { name: 'What your shell knows' });
-    expect(within(answers).getAllByRole('listitem').map((item) => item.textContent)).toEqual([
-      '✓ my-tool: my-tool is a function',
-      "✗ nope: nope isn't known to your shell (bash)",
+    const items = within(answers).getAllByRole('listitem');
+    expect(items[0]).toHaveTextContent('Checkout command: ✓ my-tool: my-tool is a function');
+    expect(items[0]).toHaveTextContent('Not run here: it would make a worktree.');
+    expect(items[1]).toHaveTextContent("After git makes a worktree, run: ✗ nope: nope isn't known to your shell (bash)");
+    expect(items[2]).toHaveTextContent('Clean up: list command: ✓ my-tool: my-tool is a function');
+    expect(items[2]).toHaveTextContent('✗ Ran it in the clone: exited 0, and printed 2 lines:');
+    const printed = within(answers).getByRole('list', { name: 'What the list command printed' });
+    expect(within(printed).getAllByRole('listitem').map((item) => item.textContent)).toEqual([
+      '✓ D:/code/app-old - a worktree of the clone',
+      "✗ hello - not a worktree of this clone, so it's ignored",
     ]);
     expect(requests.find((request) => request.url === '/view-prs/local-repos/checkout/check')?.body).toEqual({
       repo: 'acme/app',
-      commands: ['my-tool add {branch}', "nope '{local}' x"],
+      commands: [
+        { field: 'command', command: 'my-tool add {branch}' },
+        { field: 'after', command: "nope '{local}' x" },
+        { field: 'cleanupList', command: 'my-tool list {branch}' },
+      ],
+      env: { MY_X: '1' },
     });
   });
 

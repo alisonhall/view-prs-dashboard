@@ -69,14 +69,20 @@ const isInside = (folder, parent) => {
 };
 
 // What a run printed after its marker line: the shell's startup (the
-// user's rc file's greeting, say) prints before it. All of it when the
-// marker never came - the shell stopped while starting, which is what to
-// show then.
-const afterMarker = (text, marker) => {
+// user's rc file's greeting, say) prints before it. markers: the last
+// first - the one printed once the shell is in the command's folder, so a
+// cd hook's chatter (nvm's "Now using node" or "Reverting to nvm default
+// version") is left out too - then the one printed once the shell has
+// started, for a cd that failed. All of it when none came - the shell
+// stopped while starting, which is what to show then.
+const afterMarker = (text, markers) => {
   if (text === undefined || text === null) return text;
   const value = String(text);
-  const at = value.indexOf(marker);
-  return at < 0 ? value : value.slice(at + marker.length).replace(/^\r?\n/, "");
+  for (const marker of [].concat(markers)) {
+    const at = value.indexOf(marker);
+    if (at >= 0) return value.slice(at + marker.length).replace(/^\r?\n/, "");
+  }
+  return value;
 };
 
 // An interactive shell's complaint about having no terminal, or the
@@ -224,20 +230,24 @@ const createViewPrsLocalCheckout = ({
   // Runs one of the repo's commands in an interactive shell (so the rc
   // file that defines it is read), in folder, with the variables. Once
   // the shell has started it prints a marker line, new each run, to
-  // stdout and stderr, and what came before it is dropped from both -
-  // whatever the rc file printed - on success and failure alike.
+  // stdout and stderr, and another once it's in the folder (a cd hook -
+  // nvm's, say - prints as it changes folder); what came before the last
+  // that came is dropped from both - whatever the rc file and the cd
+  // printed - on success and failure alike.
   const runUserCommand = async (command, folder, variables) => {
     const id = crypto.randomBytes(8).toString("hex");
-    const marker = `@@view-prs-${id}@@`;
+    const markers = [`@@view-prs-${id}-in@@`, `@@view-prs-${id}@@`];
     const fromMarker = (result) => {
       if (!result || typeof result !== "object") return result;
-      if ("stdout" in result) result.stdout = afterMarker(result.stdout, marker);
-      if ("stderr" in result) result.stderr = afterMarker(result.stderr, marker);
+      if ("stdout" in result) result.stdout = afterMarker(result.stdout, markers);
+      if ("stderr" in result) result.stderr = afterMarker(result.stderr, markers);
       return result;
     };
-    // printf puts the marker together, so the script never holds it whole:
-    // an rc file's set -x or set -v echoes the script's lines to stderr.
-    const script = `exec </dev/null\nprintf '@@view-prs-%s@@\\n' ${id}; printf '@@view-prs-%s@@\\n' ${id} >&2\ncd -- "$VIEW_PRS_FOLDER" || exit 1\n${expandPlaceholders(command)}`;
+    // printf puts the markers together, so the script never holds one
+    // whole: an rc file's set -x or set -v echoes the script's lines to
+    // stderr.
+    const mark = (suffix) => `printf '@@view-prs-%s@@\\n' ${id}${suffix}; printf '@@view-prs-%s@@\\n' ${id}${suffix} >&2`;
+    const script = `exec </dev/null\n${mark("")}\ncd -- "$VIEW_PRS_FOLDER" || exit 1\n${mark("-in")}\n${expandPlaceholders(command)}`;
     let result;
     try {
       result = await run(await userShell(), ["-ic", script], { env: { ...variables, VIEW_PRS_FOLDER: toPosix(folder) } });
@@ -427,31 +437,74 @@ const createViewPrsLocalCheckout = ({
     }
   };
 
+  // The exit code a failed run says it had, or null (it timed out, or
+  // couldn't start).
+  const exitCodeOf = (failure) => {
+    if (Number.isInteger(failure?.error?.code)) return failure.error.code;
+    const match = String(failure?.error?.message || "").match(/exited with code (\d+)/);
+    return match ? Number(match[1]) : null;
+  };
+
+  // Settings' Check of the list command: run as Clean up runs it (it only
+  // lists), its lines each said to be a worktree of the clone or not. =>
+  // { exitCode, timedOut?, lines: [{ text, worktree }], stderr } - or {
+  // error } when the clone can't be read.
+  const tryCleanupList = async ({ repo, cloneFolder, command, env }) => {
+    const clone = await localBranches.readCloneFresh(repo, cloneFolder);
+    if (!clone.ok) return { error: clone.error };
+    let result;
+    let exitCode = 0;
+    let timedOut = false;
+    try {
+      result = await runUserCommand(command, cloneFolder, { ...(env || {}), VIEW_PRS_CLONE: toPosix(cloneFolder), VIEW_PRS_REPO: repo });
+    } catch (failure) {
+      if (failure instanceof Error && failure.status) return { error: failure.message };
+      result = failure;
+      exitCode = exitCodeOf(failure);
+      timedOut = Boolean(failure?.didTimeout);
+    }
+    const lines = String(result?.stdout || "")
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line && !isShellNoise(line))
+      .slice(0, 50)
+      .map((text) => ({ text, worktree: Boolean(localBranches.worktreeAt(clone, text)) }));
+    return { exitCode, ...(timedOut ? { timedOut } : {}), lines, stderr: outputOf({ stderr: result?.stderr }) };
+  };
+
   // Settings' Check: whether the user's shell knows each command's first
-  // word, as Check out would run it (the same shell, rc file and folder).
-  // => [{ command, name, found: true | false | null, detail }] - found null
-  // when the name can't be told without running the line.
-  const checkCommands = async ({ cloneFolder, commands }) => {
+  // word, as Check out would run it (the same shell, rc file and folder) -
+  // and the list command (field "cleanupList"), which only lists, run for
+  // real. commands: strings, or { field, command }; env: the repo's
+  // variables, as typed. => [{ command, field?, name, found: true | false
+  // | null, detail, trial? }] - found null when the name can't be told
+  // without running the line.
+  const checkCommands = async ({ repo = "", cloneFolder, commands, env = {} }) => {
+    const items = commands.map((item) => (typeof item === "string" ? { command: item, field: "" } : { command: String(item?.command || ""), field: String(item?.field || "") }));
     let shellName = "";
     try {
       shellName = path.basename(await userShell()).replace(/\.exe$/i, "");
     } catch (error) {
-      return commands.map((command) => ({ command, name: "", found: false, detail: error.message }));
+      return items.map(({ command, field }) => ({ command, ...(field ? { field } : {}), name: "", found: false, detail: error.message }));
     }
     return Promise.all(
-      commands.map(async (command) => {
+      items.map(async ({ command, field }) => {
+        const base = { command, ...(field ? { field } : {}) };
+        const trial = field === "cleanupList" && repo && cloneFolder ? await tryCleanupList({ repo, cloneFolder, command, env }) : undefined;
+        const withTrial = (result) => ({ ...base, ...result, ...(trial ? { trial } : {}) });
         const name = commandNameOf(command);
-        if (!name) return { command, name, found: null, detail: "Its first word is only known when it runs, so it isn't checked" };
+        if (!name) return withTrial({ name, found: null, detail: "Its first word is only known when it runs, so it isn't checked" });
         // type's first line ("my-fn is a function"); the rc file's own
-        // lines are already left out (runUserCommand's marker).
+        // lines, and what a cd hook printed, are already left out
+        // (runUserCommand's markers).
         const script = 'type -- "$VIEW_PRS_CHECK"';
         const answer = (result) => String(result?.stdout || "").trim().split(/\r?\n/)[0] || "";
         try {
           const result = await runUserCommand(script, cloneFolder || homeDir(), { VIEW_PRS_CHECK: name });
-          return { command, name, found: true, detail: answer(result) || `${name} is known to your shell (${shellName})` };
+          return withTrial({ name, found: true, detail: answer(result) || `${name} is known to your shell (${shellName})` });
         } catch (failure) {
-          if (failure instanceof Error && failure.status) return { command, name, found: false, detail: failure.message };
-          return { command, name, found: false, detail: `${name} isn't known to your shell (${shellName}) - is it in the rc file an interactive ${shellName} reads?` };
+          if (failure instanceof Error && failure.status) return withTrial({ name, found: false, detail: failure.message });
+          return withTrial({ name, found: false, detail: `${name} isn't known to your shell (${shellName}) - is it in the rc file an interactive ${shellName} reads?` });
         }
       }),
     );

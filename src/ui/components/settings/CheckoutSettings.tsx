@@ -3,6 +3,7 @@ import { type LocalRepoStatus, type LocalRepoCheckout } from '../../state/LocalB
 import { postJson, sendJson } from '../../helpers/pr-http.helpers.ts';
 import { NON_CREDENTIAL_INPUT_PROPS } from '../../helpers/form-parsing.helpers.ts';
 import { Button } from '../ui/Button';
+import { CommandFieldHelp, FIELD_DOCS, FIELD_LABELS, exampleValues, type CommandField } from './CommandFieldHelp';
 
 interface LocalReposResult {
   ok?: boolean;
@@ -55,11 +56,22 @@ export const placeholdersInSingleQuotes = (command: string, pattern: RegExp = PL
   return Array.from(new Set(found));
 };
 
+// The list command's run by Check commands.
+interface CommandTrial {
+  exitCode?: number | null;
+  timedOut?: boolean;
+  lines?: Array<{ text: string; worktree: boolean }>;
+  stderr?: string;
+  error?: string;
+}
+
 interface CommandCheck {
   command: string;
+  field?: CommandField;
   name: string;
   found: boolean | null;
   detail: string;
+  trial?: CommandTrial;
 }
 
 const variablesToText = (env: Record<string, string> | undefined) =>
@@ -106,10 +118,21 @@ export function CheckoutSettings({
     setChecks(null);
     setError('');
     try {
-      const commands = [command.trim(), after.trim(), cleanupList.trim(), cleanupRemove.trim()].filter(Boolean);
+      const commands = (
+        [
+          ['command', command],
+          ['after', after],
+          ['cleanupList', cleanupList],
+          ['cleanupRemove', cleanupRemove],
+        ] as Array<[CommandField, string]>
+      )
+        .map(([field, value]) => ({ field, command: value.trim() }))
+        .filter((item) => item.command);
+      // The variables as typed - the list command runs with them.
+      const { env } = parseVariables(variables);
       const { response, result } = await postJson<{ ok?: boolean; error?: string; results?: CommandCheck[] }>(
         '/view-prs/local-repos/checkout/check',
-        { repo, commands },
+        { repo, commands, env },
       );
       if (!response.ok || result.ok === false) {
         setError(result.error || `HTTP ${response.status}`);
@@ -166,10 +189,19 @@ export function CheckoutSettings({
   };
 
   const otherRepos = Object.keys(others).sort();
+  const values = exampleValues(repo, status.path || '', folder.trim());
   return (
     <details className="local-clone-checkout">
       <summary>Check out PRs with {saved?.command ? <code>{saved.command}</code> : 'git'}</summary>
       <form className="settings-group" onSubmit={save}>
+        <p className="settings-hint">
+          Leave a command empty to use the dashboard&apos;s own git steps. A command runs in your interactive shell (bash
+          or zsh, from <code>$SHELL</code>; Git Bash on Windows), so your rc file&apos;s aliases and functions work, with no input
+          (anything that asks a question fails) and up to 3 minutes. Write a placeholder like <code>{'{branch}'}</code> as it is,
+          outside quotes of your own: it&apos;s replaced by the PR&apos;s value, already quoted. Scripts get the same values as{' '}
+          <code>VIEW_PRS_</code> variables. What your shell prints as it starts, or as it changes folder (an rc file&apos;s greeting,
+          nvm&apos;s &quot;Now using node&quot;), is left out of a command&apos;s output.
+        </p>
         {otherRepos.length > 0 && (
           <>
             <label htmlFor={`${id}-copy`}>Copy from</label>
@@ -199,11 +231,11 @@ export function CheckoutSettings({
           onChange={(event) => setCommand(event.target.value)}
         />
         <p className="settings-hint">
-          Run in an interactive shell in the clone&apos;s folder, so your rc file&apos;s aliases and functions work. It has to leave a
-          worktree of the clone with a branch tracking the PR&apos;s branch on the repo&apos;s remote (<code>{'{ref}'}</code> on{' '}
-          <code>{'{remote}'}</code>).
+          Makes the PR&apos;s worktree: it has to leave a worktree of the clone with a branch tracking <code>{'{ref}'}</code> on{' '}
+          <code>{'{remote}'}</code>, and exit 0.
         </p>
         <QuotedPlaceholders command={command} />
+        <CommandFieldHelp field="command" command={command} values={values} />
         <label className="settings-check">
           <input type="checkbox" checked={forks} disabled={!command.trim()} onChange={(event) => setForks(event.target.checked)} />
           Use it for forks&apos; PRs too (their pull ref, <code>refs/pull/&lt;number&gt;/head</code>) - else git makes those
@@ -219,6 +251,7 @@ export function CheckoutSettings({
         />
         <p className="settings-hint">In the new worktree. If it fails, the worktree stays and you&apos;re told why.</p>
         <QuotedPlaceholders command={after} />
+        <CommandFieldHelp field="after" command={after} values={values} />
         <label htmlFor={`${id}-folder`}>Folder for git&apos;s worktrees</label>
         <input
           id={`${id}-folder`}
@@ -242,11 +275,11 @@ export function CheckoutSettings({
           onChange={(event) => setCleanupList(event.target.value)}
         />
         <p className="settings-hint">
-          Run in the clone&apos;s folder, given it as <code>{'{clone}'}</code>: it prints the worktree folders it would remove, one a line, and
-          nothing else, and exits 0. Only the clone&apos;s worktrees are offered, with the dashboard&apos;s checks still applied (no open PR, no
-          uncommitted changes, nothing not on GitHub).
+          Prints the worktree folders it would remove, one full path a line on stdout and nothing else, and exits 0. It mustn&apos;t
+          change anything: Check commands runs it.
         </p>
         <QuotedPlaceholders command={cleanupList} />
+        <CommandFieldHelp field="cleanupList" command={cleanupList} values={values} />
         <label htmlFor={`${id}-cleanup-remove`}>Clean up: remove command</label>
         <input
           id={`${id}-cleanup-remove`}
@@ -257,10 +290,11 @@ export function CheckoutSettings({
           onChange={(event) => setCleanupRemove(event.target.value)}
         />
         <p className="settings-hint">
-          Removes one worktree, given as <code>{'{worktree}'}</code> with its branch as <code>{'{local}'}</code> - and the branch too, if
-          you want it gone: git only removes a branch when it removes the worktree itself. It mustn&apos;t prompt.
+          Removes one worktree, <code>{'{worktree}'}</code>, without asking anything, and exits 0. Its branch, <code>{'{local}'}</code>,
+          stays unless the command deletes it too.
         </p>
         <QuotedPlaceholders command={cleanupRemove} />
+        <CommandFieldHelp field="cleanupRemove" command={cleanupRemove} values={values} />
         <label htmlFor={`${id}-variables`}>Variables</label>
         <textarea
           id={`${id}-variables`}
@@ -271,9 +305,8 @@ export function CheckoutSettings({
           onChange={(event) => setVariables(event.target.value)}
         />
         <p className="settings-hint">
-          Given to all the commands. In a command, {PLACEHOLDER_NAMES} are the PR&apos;s, quoted for you, so leave them out of quotes of your own (<code>{'{local}'}</code> and{' '}
-          <code>{'{worktree}'}</code> in the after-command); scripts get them as VIEW_PRS_ variables, with VIEW_PRS_IS_FORK and
-          VIEW_PRS_HEAD_OID.
+          Environment variables for all four commands, like <code>NODE_ENV=development</code>. Use them in a command as{' '}
+          <code>$NAME</code>. Names starting VIEW_PRS_ are the dashboard&apos;s own.
         </p>
         {error && (
           <p className="settings-error" role="alert">
@@ -283,9 +316,7 @@ export function CheckoutSettings({
         {checks && (
           <ul className="local-clone-checks" role="status" aria-label="What your shell knows">
             {checks.map((item) => (
-              <li key={item.command} data-found={item.found === null ? 'unknown' : String(item.found)}>
-                {item.found === true ? '✓' : item.found === false ? '✗' : '?'} <code>{item.name || item.command}</code>: {item.detail}
-              </li>
+              <CheckResult key={`${item.field || ''}\n${item.command}`} item={item} />
             ))}
           </ul>
         )}
@@ -295,7 +326,7 @@ export function CheckoutSettings({
           </Button>
           <Button
             disabled={checking || ![command, after, cleanupList, cleanupRemove].some((item) => item.trim())}
-            title="Whether your shell knows each command's first word, as Check out would run it"
+            title="Whether your shell knows each command, as Check out would run it - and the list command's run for real, as it only lists"
             onClick={() => void check()}
           >
             {checking ? 'Checking…' : 'Check commands'}
@@ -319,9 +350,49 @@ function QuotedPlaceholders({ command }: { command: string }) {
 }
 
 const DEFAULT_WORKTREE_FOLDER = '../{clone}-{branch}';
-const PLACEHOLDER_NAMES = (
-  <>
-    <code>{'{branch}'}</code>, <code>{'{number}'}</code>, <code>{'{repo}'}</code>, <code>{'{remote}'}</code>, <code>{'{ref}'}</code> and{' '}
-    <code>{'{clone}'}</code>
-  </>
-);
+
+// "exited 0", "took too long".
+const describeExit = (trial: CommandTrial) =>
+  trial.timedOut ? 'took too long' : typeof trial.exitCode === 'number' ? `exited ${trial.exitCode}` : "couldn't run";
+
+// One command's answer: which field, whether the shell knows it, and - the
+// list command - what it printed when run, each line a worktree or not.
+function CheckResult({ item }: { item: CommandCheck }) {
+  const trial = item.trial;
+  const lines = trial?.lines || [];
+  const trialOk = trial && !trial.error && trial.exitCode === 0 && lines.every((line) => line.worktree);
+  const found = item.found === false || (trial && !trialOk) ? 'false' : item.found === null ? 'unknown' : 'true';
+  return (
+    <li data-found={found}>
+      {item.field && <strong>{FIELD_LABELS[item.field]}: </strong>}
+      {item.found === true ? '✓' : item.found === false ? '✗' : '?'} <code>{item.name || item.command}</code>: {item.detail}
+      {item.field && FIELD_DOCS[item.field].notRun && <div className="settings-hint">{FIELD_DOCS[item.field].notRun}</div>}
+      {trial?.error && <div className="settings-hint">Not run: {trial.error}</div>}
+      {trial && !trial.error && (
+        <div className="local-clone-check-trial">
+          {trialOk ? '✓' : '✗'} Ran it in the clone: {describeExit(trial)}
+          {trial.exitCode === 0
+            ? lines.length === 0
+              ? ', and printed no folders - nothing to clean up.'
+              : `, and printed ${lines.length} line${lines.length === 1 ? '' : 's'}:`
+            : ' - Clean up would fail with this.'}
+          {lines.length > 0 && (
+            <ul aria-label="What the list command printed">
+              {lines.map((line) => (
+                <li key={line.text} data-found={String(line.worktree)}>
+                  {line.worktree ? '✓' : '✗'} <code>{line.text}</code>{' '}
+                  {line.worktree ? '- a worktree of the clone' : "- not a worktree of this clone, so it's ignored"}
+                </li>
+              ))}
+            </ul>
+          )}
+          {trial.stderr && (
+            <pre className="local-clone-cleanup-output" aria-label="What the list command printed to stderr">
+              {trial.stderr}
+            </pre>
+          )}
+        </div>
+      )}
+    </li>
+  );
+}
