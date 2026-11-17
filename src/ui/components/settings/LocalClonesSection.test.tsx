@@ -147,6 +147,8 @@ describe('Settings › Local clones', () => {
     await user.click(screen.getByRole('button', { name: "Save the clone's folder for acme/app" }));
     const item = screen.getByLabelText('acme/app').closest('li') as HTMLElement;
     expect(await within(item).findByText('1 branch, 2 worktrees')).toBeInTheDocument();
+    // Its row stays open, for its settings next.
+    expect((item.querySelector('details') as HTMLDetailsElement).open).toBe(true);
     expect(requests[0]).toEqual({ url: '/view-prs/local-repos', method: 'PUT', body: { repo: 'acme/app', path: 'D:/code/app' } });
     await waitFor(() => expect(requests.some((request) => request.url === '/view-prs/local-branches')).toBe(true));
     // Saved: nothing to save until it's changed.

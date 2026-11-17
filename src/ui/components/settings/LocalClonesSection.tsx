@@ -212,6 +212,8 @@ export function LocalClonesSection() {
       }
       if (result.repos) setRepos(result.repos);
       setDrafts(({ [repo]: _dropped, ...rest }) => rest);
+      // A folder just saved: its row stays open, for its settings next.
+      if (method === 'PUT') setOpenRepos((previous) => ({ ...previous, [repo]: true }));
       refresh();
       return true;
     } catch (caught) {
