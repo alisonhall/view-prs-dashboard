@@ -45,9 +45,7 @@ const fetchMock = jest.fn(async (url: string, init: RequestInit = {}) => {
       const answer = command.startsWith('my-tool')
         ? { command, field, name: 'my-tool', found: true, detail: 'my-tool is a function' }
         : { command, field, name: command.split(' ')[0], found: false, detail: `${command.split(' ')[0]} isn't known to your shell (bash)` };
-      return field === 'cleanupList'
-        ? { ...answer, trial: { exitCode: 0, lines: [{ text: 'D:/code/app-old', worktree: true }, { text: 'hello', worktree: false }], stderr: '' } }
-        : answer;
+      return answer;
     });
     return { ok: true, status: 200, json: async () => ({ ok: true, results }) };
   }
@@ -300,12 +298,7 @@ describe('Settings › Local clones', () => {
     expect(items[0]).toHaveTextContent('Not run here: it would make a worktree.');
     expect(items[1]).toHaveTextContent("After git makes a worktree, run: ✗ nope: nope isn't known to your shell (bash)");
     expect(items[2]).toHaveTextContent('Clean up: list command: ✓ my-tool: my-tool is a function');
-    expect(items[2]).toHaveTextContent('✗ Ran it in the clone: exited 0, and printed 2 lines:');
-    const printed = within(answers).getByRole('list', { name: 'What the list command printed' });
-    expect(within(printed).getAllByRole('listitem').map((item) => item.textContent)).toEqual([
-      '✓ D:/code/app-old - a worktree of the clone',
-      "✗ hello - not a worktree of this clone, so it's ignored",
-    ]);
+    expect(items[2]).toHaveTextContent('Not run here: Look in Clean up runs it and shows what it printed.');
     expect(requests.find((request) => request.url === '/view-prs/local-repos/checkout/check')?.body).toEqual({
       repo: 'acme/app',
       commands: [
@@ -313,7 +306,6 @@ describe('Settings › Local clones', () => {
         { field: 'after', command: "nope '{local}' x" },
         { field: 'cleanupList', command: 'my-tool list {branch}' },
       ],
-      env: { MY_X: '1' },
     });
   });
 

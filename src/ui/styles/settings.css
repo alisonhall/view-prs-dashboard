@@ -629,16 +629,6 @@
   margin-top: var(--space-2);
 }
 
-.local-clone-checks ul {
-  margin: var(--space-1) 0 0;
-  padding-left: var(--space-3);
-  list-style: none;
-}
-
-.local-clone-check-trial {
-  margin-top: var(--space-1);
-}
-
 /* A command's field: what it runs as, and (folded) what it's given and has to do. */
 .local-clone-command-preview code {
   overflow-wrap: anywhere;

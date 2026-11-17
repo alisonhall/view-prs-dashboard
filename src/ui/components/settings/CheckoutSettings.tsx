@@ -56,22 +56,12 @@ export const placeholdersInSingleQuotes = (command: string, pattern: RegExp = PL
   return Array.from(new Set(found));
 };
 
-// The list command's run by Check commands.
-interface CommandTrial {
-  exitCode?: number | null;
-  timedOut?: boolean;
-  lines?: Array<{ text: string; worktree: boolean }>;
-  stderr?: string;
-  error?: string;
-}
-
 interface CommandCheck {
   command: string;
   field?: CommandField;
   name: string;
   found: boolean | null;
   detail: string;
-  trial?: CommandTrial;
 }
 
 const variablesToText = (env: Record<string, string> | undefined) =>
@@ -141,11 +131,9 @@ export function CheckoutSettings({
       )
         .map(([field, value]) => ({ field, command: value.trim() }))
         .filter((item) => item.command);
-      // The variables as typed - the list command runs with them.
-      const { env } = parseVariables(variables);
       const { response, result } = await postJson<{ ok?: boolean; error?: string; results?: CommandCheck[] }>(
         '/view-prs/local-repos/checkout/check',
-        { repo, commands, env },
+        { repo, commands },
       );
       if (!response.ok || result.ok === false) {
         setError(result.error || `HTTP ${response.status}`);
@@ -289,7 +277,7 @@ export function CheckoutSettings({
         />
         <p className="settings-hint">
           Prints the worktree folders it would remove, one full path a line on stdout and nothing else, and exits 0. It mustn&apos;t
-          change anything: Check commands runs it.
+          change anything. To try it, use Look in Clean up below.
         </p>
         <QuotedPlaceholders command={cleanupList} />
         <CommandFieldHelp field="cleanupList" command={cleanupList} values={values} />
@@ -338,8 +326,8 @@ export function CheckoutSettings({
             </dd>
             <dt>Given to</dt>
             <dd>
-              The checkout, after, list and remove commands of this repo only (Copy from copies them to another), and
-              Check commands&apos; run of the list command. Not to the editor and terminal commands.
+              The checkout, after, list and remove commands of this repo only (Copy from copies them to another). Not to the
+              editor and terminal commands.
             </dd>
             <dt>Order</dt>
             <dd>
@@ -376,7 +364,7 @@ export function CheckoutSettings({
           </Button>
           <Button
             disabled={checking || ![command, after, cleanupList, cleanupRemove].some((item) => item.trim())}
-            title="Whether your shell knows each command, as Check out would run it - and the list command's run for real, as it only lists"
+            title="Whether your shell knows each command's first word, as Check out and Clean up would run it - none of them is run"
             onClick={() => void check()}
           >
             {checking ? 'Checking…' : 'Check commands'}
@@ -401,48 +389,14 @@ function QuotedPlaceholders({ command }: { command: string }) {
 
 const DEFAULT_WORKTREE_FOLDER = '../{clone}-{branch}';
 
-// "exited 0", "took too long".
-const describeExit = (trial: CommandTrial) =>
-  trial.timedOut ? 'took too long' : typeof trial.exitCode === 'number' ? `exited ${trial.exitCode}` : "couldn't run";
-
-// One command's answer: which field, whether the shell knows it, and - the
-// list command - what it printed when run, each line a worktree or not.
+// One command's answer: which field, whether the shell knows it, and that
+// it isn't run here.
 function CheckResult({ item }: { item: CommandCheck }) {
-  const trial = item.trial;
-  const lines = trial?.lines || [];
-  const trialOk = trial && !trial.error && trial.exitCode === 0 && lines.every((line) => line.worktree);
-  const found = item.found === false || (trial && !trialOk) ? 'false' : item.found === null ? 'unknown' : 'true';
   return (
-    <li data-found={found}>
+    <li data-found={item.found === null ? 'unknown' : String(item.found)}>
       {item.field && <strong>{FIELD_LABELS[item.field]}: </strong>}
       {item.found === true ? '✓' : item.found === false ? '✗' : '?'} <code>{item.name || item.command}</code>: {item.detail}
-      {item.field && FIELD_DOCS[item.field].notRun && <div className="settings-hint">{FIELD_DOCS[item.field].notRun}</div>}
-      {trial?.error && <div className="settings-hint">Not run: {trial.error}</div>}
-      {trial && !trial.error && (
-        <div className="local-clone-check-trial">
-          {trialOk ? '✓' : '✗'} Ran it in the clone: {describeExit(trial)}
-          {trial.exitCode === 0
-            ? lines.length === 0
-              ? ', and printed no folders - nothing to clean up.'
-              : `, and printed ${lines.length} line${lines.length === 1 ? '' : 's'}:`
-            : ' - Clean up would fail with this.'}
-          {lines.length > 0 && (
-            <ul aria-label="What the list command printed">
-              {lines.map((line) => (
-                <li key={line.text} data-found={String(line.worktree)}>
-                  {line.worktree ? '✓' : '✗'} <code>{line.text}</code>{' '}
-                  {line.worktree ? '- a worktree of the clone' : "- not a worktree of this clone, so it's ignored"}
-                </li>
-              ))}
-            </ul>
-          )}
-          {trial.stderr && (
-            <pre className="local-clone-cleanup-output" aria-label="What the list command printed to stderr">
-              {trial.stderr}
-            </pre>
-          )}
-        </div>
-      )}
+      {item.field && <div className="settings-hint">{FIELD_DOCS[item.field].notRun}</div>}
     </li>
   );
 }

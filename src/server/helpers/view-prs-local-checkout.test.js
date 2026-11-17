@@ -403,30 +403,23 @@ describe("checking out a PR into a worktree", () => {
     }
   });
 
-  test("Check commands: the list command is run for real, each line said to be a worktree of the clone or not, with its exit code", async () => {
+  test("Check commands: none is run, the list command included - only each first word is looked up, with its field", async () => {
     const clone = freshClone();
-    const tree = path.join(root, `tree-${Date.now()}`);
-    git(clone, "worktree", "add", "-q", "-b", "mine/listed", tree);
+    const ran = path.join(root, `ran-${Date.now()}`);
     const { checkout } = setUp();
-    const [listed, failed, other] = await checkout.checkCommands({
-      repo: "acme/app",
+    const results = await checkout.checkCommands({
       cloneFolder: clone,
-      env: { EXTRA: "not-a-worktree" },
       commands: [
-        { field: "cleanupList", command: `echo "${toPosix(tree)}"; echo "$EXTRA"; echo note >&2` },
-        { field: "cleanupList", command: "echo 'no such layout' >&2; exit 3" },
+        { field: "cleanupList", command: `touch "${toPosix(ran)}"; echo listed` },
         { field: "cleanupRemove", command: "echo would-remove {worktree}" },
       ],
     });
-    expect(listed).toMatchObject({
-      field: "cleanupList",
-      found: true,
-      trial: { exitCode: 0, lines: [{ text: toPosix(tree), worktree: true }, { text: "not-a-worktree", worktree: false }], stderr: "note" },
-    });
-    expect(failed.trial).toEqual({ exitCode: 3, lines: [], stderr: "no such layout" });
-    // Only the list command runs: the others change things
-    expect(other.trial).toBeUndefined();
-    expect(other).toMatchObject({ field: "cleanupRemove", name: "echo", found: true });
+    expect(results).toEqual([
+      expect.objectContaining({ field: "cleanupList", name: "touch", found: true }),
+      expect.objectContaining({ field: "cleanupRemove", name: "echo", found: true }),
+    ]);
+    expect(results[0].trial).toBeUndefined();
+    expect(fs.existsSync(ran)).toBe(false);
   });
 
   test("the plan: the repo's command, unless the clone has a branch for the PR or it's a fork's PR the command isn't for", () => {
