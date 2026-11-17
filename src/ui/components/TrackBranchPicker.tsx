@@ -137,7 +137,9 @@ export function TrackBranchPicker({ version = '', onTracked }: { version?: strin
 
   const branches = byRepo[repo] || [];
   // Each word of the filter in the branch's name or newest commit's subject.
-  const words = filter.toLowerCase().split(/\s+/).filter(Boolean);
+  // Only while the box is there to clear it (a clone with few branches has none).
+  const hasFilter = branches.length > FILTER_FROM;
+  const words = hasFilter ? filter.toLowerCase().split(/\s+/).filter(Boolean) : [];
   const listed = words.length === 0 ? branches : branches.filter((branch) => words.every((word) => `${branch.name}\n${branch.subject || ''}`.toLowerCase().includes(word)));
   const now = Date.now();
   return (
@@ -145,7 +147,14 @@ export function TrackBranchPicker({ version = '', onTracked }: { version?: strin
       {repos.length > 1 && (
         <div className="track-branch-repo">
           <label htmlFor={repoId}>Clone</label>
-          <select id={repoId} value={repo} onChange={(event) => setChosenRepo(event.target.value)}>
+          <select
+            id={repoId}
+            value={repo}
+            onChange={(event) => {
+              setChosenRepo(event.target.value);
+              setFilter('');
+            }}
+          >
             {repos.map((item) => (
               <option key={item} value={item}>
                 {item}
@@ -168,7 +177,7 @@ export function TrackBranchPicker({ version = '', onTracked }: { version?: strin
         </p>
       ) : (
         <>
-        {branches.length > FILTER_FROM && (
+        {hasFilter && (
           <div className="track-branch-filter">
             <label htmlFor={filterId} className="ui-visually-hidden">
               Filter {repo}'s branches

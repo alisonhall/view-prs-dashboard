@@ -172,7 +172,8 @@ export function TrackedBranchesSection({
       });
       if (!response.ok || result.ok === false) showError(`Couldn't untrack ${entry.branch}`, result.error || `HTTP ${response.status}`);
       else {
-        setUntracked(entry);
+        const note = noteOf(entry);
+        setUntracked({ ...entry, ...(note ? { note } : { note: undefined }) });
         if (noteEditor?.key === key) setNoteEditor(null);
         refresh();
       }
@@ -198,8 +199,16 @@ export function TrackedBranchesSection({
     }
   };
 
+  // A note shown (one saved here may be newer than the data's).
+  const noteOf = (entry: PrTrackedBranch) => {
+    const key = trackedBranchKey(entry.repo, entry.branch);
+    return key in savedNotes ? (savedNotes[key] ?? '') : entry.note || '';
+  };
+
   const saveNote = async (entry: PrTrackedBranch, text: string) => {
     const key = trackedBranchKey(entry.repo, entry.branch);
+    // Once at a time, and only a change (Ctrl+Enter skips the button's check).
+    if (noteEditor?.saving || text === noteOf(entry)) return;
     setNoteEditor({ key, text, saving: true });
     try {
       const { response, result } = await sendJson<{ ok?: boolean; error?: string }>('PATCH', '/view-prs/tracked-branches', {
@@ -322,7 +331,7 @@ export function TrackedBranchesSection({
                 const chips = describeBranchChips(status, changes[key]);
                 const folder = status?.worktreePath || '';
                 const age = formatCommitAge(formatShortAge(status?.committedAt, now));
-                const note = key in savedNotes ? savedNotes[key] ?? '' : entry.note || '';
+                const note = noteOf(entry);
                 const editing = noteEditor?.key === key ? noteEditor : null;
                 const editNote = () => setNoteEditor({ key, text: note, saving: false });
                 return (
@@ -409,6 +418,7 @@ export function TrackedBranchesSection({
                             rows={2}
                             autoFocus
                             placeholder="What it's for, what's left to do…"
+                            readOnly={editing.saving}
                             onChange={(event) => setNoteEditor({ key, text: event.target.value, saving: false })}
                             onKeyDown={(event) => {
                               if (event.key === 'Escape') {

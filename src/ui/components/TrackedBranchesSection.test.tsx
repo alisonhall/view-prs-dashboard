@@ -137,11 +137,20 @@ describe('TrackedBranchesSection', () => {
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
     expect(posted).toHaveLength(1);
 
+    // Ctrl+Enter with nothing changed sends nothing.
     await user.click(screen.getByLabelText('Note: Try Redis'));
+    await user.keyboard('{Control>}{Enter}{/Control}');
+    expect(posted).toHaveLength(1);
     await user.clear(screen.getByRole('textbox', { name: 'Note on spike/cache' }));
     await user.keyboard('{Control>}{Enter}{/Control}');
     expect(posted[1]).toEqual({ url: '/view-prs/tracked-branches', method: 'PATCH', body: { repo: 'acme/app', branch: 'spike/cache', note: '' } });
     expect(await screen.findByRole('button', { name: 'Add a note to spike/cache' })).toBeInTheDocument();
+
+    // Untracked before the data has caught up: Undo gives back the note as written here.
+    await user.click(screen.getByRole('button', { name: 'Untrack wip' }));
+    expect(await screen.findByText('Untracked wip (and its note).')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(posted.at(-1)).toEqual({ url: '/view-prs/tracked-branches', method: 'POST', body: { repo: 'acme/app', branch: 'wip', note: 'Half done', restore: true } });
   });
 
   test("closed, the header says how many local branches could still be tracked; it opens the section with the picker", async () => {
@@ -210,5 +219,18 @@ describe('TrackBranchPicker', () => {
     expect(screen.getAllByRole('button', { name: /^Track / })).toHaveLength(1);
     await user.type(filter, 'x');
     expect(screen.getByText('No branch matches “feature-7x”.')).toBeInTheDocument();
+  });
+
+  test("the filter is cleared on choosing another clone, so one with few branches (no box) isn't left filtered", async () => {
+    const user = userEvent.setup();
+    candidates['acme/app'] = Array.from({ length: 8 }, (_, index) => ({ name: `feature-${index}`, oid: String(index) }));
+    candidates['acme/web'] = [{ name: 'web-work', oid: 'w' }];
+    render(wrap(<TrackBranchPicker />, local({ repos: { 'acme/app': { path: 'a', ok: true }, 'acme/web': { path: 'b', ok: true } } })));
+    await user.type(await screen.findByRole('searchbox'), 'zzz');
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Clone' }), 'acme/web');
+    expect(await screen.findByRole('button', { name: 'Track web-work' })).toBeInTheDocument();
+    expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Clone' }), 'acme/app');
+    expect(await screen.findByRole('searchbox')).toHaveValue('');
   });
 });
