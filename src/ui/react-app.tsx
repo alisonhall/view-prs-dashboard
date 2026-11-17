@@ -13,6 +13,7 @@ import { buildFilterStateInitialValues } from './state/filterStateInitialValues'
 import { SettingsDrawerProvider } from './state/SettingsDrawerContext';
 import { PrDataPolling, readDataPollMsOverride } from './components/PrDataPolling';
 import { PrDataProvider } from './state/PrDataProvider';
+import { PrArchiveProvider } from './state/PrArchiveContext';
 import { FilterStateProvider } from './state/FilterStateProvider';
 import { PrTableUiStateProvider } from './state/PrTableUiStateProvider';
 import { TabStateProvider } from './components/TabStateProvider';
@@ -34,6 +35,7 @@ import { AuthorThreadResolutionSelectionProvider } from './state/AuthorThreadRes
 import { ChangeFilterActorSelectionProvider } from './state/ChangeFilterActorSelectionProvider';
 import { ThemeProvider } from './state/ThemeProvider';
 import { PrSectionPreferencesProvider } from './state/PrSectionPreferencesProvider';
+import { LocalBranchesProvider } from './state/LocalBranchesContext';
 import type { ReviewStatsViewState } from './state/PrDataContext';
 
 // The Review stats date range starts 3 months back from today (a
@@ -101,6 +103,7 @@ function mountApp(container: HTMLElement) {
                                 initialStatsViewState={DEFAULT_STATS_VIEW_STATE}
                                 loadOnMount
                               >
+                                <PrArchiveProvider>
                                 <NotesDirtyProvider>
                                   <PrTableUiStateProvider>
                                     <SettingsDrawerProvider>
@@ -108,6 +111,9 @@ function mountApp(container: HTMLElement) {
                                         <AuthorInsightsDraftsProvider>
                                           <AutoRenderBlockingSync />
                                           <JobEventsProvider>
+                                            {/* Inside the event stream's Provider: its poll slows
+                                                while the stream pushes data changes. */}
+                                            <PrDataPolling dataPollMs={readDataPollMsOverride(window.location.search)} />
                                             <FilterOptionsProvider>
                                               {/* Every multi-select list's selection (the filter
                                                   bar's and the Settings drawer's), kept in step
@@ -115,7 +121,9 @@ function mountApp(container: HTMLElement) {
                                               <ListSelectionSeeding />
                                               <ThemeProvider>
                                                 <PrSectionPreferencesProvider>
-                                                  <AppShell />
+                                                  <LocalBranchesProvider>
+                                                    <AppShell />
+                                                  </LocalBranchesProvider>
                                                 </PrSectionPreferencesProvider>
                                               </ThemeProvider>
                                             </FilterOptionsProvider>
@@ -125,7 +133,7 @@ function mountApp(container: HTMLElement) {
                                     </SettingsDrawerProvider>
                                   </PrTableUiStateProvider>
                                 </NotesDirtyProvider>
-                                <PrDataPolling dataPollMs={readDataPollMsOverride(window.location.search)} />
+                                </PrArchiveProvider>
                               </PrDataProvider>
                             </AutoRenderBlockingProvider>
                           </SnackbarProvider>

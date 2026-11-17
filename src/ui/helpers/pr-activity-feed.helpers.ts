@@ -1,4 +1,4 @@
-import type { PrActivityEvent } from "../types/pr-data.ts";
+import type { PrActivityEvent, PrData, PrReview } from "../types/pr-data.ts";
 
 // The detail pane's Activity tab (UI_REDESIGN_PLAN.md, phase 5), from the
 // activity feed (pr-activity-events.helpers.ts' buildActivityEvents, newest
@@ -38,12 +38,195 @@ export const getLastLookedAt = (baseline: unknown, ackedAt: unknown): string => 
   return candidates.reduce((latest, value) => (parseTime(value) > parseTime(latest) ? value : latest));
 };
 
+// Your Acks of the PR as activity events, newest first (as the feed is):
+// each time in its Ack history (ackHistoryByRepo) and the current Ack
+// (ackByRepo) - an Ack from before there was a history is only there. The
+// current one is marked (state "current"); the others were taken back by a
+// later Ack or cleared by a change since, and still show that you looked.
+export const buildAckEvents = (history: readonly string[] | null | undefined, currentAck: string, viewerLogin: string): PrActivityEvent[] => {
+  const current = String(currentAck || "").trim();
+  const times = Array.from(new Set([...(history || []), current].map((time) => String(time || "").trim())))
+    .filter((time) => Number.isFinite(parseTime(time)))
+    .sort((a, b) => parseTime(b) - parseTime(a));
+  return times.map((time) => ({
+    sourceId: `ack-${time}`,
+    occurredAt: time,
+    date: time.slice(0, 10),
+    actor: viewerLogin,
+    type: "ack",
+    channel: "system",
+    state: time === current ? "current" : "",
+  }));
+};
+
+// When you last Ack'd the PR: the latest of its Ack history and current
+// Ack. Empty when it never was.
+export const getLastAckedAt = (history: readonly string[] | null | undefined, currentAck: string): string =>
+  String(buildAckEvents(history, currentAck, "")[0]?.occurredAt || "");
+
+// The commits new since the viewer last looked though dated before it:
+// pushed after it (the row's commitsAfterReview). Not once an Ack later than the row's baseline is
+// when they last looked: that saw these commits too.
+export const newCommitOidsFor = (pr: PrData, lastLookedAt: string): string[] =>
+  lastLookedAt && lastLookedAt === String(pr?.baseline || "").trim() && Array.isArray(pr?.commitsAfterReview)
+    ? pr.commitsAfterReview
+    : [];
+
+// Whether an event is new since the viewer last looked: after then, or one
+// of the new commits dated before it. Nothing is without a last-looked time.
+const isNewSince = (lastLookedAt: string, newCommitOids: readonly string[] = []) => {
+  const lastLooked = parseTime(lastLookedAt);
+  const oids = new Set(newCommitOids);
+  return (event: PrActivityEvent): boolean =>
+    Number.isFinite(lastLooked) &&
+    (parseTime(event?.occurredAt) > lastLooked || (activityKindOf(event) === "commit" && oids.has(String(event?.sourceId || ""))));
+};
+
+// Of the events new since the viewer last looked: a commit new though
+// dated before then - one of newCommitOids, after the commit their latest
+// review was on. Shown by its date, so it's tagged to say why it's new
+// ("Not in your last review").
+export const isNotInReview = (event: PrActivityEvent, lastLookedAt: string): boolean =>
+  activityKindOf(event) === "commit" && !(parseTime(event?.occurredAt) > parseTime(lastLookedAt));
+
+// What's new since the viewer last looked, for the row's change tooltip
+// and summary: the new events, newest first, and how many of each kind. A
+// commit with several authors is one event per author in the feed, but one
+// commit here; the empty review GitHub wraps an inline comment in isn't a
+// review here.
+export interface SinceLastLooked {
+  events: PrActivityEvent[];
+  commits: number;
+  reviews: number;
+  comments: number;
+  // Logins by each reviewer's newest verdict, newest first.
+  changesRequestedBy: string[];
+  approvedBy: string[];
+  merged: boolean;
+  closed: boolean;
+}
+
+export const summarizeSinceLastLooked = (
+  events: readonly PrActivityEvent[],
+  { lastLookedAt, newCommitOids }: { lastLookedAt: string; newCommitOids?: readonly string[] },
+): SinceLastLooked => {
+  const isNew = isNewSince(lastLookedAt, newCommitOids);
+  const newEvents = events.filter((event) => event?.type !== "ack" && isNew(event));
+  const commitIds = new Set<string>();
+  // Each reviewer's newest verdict (the events are newest first).
+  const verdicts = new Map<string, "approved" | "changes">();
+  let commits = 0;
+  let reviews = 0;
+  let comments = 0;
+  newEvents.forEach((event) => {
+    const kind = activityKindOf(event);
+    if (kind === "commit") {
+      const id = String(event?.sourceId || "");
+      if (!id || !commitIds.has(id)) commits += 1;
+      if (id) commitIds.add(id);
+    } else if (kind === "review") {
+      const state = String(event?.state || "").toUpperCase();
+      // GitHub wraps each inline comment or thread reply in an empty
+      // COMMENTED review: the comment is counted, not that.
+      if (state === "COMMENTED" && !String(event?.body || "").trim()) return;
+      reviews += 1;
+      const actor = String(event?.actor || "").trim();
+      const verdict = event?.type === "approval" || state === "APPROVED" ? "approved" : state === "CHANGES_REQUESTED" ? "changes" : null;
+      if (actor && verdict && !verdicts.has(actor)) verdicts.set(actor, verdict);
+    } else if (kind === "comment") {
+      comments += 1;
+    }
+  });
+  const withVerdict = (verdict: "approved" | "changes") =>
+    Array.from(verdicts.entries()).flatMap(([actor, value]) => (value === verdict ? [actor] : []));
+  return {
+    events: newEvents,
+    commits,
+    reviews,
+    comments,
+    changesRequestedBy: withVerdict("changes"),
+    approvedBy: withVerdict("approved"),
+    merged: newEvents.some((event) => event?.type === "merged"),
+    closed: newEvents.some((event) => event?.type === "closed"),
+  };
+};
+
+const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ? "" : "s"}`;
+const listNames = (logins: readonly string[], nameOf: (login: string) => string) => logins.map(nameOf).join(", ");
+
+// That, in words: "2 commits", "1 review (changes requested by Sam)",
+// "3 comments", "Merged". Empty when nothing's new.
+export const describeSinceLastLooked = (since: SinceLastLooked, nameOf: (login: string) => string = (login) => login): string[] => {
+  const verdicts = [
+    since.approvedBy.length ? `approved by ${listNames(since.approvedBy, nameOf)}` : "",
+    since.changesRequestedBy.length ? `changes requested by ${listNames(since.changesRequestedBy, nameOf)}` : "",
+  ].filter(Boolean);
+  return [
+    since.commits ? plural(since.commits, "commit") : "",
+    since.reviews ? `${plural(since.reviews, "review")}${verdicts.length ? ` (${verdicts.join("; ")})` : ""}` : "",
+    since.comments ? plural(since.comments, "comment") : "",
+    since.merged ? "Merged" : since.closed ? "Closed" : "",
+  ].filter(Boolean);
+};
+
+// A time said briefly from now: "at 3:05 PM" today, else "on Nov 2" (with
+// the year when it isn't this year's). Empty for an invalid time.
+export const formatWhenShort = (value: unknown, nowMs: number, timeZone?: string): string => {
+  const key = dayKeyOf(value, timeZone);
+  if (!key) return "";
+  const today = dayKeyOf(new Date(nowMs).toISOString(), timeZone);
+  if (key === today) return `at ${formatTimeOfDay(value, timeZone)}`;
+  const options: Intl.DateTimeFormatOptions =
+    key.slice(0, 4) === today.slice(0, 4) ? { month: "short", day: "numeric", timeZone } : { month: "short", day: "numeric", year: "numeric", timeZone };
+  return `on ${cachedFormatter("en-US", options).format(parseTime(value))}`;
+};
+
+// "since you acked on Nov 2", or "since your last activity at 3:05 PM":
+// whichever of your Ack and your last activity is when you last looked.
+export const describeLastLooked = (
+  { lastLookedAt, lastAckedAt }: { lastLookedAt: string; lastAckedAt: string },
+  nowMs: number,
+  timeZone?: string,
+): string => {
+  const when = formatWhenShort(lastLookedAt, nowMs, timeZone);
+  if (!when) return "";
+  return lastAckedAt && lastAckedAt === lastLookedAt ? `since you acked ${when}` : `since your last activity ${when}`;
+};
+
+// Who's requesting changes now: reviewers whose latest approving, change-
+// requesting or dismissed review requested changes (a comment-only review
+// leaves their verdict as it was). Logins, newest first.
+export const findChangesRequestedBy = (reviews: readonly PrReview[] | null | undefined): string[] => {
+  const latest = new Map<string, { state: string; at: number }>();
+  (Array.isArray(reviews) ? reviews : []).forEach((review) => {
+    const login = String(review?.authorLogin || "").trim();
+    const state = String(review?.state || "").toUpperCase();
+    const at = parseTime(review?.submittedAt);
+    if (!login || !["APPROVED", "CHANGES_REQUESTED", "DISMISSED"].includes(state) || !Number.isFinite(at)) return;
+    const previous = latest.get(login);
+    if (!previous || at >= previous.at) latest.set(login, { state, at });
+  });
+  return Array.from(latest.entries())
+    .filter(([, verdict]) => verdict.state === "CHANGES_REQUESTED")
+    .sort((a, b) => b[1].at - a[1].at)
+    .map(([login]) => login);
+};
+
+// The feed's events with your Acks among them, newest first.
+export const withAckEvents = (events: readonly PrActivityEvent[], ackEvents: readonly PrActivityEvent[]): PrActivityEvent[] =>
+  ackEvents.length
+    ? [...events, ...ackEvents].sort((a, b) => String(b?.occurredAt || "").localeCompare(String(a?.occurredAt || "")))
+    : events.slice();
+
+// `notInReview`: new commits dated before the viewer last looked
+// (isNotInReview).
 export type FeedItem =
-  | { kind: "event"; event: PrActivityEvent }
-  // Two or more commits in a row (newest first) by one person on one day.
-  | { kind: "commits"; actor: string; events: PrActivityEvent[] }
+  | { kind: "event"; event: PrActivityEvent; notInReview?: boolean }
+  // Two or more commits in a row (newest first) by one person on one day,
+  // all tagged notInReview or none.
+  | { kind: "commits"; actor: string; events: PrActivityEvent[]; notInReview?: boolean }
   // In the "All" scope: everything after this is from before the viewer
-  // last looked.
+  // last looked, but for commits tagged notInReview.
   | { kind: "marker"; at: string };
 
 export interface FeedDay {
@@ -70,6 +253,9 @@ export interface ActivityFeedOptions {
   kinds: readonly ActivityKind[];
   // Days are calendar days here; the browser's own zone when omitted.
   timeZone?: string;
+  // Commits new since the viewer last looked though dated before it:
+  // pushed after it (the row's commitsAfterReview).
+  newCommitOids?: readonly string[];
 }
 
 // Each formatter is made once, per locale and options: the tab re-renders
@@ -100,9 +286,8 @@ export const formatTimeOfDay = (value: unknown, timeZone?: string): string => {
 };
 
 export const buildActivityFeed = (events: readonly PrActivityEvent[], options: ActivityFeedOptions): ActivityFeed => {
-  const lastLooked = parseTime(options.lastLookedAt);
-  const hasLastLooked = Number.isFinite(lastLooked);
-  const isSince = (event: PrActivityEvent) => hasLastLooked && parseTime(event?.occurredAt) > lastLooked;
+  const hasLastLooked = Number.isFinite(parseTime(options.lastLookedAt));
+  const isSince = isNewSince(options.lastLookedAt, options.newCommitOids);
   const sinceCount = events.filter(isSince).length;
   const sinceScope = options.scope === "since" && hasLastLooked;
   const scoped = sinceScope ? events.filter(isSince) : events.slice();
@@ -129,17 +314,19 @@ export const buildActivityFeed = (events: readonly PrActivityEvent[], options: A
 
     const previous = day.items[day.items.length - 1];
     const actor = String(event?.actor || "");
-    if (activityKindOf(event) === "commit" && previous) {
+    const notInReview = isSince(event) && isNotInReview(event, options.lastLookedAt);
+    const tag = notInReview ? { notInReview } : {};
+    if (activityKindOf(event) === "commit" && previous && previous.kind !== "marker" && Boolean(previous.notInReview) === notInReview) {
       if (previous.kind === "commits" && previous.actor === actor) {
         previous.events.push(event);
         return;
       }
       if (previous.kind === "event" && activityKindOf(previous.event) === "commit" && String(previous.event?.actor || "") === actor) {
-        day.items[day.items.length - 1] = { kind: "commits", actor, events: [previous.event, event] };
+        day.items[day.items.length - 1] = { kind: "commits", actor, events: [previous.event, event], ...tag };
         return;
       }
     }
-    day.items.push({ kind: "event", event });
+    day.items.push({ kind: "event", event, ...tag });
   });
 
   return {

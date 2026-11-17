@@ -215,7 +215,7 @@ initTestPage({
 1. **`createOkJsonResponse(payload)`** - any payload as a mocked fetch response, e.g. `createOkJsonResponse(createPrDataPayload(...))` for `/view-prs/data`
 2. **`createBackfillStatusResponse(config)`** - `/view-prs/backfill` endpoint
 3. **`createActionLogResponse({ entries })`** - `/view-prs/action-log` endpoint
-4. **`createActorNameCacheResponse(entries)`** - `/view-prs/actor-name-cache` endpoint
+4. **`createActorsResponse(actors)`** - `/view-prs/actors` endpoint
 5. **Many more** - See [README.md](README.md)
 
 ## Migration Checklist

@@ -3,14 +3,12 @@
 const {
   createPrAutoRenderBlockingHelpers,
 } = require("./pr-auto-render-blocking.helpers.ts");
+const { createPrAutoRenderUnsavedHelpers } = require("./pr-auto-render-unsaved.helpers.ts");
 
 describe("auto render blocking helpers", () => {
   const createHelpers = () =>
     createPrAutoRenderBlockingHelpers({
-      normalizePrNumber: (value) => {
-        const normalized = String(value || "").trim();
-        return /^\d+$/.test(normalized) ? normalized : "";
-      },
+      normalizePrKey: createPrAutoRenderUnsavedHelpers().normalizePrKey,
       normalizeActorLogin: (value) => String(value || "").trim().toLowerCase(),
       isAuthorInsightsComposerDraftDirty: (draft = {}) =>
         Boolean(String(draft.note || "").trim()) ||
@@ -32,15 +30,15 @@ describe("auto render blocking helpers", () => {
         ] || String(authorLogin || "")),
     });
 
-  test("given mixed PR identifiers, when formatting blocking label, then valid PR numbers are sorted deduplicated and limited", () => {
-    const { formatBlockingPrNumbersLabel } = createHelpers();
+  test("given mixed PR identifiers, when formatting blocking label, then valid PR keys are sorted deduplicated and limited", () => {
+    const { formatBlockingPrKeysLabel } = createHelpers();
 
-    expect(formatBlockingPrNumbersLabel(["20", "5", "20", "bad"]))
-      .toBe("Blocking PRs: #5, #20");
-    expect(formatBlockingPrNumbersLabel(["1", "2", "3", "4"], 2)).toBe(
-      "Blocking PRs: #1, #2 (+2 more)",
+    expect(formatBlockingPrKeysLabel(["acme/api#20", "acme/api#5", "acme/api#20", "bad", "7"]))
+      .toBe("Blocking PRs: acme/api#5, acme/api#20");
+    expect(formatBlockingPrKeysLabel(["a/b#1", "a/b#2", "a/b#3", "a/b#4"], 2)).toBe(
+      "Blocking PRs: a/b#1, a/b#2 (+2 more)",
     );
-    expect(formatBlockingPrNumbersLabel([])).toBe("");
+    expect(formatBlockingPrKeysLabel([])).toBe("");
   });
 
   test("given composer and edit drafts, when collecting blocking author logins, then only dirty authors are returned in display-name order", () => {

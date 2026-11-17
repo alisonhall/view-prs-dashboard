@@ -3,6 +3,7 @@
 const {
   createPrDataPollingOrchestrationHelpers,
 } = require("./pr-data-polling-orchestration.helpers.ts");
+const { createPrDataPollingHelpers } = require("./pr-data-polling.helpers.ts");
 
 const jsonResponse = (body, overrides = {}) => ({
   ok: true,
@@ -126,13 +127,16 @@ describe("pr data polling orchestration helpers", () => {
     expect(calls.renderPrData).toHaveLength(1);
   });
 
-  test("given a manifest delta with no changes, when polling, then it updates the version/manifest and skips a full fetch", async () => {
+  // A quick check's listing moves each repo's checkedAt (the data meta)
+  // without changing a row; the page's "checked N min ago" needs it.
+  test("given a manifest delta with no changes, when polling, then it keeps the new data meta and renders it without fetching rows", async () => {
+    const nextDataMeta = { dataVersion: "v2", liveSummary: { "o/r": { checkedAt: "2026-11-01T12:00:00Z" } } };
     const fetchFn = jest.fn(async (url) => {
       if (url === "/view-prs/data-meta") {
         return jsonResponse({ dataVersion: "v2", supportsDataManifest: true });
       }
       if (url === "/view-prs/data-manifest") {
-        return jsonResponse({ manifest: { 1: { rowVersion: "a" } }, dataMeta: { dataVersion: "v2" } });
+        return jsonResponse({ manifest: { 1: { rowVersion: "a" } }, dataMeta: nextDataMeta });
       }
       throw new Error(`unexpected fetch: ${url}`);
     });
@@ -140,7 +144,11 @@ describe("pr data polling orchestration helpers", () => {
     const { helpers, state, calls } = buildHarness({
       fetchFn,
       getManifestDelta,
-      initialState: { lastSeenDataVersion: "v1", latestStoredPayload: { byPrNumber: {} } },
+      mergeDataDeltaPayload: createPrDataPollingHelpers().mergeDataDeltaPayload,
+      initialState: {
+        lastSeenDataVersion: "v1",
+        latestStoredPayload: { byPrNumber: { 1: { prNumber: "1" } }, dataMeta: { dataVersion: "v1" } },
+      },
     });
 
     await helpers.pollForDataChanges();
@@ -149,7 +157,47 @@ describe("pr data polling orchestration helpers", () => {
     expect(state.lastSeenDataVersion).toBe("v2");
     expect(state.latestPrManifest).toEqual({ 1: { rowVersion: "a" } });
     expect(calls.markPollSuccess).toHaveLength(1);
-    expect(calls.renderPrData).toHaveLength(0);
+    expect(calls.renderPrData).toHaveLength(1);
+    expect(calls.renderPrData[0][0]).toMatchObject({ byPrNumber: { 1: { prNumber: "1" } }, dataMeta: nextDataMeta });
+  });
+
+  // A run that clears an Ack changes only the user state for the page.
+  test("given a manifest with the user state, when polling, then the page gets its Acks (and Ack history) without a full reload", async () => {
+    const userState = {
+      ackByRepo: {},
+      ackHistoryByRepo: { "o/r": { 1: ["2026-01-02T00:00:00Z"] } },
+      reverifyByRepo: {},
+      inReviewByRepo: {},
+      flaggedByRepo: {},
+      threadChecksByRepo: {},
+    };
+    const fetchFn = jest.fn(async (url) => {
+      if (url === "/view-prs/data-meta") {
+        return jsonResponse({ dataVersion: "v2", supportsDataManifest: true });
+      }
+      if (url === "/view-prs/data-manifest") {
+        return jsonResponse({ manifest: { 1: { rowVersion: "a" } }, dataMeta: { dataVersion: "v2" }, userState });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    const { helpers, calls } = buildHarness({
+      fetchFn,
+      getManifestDelta: jest.fn(() => ({ changedPrNumbers: [], removedPrNumbers: [], hasChanges: false })),
+      mergeDataDeltaPayload: createPrDataPollingHelpers().mergeDataDeltaPayload,
+      initialState: {
+        lastSeenDataVersion: "v1",
+        latestStoredPayload: {
+          byPrNumber: { 1: { prNumber: "1" } },
+          dataMeta: { dataVersion: "v1" },
+          ackByRepo: { "o/r": { 1: "2026-01-02T00:00:00Z" } },
+        },
+      },
+    });
+
+    await helpers.pollForDataChanges();
+
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+    expect(calls.renderPrData[0][0]).toMatchObject({ byPrNumber: { 1: { prNumber: "1" } }, ...userState });
   });
 
   test("given a manifest delta with changes, when polling, then it merges the delta and renders the merged payload", async () => {
@@ -239,7 +287,9 @@ describe("pr data polling orchestration helpers", () => {
     expect(calls.setStatusMessage).toEqual([["Auto-updated from latest run at 2026-09-29T00:00:00Z"]]);
   });
 
-  test("given a normal render with no new run stamp, when polling, then the generic status message is shown", async () => {
+  // Pushed changes come every few seconds during a run; the status line
+  // keeps the user's last action's result.
+  test("given a normal render with no new run stamp, when polling, then it renders without a status message", async () => {
     const result = { byPrNumber: {} };
     const { helpers, calls } = buildHarness({
       fetchFn: async (url) => (url === "/view-prs/data-meta" ? jsonResponse({}, { status: 404, ok: false }) : jsonResponse(result)),
@@ -247,7 +297,8 @@ describe("pr data polling orchestration helpers", () => {
 
     await helpers.pollForDataChanges();
 
-    expect(calls.setStatusMessage).toEqual([["Auto-updated from latest stored data changes"]]);
+    expect(calls.renderPrData).toEqual([[result]]);
+    expect(calls.setStatusMessage).toEqual([]);
   });
 
   test("given the data fetch fails, when polling, then the failure warning is shown instead of throwing", async () => {

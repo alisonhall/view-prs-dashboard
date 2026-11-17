@@ -91,21 +91,12 @@ export const createActionLogResponse = ({ entries = [] }: { entries?: unknown[] 
 });
 
 /**
- * Creates an actor name cache response payload (login -> name)
+ * Creates a people response payload (GET/PUT /view-prs/actors): each
+ * person's id, name and logins
  */
-export const createActorNameCacheResponse = (entries: Record<string, unknown> = {}) => ({
+export const createActorsResponse = (actors: Array<{ id: string; name: string; logins: string[] }> = []) => ({
   ok: true,
-  entries,
-  count: Object.keys(entries).length,
-});
-
-/**
- * Creates an actor login aliases response payload
- */
-export const createActorLoginAliasesResponse = (entries: Record<string, unknown> = {}) => ({
-  ok: true,
-  entries,
-  count: Object.keys(entries).length,
+  actors,
 });
 
 /**

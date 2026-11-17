@@ -8,6 +8,7 @@ const {
   migrateLegacyStoriesInFiles,
   migrateNoteStories,
   parseArgs,
+  readRepoHosts,
 } = require("../backfill-missing-data.js");
 
 const makeValidateEntryStub = () => {
@@ -365,5 +366,40 @@ describe("backfill-missing-data old-format stories", () => {
 
       await expect(run()).resolves.toEqual({ userStatePrNumbers: [], dataPrNumbers: [] });
     });
+  });
+});
+
+describe("readRepoHosts", () => {
+  let tmpDir;
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "backfill-hosts-"));
+  });
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test("each repo's GitHub Enterprise host, from the sources file beside the data file - a subscription's first", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "check-open-pr-updates.sources.json"),
+      JSON.stringify({
+        subscriptions: [{ repo: "corp/api", mode: "recent", host: "GHE.example.com" }, { repo: "acme/web", mode: "recent" }],
+        trackedPrs: [{ repo: "corp/api", number: "1", host: "other.example.com" }, { repo: "corp/tool", number: "5", host: "ghe.example.com" }],
+      }),
+    );
+
+    expect(readRepoHosts(path.join(tmpDir, "check-open-pr-updates.data.json"))).toEqual({
+      "corp/api": "ghe.example.com",
+      "corp/tool": "ghe.example.com",
+    });
+  });
+
+  test("none when there's no sources file, or it can't be read - and it's left as it is", () => {
+    const dataPath = path.join(tmpDir, "check-open-pr-updates.data.json");
+    expect(readRepoHosts(dataPath)).toEqual({});
+
+    const sourcesFile = path.join(tmpDir, "check-open-pr-updates.sources.json");
+    fs.writeFileSync(sourcesFile, "{ not json");
+    expect(readRepoHosts(dataPath)).toEqual({});
+    expect(fs.readFileSync(sourcesFile, "utf8")).toBe("{ not json");
   });
 });

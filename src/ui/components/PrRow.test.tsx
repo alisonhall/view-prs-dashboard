@@ -82,6 +82,20 @@ describe('PrRow', () => {
     expect(onShowDetails).toHaveBeenCalledWith('101', 'owner/repo');
   });
 
+  test('the summary\'s "See all N in Activity" asks for the Activity tab', async () => {
+    const user = userEvent.setup();
+    const onShowDetails = jest.fn();
+    const comment = (id: string, occurredAt: string) => ({ sourceId: id, occurredAt, actor: 'ann', type: 'comment', channel: 'top-level' });
+    const pr = {
+      ...basePr,
+      baseline: '2026-01-01T00:00:00Z',
+      activityEvents: ['4', '3', '2', '1'].map((day) => comment(`c${day}`, `2026-01-0${Number(day) + 1}T00:00:00Z`)),
+    };
+    renderRow({ isExpanded: true, onShowDetails, pr });
+    await user.click(screen.getByRole('button', { name: 'See all 4 in Activity for PR #101' }));
+    expect(onShowDetails).toHaveBeenCalledWith('101', 'owner/repo', 'activity');
+  });
+
   test('a click on the row, not on a control, selects it', async () => {
     const user = userEvent.setup();
     const onSelectRow = jest.fn();

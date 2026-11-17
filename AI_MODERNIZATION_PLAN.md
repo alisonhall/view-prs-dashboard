@@ -624,7 +624,7 @@ module.exports = { createFileIoHelpers };
 - Process tree termination
 - Script execution with cwd support
 
-**3. Data Processing Helpers** (`data-processing-helpers.js`)
+**3. Data Processing Helpers** (`data-processing-helpers.js`; never wired into the server, removed 2026-11-03)
 - Path security validation
 - PR detail hydration
 - Actor name resolution from GitHub API

@@ -140,29 +140,6 @@ describe("view-prs route response helpers", () => {
     });
   });
 
-  test("given entries, when sending entries response, then status 200 includes entries and count", () => {
-    const helpers = createViewPrsRouteResponseHelpers();
-    const res = createResponseDouble();
-
-    helpers.sendEntries({
-      res,
-      entries: {
-        alice: "Alice",
-        bob: "Bob",
-      },
-    });
-
-    expect(res.status).toHaveBeenCalledWith(200);
-    expect(res.json).toHaveBeenCalledWith({
-      ok: true,
-      entries: {
-        alice: "Alice",
-        bob: "Bob",
-      },
-      count: 2,
-    });
-  });
-
   test("given an error message, when sending an internal error response, then status 500 includes that error message", () => {
     const helpers = createViewPrsRouteResponseHelpers();
     const res = createResponseDouble();

@@ -1,4 +1,4 @@
-const { createFileIoHelpers } = require("./file-io-helpers");
+const { createFileIoHelpers, writeFileReplacingSync } = require("./file-io-helpers");
 
 describe("File I/O Helpers", () => {
   let mockFs;
@@ -12,6 +12,8 @@ describe("File I/O Helpers", () => {
       existsSync: jest.fn(),
       readFileSync: jest.fn(),
       writeFileSync: jest.fn(),
+      renameSync: jest.fn(),
+      rmSync: jest.fn(),
       mkdirSync: jest.fn(),
     };
 
@@ -191,9 +193,13 @@ describe("File I/O Helpers", () => {
       // Assert
       expect(mockFs.mkdirSync).toHaveBeenCalledWith("/output", { recursive: true });
       expect(mockFs.writeFileSync).toHaveBeenCalledWith(
-        "/output/data.json",
+        expect.stringMatching(/^\/output\/data\.json\.tmp-/),
         '{\n  "test": true\n}',
         "utf8"
+      );
+      expect(mockFs.renameSync).toHaveBeenCalledWith(
+        mockFs.writeFileSync.mock.calls[0][0],
+        "/output/data.json"
       );
     });
 
@@ -261,9 +267,13 @@ describe("File I/O Helpers", () => {
 
       // Assert
       expect(mockFs.writeFileSync).toHaveBeenCalledWith(
-        "/config/user-defaults.json",
+        expect.stringMatching(/^\/config\/user-defaults\.json\.tmp-/),
         expect.stringContaining('"setting"'),
         "utf8"
+      );
+      expect(mockFs.renameSync).toHaveBeenCalledWith(
+        mockFs.writeFileSync.mock.calls[0][0],
+        "/config/user-defaults.json"
       );
     });
 
@@ -279,5 +289,47 @@ describe("File I/O Helpers", () => {
       expect(result).toEqual({ author1: "comment" });
       expect(mockFs.existsSync).toHaveBeenCalledWith("/data/author-comments.json");
     });
+  });
+});
+
+describe("writeFileReplacingSync", () => {
+  const realFs = jest.requireActual("fs");
+  const os = require("os");
+  const path = require("path");
+  let tempDir;
+
+  beforeEach(() => {
+    tempDir = realFs.mkdtempSync(path.join(os.tmpdir(), "view-prs-replacing-"));
+  });
+
+  afterEach(() => {
+    realFs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  test("replaces the file's content and leaves no temp file", () => {
+    const filePath = path.join(tempDir, "settings.json");
+    realFs.writeFileSync(filePath, '{"old":true}', "utf8");
+
+    writeFileReplacingSync(realFs, filePath, '{"new":true}');
+
+    expect(realFs.readFileSync(filePath, "utf8")).toBe('{"new":true}');
+    expect(realFs.readdirSync(tempDir)).toEqual(["settings.json"]);
+  });
+
+  test("a write stopped partway leaves the old content whole and removes the temp file", () => {
+    const filePath = path.join(tempDir, "settings.json");
+    realFs.writeFileSync(filePath, '{"old":true}', "utf8");
+    const failingFs = {
+      ...realFs,
+      writeFileSync: (target, content, encoding) => {
+        realFs.writeFileSync(target, content.slice(0, 3), encoding);
+        throw new Error("ENOSPC: no space left on device");
+      },
+    };
+
+    expect(() => writeFileReplacingSync(failingFs, filePath, '{"new":true}')).toThrow("ENOSPC");
+
+    expect(realFs.readFileSync(filePath, "utf8")).toBe('{"old":true}');
+    expect(realFs.readdirSync(tempDir)).toEqual(["settings.json"]);
   });
 });

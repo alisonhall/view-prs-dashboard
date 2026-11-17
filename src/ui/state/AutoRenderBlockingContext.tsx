@@ -19,7 +19,7 @@ export interface AutoRenderBlockingValue {
   statusText: string;
   discardAndApply: () => void;
   // Feed the "jump to unsaved" links (the app header's AutoUpdatePausedBanner).
-  blockingPrNumbers: string[];
+  blockingPrKeys: string[];
   blockingAuthorInsightsLogins: string[];
   blockingPrLabel: string;
 }
@@ -28,7 +28,7 @@ export const AutoRenderBlockingContext = createContext<AutoRenderBlockingValue>(
   isBlocked: false,
   statusText: '',
   discardAndApply: () => {},
-  blockingPrNumbers: [],
+  blockingPrKeys: [],
   blockingAuthorInsightsLogins: [],
   blockingPrLabel: '',
 });

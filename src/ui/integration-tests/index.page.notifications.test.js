@@ -8,8 +8,8 @@ const { createPrAutoRenderUnsavedHelpers } = require("../helpers/pr-auto-render-
 const { createPrAutoRenderBlockingHelpers } = require("../helpers/pr-auto-render-blocking.helpers.ts");
 const { createPrAuthorInsightsDraftsHelpers } = require("../helpers/pr-author-insights-drafts.helpers.ts");
 
-const { formatBlockingPrNumbersLabel } = createPrAutoRenderBlockingHelpers({
-  normalizePrNumber: createPrAutoRenderUnsavedHelpers().normalizePrNumber,
+const { formatBlockingPrKeysLabel } = createPrAutoRenderBlockingHelpers({
+  normalizePrKey: createPrAutoRenderUnsavedHelpers().normalizePrKey,
 });
 const {
   normalizeAuthorInsightsSentiment,
@@ -79,22 +79,22 @@ describe("ui notification helpers", () => {
     });
   });
 
-  describe("formatBlockingPrNumbersLabel", () => {
-    test("returns empty text when there are no valid PR numbers", () => {
-      expect(formatBlockingPrNumbersLabel([])).toBe("");
-      expect(formatBlockingPrNumbersLabel(["", "abc", null])).toBe("");
+  describe("formatBlockingPrKeysLabel", () => {
+    test("returns empty text when there are no valid PR keys", () => {
+      expect(formatBlockingPrKeysLabel([])).toBe("");
+      expect(formatBlockingPrKeysLabel(["", "abc", null, "12"])).toBe("");
     });
 
-    test("deduplicates and sorts PR numbers", () => {
-      expect(formatBlockingPrNumbersLabel(["20", "5", "20", "11"])).toBe(
-        "Blocking PRs: #5, #11, #20",
+    test("deduplicates and sorts PR keys by repo, then number", () => {
+      expect(formatBlockingPrKeysLabel(["acme/web#20", "acme/web#5", "acme/web#20", "acme/api#11"])).toBe(
+        "Blocking PRs: acme/api#11, acme/web#5, acme/web#20",
       );
     });
 
     test("applies visible-limit suffix when list is long", () => {
       expect(
-        formatBlockingPrNumbersLabel(["1", "2", "3", "4", "5"], 3),
-      ).toBe("Blocking PRs: #1, #2, #3 (+2 more)");
+        formatBlockingPrKeysLabel(["a/b#1", "a/b#2", "a/b#3", "a/b#4", "a/b#5"], 3),
+      ).toBe("Blocking PRs: a/b#1, a/b#2, a/b#3 (+2 more)");
     });
   });
 

@@ -1,7 +1,7 @@
 import { createContext, useContext, type Dispatch, type SetStateAction } from 'react';
 
 /**
- * The run output text (the `<pre id="output">` in Settings › Run & check
+ * The run output text (the `<pre id="output">` in Tools › Run & check
  * that the Run script / Ack / Backfill actions write their command output
  * into). Owned by OutputTextProvider, which wraps `<AppShell />` in
  * react-app.tsx so every writer - including useSinglePrUpdate, which runs

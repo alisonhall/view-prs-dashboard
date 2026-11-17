@@ -9,7 +9,7 @@ export interface ReviewConversationsUiState {
   conversationFilterMode: ConversationFilterMode;
 }
 
-const CONVERSATION_FILTER_MODES: readonly string[] = ["unresolved", "waiting", "all"];
+const CONVERSATION_FILTER_MODES: readonly string[] = ["unresolved", "waiting", "check", "all"];
 
 const createPrReviewConversationsUiStateHelpers = () => {
   const getReviewConversationsStateKey = (row: (PrData & { repo?: string }) | null | undefined): string => {

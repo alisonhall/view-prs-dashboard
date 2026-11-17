@@ -1,0 +1,176 @@
+const path = require("path");
+const { writeFileReplacingSync } = require("../helpers/file-io-helpers");
+
+// Where the repos' clones are on this computer (VIEW_PRS_LOCAL_REPOS_FILE,
+// data/local-repos.json): { repos: { "owner/name": { path, checkout? } } }.
+// Its own file, not user-defaults.json, as the paths only mean something on
+// this computer - a data folder shared or backed up elsewhere shouldn't
+// carry them. Only the server writes it, whole.
+//
+// checkout: how the pane's Check out makes a PR's worktree
+// (view-prs-local-checkout.js) - { command?, forks?, after?, folder?, env? }:
+// the user's own command instead of plain git (and whether for forks' PRs
+// too), a command to run in a worktree git made, the folder pattern for
+// git's worktrees, and variables to give the commands. With them,
+// cleanupList? and cleanupRemove?: the repo's own commands for Clean up
+// (the worktrees safe to remove, and removing one), else plain git.
+//
+// openWith: this computer's { editor?, terminal? } commands for the pane's
+// Open in editor and Terminal (view-prs-local-open.js), else VS Code's
+// `code` and the system's terminal - beside repos, for every repo.
+
+const toTrimmed = (value) => (value === null || value === undefined ? "" : String(value).trim());
+const isPlainObject = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
+
+const MAX_COMMAND_LENGTH = 2000;
+const ENV_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+// Checkout settings as given: { checkout } (null when nothing's set, for
+// plain git), or { error } saying what's wrong.
+const checkCheckoutSettings = (value) => {
+  if (value === null || value === undefined) return { checkout: null };
+  if (!isPlainObject(value)) return { error: "Checkout settings should be an object" };
+  const checkout = {};
+  for (const [key, label] of [
+    ["command", "The checkout command"],
+    ["after", "The after-command"],
+    ["cleanupList", "The clean-up list command"],
+    ["cleanupRemove", "The clean-up remove command"],
+  ]) {
+    const command = toTrimmed(value[key]);
+    if (!command) continue;
+    if (/[\r\n\0]/.test(command)) return { error: `${label} should be one line` };
+    if (command.length > MAX_COMMAND_LENGTH) return { error: `${label} is too long` };
+    checkout[key] = command;
+  }
+  if (checkout.command && value.forks === true) checkout.forks = true;
+  const folder = toTrimmed(value.folder);
+  if (folder) {
+    if (/[\r\n\0]/.test(folder)) return { error: "The worktree folder should be one line" };
+    if (!folder.includes("{branch}")) return { error: "The worktree folder needs {branch} in it, so each PR's branch has its own" };
+    // Relative, not going up out of the clone's folder: inside it. (A full
+    // path, or ~, is checked at Check out, where the clone's is known.)
+    const sample = folder.replace(/\{(branch|clone)\}/g, "x");
+    if (!path.isAbsolute(sample) && !/^~(?=$|[\\/])/.test(sample)) {
+      const base = path.resolve("/clone");
+      const resolved = path.resolve(base, sample);
+      if (resolved === base || resolved.startsWith(base + path.sep)) {
+        return { error: "The worktree folder would be inside the clone's folder - start it with ../, like ../{clone}-{branch}" };
+      }
+    }
+    checkout.folder = folder;
+  }
+  if (value.env !== undefined && value.env !== null) {
+    if (!isPlainObject(value.env)) return { error: "The variables should be NAME=value pairs" };
+    const env = {};
+    for (const [name, raw] of Object.entries(value.env)) {
+      if (!ENV_NAME_PATTERN.test(name)) return { error: `Not a variable's name: ${name}` };
+      if (/^VIEW_PRS_/i.test(name)) return { error: `${name}: VIEW_PRS_ variables are the dashboard's own` };
+      const setting = raw === null || raw === undefined ? "" : String(raw);
+      if (/[\r\n\0]/.test(setting)) return { error: `${name}'s value should be one line` };
+      env[name] = setting;
+    }
+    if (Object.keys(env).length > 0) checkout.env = env;
+  }
+  return { checkout: Object.keys(checkout).length > 0 ? checkout : null };
+};
+
+// Checkout settings as saved, or null when there are none usable.
+const normalizeCheckout = (value) => checkCheckoutSettings(value).checkout || null;
+
+// The editor and terminal commands as given: { openWith } ({} when neither
+// is set), or { error } saying what's wrong.
+const checkOpenWithSettings = (value) => {
+  if (value === null || value === undefined) return { openWith: {} };
+  if (!isPlainObject(value)) return { error: "The editor and terminal commands should be an object" };
+  const openWith = {};
+  for (const [key, label] of [
+    ["editor", "The editor command"],
+    ["terminal", "The terminal command"],
+  ]) {
+    const command = toTrimmed(value[key]);
+    if (!command) continue;
+    if (/[\r\n\0]/.test(command)) return { error: `${label} should be one line` };
+    if (command.length > MAX_COMMAND_LENGTH) return { error: `${label} is too long` };
+    openWith[key] = command;
+  }
+  return { openWith };
+};
+
+const createViewPrsLocalReposStorage = ({ fs, localReposFile, isRepoSlug }) => {
+  const readRaw = () => {
+    try {
+      const raw = JSON.parse(fs.readFileSync(localReposFile, "utf8"));
+      return isPlainObject(raw) ? raw : {};
+    } catch (_error) {
+      return {};
+    }
+  };
+
+  // { editor?, terminal? }, the ones that look valid.
+  const loadOpenWith = () => checkOpenWithSettings(readRaw().openWith).openWith || {};
+
+  // repo => { path, checkout? }, the ones that look valid.
+  const loadLocalRepoEntries = () => {
+    const raw = readRaw();
+    const repos = isPlainObject(raw?.repos) ? raw.repos : {};
+    return Object.fromEntries(
+      Object.entries(repos)
+        .map(([repo, entry]) => {
+          const checkout = normalizeCheckout(entry?.checkout);
+          return [toTrimmed(repo), { path: toTrimmed(entry?.path), ...(checkout ? { checkout } : {}) }];
+        })
+        .filter(([repo, entry]) => isRepoSlug(repo) && entry.path && path.isAbsolute(entry.path)),
+    );
+  };
+
+  // repo => absolute path.
+  const loadLocalRepos = () =>
+    Object.fromEntries(Object.entries(loadLocalRepoEntries()).map(([repo, entry]) => [repo, entry.path]));
+
+  // The repos' entries, keeping the editor and terminal commands (or
+  // those, keeping the repos).
+  const save = (entries, openWith = loadOpenWith()) => {
+    fs.mkdirSync(path.dirname(localReposFile), { recursive: true });
+    const sorted = Object.fromEntries(
+      Object.keys(entries)
+        .sort()
+        .map((repo) => [repo, entries[repo]]),
+    );
+    const file = Object.keys(openWith).length > 0 ? { repos: sorted, openWith } : { repos: sorted };
+    writeFileReplacingSync(fs, localReposFile, `${JSON.stringify(file, null, 2)}\n`);
+  };
+
+  // openWith: { editor?, terminal? }, as checkOpenWithSettings gives it.
+  const setOpenWith = (openWith) => save(loadLocalRepoEntries(), checkOpenWithSettings(openWith).openWith || {});
+
+  // Keeps the repo's checkout settings.
+  const setLocalRepo = (repo, folder) => {
+    const entries = loadLocalRepoEntries();
+    save({ ...entries, [repo]: { ...entries[repo], path: folder } });
+  };
+
+  // checkout: the repo's checkout settings, or null for plain git.
+  // Whether the repo has a clone saved.
+  const setLocalRepoCheckout = (repo, checkout) => {
+    const entries = loadLocalRepoEntries();
+    if (!entries[repo]) return false;
+    const normalized = normalizeCheckout(checkout);
+    const { checkout: _dropped, ...rest } = entries[repo];
+    save({ ...entries, [repo]: normalized ? { ...rest, checkout: normalized } : rest });
+    return true;
+  };
+
+  // Whether it had one.
+  const removeLocalRepo = (repo) => {
+    const entries = loadLocalRepoEntries();
+    if (!(repo in entries)) return false;
+    delete entries[repo];
+    save(entries);
+    return true;
+  };
+
+  return { loadLocalRepos, loadLocalRepoEntries, setLocalRepo, setLocalRepoCheckout, removeLocalRepo, loadOpenWith, setOpenWith };
+};
+
+module.exports = { createViewPrsLocalReposStorage, checkCheckoutSettings, normalizeCheckout, checkOpenWithSettings };

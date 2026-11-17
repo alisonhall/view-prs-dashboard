@@ -1,4 +1,5 @@
 const {
+  attentionConfigForRepo,
   createPrNeedsAttentionHelpers,
 } = require("./pr-needs-attention.helpers.ts");
 
@@ -231,6 +232,23 @@ describe("pr needs attention helpers", () => {
         {},
       ),
     ).toBe(false);
+  });
+
+  // Settings › Rules for a repo: a PR follows its repo's own rules.
+  test("a PR is judged by its repo's own rules when it has them (whatever the case of its name), else every repo's", () => {
+    const helpers = createPrNeedsAttentionHelpers();
+    const config = {
+      noActivityMode: "all",
+      includeClosedMerged: true,
+      byRepo: { "acme/quiet": { noActivityMode: "none", includeClosedMerged: true } },
+    };
+    const noActivity = (repo) => ({ repo, section: "open", data: { status: "NO_ACTIVITY" } });
+
+    expect(helpers.entryNeedsAttention(noActivity("acme/busy"), config)).toBe(true);
+    expect(helpers.entryNeedsAttention(noActivity("Acme/Quiet"), config)).toBe(false);
+    expect(attentionConfigForRepo(config, "ACME/quiet").noActivityMode).toBe("none");
+    expect(attentionConfigForRepo(config, "acme/other")).toBe(config);
+    expect(attentionConfigForRepo(undefined, "acme/other")).toEqual({});
   });
 
   test("given entry baseline value, when checking last activity flag, then non-empty non-dash values return true", () => {

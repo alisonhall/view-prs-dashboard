@@ -5,9 +5,11 @@ import type {
   ManualCommentComposerDraft,
   ManualCommentEditDraft,
 } from "./pr-author-insights-data.helpers.ts";
+import { comparePrEntryKeys, isPrEntryKey } from "./pr-entry-keys.helpers.ts";
 
 // What's holding back automatic data refreshes, for the "Auto update
-// paused" indicator: the "Blocking PRs: #1, #2 (+3 more)" label, and which
+// paused" indicator: the "Blocking PRs: acme/api#1, acme/web#2 (+3 more)"
+// label (PR keys), and which
 // authors have unsaved Author Insights comment drafts (a dirty new-comment
 // composer, or an edit in progress that differs from the saved comment).
 
@@ -18,7 +20,7 @@ export type AuthorInsightsDraftsState = Pick<
 >;
 
 export interface PrAutoRenderBlockingDeps {
-  normalizePrNumber?: (value: unknown) => string;
+  normalizePrKey?: (value: unknown) => string;
   normalizeActorLogin?: NormalizeActorLogin;
   isAuthorInsightsComposerDraftDirty?: (draft: ManualCommentComposerDraft | undefined) => boolean;
   getAuthorManualCommentsForLogin?: (authorLogin: string) => AuthorManualComment[];
@@ -27,19 +29,19 @@ export interface PrAutoRenderBlockingDeps {
 }
 
 const createPrAutoRenderBlockingHelpers = ({
-  normalizePrNumber,
+  normalizePrKey,
   normalizeActorLogin,
   isAuthorInsightsComposerDraftDirty,
   getAuthorManualCommentsForLogin,
   isAuthorInsightsEditDraftDirty,
   getAuthorInsightsDisplayName,
 }: PrAutoRenderBlockingDeps = {}) => {
-  const normalizePrNumberSafe =
-    typeof normalizePrNumber === "function"
-      ? normalizePrNumber
+  const normalizePrKeySafe =
+    typeof normalizePrKey === "function"
+      ? normalizePrKey
       : (value: unknown) => {
           const normalized = String(value || "").trim();
-          return /^\d+$/.test(normalized) ? normalized : "";
+          return isPrEntryKey(normalized) ? normalized : "";
         };
   const normalizeActorLoginSafe =
     typeof normalizeActorLogin === "function"
@@ -62,14 +64,14 @@ const createPrAutoRenderBlockingHelpers = ({
       ? getAuthorInsightsDisplayName
       : (value: string) => String(value || "").trim();
 
-  const formatBlockingPrNumbersLabel = (prNumbers: unknown, maxVisible: number = 6): string => {
+  const formatBlockingPrKeysLabel = (prKeys: unknown, maxVisible: number = 6): string => {
     const normalized = Array.from(
       new Set(
-        (Array.isArray(prNumbers) ? prNumbers : [])
-          .map(normalizePrNumberSafe)
+        (Array.isArray(prKeys) ? prKeys : [])
+          .map(normalizePrKeySafe)
           .filter(Boolean),
       ),
-    ).sort((a, b) => Number(a) - Number(b));
+    ).sort(comparePrEntryKeys);
 
     if (!normalized.length) {
       return "";
@@ -80,7 +82,7 @@ const createPrAutoRenderBlockingHelpers = ({
       normalized.length > visible.length
         ? ` (+${normalized.length - visible.length} more)`
         : "";
-    return `Blocking PRs: ${visible.map((prNumber) => `#${prNumber}`).join(", ")}${suffix}`;
+    return `Blocking PRs: ${visible.join(", ")}${suffix}`;
   };
 
   const getBlockingAuthorInsightsLogins = (authorInsightsState: AuthorInsightsDraftsState = {}): string[] => {
@@ -125,7 +127,7 @@ const createPrAutoRenderBlockingHelpers = ({
   };
 
   return {
-    formatBlockingPrNumbersLabel,
+    formatBlockingPrKeysLabel,
     getBlockingAuthorInsightsLogins,
   };
 };

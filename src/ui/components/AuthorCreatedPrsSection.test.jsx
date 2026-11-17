@@ -46,16 +46,16 @@ describe('AuthorCreatedPrsSection', () => {
     expect(screen.getByText('No PRs by this author in the current local data scope.')).toBeInTheDocument();
   });
 
-  test('given PRs by the selected author, when rendering, then the PR link and meta render', () => {
+  test('given PRs by the selected author, when rendering, then each is a PR row: its link and its signals (AuthorInsightsPrRow)', () => {
     renderSection([buildEntry()], 'octocat');
 
-    expect(screen.getByText('#1 Fix the thing')).toBeInTheDocument();
-    expect(screen.getByText(/Status: NO_CHANGE/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '#1 Fix the thing' })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Signals' })).toBeInTheDocument();
   });
 
   // Phase H.16 (see REACT_MIGRATION_PLAN.md, "Remaining-effort audit",
   // cluster 2): window.navigateToPrInTableFromAuthorInsights is deleted -
-  // AuthorInsightsPrLink.tsx's button now calls useNavigateToPrInTable()
+  // AuthorInsightsPrRow.tsx's button now calls useNavigateToPrInTable()
   // directly, which dispatches 'pr-navigate-to-insights' (PrTableApp.tsx's
   // own listener) instead of a window.* bridge.
   test('given "View in table", when clicked, then pr-navigate-to-insights fires with the PR number and repo', () => {
@@ -66,7 +66,7 @@ describe('AuthorCreatedPrsSection', () => {
 
     screen.getByRole('button', { name: 'View in table' }).click();
     // repo disambiguates PR numbers that collide across repos - see
-    // AuthorInsightsPrLink/PrTableApp's buildExpandedInsightsKey.
+    // AuthorInsightsPrRow/PrTableApp's buildExpandedInsightsKey.
     expect(events).toEqual([{ prNumber: '1', repo: 'owner/repo', focusUnsaved: false }]);
 
     window.removeEventListener('pr-navigate-to-insights', handler);

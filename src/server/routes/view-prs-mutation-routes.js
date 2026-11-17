@@ -16,7 +16,12 @@ const registerViewPrsMutationRoutes = ({
   viewPrsAckTotalRefreshTimeoutMs,
   defaultViewPrsRepo,
   setLastManualRunNow,
+  // Subscribes a repo to its recent PRs (the sources file) - a full manual
+  // run of a repo does, as running it always added it to the background
+  // updates. Safely no-ops if absent (e.g. in tests that don't wire it).
+  subscribeRepoToRecent,
   clearPendingForRepo,
+  clearPendingNumbersForRepo,
   appendActionLogEntry,
   readViewPrsData,
   enqueuePrDiffRefreshForData,
@@ -58,14 +63,36 @@ const registerViewPrsMutationRoutes = ({
   // that don't wire it).
   reserveGhSlots,
   releaseGhSlots,
+  // What's running and how far it's got, for the Activity popover
+  // (view-prs-progress-helpers.js). Safely no-ops if absent (tests).
+  startProgressTask,
+  countFinishedPrs,
   // /run-auto fans out across multiple repos in parallel (unlike every
   // other manual route here, which is a single script/gh invocation) - see
   // its own call site below for why it reserves this many slots instead of
   // the default 1. Falls back to 1 (matching every other route) if absent.
   runAutoGhReservationCost,
+  // (repo) => the env a script run for it needs (GH_HOST for a GitHub
+  // Enterprise repo). Safely no-ops if absent.
+  getRepoGhEnv,
+  // (repo, numbers) => adds the PRs a manual run chose, in a repo not
+  // subscribed, to the sources. Safely no-ops if absent.
+  trackRunPrs,
+  // (repo, numbers) => a manual run fetched these PRs, so none is
+  // unreachable (its row's Retry). Safely no-ops if absent.
+  recordFetchedPrs,
+  // (repo) => whether every row of the repo shows (fetched in full); true
+  // if absent.
+  showsAllRowsOfRepo,
 }) => {
+  const trackRunPrsSafe = typeof trackRunPrs === "function" ? trackRunPrs : () => {};
+  const recordFetchedPrsSafe = typeof recordFetchedPrs === "function" ? recordFetchedPrs : () => {};
+  const showsAllRowsOfRepoSafe = typeof showsAllRowsOfRepo === "function" ? showsAllRowsOfRepo : () => true;
+  const getRepoGhEnvSafe = (repo) => (typeof getRepoGhEnv === "function" && repo ? getRepoGhEnv(repo) : {});
   const emitDataChangedSafe =
     typeof emitDataChanged === "function" ? emitDataChanged : () => {};
+  const subscribeRepoToRecentSafe =
+    typeof subscribeRepoToRecent === "function" ? subscribeRepoToRecent : () => false;
   const runAutoGhReservationCostSafe =
     Number.isFinite(runAutoGhReservationCost) && runAutoGhReservationCost > 0
       ? runAutoGhReservationCost
@@ -78,6 +105,12 @@ const registerViewPrsMutationRoutes = ({
     typeof reserveGhSlots === "function" ? reserveGhSlots : () => {};
   const releaseGhSlotsSafe =
     typeof releaseGhSlots === "function" ? releaseGhSlots : () => {};
+  const noProgressTask = { advance: () => {}, setTotal: () => {}, setRepos: () => {}, finish: () => {} };
+  // A request someone started: shown as theirs ("You").
+  const startRequestTask = (input) =>
+    typeof startProgressTask === "function" ? startProgressTask({ origin: "you", ...input }) : noProgressTask;
+  const countFinishedPrsSafe = (task) =>
+    typeof countFinishedPrs === "function" ? countFinishedPrs(task) : {};
   const { sendRouteResult } = createViewPrsRouteResponseHelpers();
   const {
     createTimingContext,
@@ -163,21 +196,50 @@ const registerViewPrsMutationRoutes = ({
 
     const timingContext = createTimingContext();
     reserveGhSlotsSafe();
+    const runTask = startRequestTask({
+      kind: "runScript",
+      repos: [detail.repo || defaultViewPrsRepo],
+      total: detail.prNumber && Array.isArray(detail.prNumbers) ? detail.prNumbers.length : null,
+    });
     callRunViewPrsScript(args, 10 * 1024 * 1024, {
       timeoutMs: viewPrsManualScriptTimeoutMs,
+      progressTracker: countFinishedPrsSafe(runTask),
       // Tags this run's active-PR-tracking entries with the repo it
       // targets (see app.js's buildActivePrKey) - PR numbers are only
       // unique within a repo, and other repos' PRs may be visible
       // alongside this run's in the UI.
       repo: detail.repo,
+      // Asked for by hand: every PR fetched in full, none reused as stored
+      // (as the background sweep does) - the way to make sure of a row.
+      // GH_HOST for a repo on a GitHub Enterprise host.
+      env: { VIEW_PRS_SKIP_UNCHANGED: "0", ...getRepoGhEnvSafe(detail.repo || defaultViewPrsRepo) },
     })
-      .finally(() => releaseGhSlotsSafe())
+      .finally(() => {
+        releaseGhSlotsSafe();
+        runTask.finish();
+      })
       .then(({ stdout, stderr }) => {
-        setLastManualRunNow();
+        // Only a full-repo run holds off that repo's auto refresh (the
+        // manual cooldown) - one PR's doesn't cover the rest.
+        setLastManualRunNow({
+          fullRunRepo: detail.prNumber ? null : detail.repo || defaultViewPrsRepo || "*",
+        });
         // A full-repo manual run (no single --pr target) covers everything
-        // the quick-check may have queued, so it's resolved now too.
+        // the quick-check may have queued, so it's resolved now too; a run
+        // of one PR, just that PR.
+        if (!detail.prNumber) {
+          subscribeRepoToRecentSafe(detail.repo || defaultViewPrsRepo);
+        }
         if (detail.repo && !detail.prNumber) {
           clearPendingForRepo(detail.repo);
+        } else if (detail.repo && detail.prNumber && typeof clearPendingNumbersForRepo === "function") {
+          clearPendingNumbersForRepo(detail.repo, detail.prNumbers);
+        }
+        // A run of chosen PRs in a repo not subscribed adds them, so their
+        // rows stay in view.
+        if (detail.prNumber) {
+          trackRunPrsSafe(detail.repo || defaultViewPrsRepo, detail.prNumbers);
+          recordFetchedPrsSafe(detail.repo || defaultViewPrsRepo, detail.prNumbers);
         }
         appendActionLogEntry(
           buildRunSuccessActionLogEntry({
@@ -287,6 +349,7 @@ const registerViewPrsMutationRoutes = ({
     void runViewPrsAutoRefresh({
       skipCooldownChecks: true,
       reposOverride: requestedRepos,
+      progressOrigin: "you",
     }).finally(() => releaseGhSlotsSafe(reservationCost));
 
     appendActionLogEntry(buildRunAutoSuccessActionLogEntry({ timingContext }));
@@ -366,7 +429,7 @@ const registerViewPrsMutationRoutes = ({
     reserveGhSlotsSafe();
     let checkResult;
     try {
-      checkResult = await runViewPrsQuickCheck(numbersRequest);
+      checkResult = await runViewPrsQuickCheck({ ...numbersRequest, progressOrigin: "you" });
     } finally {
       releaseGhSlotsSafe();
     }
@@ -403,7 +466,7 @@ const registerViewPrsMutationRoutes = ({
     reserveGhSlotsSafe();
     let checkResult;
     try {
-      checkResult = await runViewPrsQuickCheck({ repoRequests });
+      checkResult = await runViewPrsQuickCheck({ repoRequests, progressOrigin: "you" });
     } finally {
       releaseGhSlotsSafe();
     }
@@ -413,11 +476,6 @@ const registerViewPrsMutationRoutes = ({
   app.post(["/ack", "/view-prs/ack"], (req, res) => {
     const body = req.body || {};
     let ackRequest;
-
-    const runScript = createAckScriptRunner({
-      callRunViewPrsScript,
-      viewPrsAckScriptTimeoutMs,
-    });
 
     try {
       ackRequest = buildAckRequest({ body, viewPrsRunScriptRelativePath });
@@ -433,6 +491,12 @@ const registerViewPrsMutationRoutes = ({
       detail,
       displayCommand,
     } = ackRequest;
+
+    const runScript = createAckScriptRunner({
+      callRunViewPrsScript,
+      viewPrsAckScriptTimeoutMs,
+      env: getRepoGhEnvSafe(repo || defaultViewPrsRepo),
+    });
     const timingContext = createTimingContext();
     
     // Determine if this is a checkbox-only operation (flagged/inReview only)
@@ -453,20 +517,31 @@ const registerViewPrsMutationRoutes = ({
         if (!isCheckboxOnly) {
           // Only refresh PRs for ack/ackClear operations
           const refreshList = buildAckRefreshList(detail);
+          // A task (shown in every tab) only for several PRs: one PR's
+          // refresh is over in moments.
+          const ackTask =
+            refreshList.length > 1
+              ? startRequestTask({ kind: "ackClear", repos: [effectiveRepo], total: refreshList.length })
+              : noProgressTask;
           const deps = callGetDependencyStatus();
 
-          if (deps.ok) {
-            const refreshResult = await runAckRefreshes({
-              refreshList,
-              effectiveRepo,
-              viewPrsRunScriptRelativePath,
-              runScript,
-              viewPrsAckRefreshScriptTimeoutMs,
-              viewPrsAckTotalRefreshTimeoutMs,
-              buildAckRefreshBudgetSkipErrors,
-            });
-            refreshedPrs = refreshResult.refreshedPrs;
-            refreshErrors = refreshResult.refreshErrors;
+          try {
+            if (deps.ok) {
+              const refreshResult = await runAckRefreshes({
+                refreshList,
+                effectiveRepo,
+                viewPrsRunScriptRelativePath,
+                runScript,
+                viewPrsAckRefreshScriptTimeoutMs,
+                viewPrsAckTotalRefreshTimeoutMs,
+                buildAckRefreshBudgetSkipErrors,
+                progressTask: ackTask,
+              });
+              refreshedPrs = refreshResult.refreshedPrs;
+              refreshErrors = refreshResult.refreshErrors;
+            }
+          } finally {
+            ackTask.finish();
           }
         }
 
@@ -542,6 +617,17 @@ const registerViewPrsMutationRoutes = ({
       return;
     }
 
+    // Only for a repo whose rows all show (subscribed to its recent PRs):
+    // in one followed by listed PRs, or PRs added one by one, the older
+    // merged PRs it fetched would be hidden.
+    if (!showsAllRowsOfRepoSafe(repo)) {
+      sendRouteResult({
+        res,
+        result: buildBadRequestResult(`${repo} isn't subscribed to its recent PRs, so its older merged PRs wouldn't show`),
+      });
+      return;
+    }
+
     const dependencyStatus = callGetDependencyStatus();
     if (!dependencyStatus.ok) {
       const missingDependenciesResult = buildRequestMoreMissingDependenciesResult(
@@ -552,6 +638,7 @@ const registerViewPrsMutationRoutes = ({
     }
 
     reserveGhSlotsSafe();
+    const olderMergedTask = startRequestTask({ kind: "olderMerged", repos: [repo] });
     try {
       const currentData = readViewPrsData();
       const storedForRepo = buildStoredPrNumbersForRepo({
@@ -568,13 +655,16 @@ const registerViewPrsMutationRoutes = ({
         storedForRepo,
         requestCount,
       });
+      olderMergedTask.setTotal(missingCandidates.length);
 
       const refreshResult = await runRequestMoreRefreshes({
         missingCandidates,
+        progressTask: olderMergedTask,
         viewPrsRunScriptRelativePath,
         repo,
         callRunViewPrsScript,
         viewPrsAckRefreshScriptTimeoutMs,
+        env: getRepoGhEnvSafe(repo),
       });
       const { refreshedPrs, refreshErrors } = refreshResult;
 
@@ -617,6 +707,7 @@ const registerViewPrsMutationRoutes = ({
       sendRouteResult({ res, result: failureResult });
     } finally {
       releaseGhSlotsSafe();
+      olderMergedTask.finish();
     }
   });
 

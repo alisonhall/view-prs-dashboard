@@ -8,7 +8,7 @@ import { ActorIdentityContext, defaultActorIdentity } from '../../state/ActorIde
 // collectPrAuthors is real: these build PR fixtures that drive it.
 const renderCell = (pr: PrData, viewerLogin = '') =>
   render(
-    <ActorIdentityContext.Provider value={{ ...defaultActorIdentity, getEffectiveViewerLogin: () => viewerLogin }}>
+    <ActorIdentityContext.Provider value={{ ...defaultActorIdentity, getEffectiveViewerLogin: () => viewerLogin, getEffectiveViewerKey: () => viewerLogin }}>
       <table>
         <tbody>
           <tr>

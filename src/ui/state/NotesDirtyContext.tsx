@@ -6,7 +6,7 @@ import { createContext, useContext } from 'react';
  * it to hold back data refreshes while notes are unsaved, and the pane to
  * mark its Notes tab and ask before switching PRs.
  *
- * `dirtyPrNumbers` is a list, not a single boolean: the pane shows one PR
+ * `dirtyPrKeys` is a list, not a single boolean: the pane shows one PR
  * at a time, but the list keeps the Context independent of that (and the
  * tests mount several).
  *
@@ -15,13 +15,14 @@ import { createContext, useContext } from 'react';
  * ancestor still works, it just never reports dirty state anywhere.
  */
 export interface NotesDirtyValue {
-  // Sorted numerically.
-  dirtyPrNumbers: string[];
-  setNotesDirty: (prNumber: string | number, isDirty: boolean) => void;
+  // PR keys ("owner/repo#123" - a bare number would also mark another
+  // repo's PR with it), by repo then number.
+  dirtyPrKeys: string[];
+  setNotesDirty: (prKey: string, isDirty: boolean) => void;
 }
 
 export const NotesDirtyContext = createContext<NotesDirtyValue>({
-  dirtyPrNumbers: [],
+  dirtyPrKeys: [],
   setNotesDirty: () => {},
 });
 

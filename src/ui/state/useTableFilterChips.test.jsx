@@ -41,7 +41,6 @@ const renderProbe = ({ filterStateValues, seedListId, seedValues } = {}) =>
         <ChangeFilterActorSelectionProvider>
           <FilterStateProvider
             initialValues={{
-              scopeMode: 'all',
               filterPrNumbers: '',
               alwaysShowInReview: false,
               filterCustomComments: '',
@@ -70,15 +69,15 @@ describe('useTableFilterChips', () => {
     const user = userEvent.setup();
     renderProbe({ filterStateValues: { filterPrNumbers: '42' } });
 
-    expect(screen.getByText('PR #: 42')).toBeInTheDocument();
+    expect(screen.getByText('PRs: 42')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'remove PR #: 42' }));
+    await user.click(screen.getByRole('button', { name: 'remove PRs: 42' }));
 
     // filterPrNumbers is debounced the same way the table's own live
     // filtering is (useVisiblePrNumbers.tsx) - the chip's disappearance
     // lags the click by up to FILTER_PR_NUMBERS_DEBOUNCE_MS, same as
     // typing into the real field would.
-    await waitFor(() => expect(screen.queryByText('PR #: 42')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText('PRs: 42')).not.toBeInTheDocument());
   });
 
   test('given a checked label (RowFilterSelectionContext), when its chip is removed, then that label is unchecked', async () => {
@@ -92,6 +91,31 @@ describe('useTableFilterChips', () => {
 
     expect(screen.queryByText('Label: bug')).not.toBeInTheDocument();
     expect(screen.getByText('Label: docs')).toBeInTheDocument();
+  });
+
+  test('given repos picked, then a chip each, and removing one unpicks only that repo', async () => {
+    const user = userEvent.setup();
+    renderProbe({ seedListId: 'repo-list', seedValues: ['owner/repo', 'owner/other'] });
+
+    expect(screen.getByText('Repo: owner/repo')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'remove Repo: owner/repo' }));
+    expect(screen.queryByText('Repo: owner/repo')).not.toBeInTheDocument();
+    expect(screen.getByText('Repo: owner/other')).toBeInTheDocument();
+  });
+
+  test('given a last activity range, then one chip for it, and removing it clears both dates', async () => {
+    const user = userEvent.setup();
+    renderProbe({ filterStateValues: { filterLastActivityFrom: '2026-11-01', filterLastActivityTo: '2026-11-10' } });
+
+    const label = 'Last activity: Nov 1, 2026 – Nov 10, 2026';
+    expect(screen.getByText(label)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: `remove ${label}` }));
+    expect(screen.queryAllByRole('listitem')).toHaveLength(0);
+  });
+
+  test('given only one side of the range, then its chip says which', () => {
+    renderProbe({ filterStateValues: { filterLastActivityFrom: '', filterLastActivityTo: '2026-11-10' } });
+    expect(screen.getByText('Last activity: until Nov 10, 2026')).toBeInTheDocument();
   });
 
   test('given a non-default boolean field (alwaysShowInReview), when rendered, then shows its chip', () => {

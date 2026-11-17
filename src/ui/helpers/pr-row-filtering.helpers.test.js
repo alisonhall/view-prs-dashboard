@@ -11,6 +11,9 @@ describe("pr row filtering helpers", () => {
 
     const criteria = buildRowFilterCriteria({
       prNumbers: ["101", "102"],
+      repoNames: ["owner/repo"],
+      lastActivityFrom: "2026-11-01",
+      lastActivityTo: "2026-11-10",
       includeLabels: ["bug"],
       excludeLabels: ["wip"],
       authorLogins: ["alice"],
@@ -22,10 +25,16 @@ describe("pr row filtering helpers", () => {
       prDifficulty: "3",
       stories: "name-only",
       analysisOfPr: "with",
+      searchTerms: ["parser"],
     });
 
     expect(criteria).toEqual({
       prNumbers: ["101", "102"],
+      prKeys: [],
+      repos: [],
+      repoNames: ["owner/repo"],
+      lastActivityFrom: "2026-11-01",
+      lastActivityTo: "2026-11-10",
       includeLabels: ["bug"],
       excludeLabels: ["wip"],
       authorLogins: ["alice"],
@@ -37,6 +46,7 @@ describe("pr row filtering helpers", () => {
       prDifficulty: "3",
       stories: "name-only",
       analysisOfPr: "with",
+      searchTerms: ["parser"],
     });
   });
 
@@ -47,6 +57,11 @@ describe("pr row filtering helpers", () => {
 
     expect(criteria).toEqual({
       prNumbers: [],
+      prKeys: [],
+      repos: [],
+      repoNames: [],
+      lastActivityFrom: "",
+      lastActivityTo: "",
       includeLabels: [],
       excludeLabels: [],
       authorLogins: [],
@@ -58,6 +73,7 @@ describe("pr row filtering helpers", () => {
       prDifficulty: "",
       stories: "",
       analysisOfPr: "",
+      searchTerms: [],
     });
   });
 

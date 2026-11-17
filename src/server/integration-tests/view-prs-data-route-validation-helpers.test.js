@@ -47,39 +47,6 @@ describe("view-prs data route validation helpers", () => {
     expect(res.json).not.toHaveBeenCalled();
   });
 
-  test("given an empty mapping, when validating non-empty mappings, then 400 is written and false is returned", () => {
-    const helpers = createViewPrsDataRouteValidationHelpers({ isObject });
-    const res = createResponseDouble();
-
-    const ok = helpers.validateNonEmptyMappings({
-      entries: {},
-      res,
-      errorMessage: "At least one mapping is required",
-    });
-
-    expect(ok).toBe(false);
-    expect(res.status).toHaveBeenCalledWith(400);
-    expect(res.json).toHaveBeenCalledWith({
-      ok: false,
-      error: "At least one mapping is required",
-    });
-  });
-
-  test("given a non-empty mapping, when validating non-empty mappings, then true is returned without writing an error", () => {
-    const helpers = createViewPrsDataRouteValidationHelpers({ isObject });
-    const res = createResponseDouble();
-
-    const ok = helpers.validateNonEmptyMappings({
-      entries: { alice: "Alice" },
-      res,
-      errorMessage: "At least one mapping is required",
-    });
-
-    expect(ok).toBe(true);
-    expect(res.status).not.toHaveBeenCalled();
-    expect(res.json).not.toHaveBeenCalled();
-  });
-
   test("given a body without prNumbers array, when validating data-delta request, then 400 is written and false is returned", () => {
     const helpers = createViewPrsDataRouteValidationHelpers({ isObject });
     const res = createResponseDouble();

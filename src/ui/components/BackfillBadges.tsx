@@ -2,7 +2,7 @@ import type { BackfillBadge } from '../helpers/pr-backfill.helpers.ts';
 
 /**
  * Renders a `{text, className}[]` badge list as `<span class="scheduler-badge ...">`
- * chips: the backfill status (the Settings drawer's Backfill section) and
+ * chips: the backfill status (the Tools drawer's Backfill section) and
  * the activity popover's request-activity and backfill badges. No
  * Backfill-specific logic, despite the name; a plain display list.
  */

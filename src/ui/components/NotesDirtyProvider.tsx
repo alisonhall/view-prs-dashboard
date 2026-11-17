@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
+import { comparePrEntryKeys } from '../helpers/pr-entry-keys.helpers.ts';
 import { NotesDirtyContext, type NotesDirtyValue } from '../state/NotesDirtyContext';
 
 /**
@@ -15,12 +16,12 @@ import { NotesDirtyContext, type NotesDirtyValue } from '../state/NotesDirtyCont
  * value changing underneath a stably-referenced child.
  */
 export function NotesDirtyProvider({ children }: { children?: ReactNode }) {
-  const [dirtyPrNumberSet, setDirtyPrNumberSet] = useState<Set<string>>(() => new Set());
+  const [dirtyPrKeySet, setDirtyPrKeySet] = useState<Set<string>>(() => new Set());
 
-  const setNotesDirty = useCallback<NotesDirtyValue['setNotesDirty']>((prNumber, isDirty) => {
-    const key = String(prNumber || '').trim();
+  const setNotesDirty = useCallback<NotesDirtyValue['setNotesDirty']>((prKey, isDirty) => {
+    const key = String(prKey || '').trim();
     if (!key) return;
-    setDirtyPrNumberSet((previous) => {
+    setDirtyPrKeySet((previous) => {
       const alreadyDirty = previous.has(key);
       if (isDirty === alreadyDirty) return previous;
       const next = new Set(previous);
@@ -33,12 +34,12 @@ export function NotesDirtyProvider({ children }: { children?: ReactNode }) {
     });
   }, []);
 
-  const dirtyPrNumbers = useMemo(
-    () => Array.from(dirtyPrNumberSet).sort((a, b) => Number(a) - Number(b)),
-    [dirtyPrNumberSet],
+  const dirtyPrKeys = useMemo(
+    () => Array.from(dirtyPrKeySet).sort(comparePrEntryKeys),
+    [dirtyPrKeySet],
   );
 
-  const value = useMemo(() => ({ dirtyPrNumbers, setNotesDirty }), [dirtyPrNumbers, setNotesDirty]);
+  const value = useMemo(() => ({ dirtyPrKeys, setNotesDirty }), [dirtyPrKeys, setNotesDirty]);
 
   return <NotesDirtyContext.Provider value={value}>{children}</NotesDirtyContext.Provider>;
 }

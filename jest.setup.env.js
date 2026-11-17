@@ -43,6 +43,9 @@ if (!process.env.VIEW_PRS_TEST_STATE_DIR) {
   // refuses, under NODE_ENV=test, any writable path inside the real data dir.
   process.env.VIEW_PRS_AUTHOR_COMMENTS_FILE = path.join(tempDir, "author-comments.json");
   process.env.VIEW_PRS_PR_DIFF_DIR = path.join(tempDir, "pr-diffs");
+  process.env.VIEW_PRS_PR_DESCRIPTION_DIR = path.join(tempDir, "pr-descriptions");
+  process.env.VIEW_PRS_ATTACHMENT_DIR = path.join(tempDir, "pr-attachments");
+  process.env.VIEW_PRS_LOCAL_REPOS_FILE = path.join(tempDir, "local-repos.json");
   process.env.VIEW_PRS_PR_DETAIL_DIR = path.join(tempDir, "pr-details");
   process.env.VIEW_PRS_BACKFILL_PID_FILE = path.join(tempDir, "backfill-missing.pid");
   process.env.VIEW_PRS_BACKFILL_LOG_FILE = path.join(tempDir, "backfill-missing.log");
@@ -52,8 +55,13 @@ if (!process.env.VIEW_PRS_TEST_STATE_DIR) {
   // the script tests that didn't set PR_DETAIL_DIR themselves wrote
   // data/pr-details/owner_repo__pr-{321,501,701}.json there.
   process.env.DATA_DIR = tempDir;
+  // And the server's data folder setting - one exported in a developer's
+  // shell would otherwise put every default in their real data folder.
+  process.env.VIEW_PRS_DATA_DIR = tempDir;
   process.env.VIEW_PRS_PR_DIFF_CONCURRENCY = "0";
   process.env.VIEW_PRS_DISABLE_BACKGROUND_DIFF_REFRESH = "1";
+  // Quick checks would otherwise list PRs with a real `gh api graphql`.
+  process.env.VIEW_PRS_DISABLE_LIVE_SUMMARY = "1";
   process.env.VIEW_PRS_BACKUP_DIR = path.join(tempDir, "backups");
   // Expose to other setup files / global teardown if needed.
   process.env.VIEW_PRS_TEST_STATE_DIR = tempDir;

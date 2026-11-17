@@ -7,6 +7,10 @@
  *
  * Named by its title (role "group"), and its table by the same title.
  *
+ * Says when you start and stop working in it - the pointer over it or
+ * focus in it (useSectionInteraction) - so a refresh doesn't re-sort its
+ * rows meanwhile (useHeldSectionOrder).
+ *
  * @module components/PrSection
  */
 
@@ -14,25 +18,20 @@ import { useEffect, useRef } from 'react';
 import type { PrEntry } from '../types/pr-data.ts';
 import { describeChecks, describeMergeable } from '../helpers/pr-row-signals.helpers.ts';
 import { Icon, type IconName } from './ui/Icon';
+import { BUILT_IN_SECTION_LOOKS } from '../helpers/pr-section-preferences.helpers.ts';
 import { PrTable, type PrTableProps } from './PrTable';
+import { useSectionInteraction } from '../state/useSectionInteraction';
+import { usePrArchive } from '../state/PrArchiveContext';
+import { archivedCount, type ArchivedSection } from '../helpers/pr-archive.helpers.ts';
+import { Button } from './ui/Button';
 
-const SECTION_ICONS: Record<string, { icon: IconName; tone: string }> = {
-  flagged: { icon: 'flag', tone: 'danger' },
-  'in-review': { icon: 'eye', tone: 'accent' },
-  'needs-attention': { icon: 'alert', tone: 'attention' },
-  mine: { icon: 'pr', tone: 'accent' },
-  'assigned-to-me': { icon: 'user', tone: 'accent' },
-  'review-requested': { icon: 'approve', tone: 'attention' },
-  interacted: { icon: 'users', tone: 'muted' },
-  open: { icon: 'pr', tone: 'success' },
-  draft: { icon: 'prDraft', tone: 'muted' },
-  closed: { icon: 'prClosed', tone: 'danger' },
-  merged: { icon: 'merge', tone: 'done' },
-};
 
 export interface PrSectionData {
   key: string;
   title: string;
+  // A custom section's icon and colour, or a smart group's chosen in
+  // Settings › Appearance; otherwise the built-in look (BUILT_IN_SECTION_LOOKS).
+  icon?: { icon: IconName; tone: string };
   prs: PrEntry[];
   totalCount?: number;
   isSmartGroup?: boolean;
@@ -40,12 +39,19 @@ export interface PrSectionData {
   dateHeader?: string;
   attentionCount?: number;
   defaultOpen?: boolean;
+  // Its rows are held where they were while you work in it, and its sort
+  // would now order them differently (useHeldSectionOrder).
+  orderChanged?: boolean;
 }
 
-export interface PrSectionProps extends Omit<PrTableProps, 'prs' | 'sectionKey' | 'label' | 'isSmartGroup' | 'lifecycleSection'> {
+export interface PrSectionProps
+  extends Omit<PrTableProps, 'prs' | 'sectionKey' | 'label' | 'isSmartGroup' | 'lifecycleSection' | 'orderChanged' | 'onResort'> {
   section: PrSectionData;
   isOpen: boolean;
   onToggleSection: (sectionKey: string, nextOpen?: boolean) => void;
+  // You started or stopped working in the section (useSectionInteraction).
+  onInteractingChange?: (sectionKey: string, interacting: boolean) => void;
+  onResortSection?: (sectionKey: string) => void;
 }
 
 interface SummaryItem {
@@ -70,11 +76,40 @@ const summarise = (prs: PrEntry[], attentionCount: number): SummaryItem[] => {
   return items.filter((item) => item.count > 0);
 };
 
-export function PrSection({ section, isOpen, onToggleSection, ...tableProps }: PrSectionProps) {
-  const { key, title, prs, totalCount, isSmartGroup, lifecycleSection, attentionCount = 0 } = section;
+// The Closed and Merged sections' older PRs (past the archive cutoff),
+// which the table goes without until you ask for them.
+function ShowOlderPrs({ section }: { section: ArchivedSection }) {
+  const { summary, status, shownSections, showSection } = usePrArchive();
+  const count = archivedCount(summary, section);
+  const shown = shownSections.has(section);
+  if (count === 0 || (shown && status === 'loaded')) return null;
+  const noun = section === 'merged' ? 'merged' : 'closed';
+  if (shown && status === 'loading') {
+    return <p className="pr-section-older" role="status">Loading older {noun} PRs…</p>;
+  }
+  if (shown && status === 'failed') {
+    return (
+      <div className="pr-section-older" role="alert">
+        <span>Couldn't load the older {noun} PRs.</span>
+        <Button onClick={() => showSection(section)}>Try again</Button>
+      </div>
+    );
+  }
+  return (
+    <div className="pr-section-older">
+      <Button icon="chevronDown" onClick={() => showSection(section)} hint="Merged and closed PRs past the archive cutoff, kept out of the table until asked for">
+        Show older ({count})
+      </Button>
+    </div>
+  );
+}
+
+export function PrSection({ section, isOpen, onToggleSection, onInteractingChange, onResortSection, ...tableProps }: PrSectionProps) {
+  const { key, title, prs, totalCount, isSmartGroup, lifecycleSection, attentionCount = 0, orderChanged = false } = section;
+  const interactionHandlers = useSectionInteraction(onInteractingChange && ((interacting) => onInteractingChange(key, interacting)));
   // `totalCount` is the full row count; fall back to the rendered rows.
   const displayedTotalCount = typeof totalCount === 'number' ? totalCount : prs.length;
-  const sectionIcon = SECTION_ICONS[key];
+  const sectionIcon = section.icon ?? BUILT_IN_SECTION_LOOKS[key];
   const summary = isOpen ? [] : summarise(prs, attentionCount);
   const detailsRef = useRef<HTMLDetailsElement>(null);
   const headerRef = useRef<HTMLElement>(null);
@@ -108,6 +143,7 @@ export function PrSection({ section, isOpen, onToggleSection, ...tableProps }: P
       aria-label={title}
       data-pr-section={key}
       open={isOpen}
+      {...interactionHandlers}
       onToggle={(event) => {
         const nextOpen = (event.target as HTMLDetailsElement).open;
         if (nextOpen !== isOpen) onToggleSection(key, nextOpen);
@@ -150,10 +186,13 @@ export function PrSection({ section, isOpen, onToggleSection, ...tableProps }: P
             label={title}
             isSmartGroup={isSmartGroup}
             lifecycleSection={lifecycleSection}
+            orderChanged={orderChanged}
+            onResort={onResortSection && (() => onResortSection(key))}
           />
         ) : (
           <p className="pr-section-empty">No PRs in this section.</p>
         )}
+        {!isSmartGroup && (key === 'merged' || key === 'closed') && <ShowOlderPrs section={key} />}
       </div>
     </details>
   );

@@ -12,6 +12,7 @@ import { usePrInsightsDisplay } from '../../state/PrInsightsDisplayContext';
 import { useRequestActivity } from '../../state/RequestActivityContext';
 import { createPrAuthorInsightsIdentityHelpers } from '../../helpers/pr-author-insights-identity.helpers.ts';
 import { autoResizeTextarea } from '../../helpers/pr-textarea-autoresize.helpers.ts';
+import { buildPrEntryKey } from '../../helpers/pr-entry-keys.helpers.ts';
 import { postJson } from '../../helpers/pr-http.helpers.ts';
 import {
   DIFFICULTY_OPTIONS,
@@ -177,18 +178,19 @@ export function PrNotesTab({ entry, pr, actorsMap = {}, onDataRefresh }: PrNotes
   const repo = entry?.repo || '';
   const idPrefix = useId();
 
-  // The PR's people, and anyone the notes name who isn't one of them.
+  // The PR's people, and anyone the notes name who isn't one of them - so
+  // an author saved from another window is listed too.
+  const noteComments = entry?.notes?.comments;
   const people = useMemo(() => {
     const options = buildPrPeopleOptions(pr, actorsMap);
-    (entry?.notes?.comments || []).forEach((comment) => {
+    (noteComments || []).forEach((comment) => {
       const login = String(comment?.author || '').trim();
       if (login && !options.some((person) => person.login === login)) {
         options.push({ login, name: resolveActorDisplayName(login, actorsMap, login) });
       }
     });
     return options;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pr, actorsMap]);
+  }, [pr, actorsMap, noteComments, buildPrPeopleOptions, resolveActorDisplayName]);
 
   // A stored author as the people list's login, where one matches.
   const resolveAuthor = (author: string) => {
@@ -219,16 +221,17 @@ export function PrNotesTab({ entry, pr, actorsMap = {}, onDataRefresh }: PrNotes
   const fieldRefs = useRef(new Map<NotesField, HTMLDivElement>());
 
   const dirty = hasUnsavedDrafts(saved, drafts);
+  const prKey = buildPrEntryKey(repo, prNumber);
   useEffect(() => {
-    setNotesDirty(prNumber, dirty);
+    setNotesDirty(prKey, dirty);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dirty, prNumber]);
+  }, [dirty, prKey]);
   // Unmounting while dirty must not leave the PR marked (the effect above
   // doesn't run on unmount).
   useEffect(
-    () => () => setNotesDirty(prNumber, false),
+    () => () => setNotesDirty(prKey, false),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [prNumber],
+    [prKey],
   );
 
   useEffect(() => {

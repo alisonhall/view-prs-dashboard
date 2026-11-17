@@ -3,9 +3,13 @@ import { createContext, useContext } from 'react';
 export interface FilterOption {
   value: string;
   label: string;
+  // Its group in the list, if the list has groups (MultiSelectDropdown).
+  group?: string;
 }
 
 export interface FilterOptionsValue {
+  // Every stored row's repo, whichever repo is selected.
+  repoOptions: FilterOption[];
   labelOptions: FilterOption[];
   excludeLabelOptions: FilterOption[];
   authorOptions: FilterOption[];
@@ -18,6 +22,7 @@ export interface FilterOptionsValue {
 }
 
 const EMPTY_OPTIONS: FilterOptionsValue = {
+  repoOptions: [],
   labelOptions: [],
   excludeLabelOptions: [],
   authorOptions: [],
@@ -30,7 +35,7 @@ const EMPTY_OPTIONS: FilterOptionsValue = {
 };
 
 /**
- * The option lists of the 9 multi-select lists (not the checked
+ * The option lists of the 10 multi-select lists (not the checked
  * selections, which their selection Contexts hold),
  * derived from PrDataContext's payload by FilterOptionsProvider.tsx.
  *

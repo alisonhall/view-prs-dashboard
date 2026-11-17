@@ -4,7 +4,8 @@
  * Text colours meet 4.5:1 on --color-surface and --color-canvas, and
  * --color-text-on-strong on each -strong fill, in both themes. The only
  * literal colours left are the avatars' (white on a dark hue reads in both
- * themes; the darkest is a token) and the JSON diff's code area (dark in both).
+ * themes; the darkest is a token), the JSON diff's code area (dark in both),
+ * and the custom insights hook's content (light in both; see insights.css).
  */
 :root {
   color-scheme: light;

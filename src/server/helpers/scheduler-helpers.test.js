@@ -12,6 +12,8 @@ describe("Scheduler Helpers", () => {
       existsSync: jest.fn(() => false),
       readFileSync: jest.fn(),
       writeFileSync: jest.fn(),
+      renameSync: jest.fn(),
+      rmSync: jest.fn(),
       mkdirSync: jest.fn(),
     };
 
@@ -226,9 +228,13 @@ describe("Scheduler Helpers", () => {
       // Assert
       expect(mockFs.mkdirSync).toHaveBeenCalled();
       expect(mockFs.writeFileSync).toHaveBeenCalledWith(
-        "/test/action-log.json",
+        expect.stringMatching(/^\/test\/action-log\.json\.tmp-/),
         expect.stringContaining('"action": "test"'),
         "utf8",
+      );
+      expect(mockFs.renameSync).toHaveBeenCalledWith(
+        mockFs.writeFileSync.mock.calls[0][0],
+        "/test/action-log.json",
       );
     });
 
@@ -272,6 +278,28 @@ describe("Scheduler Helpers", () => {
       expect(written[0].action).toBe("new"); // Newest entries stay at the front
       expect(written[499].action).toBe("old-498"); // Oldest entry (old-499) dropped
     });
+
+    test("When background runs fill the log, Then your actions are kept apart", () => {
+      // Arrange
+      mockFs.existsSync.mockReturnValue(true);
+      const oldEntries = [
+        ...Array.from({ length: 1000 }, (_, i) => ({ action: `job/quickCheck-${i}`, origin: "background" })),
+        // A full refresh's entry from before entries said who started them.
+        { action: "auto-refresh" },
+        ...Array.from({ length: 10 }, (_, i) => ({ action: `post/ack-${i}` })),
+      ];
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(oldEntries));
+
+      // Act
+      schedulerHelpers.appendActionLogEntry({ action: "job/quickCheck-new", origin: "background" });
+
+      // Assert
+      const written = JSON.parse(mockFs.writeFileSync.mock.calls[0][1]);
+      expect(written.filter((entry) => entry.action.startsWith("post/ack"))).toHaveLength(10);
+      expect(written.filter((entry) => entry.action !== undefined && !entry.action.startsWith("post/ack"))).toHaveLength(1000);
+      expect(written[0].action).toBe("job/quickCheck-new");
+      expect(written.some((entry) => entry.action === "auto-refresh")).toBe(false);
+    });
   });
 
   describe("Given readActionLog", () => {
@@ -304,7 +332,7 @@ describe("Scheduler Helpers", () => {
       expect(result[0].action).toBe("a");
     });
 
-    test("When limit provided, Then returns last N entries", () => {
+    test("When limit provided, Then returns the newest N entries (the first)", () => {
       // Arrange
       mockFs.existsSync.mockReturnValue(true);
       mockFs.readFileSync.mockReturnValue(
@@ -320,8 +348,8 @@ describe("Scheduler Helpers", () => {
 
       // Assert
       expect(result).toHaveLength(2);
-      expect(result[0].action).toBe("2");
-      expect(result[1].action).toBe("3");
+      expect(result[0].action).toBe("1");
+      expect(result[1].action).toBe("2");
     });
   });
 

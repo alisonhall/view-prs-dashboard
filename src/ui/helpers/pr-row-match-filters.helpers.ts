@@ -2,9 +2,12 @@ import type { PrData, PrEntry } from "../types/pr-data.ts";
 import type { ManualNotesFieldSummary } from "./pr-manual-notes-summary.helpers.ts";
 import type { RowFilterCriteria } from "./pr-row-filtering.helpers.ts";
 import type { GetPreferredActorKey } from "./pr-actor-identity.helpers.ts";
+import { prFilterPicksPrs, rowMatchesPrFilter } from "./pr-filter-input.helpers.ts";
+import { matchRowSearch } from "./pr-row-search.helpers.ts";
+import { isInLastActivityRange } from "./pr-last-activity-range.helpers.ts";
 
-// Whether one PR entry passes the table's row filters (PR numbers, labels,
-// people, notes fields). Pure with respect to its (entry, filters) args;
+// Whether one PR entry passes the table's row filters (PR numbers, repos,
+// last activity, labels, people, notes fields). Pure with respect to its (entry, filters) args;
 // useVisiblePrNumbers injects the actor-identity and notes lookups from
 // Context.
 interface LoginRecord {
@@ -19,6 +22,8 @@ export interface PrRowMatchFiltersDeps {
   normalizeFilterToken?: (value: string) => string;
   getManualNotesFieldSummary?: (entry: PrEntry, row: PrData) => Partial<ManualNotesFieldSummary>;
   isInReviewEnabled?: (row: PrData) => boolean;
+  // The author's name as the row shows it, for the search box.
+  getAuthorDisplayName?: (row: PrData) => string;
 }
 
 const createPrRowMatchFiltersHelpers = ({
@@ -29,6 +34,7 @@ const createPrRowMatchFiltersHelpers = ({
   normalizeFilterToken,
   getManualNotesFieldSummary,
   isInReviewEnabled,
+  getAuthorDisplayName,
 }: PrRowMatchFiltersDeps = {}) => {
   const getPreferredActorKeySafe =
     typeof getPreferredActorKey === "function" ? getPreferredActorKey : () => "";
@@ -61,12 +67,30 @@ const createPrRowMatchFiltersHelpers = ({
       return true;
     }
 
-    if (filters.prNumbers.length > 0 && !filters.prNumbers.includes(prNumber)) {
+    // The PRs field: PRs it picks show whatever the other filters say; repos
+    // alone filter like the rest.
+    const prFilter = { prNumbers: filters.prNumbers, prKeys: filters.prKeys || [], repos: filters.repos || [] };
+    if (
+      (prFilterPicksPrs(prFilter) || prFilter.repos.length > 0) &&
+      !rowMatchesPrFilter(String(entry?.repo || ""), prNumber, prFilter)
+    ) {
       return false;
     }
 
-    if (filters.prNumbers.length > 0) {
+    if (prFilterPicksPrs(prFilter)) {
       return true;
+    }
+
+    // The Repos list: a repo picked, whatever its case.
+    if (filters.repoNames?.length > 0) {
+      const repo = String(entry?.repo || "").trim().toLowerCase();
+      if (!filters.repoNames.some((name) => String(name).trim().toLowerCase() === repo)) {
+        return false;
+      }
+    }
+
+    if (!isInLastActivityRange(entry, filters.lastActivityFrom, filters.lastActivityTo)) {
+      return false;
     }
 
     if (
@@ -87,23 +111,33 @@ const createPrRowMatchFiltersHelpers = ({
       return false;
     }
 
+    // People compare by person: a pick (their id, or a login saved before
+    // ids) and the row's logins as their keys.
+    const keyOf = (login: string) => getPreferredActorKeySafe(login) || login;
     if (
       filters.authorLogins.length > 0 &&
-      !filters.authorLogins.includes(authorLogin)
+      !filters.authorLogins.some((login) => keyOf(login) === authorLogin)
     ) {
       return false;
     }
 
     if (
       filters.assignedLogins.length > 0 &&
-      !filters.assignedLogins.some((login) => assignedLogins.includes(login))
+      !filters.assignedLogins.some((login) => assignedLogins.includes(keyOf(login)))
     ) {
       return false;
     }
 
     if (
       filters.approverLogins.length > 0 &&
-      !filters.approverLogins.some((login) => approverLogins.includes(login))
+      !filters.approverLogins.some((login) => approverLogins.includes(keyOf(login)))
+    ) {
+      return false;
+    }
+
+    if (
+      filters.searchTerms?.length > 0 &&
+      !matchRowSearch(entry, filters.searchTerms, getAuthorDisplayName ? [getAuthorDisplayName(row)] : []).matches
     ) {
       return false;
     }

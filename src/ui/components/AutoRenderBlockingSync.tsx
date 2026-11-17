@@ -23,7 +23,7 @@ const { isAuthorInsightsComposerDraftDirty, isAuthorInsightsEditDraftDirty } =
  * Replaces index.page.js's recomputeDirtyPrSectionsFields, which
  * NotesDirtyProvider/AuthorInsightsDraftsProvider called through window on
  * every change, and which read their state back through
- * window.getDirtyNotesPrNumbers/getAuthorInsightsDraftsSnapshot/
+ * window.getDirtyNotesPrKeys/getAuthorInsightsDraftsSnapshot/
  * getAuthorManualCommentsForLogin and the payload through
  * window.getReactPrTablePayload. The same pure helpers compute the same
  * state; only the inputs now come from Context.
@@ -44,7 +44,7 @@ const { isAuthorInsightsComposerDraftDirty, isAuthorInsightsEditDraftDirty } =
  * Context-owned state this component subscribes to, so they're gone.
  */
 export function AutoRenderBlockingSync() {
-  const { dirtyPrNumbers } = useNotesDirty();
+  const { dirtyPrKeys } = useNotesDirty();
   const { getDraftsSnapshot, getManualComments } = useAuthorInsightsDrafts();
   const draftsVersion = useAuthorInsightsDraftsVersion();
   const { normalizeActorLogin, resolveActorDisplayName } = useActorIdentity();
@@ -68,10 +68,10 @@ export function AutoRenderBlockingSync() {
   const lastPushedRef = useRef<string | null>(null);
 
   useEffect(() => {
-    const { getUnsavedNotesPrNumbers, getBlockingPrNumbers, normalizePrNumber } =
-      createPrAutoRenderUnsavedHelpers({ getDirtyNotesPrNumbers: () => dirtyPrNumbers });
-    const { formatBlockingPrNumbersLabel, getBlockingAuthorInsightsLogins } = createPrAutoRenderBlockingHelpers({
-      normalizePrNumber,
+    const { getUnsavedNotesPrKeys, getBlockingPrKeys, normalizePrKey } =
+      createPrAutoRenderUnsavedHelpers({ getDirtyNotesPrKeys: () => dirtyPrKeys });
+    const { formatBlockingPrKeysLabel, getBlockingAuthorInsightsLogins } = createPrAutoRenderBlockingHelpers({
+      normalizePrKey,
       normalizeActorLogin,
       isAuthorInsightsComposerDraftDirty,
       getAuthorManualCommentsForLogin: getManualComments,
@@ -79,10 +79,10 @@ export function AutoRenderBlockingSync() {
       getAuthorInsightsDisplayName,
     });
     const { getAutoRenderBlockingState } = createPrAutoRenderStateHelpers({
-      getUnsavedNotesPrNumbers,
-      getBlockingPrNumbers,
+      getUnsavedNotesPrKeys,
+      getBlockingPrKeys,
       getBlockingAuthorInsightsLogins: () => getBlockingAuthorInsightsLogins(getDraftsSnapshot()),
-      formatBlockingPrNumbersLabel,
+      formatBlockingPrKeysLabel,
     });
 
     const blockingState = getAutoRenderBlockingState();
@@ -91,7 +91,7 @@ export function AutoRenderBlockingSync() {
     lastPushedRef.current = serialized;
     setBlockingState(blockingState);
   }, [
-    dirtyPrNumbers,
+    dirtyPrKeys,
     draftsVersion,
     getDraftsSnapshot,
     getManualComments,

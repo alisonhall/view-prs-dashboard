@@ -55,6 +55,7 @@ describe("view-prs mutation route helpers", () => {
       detail: {
         repo: "owner/repo",
         prNumber: "42",
+        prNumbers: ["42"],
       },
       displayCommand:
         "bash run-prs/check-open-pr-updates.sh --repo owner/repo --pr 42 --limit 5 --merged-limit 3 --jobs 2 --open changed --ack 101 --ack-clear 102 --ack-changed --hide-reason --quiet",
@@ -105,13 +106,26 @@ describe("view-prs mutation route helpers", () => {
       1,
       ["run-prs/check-open-pr-updates.sh", "--ack-only"],
       4 * 1024 * 1024,
-      { timeoutMs: 1234 },
+      { timeoutMs: 1234, env: {} },
     );
     expect(callRunViewPrsScript).toHaveBeenNthCalledWith(
       2,
       ["run-prs/check-open-pr-updates.sh", "--ack", "99"],
       4 * 1024 * 1024,
-      { timeoutMs: 4321 },
+      { timeoutMs: 4321, env: {} },
+    );
+
+    // A GitHub Enterprise repo's runs go to its host.
+    const enterpriseRunScript = helpers.createAckScriptRunner({
+      callRunViewPrsScript,
+      viewPrsAckScriptTimeoutMs: 1234,
+      env: { GH_HOST: "github.example.com" },
+    });
+    await enterpriseRunScript(["run-prs/check-open-pr-updates.sh", "--ack", "99"]);
+    expect(callRunViewPrsScript).toHaveBeenLastCalledWith(
+      ["run-prs/check-open-pr-updates.sh", "--ack", "99"],
+      4 * 1024 * 1024,
+      { timeoutMs: 1234, env: { GH_HOST: "github.example.com" } },
     );
   });
 
@@ -644,6 +658,37 @@ describe("view-prs mutation route helpers", () => {
         { prNumber: "102", error: "Refresh failed via helper" },
       ],
     });
+  });
+
+  test("given a progress task, the request-more and Ack refreshes move it on per PR tried, refreshed or not", async () => {
+    const helpers = createHelpers();
+    const failing = async (args) => {
+      if (args.includes("102")) throw new Error("failed");
+      return { stdout: "", stderr: "" };
+    };
+    const olderMergedTask = { advance: jest.fn() };
+    await helpers.runRequestMoreRefreshes({
+      missingCandidates: [{ number: "101" }, { number: "102" }],
+      viewPrsRunScriptRelativePath: "run-prs/check-open-pr-updates.sh",
+      repo: "owner/repo",
+      callRunViewPrsScript: failing,
+      viewPrsAckRefreshScriptTimeoutMs: 5000,
+      progressTask: olderMergedTask,
+    });
+    expect(olderMergedTask.advance).toHaveBeenCalledTimes(2);
+
+    const ackTask = { advance: jest.fn() };
+    await helpers.runAckRefreshes({
+      refreshList: ["101", "102", "103"],
+      effectiveRepo: "owner/repo",
+      viewPrsRunScriptRelativePath: "run-prs/check-open-pr-updates.sh",
+      runScript: failing,
+      viewPrsAckRefreshScriptTimeoutMs: 5000,
+      viewPrsAckTotalRefreshTimeoutMs: 60000,
+      buildAckRefreshBudgetSkipErrors: () => [],
+      progressTask: ackTask,
+    });
+    expect(ackTask.advance).toHaveBeenCalledTimes(3);
   });
 
   test("given merged request-more success and failure contexts, when building results, then route contracts and summary text are preserved", () => {

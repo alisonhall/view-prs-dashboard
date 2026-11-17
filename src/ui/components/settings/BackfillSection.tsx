@@ -6,7 +6,7 @@ import { useBackfillAutoRefresh } from '../../state/useBackfillAutoRefresh';
 import { BackfillLog } from './BackfillLog';
 
 /**
- * The Settings drawer's "Backfill" (UI_REDESIGN_PLAN.md, phase 9b): the
+ * The Tools drawer's "Backfill" (UI_REDESIGN_PLAN.md, phase 9b): the
  * background backfill of missing/old PR rows - its status badges, Start /
  * Stop / Refresh status, the status details, and the log (collapsed).
  * The display state is BackfillStatusProvider's; this section owns the

@@ -1,4 +1,4 @@
-import { useRef, type KeyboardEvent, type ReactNode } from 'react';
+import { Fragment, useRef, type KeyboardEvent, type ReactNode } from 'react';
 
 /**
  * Tab list following the WAI-ARIA tabs pattern, for the detail pane's
@@ -14,6 +14,10 @@ export interface TabItem {
   // Count or state after the label ("41", "6 open", "unsaved").
   badge?: string;
   badgeTone?: 'default' | 'attention';
+  // A heading above the first tab of each run of tabs in the same group
+  // (the Settings drawer's nav). Seen only: a tab list holds nothing but
+  // tabs, so screen readers skip it.
+  group?: string;
 }
 
 export interface TabsProps {
@@ -61,30 +65,37 @@ export function Tabs({ label, idPrefix, tabs, selectedId, onSelect, idsFor, orie
     <div role="tablist" aria-label={label} aria-orientation={orientation} className="ui-tab-list" data-orientation={orientation}>
       {tabs.map((tab, index) => {
         const selected = tab.id === selectedId;
+        const startsGroup = tab.group !== undefined && tab.group !== tabs[index - 1]?.group;
         return (
-          <button
-            key={tab.id}
-            ref={(node) => {
-              if (node) tabRefs.current.set(tab.id, node);
-              else tabRefs.current.delete(tab.id);
-            }}
-            type="button"
-            role="tab"
-            id={ids(tab.id).tab}
-            aria-selected={selected}
-            aria-controls={selected ? ids(tab.id).panel : undefined}
-            tabIndex={selected ? 0 : -1}
-            className="ui-tab"
-            onClick={() => onSelect(tab.id)}
-            onKeyDown={(event) => handleKeyDown(event, index)}
-          >
-            {tab.label}
-            {tab.badge && (
-              <span className="ui-tab-badge" data-tone={tab.badgeTone === 'attention' ? 'attention' : undefined}>
-                {tab.badge}
+          <Fragment key={tab.id}>
+            {startsGroup && (
+              <span className="ui-tab-group" aria-hidden="true">
+                {tab.group}
               </span>
             )}
-          </button>
+            <button
+              ref={(node) => {
+                if (node) tabRefs.current.set(tab.id, node);
+                else tabRefs.current.delete(tab.id);
+              }}
+              type="button"
+              role="tab"
+              id={ids(tab.id).tab}
+              aria-selected={selected}
+              aria-controls={selected ? ids(tab.id).panel : undefined}
+              tabIndex={selected ? 0 : -1}
+              className="ui-tab"
+              onClick={() => onSelect(tab.id)}
+              onKeyDown={(event) => handleKeyDown(event, index)}
+            >
+              {tab.label}
+              {tab.badge && (
+                <span className="ui-tab-badge" data-tone={tab.badgeTone === 'attention' ? 'attention' : undefined}>
+                  {tab.badge}
+                </span>
+              )}
+            </button>
+          </Fragment>
         );
       })}
     </div>

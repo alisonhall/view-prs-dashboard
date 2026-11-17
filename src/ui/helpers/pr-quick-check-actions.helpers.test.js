@@ -279,6 +279,20 @@ describe("pr-quick-check-actions.helpers", () => {
       });
     });
 
+    test("given ignorePrNumbers (Quick check open and latest merged), when PR numbers are entered, then it POSTs {} anyway", async () => {
+      const postJson = jest.fn().mockResolvedValue({
+        response: { status: 200, ok: true },
+        result: { ok: true, reposChecked: [], reposFailed: [] },
+      });
+      const getFormBody = jest.fn(() => ({ repo: "owner/repo", prNumbers: "12,15" }));
+      const { helpers } = buildHarness({ postJson, getFormBody });
+
+      await helpers.runQuickCheckWorkflow({ fallbackLabel: "Quick check open and latest merged", ignorePrNumbers: true });
+
+      expect(postJson).toHaveBeenCalledWith("/view-prs/quick-check", {});
+      expect(getFormBody).not.toHaveBeenCalled();
+    });
+
     test("given a 409 response, when running the workflow, then it reverts to the fallback label", async () => {
       const postJson = jest.fn().mockResolvedValue({
         response: { status: 409, ok: false },

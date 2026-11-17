@@ -1,4 +1,4 @@
-// Settings › Backfill's view state (BackfillStatusProvider and the log
+// Tools › Backfill's view state (BackfillStatusProvider and the log
 // controls): status badges and details text, which buttons are enabled,
 // log auto-scroll, and the log panel text.
 export interface BackfillStatus {

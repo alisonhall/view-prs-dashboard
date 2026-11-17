@@ -45,10 +45,10 @@ describe('AuthorInsightsNotesSection', () => {
     });
     renderSection([entry], 'octocat');
 
-    expect(screen.getByText('#1 Fix the thing')).toBeInTheDocument();
-    expect(screen.getByText('Author: octocat')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '#1 Fix the thing' })).toBeInTheDocument();
+    expect(screen.getByText(/^By octocat · /)).toBeInTheDocument();
     expect(screen.getByText('Nice work')).toBeInTheDocument();
-    expect(screen.getByText(/Sentiment: Neutral|Sentiment: Positive/)).toBeInTheDocument();
+    expect(screen.getByText('Positive')).toHaveClass('author-insights-badge-sentiment-positive');
   });
 
   test('given a change to the selected author in Context, when it updates, then the notes shown update (no key remount needed)', () => {

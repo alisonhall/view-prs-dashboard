@@ -3,8 +3,8 @@ import type { PrEntry, PrFlagsByRepo } from "../types/pr-data.ts";
 // Smart groups: accordion sections a PR can appear in alongside its
 // lifecycle section (Flagged, In Review, Needs Attention, the viewer's own
 // open and draft PRs, those assigned to them, those requesting their
-// review, Open PRs I'm Involved In), each defined by a predicate over the
-// entry.
+// review, Open PRs I'm Involved In, those with a local branch on this
+// computer), each defined by a predicate over the entry.
 
 export interface PrSmartGroupsDeps {
   hasNeedsAttentionFlag?: (entry: PrEntry) => boolean;
@@ -15,6 +15,8 @@ export interface PrSmartGroupsDeps {
   normalizeLogin?: (login: unknown) => string;
   getAssigneeLogins?: (entry: PrEntry) => string[];
   getRequestedReviewerLogins?: (entry: PrEntry) => string[];
+  // Whether a clone on this computer has a local branch for the PR.
+  hasLocalBranch?: (entry: PrEntry) => boolean;
 }
 
 export interface SmartGroupConfig {
@@ -40,6 +42,7 @@ const createPrSmartGroupsHelpers = ({
   normalizeLogin = (login) => String(login ?? "").trim().toLowerCase(),
   getAssigneeLogins = () => [],
   getRequestedReviewerLogins = () => [],
+  hasLocalBranch = () => false,
 }: PrSmartGroupsDeps = {}) => {
   const hasNeedsAttentionFlagSafe =
     typeof hasNeedsAttentionFlag === "function"
@@ -153,6 +156,13 @@ const createPrSmartGroupsHelpers = ({
       title: "Open PRs I'm Involved In",
       icon: "💬",
       predicate: (entry) => hasInteraction(entry),
+      defaultOpen: false,
+    },
+    {
+      groupKey: "on-this-computer",
+      title: "On This Computer",
+      icon: "💻",
+      predicate: (entry) => hasLocalBranch(entry),
       defaultOpen: false,
     },
   ];

@@ -2,44 +2,44 @@
 // unsaved notes and author-insight drafts are holding back automatic data
 // refreshes, built from the injected getters.
 export interface PrAutoRenderStateDeps {
-  getUnsavedNotesPrNumbers?: () => unknown;
-  getBlockingPrNumbers?: () => unknown;
+  getUnsavedNotesPrKeys?: () => unknown;
+  getBlockingPrKeys?: () => unknown;
   getBlockingAuthorInsightsLogins?: () => unknown;
-  formatBlockingPrNumbersLabel?: (prNumbers: unknown) => string;
+  formatBlockingPrKeysLabel?: (prNumbers: unknown) => string;
 }
 
 export interface AutoRenderBlockingState {
   dirtyFieldCount: number;
   unsavedNotesCount: number;
-  blockingPrNumbers: string[];
+  blockingPrKeys: string[];
   blockingAuthorInsightsLogins: string[];
   blockingPrLabel: string;
 }
 
 const createPrAutoRenderStateHelpers = ({
-  getUnsavedNotesPrNumbers,
-  getBlockingPrNumbers,
+  getUnsavedNotesPrKeys,
+  getBlockingPrKeys,
   getBlockingAuthorInsightsLogins,
-  formatBlockingPrNumbersLabel,
+  formatBlockingPrKeysLabel,
 }: PrAutoRenderStateDeps = {}) => {
-  const getUnsavedNotesPrNumbersSafe =
-    typeof getUnsavedNotesPrNumbers === "function"
-      ? getUnsavedNotesPrNumbers
+  const getUnsavedNotesPrKeysSafe =
+    typeof getUnsavedNotesPrKeys === "function"
+      ? getUnsavedNotesPrKeys
       : () => [];
-  const getBlockingPrNumbersSafe =
-    typeof getBlockingPrNumbers === "function" ? getBlockingPrNumbers : () => [];
+  const getBlockingPrKeysSafe =
+    typeof getBlockingPrKeys === "function" ? getBlockingPrKeys : () => [];
   const getBlockingAuthorInsightsLoginsSafe =
     typeof getBlockingAuthorInsightsLogins === "function"
       ? getBlockingAuthorInsightsLogins
       : () => [];
-  const formatBlockingPrNumbersLabelSafe =
-    typeof formatBlockingPrNumbersLabel === "function"
-      ? formatBlockingPrNumbersLabel
+  const formatBlockingPrKeysLabelSafe =
+    typeof formatBlockingPrKeysLabel === "function"
+      ? formatBlockingPrKeysLabel
       : () => "";
 
   const getAutoRenderBlockingState = (): AutoRenderBlockingState => {
-    const unsavedNotesPrNumbers = getUnsavedNotesPrNumbersSafe();
-    const blockingPrNumbers = getBlockingPrNumbersSafe();
+    const unsavedNotesPrKeys = getUnsavedNotesPrKeysSafe();
+    const blockingPrKeys = getBlockingPrKeysSafe();
     const blockingAuthorInsightsLogins = getBlockingAuthorInsightsLoginsSafe();
 
     return {
@@ -47,16 +47,16 @@ const createPrAutoRenderStateHelpers = ({
       // Kept because AutoRenderBlockingProvider and
       // pr-auto-render-indicator.helpers.ts still read the field.
       dirtyFieldCount: 0,
-      unsavedNotesCount: Array.isArray(unsavedNotesPrNumbers)
-        ? unsavedNotesPrNumbers.length
+      unsavedNotesCount: Array.isArray(unsavedNotesPrKeys)
+        ? unsavedNotesPrKeys.length
         : 0,
-      blockingPrNumbers: Array.isArray(blockingPrNumbers)
-        ? blockingPrNumbers
+      blockingPrKeys: Array.isArray(blockingPrKeys)
+        ? blockingPrKeys
         : [],
       blockingAuthorInsightsLogins: Array.isArray(blockingAuthorInsightsLogins)
         ? blockingAuthorInsightsLogins
         : [],
-      blockingPrLabel: formatBlockingPrNumbersLabelSafe(blockingPrNumbers),
+      blockingPrLabel: formatBlockingPrKeysLabelSafe(blockingPrKeys),
     };
   };
 

@@ -30,11 +30,13 @@ export const describeActivityAction = (event: PrActivityEvent): string => {
   if (type === 'opened') return 'opened the PR';
   if (type === 'merged') return 'merged the PR';
   if (type === 'closed') return 'closed the PR';
+  // Your Acks (buildAckEvents): the current one says so.
+  if (type === 'ack') return event?.state === 'current' ? 'acknowledged the PR (current Ack)' : 'acknowledged the PR';
   return type;
 };
 
 // The PR's own events, when nobody's recorded as doing them.
-const ACTORLESS_TEXT: Record<string, string> = { opened: 'PR opened', merged: 'PR merged', closed: 'PR closed' };
+const ACTORLESS_TEXT: Record<string, string> = { opened: 'PR opened', merged: 'PR merged', closed: 'PR closed', ack: 'Acknowledged' };
 
 export interface ActivityEventDescriptionProps {
   event: PrActivityEvent & { author?: { name?: string } | string; actorName?: string };

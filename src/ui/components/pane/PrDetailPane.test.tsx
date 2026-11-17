@@ -8,6 +8,7 @@ import { NotesDirtyContext } from '../../state/NotesDirtyContext';
 import { RepoLabelsContext } from '../../state/RepoLabelsContext';
 import type { PrEntry } from '../../types/pr-data.ts';
 import { PrDetailPane, type PrDetailPaneProps } from './PrDetailPane';
+import { clearPrDetailCache } from '../../state/usePrDetail';
 
 const baseEntry: PrEntry = {
   prNumber: '7',
@@ -26,8 +27,8 @@ const baseEntry: PrEntry = {
 
 const Providers = ({ children, dirty = [] as string[] }: { children: ReactNode; dirty?: string[] }) => (
   <RequestActivityContext.Provider value={{ beginRequestActivity: () => () => {} } as never}>
-    <RepoLabelsContext.Provider value={{ labels: [{ name: 'bug' }, { name: 'docs' }], refresh: () => {} }}>
-      <NotesDirtyContext.Provider value={{ dirtyPrNumbers: dirty, setNotesDirty: () => {} }}>{children}</NotesDirtyContext.Provider>
+    <RepoLabelsContext.Provider value={{ labels: [], refresh: () => {}, labelsByRepo: { 'owner/repo': [{ name: 'bug' }, { name: 'docs' }] }, ensureLabels: () => {} }}>
+      <NotesDirtyContext.Provider value={{ dirtyPrKeys: dirty, setNotesDirty: () => {} }}>{children}</NotesDirtyContext.Provider>
     </RepoLabelsContext.Provider>
   </RequestActivityContext.Provider>
 );
@@ -90,8 +91,27 @@ describe('PrDetailPane', () => {
       expect(within(pane).getByRole('heading', { level: 2 })).toHaveTextContent('Fix the parser');
       expect(within(pane).getByRole('link', { name: /#7/ })).toHaveAttribute('href', 'https://github.com/owner/repo/pull/7');
       expect(pane).toHaveTextContent('by The Octocat');
-      expect(pane).toHaveTextContent('fix/parser → main');
+      expect(pane).toHaveTextContent('From fix/parser into main');
       expect(within(pane).getByRole('button', { name: 'Copy branch name' })).toBeEnabled();
+      expect(pane).not.toHaveTextContent(', with');
+    });
+
+    // The same people as the row's Who cell (its "+N" and tooltip).
+    test('"by" lists the author, then the others with non-merge commits', () => {
+      const commit = (login: string, name: string) => ({ messageHeadline: 'Change it', authors: [{ login, name }] });
+      const withCommits = (commits: ReturnType<typeof commit>[]): PrEntry => ({
+        ...baseEntry,
+        data: { ...baseEntry.data, commits },
+      });
+
+      const { view } = renderPane({ entry: withCommits([commit('octocat', 'The Octocat'), commit('hubot', 'Hubot')]) });
+      expect(document.querySelector('.pr-pane-meta')).toHaveTextContent('by The Octocat, with Hubot');
+      view.unmount();
+
+      renderPane({
+        entry: withCommits([commit('hubot', 'Hubot'), commit('monalisa', 'Mona Lisa'), commit('defunkt', 'Chris')]),
+      });
+      expect(document.querySelector('.pr-pane-meta')).toHaveTextContent('by The Octocat, with Hubot, Mona Lisa and Chris');
     });
 
     test('previous/next are disabled without a neighbour and call back with one', async () => {
@@ -169,6 +189,7 @@ describe('PrDetailPane', () => {
 
       const ack = screen.getByRole('button', { name: "Ack'd" });
       expect(ack).toHaveAttribute('aria-pressed', 'true');
+      expect(ack).toHaveAccessibleDescription('Click again to undo the Ack');
       await user.click(ack);
       expect(handlers.onAckAction).toHaveBeenCalledWith('7', true, 'owner/repo');
 
@@ -183,6 +204,28 @@ describe('PrDetailPane', () => {
       await user.click(screen.getByRole('button', { name: 'Add label' }));
       await user.click(screen.getByRole('menuitem', { name: 'docs' }));
       expect(handlers.onApplyLabel).toHaveBeenCalledWith('7', 'docs', 'owner/repo');
+    });
+
+    // As the row's menu: not "Loading labels…" for good.
+    test("labels that couldn't load: Add label offers to try again, keeping the menu open", async () => {
+      const user = userEvent.setup();
+      const ensureLabels = jest.fn();
+      render(
+        <RequestActivityContext.Provider value={{ beginRequestActivity: () => () => {} } as never}>
+          <RepoLabelsContext.Provider value={{ labels: [], refresh: () => {}, labelsByRepo: {}, failedRepos: { 'owner/repo': true }, ensureLabels }}>
+            <NotesDirtyContext.Provider value={{ dirtyPrKeys: [], setNotesDirty: () => {} }}>
+              <PrDetailPane {...paneProps()} />
+            </NotesDirtyContext.Provider>
+          </RepoLabelsContext.Provider>
+        </RequestActivityContext.Provider>,
+      );
+
+      await user.click(screen.getByRole('button', { name: 'Add label' }));
+      expect(screen.queryByText('Loading labels…')).not.toBeInTheDocument();
+      ensureLabels.mockClear();
+      await user.click(screen.getByRole('menuitem', { name: "Couldn't load labels - retry" }));
+      expect(ensureLabels).toHaveBeenCalledWith('owner/repo');
+      expect(screen.getByRole('menuitem', { name: "Couldn't load labels - retry" })).toBeInTheDocument();
     });
   });
 
@@ -301,6 +344,26 @@ describe('PrDetailPane', () => {
       expect(screen.getByRole('tablist', { name: 'PR #8 details' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /Comments/ })).toHaveAttribute('aria-pressed', 'false');
     });
+
+    test('a request for "Since I last looked" (a summary\'s "See all") sets the scope back, keeping the event types', async () => {
+      const user = userEvent.setup();
+      const entry = withEvents('7', '2026-01-03T00:00:00Z');
+      const { rerender } = render(
+        <Providers>
+          <PrDetailPane {...paneProps({ tab: 'activity', entry, activitySinceRequest: 1 })} />
+        </Providers>,
+      );
+      await user.click(screen.getByRole('button', { name: /^All/ }));
+      await user.click(screen.getByRole('button', { name: /Commits/ }));
+
+      rerender(
+        <Providers>
+          <PrDetailPane {...paneProps({ tab: 'activity', entry, activitySinceRequest: 2 })} />
+        </Providers>,
+      );
+      expect(screen.getByRole('button', { name: /Since I last looked/ })).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByRole('button', { name: /Commits/ })).toHaveAttribute('aria-pressed', 'false');
+    });
   });
 
   describe('tabs', () => {
@@ -342,15 +405,46 @@ describe('PrDetailPane', () => {
             data: { ...baseEntry.data, openConversationCount: '2' },
           },
         },
-        { dirty: ['7'] },
+        { dirty: ['owner/repo#7'] },
       );
       const tabs = screen.getByRole('tablist', { name: 'PR #7 details' });
       expect(within(tabs).getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
         'Overview',
+        'Description',
         'Activity',
         'Conversations2 open',
         'Notesunsaved',
       ]);
+    });
+
+    test("the Description tab fetches this PR's description and shows it", async () => {
+      const fetchMock = jest.fn(async () => ({ ok: true, status: 200, json: async () => ({ ok: true, body: 'Fixes the parser.' }) }));
+      (global as unknown as { fetch: unknown }).fetch = fetchMock;
+      renderPane({ tab: 'description', entry: { ...baseEntry, data: { ...baseEntry.data, sourceUpdatedAt: '2026-11-01T00:00:00Z' } } });
+      expect(screen.getByRole('tab', { name: 'Description' })).toHaveAttribute('aria-selected', 'true');
+      expect(await screen.findByText('Fixes the parser.')).toBeInTheDocument();
+      expect(fetchMock).toHaveBeenCalledWith('/view-prs/pr-description?repo=owner%2Frepo&prNumber=7', expect.anything());
+    });
+
+    test("an image uploaded to GitHub in the description comes through the server, for this PR", async () => {
+      const globals = window as unknown as { DOMPurify: unknown; marked: unknown };
+      globals.DOMPurify = jest.requireActual('dompurify');
+      globals.marked = jest.requireActual('../../vendor/marked.umd.js');
+      const asset = 'https://github.com/user-attachments/assets/af1d5a16-8556-4bd3-8d5b-079f77f86d33';
+      (global as unknown as { fetch: unknown }).fetch = jest.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({ ok: true, body: `Before:\n\n![screenshot](${asset})` }),
+      }));
+      renderPane({ tab: 'description', entry: { ...baseEntry, data: { ...baseEntry.data, sourceUpdatedAt: '2026-11-03T00:00:00Z' } } });
+      const image = await screen.findByRole('img', { name: 'screenshot' });
+      expect(image).toHaveAttribute('src', `/view-prs/attachment?url=${encodeURIComponent(asset)}&repo=owner%2Frepo&prNumber=7`);
+    });
+
+    test("another repo's PR with the same number having unsaved notes doesn't mark this one's", () => {
+      renderPane({}, { dirty: ['other/repo#7'] });
+      const notesTab = within(screen.getByRole('tablist', { name: 'PR #7 details' })).getByRole('tab', { name: /Notes/ });
+      expect(notesTab).toHaveTextContent(/^Notes$/);
     });
 
     test('picking a tab reports it, and the selected tab shows its content', async () => {
@@ -396,6 +490,66 @@ describe('PrDetailPane', () => {
         expect(table.querySelectorAll('tr').length).toBeGreaterThan(1);
         expect(within(table).getAllByText(/No activity/).length).toBeGreaterThan(0);
       });
+    });
+  });
+
+  // The list's rows go without their comments' text (usePrDetail): the
+  // pane fetches it.
+  describe("a row without its detail text", () => {
+    const slimEntry: PrEntry = {
+      ...baseEntry,
+      data: {
+        ...baseEntry.data,
+        detailSlim: true,
+        detailVersion: 'v1',
+        reviewThreads: [{ id: 't1', isResolved: false, comments: [{ id: 'c1', authorLogin: 'hubot', createdAt: '2026-01-01T00:00:00Z' }] }],
+      },
+    };
+    const detailAnswer = {
+      ok: true,
+      detailVersion: 'v1',
+      detail: {
+        activityTimeline: [],
+        activityEvents: [],
+        commentEvents: [],
+        reviewThreads: [
+          { id: 't1', isResolved: false, comments: [{ id: 'c1', authorLogin: 'hubot', createdAt: '2026-01-01T00:00:00Z', body: 'Please handle the empty input' }] },
+        ],
+      },
+    };
+    let detailFails = false;
+
+    beforeEach(() => {
+      clearPrDetailCache();
+      detailFails = false;
+      global.fetch = jest.fn((input: string) => {
+        const url = String(input);
+        if (url.startsWith('/view-prs/pr-detail')) {
+          return Promise.resolve(
+            detailFails
+              ? ({ ok: false, status: 500, json: () => Promise.resolve({ ok: false, error: 'No' }) } as Response)
+              : ({ ok: true, status: 200, json: () => Promise.resolve(detailAnswer) } as Response),
+          );
+        }
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true }) } as Response);
+      }) as unknown as typeof fetch;
+    });
+
+    test('given the Conversations tab, when the detail arrives, then the comment text shows', async () => {
+      renderPane({ entry: slimEntry, tab: 'conversations' });
+      expect(await screen.findByText('Please handle the empty input')).toBeInTheDocument();
+      expect(global.fetch).toHaveBeenCalledWith('/view-prs/pr-detail?repo=owner%2Frepo&prNumber=7', expect.anything());
+    });
+
+    test("given the detail can't be fetched, then the pane says so, and Try again fetches it", async () => {
+      detailFails = true;
+      renderPane({ entry: slimEntry, tab: 'conversations' });
+      expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't load this PR's comment and commit text.");
+
+      detailFails = false;
+      await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+      expect(await screen.findByText('Please handle the empty input')).toBeInTheDocument();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
   });
 

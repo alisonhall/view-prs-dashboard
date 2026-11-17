@@ -45,6 +45,8 @@ export interface BackfillStatusValue extends BackfillTrackingState {
   backfillDetailsText: string;
   backfillLogText: string;
   backfillLogUpdateTick: number;
+  // Its last status couldn't be read (the activity popover's Problems).
+  hasBackfillStatusError: boolean;
 }
 
 // Reactive *state* - changes as the backfill's status does. Anything that
@@ -56,6 +58,7 @@ export const BackfillStatusContext = createContext<BackfillStatusValue>({
   backfillDetailsText: DEFAULT_BACKFILL_DETAILS_TEXT,
   backfillLogText: DEFAULT_BACKFILL_LOG_TEXT,
   backfillLogUpdateTick: 0,
+  hasBackfillStatusError: false,
   isBackfillRunning: false,
   isBackfillActionPending: false,
   supportsBackfillLogPolling: true,

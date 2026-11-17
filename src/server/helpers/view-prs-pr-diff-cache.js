@@ -10,6 +10,9 @@ const createViewPrsPrDiffCache = ({
   viewPrsPrDiffDir,
   viewPrsPrDiffTimeoutMs,
   viewPrsPrDiffConcurrency,
+  // (repo) => the env gh needs for it (GH_HOST for a GitHub Enterprise
+  // repo); none without it.
+  getRepoGhEnv = () => ({}),
   allowDestructiveWriteRaw = process.env.VIEW_PRS_ALLOW_DESTRUCTIVE_WRITE,
 }) => {
   const isDestructiveWriteAllowed =
@@ -45,7 +48,7 @@ const createViewPrsPrDiffCache = ({
         `repos/${safeRepo}/pulls/${safePr}`,
       ],
       20 * 1024 * 1024,
-      { timeoutMs: viewPrsPrDiffTimeoutMs },
+      { timeoutMs: viewPrsPrDiffTimeoutMs, env: getRepoGhEnv(safeRepo) },
     );
     return extractRawDiffText(result?.stdout);
   };
@@ -53,7 +56,17 @@ const createViewPrsPrDiffCache = ({
   const writePrDiffCache = (repo, prNumber, payload) => {
     fs.mkdirSync(viewPrsPrDiffDir, { recursive: true });
     const filePath = getPrDiffCacheFilePath(repo, prNumber);
-    fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), "utf8");
+    // Through a temp file and a rename: no half-written file is ever read,
+    // and the rename moves the folder's modified time, which
+    // readViewPrsData's cache watches (a diff-only row's fetchedAt is read
+    // from here) - a write in place wouldn't.
+    if (typeof fs.renameSync !== "function") {
+      fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), "utf8");
+      return filePath;
+    }
+    const tempPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
+    fs.writeFileSync(tempPath, JSON.stringify(payload, null, 2), "utf8");
+    fs.renameSync(tempPath, filePath);
     return filePath;
   };
 

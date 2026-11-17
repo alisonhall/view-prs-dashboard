@@ -5,7 +5,7 @@ import { useSnackbar } from './SnackbarContext';
 import { useNotifyFailureSnackbar } from './useNotifyFailureSnackbar';
 
 /**
- * The "Trigger auto run" button's action (TriggerAutoRunButton.jsx): builds createPrTriggerAutoRunActionHelpers with
+ * The "Full refresh now" button's action (TriggerAutoRunButton.jsx): builds createPrTriggerAutoRunActionHelpers with
  * postJson and failure snackbars from useSnackbar().
  */
 export function useTriggerAutoRun(): () => Promise<void> {

@@ -22,14 +22,10 @@
  * @module components/AuthorCreatedPrsSection
  */
 
-import { AuthorInsightsPrLink } from './AuthorInsightsPrLink';
-import { AuthorInsightsPrDataMeta } from './AuthorInsightsPrDataMeta';
+import { AuthorInsightsPrRow } from './AuthorInsightsPrRow';
 import { usePrData } from '../state/PrDataContext';
 import { useActorIdentity } from '../state/ActorIdentityContext';
 import { useAuthorInsights } from '../state/AuthorInsightsContext';
-import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.ts';
-
-const { formatIsoDatetime } = createPrFormattingHelpers();
 
 export function AuthorCreatedPrsSection() {
   const { payload, selectedAuthorLogin } = usePrData();
@@ -51,12 +47,7 @@ export function AuthorCreatedPrsSection() {
         <div className="author-insights-list">
           {createdPrs.map((entry, index) => (
             <div className="author-insights-item" key={entry?.prNumber || entry?.data?.number || index}>
-              <AuthorInsightsPrLink entry={entry} />
-              <AuthorInsightsPrDataMeta entry={entry}>
-                <span className="author-insights-meta-detail">
-                  {formatIsoDatetime(entry?.data?.mergedAt || entry?.data?.sourceUpdatedAt || '-')}
-                </span>
-              </AuthorInsightsPrDataMeta>
+              <AuthorInsightsPrRow entry={entry} />
             </div>
           ))}
         </div>

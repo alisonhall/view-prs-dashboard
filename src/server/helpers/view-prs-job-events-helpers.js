@@ -85,10 +85,12 @@ const createViewPrsJobEventsHelpers = ({
     scheduler: getViewPrsSchedulerPublicStateSafe(),
   });
 
-  const buildDataChangedEnvelope = () => ({
+  // `dataVersion` when the caller knows it (the events route's data watcher).
+  const buildDataChangedEnvelope = ({ dataVersion } = {}) => ({
     type: "data-changed",
     at: now(),
     seq: nextSeq(),
+    ...(dataVersion ? { dataVersion } : {}),
     scheduler: getViewPrsSchedulerPublicStateSafe(),
   });
 
@@ -100,13 +102,15 @@ const createViewPrsJobEventsHelpers = ({
   // route's own response; this is purely for every *other* connected tab,
   // which otherwise has no way to know - see the "Polling retirement"
   // section of the activity-drawer plan for why the PR-data poll itself
-  // couldn't be fully retired without this.
-  const emitDataChanged = () => {
+  // couldn't be fully retired without this. The events route's data watcher
+  // fires it too, for the writes no route reports (script runs, quick
+  // checks).
+  const emitDataChanged = (detail) => {
     if (emitter.listenerCount(JOB_EVENT_CHANNEL) === 0) {
       return null;
     }
     try {
-      const envelope = buildDataChangedEnvelope();
+      const envelope = buildDataChangedEnvelope(detail);
       emitter.emit(JOB_EVENT_CHANNEL, envelope);
       return envelope;
     } catch (error) {

@@ -362,14 +362,14 @@ describe('PrJsonModal', () => {
 
     // Open the popover too, so both overlays are up at once.
     fireEvent.click(screen.getByRole('button', { name: 'Activity' }));
-    expect(screen.getByText('Scheduled background jobs')).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Activity' })).toBeInTheDocument();
 
     fireEvent.keyDown(document, { key: 'Escape' });
 
     expect(onClose).toHaveBeenCalledTimes(1);
     // The popover's own window-level Escape listener never got the event -
     // it's still open.
-    expect(screen.getByText('Scheduled background jobs')).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Activity' })).toBeInTheDocument();
   });
 
   test('given the modal opens, when body overflow is locked, then it is restored on close/unmount', async () => {

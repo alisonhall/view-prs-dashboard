@@ -4,7 +4,17 @@ import type { EntryDerivedCache } from "./pr-entry-derived-cache.helpers.ts";
 // The row filters' criteria object, and applying it to the stored rows
 // (with each entry's match result cached).
 export interface RowFilterCriteria {
+  // The PRs field (pr-filter-input.helpers.ts): PR numbers, PRs by repo
+  // ("owner/repo#12") and repos.
   prNumbers: string[];
+  prKeys: string[];
+  repos: string[];
+  // The Repos list: PRs in any of these repos.
+  repoNames: string[];
+  // The Last activity range (pr-last-activity-range.helpers.ts): date
+  // inputs' values, "" for no limit on that side.
+  lastActivityFrom: string;
+  lastActivityTo: string;
   includeLabels: string[];
   excludeLabels: string[];
   authorLogins: string[];
@@ -18,6 +28,8 @@ export interface RowFilterCriteria {
   // "name-and-url".
   stories: string;
   analysisOfPr: string;
+  // The search box's words (pr-row-search.helpers.ts's parseSearchTerms).
+  searchTerms: string[];
 }
 
 export type RowFilterCriteriaInput = {
@@ -49,6 +61,11 @@ const createPrRowFilteringHelpers = ({
 
   const buildRowFilterCriteria = ({
     prNumbers,
+    prKeys,
+    repos,
+    repoNames,
+    lastActivityFrom,
+    lastActivityTo,
     includeLabels,
     excludeLabels,
     authorLogins,
@@ -60,8 +77,14 @@ const createPrRowFilteringHelpers = ({
     prDifficulty,
     stories,
     analysisOfPr,
+    searchTerms,
   }: RowFilterCriteriaInput = {}): RowFilterCriteria => ({
     prNumbers: asStringArray(prNumbers),
+    prKeys: asStringArray(prKeys),
+    repos: asStringArray(repos),
+    repoNames: asStringArray(repoNames),
+    lastActivityFrom: String(lastActivityFrom || ""),
+    lastActivityTo: String(lastActivityTo || ""),
     includeLabels: asStringArray(includeLabels),
     excludeLabels: asStringArray(excludeLabels),
     authorLogins: asStringArray(authorLogins),
@@ -73,6 +96,7 @@ const createPrRowFilteringHelpers = ({
     prDifficulty: String(prDifficulty || ""),
     stories: String(stories || ""),
     analysisOfPr: String(analysisOfPr || ""),
+    searchTerms: asStringArray(searchTerms),
   });
 
   const applyRowUiFilters = <E extends PrEntry>(rows: E[] | null | undefined, criteria: RowFilterCriteria): E[] => {

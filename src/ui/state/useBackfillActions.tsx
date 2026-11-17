@@ -29,7 +29,7 @@ export interface BackfillActions {
 }
 
 /**
- * Settings › Backfill's actions (BackfillSection and its BackfillLog):
+ * Tools › Backfill's actions (BackfillSection and its BackfillLog):
  * builds createPrBackfillActionHelpers with status/output
  * text, request activity and failure snackbars.
  *

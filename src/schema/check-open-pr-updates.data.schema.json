@@ -10,7 +10,7 @@
       "type": "object",
       "default": {},
       "patternProperties": {
-        "^[0-9]+$": {
+        "^([^\\s/]+/[^\\s/]+#)?[0-9]+$": {
           "$ref": "#/$defs/byPrEntry"
         }
       },
@@ -25,9 +25,34 @@
           "type": "null"
         }
       ]
+    },
+    "lastFullRun": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/lastRun"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "lastRunByRepo": {
+      "$ref": "#/$defs/runByRepo"
+    },
+    "lastFullRunByRepo": {
+      "$ref": "#/$defs/runByRepo"
     }
   },
   "$defs": {
+    "runByRepo": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/repoKey"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/lastRun"
+      }
+    },
     "isoDateTime": {
       "type": "string",
       "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
@@ -96,6 +121,12 @@
         "rowOrder": {
           "type": "number"
         },
+        "fetchedAt": {
+          "anyOf": [{ "$ref": "#/$defs/isoDateTime" }, { "type": "null" }]
+        },
+        "ciFetchedAt": {
+          "anyOf": [{ "$ref": "#/$defs/isoDateTime" }, { "type": "null" }]
+        },
         "data": {
           "$ref": "#/$defs/prData"
         }
@@ -154,6 +185,9 @@
         "closedAt": {
           "$ref": "#/$defs/isoDateTimeOrEmpty"
         },
+        "createdAt": {
+          "$ref": "#/$defs/isoDateTimeOrEmpty"
+        },
         "sourceUpdatedAt": {
           "$ref": "#/$defs/isoDateTimeOrEmpty"
         },
@@ -165,6 +199,12 @@
         },
         "sourceBranch": {
           "type": "string"
+        },
+        "headOid": {
+          "type": "string"
+        },
+        "crossRepository": {
+          "type": "boolean"
         },
         "targetBranch": {
           "type": "string"
@@ -293,6 +333,32 @@
         },
         "baseline": {
           "$ref": "#/$defs/isoDateTimeOrEmpty"
+        },
+        "localStateKey": {
+          "type": "string"
+        },
+        "commitsAfterReview": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "viewerSeenHead": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["at", "oid"],
+          "properties": {
+            "at": {
+              "type": "string"
+            },
+            "oid": {
+              "type": "string"
+            }
+          }
+        },
+        "commitTotalCount": {
+          "type": "integer",
+          "minimum": 0
         },
         "reason": {
           "type": "string"

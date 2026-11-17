@@ -69,13 +69,20 @@ interface HookResult {
 // The server runs the script (a new process) for every request, so the
 // pane only asks once its selection has been still this long - ↑/↓ through
 // ten PRs doesn't start ten scripts - and remembers each PR's answer for
-// the session, per data version (the script may read the PR's data).
+// the session, for its latest data version only (the script may read the
+// PR's data; an answer per version would pile up for the whole session).
 // Failures aren't remembered, so a fixed script works on the next look.
 export const INSIGHTS_HOOK_DELAY_MS = 300;
-const hookHtmlByKey = new Map<string, string | null>();
+const hookHtmlByPr = new Map<string, { key: string; html: string | null }>();
+// The key without its version: `${repo}#${prNumber}`.
+const prOf = (key: string) => key.split('#').slice(0, 2).join('#');
+const hasAnswer = (key: string) => hookHtmlByPr.get(prOf(key))?.key === key;
 
 // For tests: forget every remembered answer.
-export const clearInsightsHookCache = () => hookHtmlByKey.clear();
+export const clearInsightsHookCache = () => hookHtmlByPr.clear();
+
+// For tests: how many answers are remembered.
+export const insightsHookCacheSize = () => hookHtmlByPr.size;
 
 export function useInsightsHookHtml(
   repo: string | undefined,
@@ -91,7 +98,7 @@ export function useInsightsHookHtml(
   const [, setAnswered] = useState(0);
 
   useEffect(() => {
-    if (!key || hookHtmlByKey.has(key) || typeof fetch !== 'function') {
+    if (!key || hasAnswer(key) || typeof fetch !== 'function') {
       return undefined;
     }
     let cancelled = false;
@@ -111,7 +118,7 @@ export function useInsightsHookHtml(
             const sanitized = rawHtml.trim() ? getDomPurify()?.sanitize(rawHtml, SANITIZE_CONFIG) || '' : '';
             const html = sanitized || null;
             if (result?.ok && !result.error) {
-              hookHtmlByKey.set(key, html);
+              hookHtmlByPr.set(prOf(key), { key, html });
               if (!cancelled) setAnswered((count) => count + 1);
             } else if (!cancelled) {
               setUnremembered({ key, html });
@@ -133,7 +140,7 @@ export function useInsightsHookHtml(
   }, [key, safeRepo, safePrNumber]);
 
   if (!key) return null;
-  if (hookHtmlByKey.has(key)) return hookHtmlByKey.get(key) ?? null;
+  if (hasAnswer(key)) return hookHtmlByPr.get(prOf(key))?.html ?? null;
   return unremembered.key === key ? unremembered.html : null;
 }
 

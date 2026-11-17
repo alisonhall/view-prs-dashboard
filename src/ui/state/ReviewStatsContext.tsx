@@ -18,7 +18,7 @@ type DateBucketingHelpers = ReturnType<typeof createPrReviewStatsDateBucketingHe
 
 /**
  * The Review Stats tab's settings (statsViewState: sort/filter/topN/
- * minComments/date range) and the aggregation functions that depend on
+ * minComments/date range/reviewers) and the aggregation functions that depend on
  * them. ReviewStatsProvider (components/ReviewStatsProvider.tsx) derives
  * the value from PrDataContext's statsViewState and ActorIdentityContext;
  * ReviewStatsControls/ReviewStatsContent/StatsVisuals/ReviewerActivityChart
@@ -34,6 +34,9 @@ export interface ReviewStatsValue {
   normalizeRowMetrics: AggregationHelpers['normalizeRowMetrics'];
   buildReviewerStats: AggregationHelpers['buildReviewerStats'];
   applyStatsControls: AggregationHelpers['applyStatsControls'];
+  // Everyone with activity in the dates, by name, whoever's picked in
+  // Reviewers (the list's options).
+  listReviewers: (rows: Iterable<PrEntry>, actorsMap?: ActorsMap) => Array<{ login: string; name: string }>;
   getNormalizedStatsDateRange: () => StatsDateRange;
   renderActivityTrendNote: (rows: PrEntry[] | null | undefined, actorsMap?: ActorsMap) => string;
   bucketTimelineChartData: DateBucketingHelpers['bucketTimelineChartData'];
@@ -72,6 +75,8 @@ const buildDefaultReviewStats = (): ReviewStatsValue => {
     normalizeRowMetrics,
     buildReviewerStats,
     applyStatsControls,
+    listReviewers: (rows, actorsMap = {}) =>
+      buildReviewerStats(rows, actorsMap).reviewerRows.map(({ login, name }) => ({ login, name: String(name || login) })),
     getNormalizedStatsDateRange,
     renderActivityTrendNote: (rows, actorsMap = {}) =>
       buildActivityTrendNote(aggregateReviewerActivityTimeline(rows, actorsMap, getNormalizedStatsDateRange())),

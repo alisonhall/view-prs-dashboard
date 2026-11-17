@@ -3,8 +3,28 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PID_FILE="$SCRIPT_DIR/data/backfill-missing.pid"
-LOG_FILE="$SCRIPT_DIR/data/backfill-missing.log"
+# The same files the server reads for the dashboard's backfill status and
+# log (app-config.js): in the data folder (data-dir.sh), or the env
+# overrides.
+PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# shellcheck source=../script/data-dir.sh
+. "$PROJECT_DIR/src/script/data-dir.sh"
+DATA_DIR_GIVEN="${DATA_DIR:-}"
+DATA_DIR="$(resolve_data_dir "$PROJECT_DIR")"
+if [[ -z "$DATA_DIR_GIVEN" ]] && data_dir_message="$(data_dir_problem "$PROJECT_DIR" "$DATA_DIR")"; then
+  echo "$data_dir_message" >&2
+  exit 1
+fi
+# backfill-missing-data.js reads VIEW_PRS_DATA_DIR (data-dir.js), the
+# script it runs DATA_DIR: the same folder for both - for Node, on Windows,
+# as D:/... (it would take bash's /d/... as D:\d\...).
+VIEW_PRS_DATA_DIR="$DATA_DIR"
+if command -v cygpath >/dev/null 2>&1; then
+  VIEW_PRS_DATA_DIR="$(cygpath -m "$DATA_DIR")"
+fi
+export DATA_DIR VIEW_PRS_DATA_DIR
+PID_FILE="${VIEW_PRS_BACKFILL_PID_FILE:-$DATA_DIR/backfill-missing.pid}"
+LOG_FILE="${VIEW_PRS_BACKFILL_LOG_FILE:-$DATA_DIR/backfill-missing.log}"
 
 MAX_PRS="${BACKFILL_MAX_PRS:-100}"
 DELAY_MS="${BACKFILL_DELAY_MS:-3000}"
@@ -40,7 +60,7 @@ cleanup_stale_pid_file() {
 }
 
 start_backfill() {
-  mkdir -p "$SCRIPT_DIR/data"
+  mkdir -p "$(dirname "$PID_FILE")" "$(dirname "$LOG_FILE")"
   cleanup_stale_pid_file
 
   local existing_pid
@@ -122,6 +142,9 @@ Environment variables:
   BACKFILL_JOBS       --jobs passed to refresh script (default: 1)
   BACKFILL_CONCURRENCY Number of parallel backfill workers (default: 2)
   BACKFILL_EXTRA_ARGS Extra args passed to backfill-missing-data.js (optional)
+  VIEW_PRS_BACKFILL_PID_FILE  PID file (default: backfill-missing.pid in the data folder)
+  VIEW_PRS_BACKFILL_LOG_FILE  Log file (default: backfill-missing.log in the data folder)
+  VIEW_PRS_DATA_DIR           The data folder (default: the app's data/; README "Data folder")
 EOF
 }
 

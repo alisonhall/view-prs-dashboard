@@ -16,7 +16,17 @@ export interface AttentionConfig {
   includeClosedMerged?: boolean;
   includeDraftChanged?: boolean;
   includeDraftNoActivity?: boolean;
+  // Each repo's own config, by its lower-cased name (Settings › Rules for a
+  // repo, repo-rules.helpers.ts): a PR's is used for it.
+  byRepo?: Record<string, AttentionConfig>;
 }
+
+// The config a PR of this repo is judged by: its repo's own, else the one
+// for every repo.
+export const attentionConfigForRepo = (config: AttentionConfig | null | undefined, repo: unknown): AttentionConfig => {
+  const own = config?.byRepo?.[String(repo ?? "").trim().toLowerCase()];
+  return own || config || {};
+};
 
 interface LoginRecord {
   login?: string;
@@ -26,6 +36,9 @@ export interface PrNeedsAttentionDeps {
   asArray?: (value: unknown) => unknown[];
   isChangedStatus?: (status: unknown) => boolean;
   getEffectiveViewerLogin?: (row: PrData) => string;
+  // A login's person's key (ActorIdentityContext's normalizeActorLogin):
+  // the viewer and the people on a PR compare by it.
+  normalizeActorLogin?: (login: unknown) => string;
   collectAssignedUsers?: (row: PrData) => LoginRecord[];
   collectRequestedReviewers?: (row: PrData) => LoginRecord[];
   countPendingThreadComments?: (row: PrData) => number;
@@ -40,8 +53,8 @@ export interface ShouldShowNeedsAttentionInput {
   config?: AttentionConfig;
 }
 
-// What each change-reason token from check-open-pr-updates.sh's
-// build_reasons means. An unknown token is shown as it is.
+// What each change-reason token from src/script/compute-pr-row.js's
+// buildReasons means. An unknown token is shown as it is.
 const CHANGE_REASON_TEXT: Record<string, string> = {
   "unanswered-thread": "Unanswered review threads",
   "thread-reply": "New replies in review threads",
@@ -78,6 +91,27 @@ const parseChangeReasonTokens = (row: PrData = {}): string[] => {
 export const describeChangeReasons = (row: PrData = {}): string[] =>
   parseChangeReasonTokens(row).map((token) => CHANGE_REASON_TEXT[token] ?? `Changed: ${token}`);
 
+// What a changed PR shows without reasons of its own.
+export const CHANGED_FALLBACK_TEXT = "Changed since your last ack";
+
+// The change reasons a count of what's new doesn't already say (an
+// unanswered thread, a cleared Ack): each counted kind stands in for its
+// reasons.
+export const describeChangeReasonsBesides = (
+  row: PrData,
+  counted: { commits: number; reviews: number; comments: number },
+): string[] =>
+  parseChangeReasonTokens(row)
+    .filter(
+      (token) =>
+        !(
+          (token === "commit" && counted.commits) ||
+          (token === "review" && counted.reviews) ||
+          ((token === "comment" || token === "thread-reply") && counted.comments)
+        ),
+    )
+    .map((token) => CHANGE_REASON_TEXT[token] ?? `Changed: ${token}`);
+
 const NO_ACTIVITY_TEXT: Record<string, string> = {
   "assigned-only": "No recent activity on a PR assigned to you",
   "reviewer-only": "No recent activity on a PR you're reviewing",
@@ -87,6 +121,7 @@ const createPrNeedsAttentionHelpers = ({
   asArray = (value: unknown) => (Array.isArray(value) ? value : []),
   isChangedStatus = (status: unknown) => String(status || "").startsWith("CHANGED"),
   getEffectiveViewerLogin = () => "",
+  normalizeActorLogin = (login: unknown) => String(login || "").trim(),
   collectAssignedUsers = () => [],
   collectRequestedReviewers = () => [],
   countPendingThreadComments = () => 0,
@@ -114,23 +149,12 @@ const createPrNeedsAttentionHelpers = ({
     if (mode === "none") return false;
     if (mode === "all") return true;
 
-    const viewerLogin = getEffectiveViewerLogin(row);
-    if (!viewerLogin) return false;
+    const personKey = (login: unknown) => String(normalizeActorLogin(login) || "").trim().toLowerCase();
+    const viewerKey = personKey(getEffectiveViewerLogin(row));
+    if (!viewerKey) return false;
 
-    const isAssignedToMe = () =>
-      collectAssignedUsers(row).some(
-        (person) =>
-          String(person?.login || "")
-            .trim()
-            .toLowerCase() === viewerLogin,
-      );
-    const isReviewerMe = () =>
-      collectRequestedReviewers(row).some(
-        (person) =>
-          String(person?.login || "")
-            .trim()
-            .toLowerCase() === viewerLogin,
-      );
+    const isAssignedToMe = () => collectAssignedUsers(row).some((person) => personKey(person?.login) === viewerKey);
+    const isReviewerMe = () => collectRequestedReviewers(row).some((person) => personKey(person?.login) === viewerKey);
 
     if (mode === "assigned-only") return isAssignedToMe();
     if (mode === "reviewer-only") return isReviewerMe();
@@ -164,7 +188,7 @@ const createPrNeedsAttentionHelpers = ({
 
   const describeChange = (row: PrData): string[] => {
     const reasons = describeChangeReasons(row);
-    return reasons.length ? reasons : ["Changed since your last ack"];
+    return reasons.length ? reasons : [CHANGED_FALLBACK_TEXT];
   };
 
   // Why a PR needs attention, in words (the attention icon's tooltip, the
@@ -216,7 +240,7 @@ const createPrNeedsAttentionHelpers = ({
       sectionKey,
       hasPendingComments: pendingCommentCount > 0,
       pendingCommentCount,
-      config,
+      config: attentionConfigForRepo(config, entry?.repo),
     });
   };
 

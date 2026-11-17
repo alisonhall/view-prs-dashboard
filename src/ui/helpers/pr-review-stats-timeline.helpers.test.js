@@ -5,7 +5,7 @@ const {
 } = require("./pr-review-stats-timeline.helpers.ts");
 
 describe("review stats timeline helpers", () => {
-  const createHelpers = () =>
+  const createHelpers = (overrides = {}) =>
     createPrReviewStatsTimelineHelpers({
       asArray: (value) => (Array.isArray(value) ? value : []),
       getPreferredActorKey: (login, fallback) => String(login || fallback || "").trim(),
@@ -29,7 +29,34 @@ describe("review stats timeline helpers", () => {
               .filter(Boolean),
           ),
         ).sort(),
+      ...overrides,
     });
+
+  test("given reviewers picked (isIncludedReviewer), when aggregating, then only theirs are series, on their dates", () => {
+    const { aggregateReviewerActivityTimeline } = createHelpers({
+      isIncludedReviewer: (login) => login === "reviewer-b",
+    });
+
+    const result = aggregateReviewerActivityTimeline(
+      [
+        {
+          data: {
+            authorLogin: "pr-author",
+            commentEvents: [
+              { date: "2026-07-01", actor: "reviewer-a", channel: "thread" },
+              { date: "2026-07-02", actor: "reviewer-b", channel: "thread" },
+            ],
+            reviews: [{ submittedAt: "2026-07-03T10:00:00Z", authorLogin: "reviewer-a" }],
+          },
+        },
+      ],
+      {},
+      { startDate: "", endDate: "" },
+    );
+
+    expect(result.series.map((item) => item.login)).toEqual(["reviewer-b"]);
+    expect(result.dates).toEqual(["2026-07-02"]);
+  });
 
   test("given mixed comments and reviews, when aggregating reviewer activity timeline, then grouped reviewer totals are returned", () => {
     const { aggregateReviewerActivityTimeline } = createHelpers();

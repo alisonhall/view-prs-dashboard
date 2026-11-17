@@ -1,6 +1,7 @@
 import type { MouseEvent } from 'react';
 import type { PrData } from '../../types/pr-data.ts';
-import { useRepoLabels } from '../../state/RepoLabelsContext';
+import { useLabelsForRepo } from '../../state/RepoLabelsContext';
+import { useCustomSectionMembership } from '../../state/CustomSectionMembership';
 import { getLabelName } from '../../helpers/pr-filter-label-extraction.helpers.ts';
 import { IconButton } from '../ui/Button';
 import { MenuButton } from '../ui/MenuButton';
@@ -9,7 +10,8 @@ import { MenuButton } from '../ui/MenuButton';
  * The Actions column, as icon buttons with tooltips:
  * - Ack (pressed once acknowledged; pressing again clears it)
  * - a More menu: In review and Flagged (worded for what choosing them does;
- *   their state already shows in the Signals column), Update, View PR JSON
+ *   their state already shows in the Signals column), an Add to / Remove
+ *   from item per custom section (CustomSectionMembership), Update, View PR JSON
  *   details, and Add label (the repo's labels the PR doesn't have yet)
  *
  * Accessible names keep the PR number ("Ack PR #2"), so each row's
@@ -24,6 +26,8 @@ export interface PrActionsCellProps {
   isFlagged: boolean;
   isInReview: boolean;
   isAcknowledged: boolean;
+  // The row is the selected one, whose Ack the a key does (PrTable).
+  isSelected?: boolean;
   onCheckboxChange?: (prNumber: PrNumber, type: 'inReview' | 'flagged', checked: boolean, repo: string) => void;
   onAckAction?: (prNumber: PrNumber, isAcked: boolean, repo: string) => void;
   onApplyLabel?: (prNumber: PrNumber, label: string, repo: string) => void;
@@ -37,6 +41,7 @@ export function PrActionsCell({
   isFlagged,
   isInReview,
   isAcknowledged,
+  isSelected = false,
   onCheckboxChange,
   onAckAction,
   onApplyLabel,
@@ -45,7 +50,20 @@ export function PrActionsCell({
 }: PrActionsCellProps) {
   const prNumber = String(pr?.number || '');
   const entry = { prNumber, repo };
-  const { labels: repoLabels } = useRepoLabels();
+  // This PR's repo's labels, not the current repo's, fetched when the menu
+  // first opens.
+  const { labels: repoLabels, loaded: labelsLoaded, failed: labelsFailed, load: loadLabels } = useLabelsForRepo(repo);
+  const { sections: customSections, idsFor, setMember } = useCustomSectionMembership();
+  const inCustomSections = idsFor(repo, prNumber);
+  const customSectionEntries = customSections.map((section) => {
+    const isMember = inCustomSections.includes(section.id);
+    return {
+      id: `custom-section-${section.id}`,
+      label: isMember ? `Remove from ${section.name}` : `Add to ${section.name}`,
+      icon: section.icon,
+      onSelect: () => void setMember(section, repo, prNumber, !isMember),
+    };
+  });
   const existingLabels = new Set((Array.isArray(pr?.labels) ? pr.labels : []).map((label) => getLabelName(label)).filter(Boolean));
   const availableLabels = repoLabels
     .map((label) => String(label?.name || ''))
@@ -65,6 +83,8 @@ export function PrActionsCell({
           icon="check"
           label={`${isAcknowledged ? "Ack'd" : 'Ack'} PR #${prNumber}`}
           pressed={isAcknowledged}
+          hint={isAcknowledged ? 'Click again to undo the Ack' : undefined}
+          shortcut={isSelected ? 'a' : undefined}
           // onAckAction's `isAcked` means "is it acked now": it acks or
           // clears from that, so passing the current state flips it.
           onClick={handle(() => onAckAction?.(pr?.number, isAcknowledged, repo))}
@@ -72,6 +92,7 @@ export function PrActionsCell({
         <MenuButton
           icon="more"
           label={`More actions for PR #${prNumber}`}
+          onOpen={loadLabels}
           entries={[
             {
               id: 'in-review',
@@ -85,17 +106,22 @@ export function PrActionsCell({
               icon: 'flag',
               onSelect: () => onCheckboxChange?.(pr?.number, 'flagged', !isFlagged, repo),
             },
+            ...customSectionEntries,
             { id: 'update', label: 'Update PR', icon: 'refresh', onSelect: () => void onUpdatePr?.(pr?.number, entry, pr) },
             { id: 'json', label: 'View PR JSON details', icon: 'braces', onSelect: () => onViewJson?.(entry, pr) },
             {
               id: 'labels',
               label: 'Add label',
-              emptyText: 'No labels to add',
-              items: availableLabels.map((name) => ({
-                id: name,
-                label: name,
-                onSelect: () => onApplyLabel?.(pr?.number, name, repo),
-              })),
+              emptyText: labelsLoaded ? 'No labels to add' : 'Loading labels…',
+              // A failed request offers to try again, the menu staying open
+              // for what it brings - rather than "Loading labels…" for good.
+              items: labelsFailed
+                ? [{ id: 'retry-labels', label: "Couldn't load labels - retry", icon: 'refresh', keepOpen: true, onSelect: loadLabels }]
+                : availableLabels.map((name) => ({
+                    id: name,
+                    label: name,
+                    onSelect: () => onApplyLabel?.(pr?.number, name, repo),
+                  })),
             },
           ]}
         />

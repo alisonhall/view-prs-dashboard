@@ -139,7 +139,7 @@ describe('PrSelectionCell', () => {
         <RowFilterSelectionProvider>
           <AuthorThreadResolutionSelectionProvider>
             <ChangeFilterActorSelectionProvider>
-              <FilterStateProvider initialValues={{ prNumbersInput, scopeMode: 'all', filterCustomComments: '' }}>
+              <FilterStateProvider initialValues={{ prNumbersInput, filterCustomComments: '' }}>
                 <StateProbe />
                 <table>
                   <tbody>
@@ -162,7 +162,7 @@ describe('PrSelectionCell', () => {
       const baseline = total();
 
       for (let i = 0; i < 20; i += 1) {
-        act(() => filterState.setValue(i % 2 ? 'filterCustomComments' : 'scopeMode', `typed-${i}`));
+        act(() => filterState.setValue(i % 2 ? 'filterCustomComments' : 'filterOtherNotes', `typed-${i}`));
       }
 
       expect(total()).toBe(baseline);

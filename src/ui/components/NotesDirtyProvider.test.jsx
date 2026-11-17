@@ -15,13 +15,13 @@ const { NotesDirtyProvider } = require('./NotesDirtyProvider');
 const { useNotesDirty } = require('../state/NotesDirtyContext');
 
 // Reads the dirty set from Context (what AutoRenderBlockingSync reads) - it
-// was window.getDirtyNotesPrNumbers, deleted.
-let dirtyPrNumbers;
+// was window.getDirtyNotesPrKeys, deleted.
+let dirtyPrKeys;
 function DirtyProbe() {
-  dirtyPrNumbers = useNotesDirty().dirtyPrNumbers;
+  dirtyPrKeys = useNotesDirty().dirtyPrKeys;
   return null;
 }
-const readDirty = () => dirtyPrNumbers;
+const readDirty = () => dirtyPrKeys;
 const { PrNotesTab } = require('./pane/PrNotesTab');
 
 // The wiring between a real Notes tab and the dirty set this Provider
@@ -31,7 +31,7 @@ const { PrNotesTab } = require('./pane/PrNotesTab');
 // gap that once let an auto-render-blocking bug go unnoticed.
 describe('NotesDirtyProvider + PrNotesTab wiring', () => {
   afterEach(() => {
-    dirtyPrNumbers = undefined;
+    dirtyPrKeys = undefined;
     cleanup();
   });
 
@@ -47,39 +47,39 @@ describe('NotesDirtyProvider + PrNotesTab wiring', () => {
     render(
       <NotesDirtyProvider>
         <DirtyProbe />
-        <PrNotesTab entry={{}} pr={{ number: '42' }} />
+        <PrNotesTab entry={{ repo: 'acme/api' }} pr={{ number: '42' }} />
       </NotesDirtyProvider>,
     );
 
     expect(readDirty()).toEqual([]);
     editOtherNotes('42', 'a note');
-    expect(readDirty()).toEqual(['42']);
+    expect(readDirty()).toEqual(['acme/api#42']);
   });
 
-  test('given two dirty Notes tabs for different PRs, when read, then both PR numbers are reported', () => {
+  test('given two dirty Notes tabs for different PRs, when read, then both are reported by repo and number', () => {
     render(
       <NotesDirtyProvider>
         <DirtyProbe />
-        <PrNotesTab entry={{}} pr={{ number: '10' }} />
-        <PrNotesTab entry={{}} pr={{ number: '2' }} />
+        <PrNotesTab entry={{ repo: 'acme/web' }} pr={{ number: '10' }} />
+        <PrNotesTab entry={{ repo: 'acme/api' }} pr={{ number: '2' }} />
       </NotesDirtyProvider>,
     );
 
     editOtherNotes('10', 'first');
     editOtherNotes('2', 'second');
-    expect(readDirty()).toEqual(['2', '10']);
+    expect(readDirty()).toEqual(['acme/api#2', 'acme/web#10']);
   });
 
-  test('given a dirty Notes tab whose edit is undone, when read, then the PR number is removed', () => {
+  test('given a dirty Notes tab whose edit is undone, when read, then the PR is removed', () => {
     render(
       <NotesDirtyProvider>
         <DirtyProbe />
-        <PrNotesTab entry={{}} pr={{ number: '42' }} />
+        <PrNotesTab entry={{ repo: 'acme/api' }} pr={{ number: '42' }} />
       </NotesDirtyProvider>,
     );
 
     editOtherNotes('42', 'a note');
-    expect(readDirty()).toEqual(['42']);
+    expect(readDirty()).toEqual(['acme/api#42']);
     editOtherNotes('42', '');
     expect(readDirty()).toEqual([]);
   });
@@ -91,6 +91,6 @@ describe('NotesDirtyProvider + PrNotesTab wiring', () => {
       </NotesDirtyProvider>,
     );
 
-    expect(window.getDirtyNotesPrNumbers).toBeUndefined();
+    expect(window.getDirtyNotesPrKeys).toBeUndefined();
   });
 });

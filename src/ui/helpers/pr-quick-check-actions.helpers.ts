@@ -1,8 +1,11 @@
 import type { PrDataPayload, PrEntry } from "../types/pr-data.ts";
 import type { PostJsonResult } from "./pr-http.helpers.ts";
 
-// "Quick check" and "Quick check all": checks whether PRs changed upstream
-// without a full run. "Quick check all" checks every PR number already
+// "Quick check", "Quick check open and latest merged" and "Quick check
+// all": checks whether PRs changed upstream without a full run. The first
+// two list each configured repo's open and latest merged PRs (the first
+// checks the PR numbers typed in Settings instead, when there are some).
+// "Quick check all" checks every PR number already
 // loaded, grouped by repo: the loaded table isn't scoped to one repo -
 // PrTableApp.tsx deliberately renders rows from every repo ever loaded
 // together (see its own comment) - so this sends every repo in one POST
@@ -56,12 +59,14 @@ export interface PrQuickCheckActionsDeps {
   clearPrsBusy?: (prNumbers: string[], repo: string) => void;
 }
 
-// repo -> PR numbers, from every loaded entry that has both.
+// repo -> PR numbers, from every loaded entry that has both - not archived
+// ones (merged or closed past the cutoff), which nothing checks.
 const collectAllLoadedPrsByRepo = (
   byPrNumber: Record<string, PrEntry> | null | undefined,
 ): Map<string, string[]> => {
   const map = new Map<string, string[]>();
   Object.values(byPrNumber || {}).forEach((entry) => {
+    if (entry?.archived === true) return;
     const repo = entry?.repo;
     const number = entry?.data?.number ?? entry?.prNumber;
     if (!repo || (number === undefined || number === null || number === "")) {
@@ -181,10 +186,17 @@ const createPrQuickCheckActionsHelpers = ({
 
   // Scopes to the PR numbers entered in Settings when present, so
   // an older merged PR typed in there is still checked (bypassing the
-  // day-window server-side); an empty field sends {}.
-  const runQuickCheckWorkflow = async ({ fallbackLabel, buildSuccessLabel }: QuickCheckLabels): Promise<QuickCheckOutcome> => {
+  // day-window server-side); an empty field sends {}: every configured
+  // repo's open PRs and latest merged ones, as a full refresh lists them.
+  // `ignorePrNumbers` sends {} whatever's typed ("Quick check open and
+  // latest merged").
+  const runQuickCheckWorkflow = async ({
+    fallbackLabel,
+    buildSuccessLabel,
+    ignorePrNumbers = false,
+  }: QuickCheckLabels & { ignorePrNumbers?: boolean }): Promise<QuickCheckOutcome> => {
     try {
-      const { repo, prNumbers } = getFormBodySafe();
+      const { repo, prNumbers } = ignorePrNumbers ? {} : getFormBodySafe();
       const payload = prNumbers ? { repo, prNumbers } : {};
       const { response, result } = await postJsonSafe("/view-prs/quick-check", payload);
       return buildQuickCheckOutcome({ response, result, fallbackLabel, buildSuccessLabel });

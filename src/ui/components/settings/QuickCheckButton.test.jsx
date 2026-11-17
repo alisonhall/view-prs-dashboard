@@ -29,6 +29,28 @@ describe('QuickCheckButton', () => {
     expect(button.getAttribute('title')).toMatch(/CI check finishing/);
   });
 
+  test('given its own label, id and tooltip (the Quick check group\'s buttons), then it uses them, and goes back to that label after a result', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    render(
+      <QuickCheckButton
+        label="Quick check all"
+        id="quick-check-all-btn"
+        testId="quick-check-all-button"
+        title="Checks every PR row"
+        onCheck={() => Promise.resolve({ label: 'No changes found', resetAfterMs: 2500 })}
+      />,
+    );
+    const button = screen.getByRole('button', { name: 'Quick check all' });
+    expect(document.getElementById('quick-check-all-btn')).toBe(button);
+    expect(screen.getByTestId('quick-check-all-button')).toBe(button);
+    expect(button).toHaveAttribute('title', 'Checks every PR row');
+
+    await user.click(button);
+    expect(await screen.findByRole('button', { name: 'No changes found' })).toBeInTheDocument();
+    jest.advanceTimersByTime(2500);
+    expect(await screen.findByRole('button', { name: 'Quick check all' })).toBeInTheDocument();
+  });
+
   test('given a click, when the onCheck call is pending, then the button disables and shows "Checking..."', async () => {
     let resolveCheck;
     const onCheck = jest.fn(() => new Promise((resolve) => { resolveCheck = resolve; }));

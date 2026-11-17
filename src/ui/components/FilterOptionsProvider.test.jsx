@@ -85,6 +85,31 @@ describe('FilterOptionsProvider', () => {
     expect(screen.getByText('authorOptions: alice|Alice, bob|Bob')).toBeInTheDocument();
   });
 
+  test('authors with a PR updated in the last 30 days come first, newest first, as the Authors picker lists them', () => {
+    const daysAgo = (days) => new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+    const entries = {
+      1: buildEntry({ prNumber: '1', data: { number: '1', authorLogin: 'alice', author: 'Alice', sourceUpdatedAt: daysAgo(90) } }),
+      2: buildEntry({ prNumber: '2', data: { number: '2', authorLogin: 'zed', author: 'Zed', sourceUpdatedAt: daysAgo(2) } }),
+      3: buildEntry({ prNumber: '3', data: { number: '3', authorLogin: 'bob', author: 'Bob', sourceUpdatedAt: daysAgo(40), mergedAt: daysAgo(1) } }),
+      4: buildEntry({ prNumber: '4', data: { number: '4', authorLogin: 'carol', author: 'Carol' } }),
+    };
+
+    function GroupsProbe() {
+      const { authorOptions } = useFilterOptions();
+      return <p>{authorOptions.map((option) => `${option.value}:${option.group}`).join(', ')}</p>;
+    }
+    render(
+      <PrDataProvider initialPayload={{ byPrNumber: entries, actorsMap: {} }}>
+        <FilterOptionsProvider>
+          <GroupsProbe />
+        </FilterOptionsProvider>
+      </PrDataProvider>,
+    );
+
+    // Bob's merge counts; then everyone else by name.
+    expect(screen.getByText('bob:Recent PRs, zed:Recent PRs, alice:Everyone else, carol:Everyone else')).toBeInTheDocument();
+  });
+
   test('given entries across multiple repos and a selectedRepo, when rendering, then options are scoped to that repo only', () => {
     const entryA = buildEntry({
       prNumber: '1',
@@ -101,6 +126,48 @@ describe('FilterOptionsProvider', () => {
 
     expect(screen.getByText('labelOptions: repo-a-label|repo-a-label')).toBeInTheDocument();
     expect(screen.getByText('authorOptions: alice|Alice')).toBeInTheDocument();
+  });
+
+  test("given archived PRs' authors and labels, then those no current PR has come last, under their own group, scoped to the selected repo", () => {
+    const entry = buildEntry({ data: { number: '1', authorLogin: 'alice', author: 'Alice', labels: [{ name: 'bug' }] } });
+    const archiveSummary = {
+      merged: 3,
+      authors: [
+        // Alice has a current PR: listed once, as before.
+        { repo: 'owner/repo', login: 'alice', name: 'Alice' },
+        { repo: 'owner/repo', login: 'old-dev', name: 'Old Dev' },
+        { repo: 'owner/other', login: 'elsewhere', name: 'Elsewhere' },
+      ],
+      labels: [
+        // "bug" in another case: the current one's.
+        { repo: 'owner/repo', name: 'Bug' },
+        { repo: 'owner/repo', name: 'legacy' },
+        { repo: 'owner/other', name: 'other-label' },
+      ],
+    };
+
+    function GroupsProbe() {
+      const { authorOptions, labelOptions, excludeLabelOptions } = useFilterOptions();
+      const describe = (options) => options.map((option) => `${option.value}:${option.group || '-'}`).join(', ');
+      return (
+        <ul>
+          <li>authors {describe(authorOptions)}</li>
+          <li>labels {describe(labelOptions)}</li>
+          <li>exclude {describe(excludeLabelOptions)}</li>
+        </ul>
+      );
+    }
+    render(
+      <PrDataProvider initialPayload={{ byPrNumber: { 1: entry }, actorsMap: {}, archiveSummary }} initialSelectedRepo="owner/repo">
+        <FilterOptionsProvider>
+          <GroupsProbe />
+        </FilterOptionsProvider>
+      </PrDataProvider>,
+    );
+
+    expect(screen.getByText('authors alice:Everyone else, old-dev:Only in archived PRs')).toBeInTheDocument();
+    expect(screen.getByText('labels bug:-, legacy:Only in archived PRs')).toBeInTheDocument();
+    expect(screen.getByText('exclude bug:-, legacy:Only in archived PRs')).toBeInTheDocument();
   });
 
   test('given a re-render with the same entry object references (a poll tick with no real changes), when rendering again, then entry-derived values are not recomputed', () => {

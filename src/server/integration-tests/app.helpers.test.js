@@ -100,21 +100,24 @@ describe("helper function behavior", () => {
       );
     });
 
-    test("given a stale actor cache snapshot, when actor names are persisted, then newer on-disk display names are preserved", () => {
-      const actorCacheFilePath = app.viewPrsActorNameCacheFile;
+    test("given the actors file changes while the data is read, when new logins are added, then they're added to the file as it is now", () => {
+      const actorsFilePath = app.viewPrsActorsFile;
       const originalReadFileSync = fs.readFileSync;
+      const originalExistsSync = fs.existsSync;
       const readSpy = jest.spyOn(fs, "readFileSync");
+      const existsSpy = jest.spyOn(fs, "existsSync");
       const writeSpy = jest.spyOn(fs, "writeFileSync");
-      let actorCacheReadCount = 0;
+      let actorsReadCount = 0;
+      const actorsWith = (name) => JSON.stringify({ version: 1, actors: [{ id: "actor:alice_login", name, logins: ["alice_login"] }] });
 
       try {
+        existsSpy.mockImplementation((filePath) =>
+          String(filePath) === String(actorsFilePath) ? true : originalExistsSync.call(fs, filePath),
+        );
         readSpy.mockImplementation((filePath, ...args) => {
-          if (String(filePath) === String(actorCacheFilePath)) {
-            actorCacheReadCount += 1;
-            if (actorCacheReadCount === 1) {
-              return '{"alice_login":"Alice Old"}';
-            }
-            return '{"alice_login":"Alice New"}';
+          if (String(filePath) === String(actorsFilePath)) {
+            actorsReadCount += 1;
+            return actorsWith(actorsReadCount === 1 ? "Alice Old" : "Alice New");
           }
           return originalReadFileSync.call(fs, filePath, ...args);
         });
@@ -130,16 +133,16 @@ describe("helper function behavior", () => {
 
         app.buildViewPrsActorsMap(prData);
 
-        const actorCacheWriteCall = writeSpy.mock.calls.find(
-          ([filePath]) => String(filePath) === String(actorCacheFilePath),
-        );
+        const actorsWriteCall = writeSpy.mock.calls.find(([filePath]) => String(filePath) === String(actorsFilePath));
 
-        assert.ok(actorCacheWriteCall, "should persist actor cache updates");
-        const writtenPayload = JSON.parse(String(actorCacheWriteCall[1] || "{}"));
-        assert.strictEqual(writtenPayload.alice_login, "Alice New");
-        assert.strictEqual(writtenPayload.bob_login, "Bob Builder");
+        assert.ok(actorsWriteCall, "should save the new person");
+        assert.deepStrictEqual(JSON.parse(String(actorsWriteCall[1] || "{}")).actors, [
+          { id: "actor:alice_login", name: "Alice New", logins: ["alice_login"] },
+          { id: "actor:bob_login", name: "Bob Builder", logins: ["bob_login"] },
+        ]);
       } finally {
         readSpy.mockRestore();
+        existsSpy.mockRestore();
         writeSpy.mockRestore();
       }
     });

@@ -92,6 +92,7 @@ const { usePrTableUiState, usePrTableOpenSections } = require('../state/PrTableU
 const { NotesDirtyContext } = require('../state/NotesDirtyContext');
 const { PrSectionPreferencesProvider } = require('../state/PrSectionPreferencesProvider');
 const { SettingsDrawerProvider, useSettingsDrawer } = require('../state/SettingsDrawerContext');
+const { LocalBranchesContext, EMPTY_LOCAL_BRANCHES } = require('../state/LocalBranchesContext');
 let capturedSettingsDrawer;
 function SettingsDrawerProbe() {
   capturedSettingsDrawer = useSettingsDrawer();
@@ -177,24 +178,40 @@ const { createPrSmartGroupsHelpers } = require('../helpers/pr-smart-groups.helpe
 // (see REACT_MIGRATION_PLAN.md's cleanup entry). FilterStateProvider/
 // RowFilterSelectionProvider are required ancestors for useVisiblePrNumbers()
 // - `filterStateValues` lets an individual test override the defaults
-// below (e.g. to exercise a specific scope/PR-number filter) without every
+// below (e.g. to exercise a specific PR-number filter) without every
 // existing call site needing to pass a full values object.
-// `dirtyPrNumbers`: PRs with unsaved notes (NotesDirtyContext).
+// `dirtyPrKeys`: PRs with unsaved notes (NotesDirtyContext).
 // `sectionPreferences`: Settings › Appearance's saved section choices
 // (user-defaults.json's prSections), read by PrSectionPreferencesProvider
-// through a mocked fetch.
+// through a mocked fetch, which answers once `sectionPreferencesHeld`
+// resolves, when given; `sectionOrder`, its saved order (prSectionOrder);
+// `customSections`, the saved custom sections.
 const renderPrTableApp = ({
   initialPayload,
   selectedRepo,
   needsAttention,
   filterStateValues,
-  dirtyPrNumbers,
+  dirtyPrKeys,
   sectionPreferences,
+  sectionPreferencesHeld,
+  sectionOrder,
+  customSections,
+  localBranches,
   ...tableProps
 } = {}) => {
-  const table = <PrTableApp {...tableProps} />;
+  // `localBranches`: { repos, prs } as GET /view-prs/local-branches gives them.
+  const table = localBranches ? (
+    <LocalBranchesContext.Provider value={{ ...EMPTY_LOCAL_BRANCHES, loaded: true, ...localBranches }}>
+      <PrTableApp {...tableProps} />
+    </LocalBranchesContext.Provider>
+  ) : (
+    <PrTableApp {...tableProps} />
+  );
   if (sectionPreferences) {
-    global.fetch = jest.fn(async () => ({ ok: true, json: async () => ({ overrides: { prSections: sectionPreferences } }) }));
+    global.fetch = jest.fn(async () => {
+      await sectionPreferencesHeld;
+      return { ok: true, json: async () => ({ overrides: { prSections: sectionPreferences, ...(sectionOrder && { prSectionOrder: sectionOrder }), ...(customSections && { customSections }) } }) };
+    });
   }
   return render(
     <AllSelectionProviders>
@@ -205,7 +222,6 @@ const renderPrTableApp = ({
         <prDataProbe.PrDataProbe />
         <FilterStateProvider
           initialValues={{
-            scopeMode: 'all',
             filterPrNumbers: '',
             alwaysShowInReview: false,
             filterCustomComments: '',
@@ -221,7 +237,7 @@ const renderPrTableApp = ({
               <ActivityQueueProbe />
               <UiStateProbe />
               <OpenSectionsProbe />
-              <NotesDirtyContext.Provider value={{ dirtyPrNumbers: dirtyPrNumbers || [], setNotesDirty: () => {} }}>
+              <NotesDirtyContext.Provider value={{ dirtyPrKeys: dirtyPrKeys || [], setNotesDirty: () => {} }}>
                 {sectionPreferences ? (
                   <SettingsDrawerProvider>
                     <SettingsDrawerProbe />
@@ -580,13 +596,13 @@ describe('PrTableApp', () => {
     renderPrTableApp({ initialPayload: payload, selectedRepo: '' });
     // Every section here defaults closed (the mocked helper).
     expect(capturedOpenSections.openSectionCount).toBe(0);
-    expect(capturedOpenSections.prNumbersInOpenSections).toEqual([]);
+    expect(capturedOpenSections.prKeysInOpenSections).toEqual([]);
 
     React.act(() => {
       capturedSectionProps.find((p) => p.section.key === 'open').onToggleSection('open', true);
     });
     expect(capturedOpenSections.openSectionCount).toBe(1);
-    expect(capturedOpenSections.prNumbersInOpenSections).toEqual(['20', '10']);
+    expect(capturedOpenSections.prKeysInOpenSections).toEqual(['owner/repo#20', 'owner/repo#10']);
   });
 
   test('given a new PR arrives, when the sections are rebuilt and reported, then the table renders once (the report goes to Export\'s context, not back to the table)', () => {
@@ -715,7 +731,7 @@ describe('PrTableApp', () => {
       const buildTree = (attentionFlag) => (
         <AllSelectionProviders>
           <PrDataProvider initialPayload={payload} initialSelectedRepo="">
-            <FilterStateProvider initialValues={{ scopeMode: 'all', filterPrNumbers: '' }}>
+            <FilterStateProvider initialValues={{ filterPrNumbers: '' }}>
               <NeedsAttentionContext.Provider value={{ ...defaultNeedsAttention, entryNeedsAttention: () => attentionFlag }}>
                 <PrTableApp onCheckboxChange={() => {}} onAckAction={() => {}} />
               </NeedsAttentionContext.Provider>
@@ -807,7 +823,7 @@ describe('PrTableApp', () => {
       const buildTree = (attentionFlag) => (
         <AllSelectionProviders>
           <PrDataProvider initialPayload={payload} initialSelectedRepo="">
-            <FilterStateProvider initialValues={{ scopeMode: 'all', filterPrNumbers: '' }}>
+            <FilterStateProvider initialValues={{ filterPrNumbers: '' }}>
               <NeedsAttentionContext.Provider value={{ ...defaultNeedsAttention, entryNeedsAttention: () => attentionFlag }}>
                 <PrTableApp />
               </NeedsAttentionContext.Provider>
@@ -931,7 +947,7 @@ describe('PrTableApp', () => {
     test('given the selected PR has unsaved notes, when its row is clicked again and the discard is refused, then the pane stays open on it', () => {
       const confirm = jest.spyOn(window, 'confirm').mockReturnValue(false);
       try {
-        renderPrTableApp({ initialPayload: twoPrPayload(), selectedRepo: 'owner/repo', dirtyPrNumbers: ['1'] });
+        renderPrTableApp({ initialPayload: twoPrPayload(), selectedRepo: 'owner/repo', dirtyPrKeys: ['owner/repo#1'] });
         React.act(() => openSectionProps().onSelectRow('1', 'owner/repo'));
 
         React.act(() => openSectionProps().onSelectRow('1', 'owner/repo'));
@@ -993,7 +1009,7 @@ describe('PrTableApp', () => {
     test('given unsaved notes, when the pane is closed and leaving is cancelled, then it stays open on the PR', () => {
       const confirm = jest.spyOn(window, 'confirm').mockReturnValue(false);
       try {
-        renderPrTableApp({ initialPayload: twoPrPayload(), selectedRepo: 'owner/repo', dirtyPrNumbers: ['1'] });
+        renderPrTableApp({ initialPayload: twoPrPayload(), selectedRepo: 'owner/repo', dirtyPrKeys: ['owner/repo#1'] });
         React.act(() => openSectionProps().onSelectRow('1', 'owner/repo'));
         React.act(() => latestPane().onClose());
         expect(confirm).toHaveBeenCalled();
@@ -1007,7 +1023,7 @@ describe('PrTableApp', () => {
     test('given unsaved notes on the selected PR, then switching asks first, and staying keeps the selection', () => {
       const confirm = jest.spyOn(window, 'confirm').mockReturnValue(false);
       try {
-        renderPrTableApp({ initialPayload: twoPrPayload(), selectedRepo: 'owner/repo', dirtyPrNumbers: ['1'] });
+        renderPrTableApp({ initialPayload: twoPrPayload(), selectedRepo: 'owner/repo', dirtyPrKeys: ['owner/repo#1'] });
         React.act(() => openSectionProps().onSelectRow('1', 'owner/repo'));
         expect(confirm).not.toHaveBeenCalled();
 
@@ -1070,7 +1086,7 @@ describe('PrTableApp', () => {
     test('given the pane toggle, then the pane hides; hiding asks first with unsaved notes', () => {
       const confirm = jest.spyOn(window, 'confirm').mockReturnValue(false);
       try {
-        renderPrTableApp({ initialPayload: twoPrPayload(), selectedRepo: 'owner/repo', dirtyPrNumbers: ['1'] });
+        renderPrTableApp({ initialPayload: twoPrPayload(), selectedRepo: 'owner/repo', dirtyPrKeys: ['owner/repo#1'] });
         const toggle = screen.getByRole('button', { name: 'Detail pane' });
         expect(toggle).toHaveAttribute('aria-pressed', 'true');
 
@@ -1154,6 +1170,75 @@ describe('PrTableApp', () => {
     expect(numbersIn('mine')).toEqual(['1']);
     expect(numbersIn('assigned-to-me')).toEqual(['2']);
     expect(numbersIn('review-requested')).toEqual(['3']);
+  });
+
+  describe('On this computer', () => {
+    const pr = (prNumber, section) => ({ prNumber, repo: 'owner/repo', section, data: { number: prNumber, viewerLogin: 'me', authorLogin: 'someone' } });
+    const payload = {
+      byPrNumber: { 1: pr('1', 'open'), 2: pr('2', 'open'), 3: pr('3', 'merged'), 4: pr('4', 'open'), 5: pr('5', 'open') },
+    };
+    const localBranches = {
+      repos: { 'owner/repo': { path: 'D:/code/repo', ok: true } },
+      prs: {
+        // Checked out, behind.
+        'owner/repo#1': { branch: 'a', oid: 'o1', worktreePath: 'D:/code/repo-a', ahead: 0, behind: 2, exact: true },
+        // Not checked out, behind by the estimate.
+        'owner/repo#2': { branch: 'b', oid: 'o2', ahead: 0, behind: 1, exact: false },
+        // A merged PR's worktree, level.
+        'owner/repo#3': { branch: 'c', oid: 'o3', worktreePath: 'D:/code/repo-c', ahead: 0, behind: 0, exact: true },
+        // Found by its name alone, or differing: not "behind".
+        'owner/repo#4': { branch: 'd', oid: 'o4', behind: 3, ahead: 0, exact: true, nameOnly: true },
+        'owner/repo#5': { branch: 'e', oid: 'o5', diverged: true },
+      },
+    };
+    const realHelpers = () =>
+      createPrSmartGroupsHelpers.mockImplementation(jest.requireActual('../helpers/pr-smart-groups.helpers.ts').createPrSmartGroupsHelpers);
+    const numbersIn = (key) =>
+      capturedSectionProps
+        .filter((props) => props.section.key === key)
+        .at(-1)
+        ?.section.prs.map((entry) => entry.prNumber)
+        .sort();
+
+    test('the On This Computer smart group: every PR with a local branch, merged ones too - none without a clone saved', () => {
+      realHelpers();
+      renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', localBranches });
+      expect(numbersIn('on-this-computer')).toEqual(['1', '2', '3', '4', '5']);
+
+      capturedSectionProps.length = 0;
+      renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo' });
+      expect(capturedSectionProps.some((props) => props.section.key === 'on-this-computer')).toBe(false);
+
+      // Only a clone that can't be read (its folder gone): none either.
+      capturedSectionProps.length = 0;
+      renderPrTableApp({
+        initialPayload: payload,
+        selectedRepo: 'owner/repo',
+        localBranches: { repos: { 'owner/repo': { path: 'D:/gone', ok: false, error: 'No such folder: D:/gone' } }, prs: {} },
+      });
+      expect(capturedSectionProps.some((props) => props.section.key === 'on-this-computer')).toBe(false);
+    });
+
+    test('Checked out locally: PRs whose branch is in a worktree; Behind locally: a branch tracking the PR, behind it; both: the PRs that are both', () => {
+      realHelpers();
+      renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', localBranches, filterStateValues: { onlyCheckedOutLocally: true } });
+      expect(numbersIn('open')).toEqual(['1']);
+      expect(numbersIn('merged')).toEqual(['3']);
+
+      capturedSectionProps.length = 0;
+      renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', localBranches, filterStateValues: { onlyBehindLocally: true } });
+      expect(numbersIn('open')).toEqual(['1', '2']);
+      expect(numbersIn('merged')).toEqual([]);
+
+      capturedSectionProps.length = 0;
+      renderPrTableApp({
+        initialPayload: payload,
+        selectedRepo: 'owner/repo',
+        localBranches,
+        filterStateValues: { onlyBehindLocally: true, onlyCheckedOutLocally: true },
+      });
+      expect(numbersIn('open')).toEqual(['1']);
+    });
   });
 
   test('given smart groups are available, when a PR needs attention, then it also appears in the smart-group section', () => {
@@ -1325,6 +1410,55 @@ describe('PrTableApp', () => {
       } finally {
         spy.mockRestore();
       }
+    });
+
+    test("given the scheduler's active and queued PRs, then the rows are busy or queued - busy winning for a PR in both", () => {
+      const payload = { byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } };
+      renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', onCheckboxChange: () => {} });
+
+      React.act(() => {
+        window.dispatchEvent(
+          new CustomEvent('pr-active-progress-update', {
+            detail: {
+              activePrNumbers: [{ repo: 'owner/repo', prNumber: '1' }],
+              queuedPrNumbers: [{ repo: 'owner/repo', prNumber: '1' }, { repo: 'owner/repo', prNumber: '2' }],
+            },
+          }),
+        );
+      });
+      expect(capturedSectionProps.at(-1).activePrNumbers).toEqual(['owner/repo::1']);
+      expect(capturedSectionProps.at(-1).queuedPrNumbers).toEqual(['owner/repo::2']);
+
+      // The same lists again (another frame of the run): nothing renders again.
+      const rendersBefore = capturedSectionProps.length;
+      React.act(() => {
+        window.dispatchEvent(
+          new CustomEvent('pr-active-progress-update', {
+            detail: {
+              activePrNumbers: [{ repo: 'owner/repo', prNumber: '1' }],
+              queuedPrNumbers: [{ repo: 'owner/repo', prNumber: '1' }, { repo: 'owner/repo', prNumber: '2' }],
+            },
+          }),
+        );
+      });
+      expect(capturedSectionProps.length).toBe(rendersBefore);
+
+      React.act(() => {
+        window.dispatchEvent(new CustomEvent('pr-active-progress-update', { detail: { activePrNumbers: [], queuedPrNumbers: [] } }));
+      });
+      expect(capturedSectionProps.at(-1).activePrNumbers).toEqual([]);
+      expect(capturedSectionProps.at(-1).queuedPrNumbers).toEqual([]);
+    });
+
+    test("given the scheduler state the data load brought, then the rows start from it - before any live frame", () => {
+      const payload = {
+        byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) },
+        scheduler: { activePrNumbers: [{ repo: 'owner/repo', prNumber: '1' }], queuedPrNumbers: [{ repo: 'owner/repo', prNumber: '2' }] },
+      };
+      renderPrTableApp({ initialPayload: payload, selectedRepo: 'owner/repo', onCheckboxChange: () => {} });
+
+      expect(capturedSectionProps.at(-1).activePrNumbers).toEqual(['owner/repo::1']);
+      expect(capturedSectionProps.at(-1).queuedPrNumbers).toEqual(['owner/repo::2']);
     });
 
     test('given a PR whose Ack action is in flight, when checking activePrNumbers passed to PrSection, then that PR number is included while pending and removed once it resolves', async () => {
@@ -1827,9 +1961,72 @@ describe('PrTableApp', () => {
     });
   });
 
+  describe('a section held while you work in it', () => {
+    afterEach(() => {
+      delete global.fetch;
+      window.localStorage.clear();
+    });
+
+    const payloadUpdatedAt = (times) => ({
+      byPrNumber: Object.fromEntries(
+        Object.entries(times).map(([number, at]) => [
+          `owner/repo#${number}`,
+          { prNumber: number, repo: 'owner/repo', section: 'open', data: { number, viewerLogin: '', sourceUpdatedAt: at } },
+        ]),
+      ),
+    });
+    const before = payloadUpdatedAt({ 1: '2026-11-01T00:00:00Z', 2: '2026-11-02T00:00:00Z' });
+    const after = payloadUpdatedAt({ 1: '2026-11-03T00:00:00Z', 2: '2026-11-02T00:00:00Z' });
+    const openProps = () => capturedSectionProps.filter((p) => p.section.key === 'open').at(-1);
+    const order = () => openProps().section.prs.map((entry) => entry.data.number);
+    const renderByLastUpdated = async () => {
+      renderPrTableApp({
+        initialPayload: before,
+        selectedRepo: 'owner/repo',
+        sectionPreferences: { open: { sort: { by: 'updated', direction: 'desc' } } },
+      });
+      await waitFor(() => expect(order()).toEqual(['2', '1']));
+    };
+
+    test('given its row selected, then a refresh keeps the rows where they were and says the order changed; Re-sort applies it', async () => {
+      await renderByLastUpdated();
+      React.act(() => openProps().onSelectRow('1', 'owner/repo'));
+      React.act(() => prDataProbe.applyFreshTablePayload(after));
+      expect(order()).toEqual(['2', '1']);
+      expect(openProps().section.orderChanged).toBe(true);
+
+      React.act(() => openProps().onResortSection('open'));
+      expect(order()).toEqual(['1', '2']);
+      expect(openProps().section.orderChanged).toBeFalsy();
+    });
+
+    test('given the pane hidden (its row still selected), then the section is no longer held', async () => {
+      await renderByLastUpdated();
+      React.act(() => openProps().onSelectRow('1', 'owner/repo'));
+      React.act(() => prDataProbe.applyFreshTablePayload(after));
+      expect(order()).toEqual(['2', '1']);
+
+      React.act(() => screen.getByRole('button', { name: 'Detail pane' }).click());
+      expect(capturedUiState.selectedPr).toEqual({ repo: 'owner/repo', prNumber: '1' });
+      expect(order()).toEqual(['1', '2']);
+    });
+
+    test('given the pointer in it, then a refresh keeps the order until you leave it', async () => {
+      await renderByLastUpdated();
+      React.act(() => openProps().onInteractingChange('open', true));
+      React.act(() => prDataProbe.applyFreshTablePayload(after));
+      expect(order()).toEqual(['2', '1']);
+
+      React.act(() => openProps().onInteractingChange('open', false));
+      expect(order()).toEqual(['1', '2']);
+    });
+  });
+
   describe("Settings › Appearance section choices", () => {
     afterEach(() => {
       delete global.fetch;
+      // The provider keeps a browser copy of the choices.
+      window.localStorage.clear();
     });
 
     const payload = { byPrNumber: { 1: makeEntry({ prNumber: "1", repo: "owner/repo", section: "open" }) } };
@@ -1838,8 +2035,28 @@ describe('PrTableApp', () => {
 
     test("given a hidden section, then it is not rendered, and the others are", async () => {
       renderPrTableApp({ initialPayload: payload, selectedRepo: "", sectionPreferences: { closed: { hidden: true } } });
-      await waitFor(() => expect(renderedKeys()).not.toContain("closed"));
-      expect(renderedKeys()).toEqual(["open", "draft", "merged"]);
+      await waitFor(() => expect(renderedKeys()).toEqual(["open", "draft", "merged"]));
+    });
+
+    test("given the choices not read yet (and no browser copy), then no sections are drawn until they are", async () => {
+      let release = () => {};
+      const held = new Promise((resolve) => {
+        release = resolve;
+      });
+      capturedSectionProps.length = 0;
+      renderPrTableApp({
+        initialPayload: payload,
+        selectedRepo: "",
+        sectionPreferences: { closed: { hidden: true } },
+        sectionPreferencesHeld: held,
+      });
+
+      expect(screen.getByText("Loading Pull Requests...")).toBeInTheDocument();
+      expect(capturedSectionProps.some((p) => p.section.key === "closed")).toBe(false);
+
+      await React.act(async () => release());
+      await waitFor(() => expect(renderedKeys()).toEqual(["open", "draft", "merged"]));
+      expect(capturedSectionProps.some((p) => p.section.key === "closed")).toBe(false);
     });
 
     test("given a saved \"open when the page loads\" choice, then the section starts open", async () => {
@@ -1874,6 +2091,90 @@ describe('PrTableApp', () => {
       renderPrTableApp({ initialPayload: payload, selectedRepo: "", sectionPreferences: {} });
       await waitFor(() => expect(renderedKeys()).toContain("open"));
       expect(capturedOpenSections.hiddenPrCount).toBe(0);
+    });
+
+    describe("with the smart groups (the real helpers)", () => {
+      beforeEach(() => {
+        createPrSmartGroupsHelpers.mockImplementation(jest.requireActual('../helpers/pr-smart-groups.helpers.ts').createPrSmartGroupsHelpers);
+      });
+      const kindHeadings = () => screen.queryAllByRole("heading", { level: 2 }).map((heading) => heading.textContent);
+      const smartKeys = ["flagged", "in-review", "needs-attention", "mine", "assigned-to-me", "review-requested", "interacted"];
+
+      test("given a saved order, then the sections follow it, the smart groups under one heading and the status sections under another", async () => {
+        renderPrTableApp({
+          initialPayload: payload,
+          selectedRepo: "",
+          sectionPreferences: {},
+          sectionOrder: ["interacted", "flagged", "merged", "open"],
+        });
+        await waitFor(() =>
+          expect(renderedKeys()).toEqual([
+            "interacted",
+            "flagged",
+            "in-review",
+            "needs-attention",
+            "mine",
+            "assigned-to-me",
+            "review-requested",
+            "merged",
+            "open",
+            "draft",
+            "closed",
+          ]),
+        );
+        expect(kindHeadings()).toEqual(["Smart groups", "By status"]);
+        const [smartHeading, statusHeading] = screen.getAllByRole("heading", { level: 2 });
+        const [firstSmart] = screen.getAllByTestId("section");
+        const firstStatus = screen.getAllByTestId("section").find((element) => element.getAttribute("data-key") === "merged");
+        expect(smartHeading.nextElementSibling).toBe(firstSmart);
+        expect(statusHeading.nextElementSibling).toBe(firstStatus);
+      });
+
+      test("given a custom section, then it holds the PRs added to it (not archived ones), after the built-in smart groups, with its icon and colour", async () => {
+        const withCustom = {
+          byPrNumber: {
+            1: makeEntry({ prNumber: "1", repo: "owner/repo", section: "open" }),
+            2: makeEntry({ prNumber: "2", repo: "owner/repo", section: "merged" }),
+            3: { ...makeEntry({ prNumber: "3", repo: "owner/repo", section: "merged" }), archived: true },
+          },
+          customSectionsByRepo: { "owner/repo": { 1: ["abc"], 2: ["abc", "gone"], 3: ["abc"] } },
+        };
+        renderPrTableApp({
+          initialPayload: withCustom,
+          selectedRepo: "",
+          sectionPreferences: {},
+          customSections: [
+            { id: "abc", name: "Blockers", icon: "flag", tone: "danger" },
+            { id: "xyz", name: "Later", icon: "note", tone: "muted" },
+          ],
+        });
+        await waitFor(() => expect(renderedKeys()).toEqual([...smartKeys, "custom-abc", "custom-xyz", "open", "draft", "closed", "merged"]));
+        const blockers = latestSectionProps("custom-abc").section;
+        expect(blockers.title).toBe("Blockers");
+        expect(blockers.isSmartGroup).toBe(true);
+        expect(blockers.icon).toEqual({ icon: "flag", tone: "danger" });
+        expect(blockers.prs.map((entry) => entry.prNumber).sort()).toEqual(["1", "2"]);
+        expect(latestSectionProps("custom-abc").isOpen).toBe(true);
+        expect(latestSectionProps("custom-xyz").section.prs).toEqual([]);
+        expect(latestSectionProps("open").section.icon).toBeUndefined();
+      });
+
+      test("given a smart group's saved icon and colour, then its section has them, and the others their own", async () => {
+        renderPrTableApp({ initialPayload: payload, selectedRepo: "", sectionPreferences: { flagged: { tone: "accent" } } });
+        await waitFor(() => expect(renderedKeys()).toContain("flagged"));
+        expect(latestSectionProps("flagged").section.icon).toEqual({ icon: "flag", tone: "accent" });
+        expect(latestSectionProps("in-review").section.icon).toBeUndefined();
+      });
+
+      test("given only one kind of section shown, then there are no headings", async () => {
+        renderPrTableApp({
+          initialPayload: payload,
+          selectedRepo: "",
+          sectionPreferences: Object.fromEntries(smartKeys.map((key) => [key, { hidden: true }])),
+        });
+        await waitFor(() => expect(renderedKeys()).toEqual(["open", "draft", "closed", "merged"]));
+        expect(kindHeadings()).toEqual([]);
+      });
     });
 
     test("given View in table for a PR whose sections are all hidden, then it is shown in the detail pane", async () => {

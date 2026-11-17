@@ -1,32 +1,35 @@
-// Which PRs have unsaved Notes edits, as normalized PR-number strings, for
+import { comparePrEntryKeys, isPrEntryKey } from "./pr-entry-keys.helpers.ts";
+
+// Which PRs have unsaved Notes edits, as normalized PR keys, for
 // the auto-render blocking state. AutoRenderBlockingSync passes in
-// NotesDirtyProvider's dirty list; without it nothing counts as dirty.
+// NotesDirtyProvider's dirty list (PR keys, "owner/repo#123"); without it
+// nothing counts as dirty.
 export interface PrAutoRenderUnsavedDeps {
-  getDirtyNotesPrNumbers?: () => unknown;
+  getDirtyNotesPrKeys?: () => unknown;
 }
 
-const createPrAutoRenderUnsavedHelpers = ({ getDirtyNotesPrNumbers }: PrAutoRenderUnsavedDeps = {}) => {
-  const normalizePrNumber = (value: unknown): string => {
+const createPrAutoRenderUnsavedHelpers = ({ getDirtyNotesPrKeys }: PrAutoRenderUnsavedDeps = {}) => {
+  const normalizePrKey = (value: unknown): string => {
     const normalized = String(value || "").trim();
-    return /^\d+$/.test(normalized) ? normalized : "";
+    return isPrEntryKey(normalized) ? normalized : "";
   };
 
-  const getDirtyNotesPrNumbersSafe =
-    typeof getDirtyNotesPrNumbers === "function" ? getDirtyNotesPrNumbers : () => [];
+  const getDirtyNotesPrKeysSafe =
+    typeof getDirtyNotesPrKeys === "function" ? getDirtyNotesPrKeys : () => [];
 
-  const getUnsavedNotesPrNumbers = (): string[] => {
-    const raw = getDirtyNotesPrNumbersSafe();
+  const getUnsavedNotesPrKeys = (): string[] => {
+    const raw = getDirtyNotesPrKeysSafe();
     if (!Array.isArray(raw)) return [];
-    return raw.map(normalizePrNumber).filter(Boolean);
+    return raw.map(normalizePrKey).filter(Boolean);
   };
 
-  const getBlockingPrNumbers = (): string[] =>
-    Array.from(new Set(getUnsavedNotesPrNumbers())).sort((a, b) => Number(a) - Number(b));
+  const getBlockingPrKeys = (): string[] =>
+    Array.from(new Set(getUnsavedNotesPrKeys())).sort(comparePrEntryKeys);
 
   return {
-    getUnsavedNotesPrNumbers,
-    normalizePrNumber,
-    getBlockingPrNumbers,
+    getUnsavedNotesPrKeys,
+    normalizePrKey,
+    getBlockingPrKeys,
   };
 };
 

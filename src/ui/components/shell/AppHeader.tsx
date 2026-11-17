@@ -4,12 +4,16 @@ import { Icon } from '../ui/Icon';
 import { Tabs } from '../ui/Tabs';
 import { usePrData } from '../../state/PrDataContext';
 import { NowProvider, useNow } from '../../state/NowContext';
-import { useSettingsDrawer } from '../../state/SettingsDrawerContext';
+import { useOpenDrawer, useSettingsDrawer } from '../../state/SettingsDrawerContext';
 import { INITIAL_STATUS_TEXT, useStatusText } from '../../state/StatusTextContext';
 import { useTabState, type DataTabKey } from '../../state/TabStateContext';
 import { describeLastUpdate, describeRepos } from '../../helpers/pr-app-header.helpers.ts';
+import { describeReposChecked } from '../../helpers/pr-row-freshness.helpers.ts';
+import { readDefaultQuickCheckIntervalMs } from '../../state/RepoFreshnessContext';
+import type { PrDataMeta } from '../../types/pr-data.ts';
 import { ActivityPopover } from './ActivityPopover';
-import { QuickCheckAllButton, type QuickCheckAllButtonProps } from './QuickCheckAllButton';
+import { AddPrPopover } from './AddPrPopover';
+import { KeyboardShortcutsPopover } from './KeyboardShortcutsPopover';
 
 // The views, as tabs over AppShell's panels (#tab-panel-*, which AppShell
 // shows and hides).
@@ -22,7 +26,7 @@ const viewIds = (id: string) => ({ tab: `tab-${id}`, panel: `tab-panel-${id}` })
 
 // The latest action's result or progress (StatusTextContext: a row's Ack, a
 // run, a backfill...), its first line; all of it on hover, and in the
-// Settings drawer's Run & check. Nothing until something has reported. A
+// Tools drawer's Run & check. Nothing until something has reported. A
 // polite live region, in the page from the start so it's announced.
 function LatestStatus() {
   const { statusText } = useStatusText();
@@ -35,11 +39,41 @@ function LatestStatus() {
   );
 }
 
-// "Updated 5m ago", moving once a minute; the exact time on hover.
-function LastUpdatePill({ updatedAt, loaded }: { updatedAt: unknown; loaded: boolean }) {
+// "Checked 3m ago": how long since the repos shown were last checked (their
+// live summaries, with each quick check) - the least recently checked one,
+// each repo's on hover, with the last run; in the attention tone when one's
+// stale or failing. Before any repo's been listed, "Updated 5m ago" (the
+// last run). Moving once a minute.
+function LastUpdatePill({
+  updatedAt,
+  loaded,
+  repos,
+  liveSummary,
+  backgroundUpdates,
+  defaultIntervalMs,
+}: {
+  updatedAt: unknown;
+  loaded: boolean;
+  repos: string[];
+  liveSummary: PrDataMeta['liveSummary'];
+  backgroundUpdates: PrDataMeta['backgroundUpdates'];
+  defaultIntervalMs: number;
+}) {
   const now = useNow();
   if (!loaded) return <span className="app-header-status">Loading…</span>;
-  const { label, title, isStale } = describeLastUpdate(updatedAt, now);
+  const checked = describeReposChecked({
+    repos,
+    liveSummary,
+    backgroundUpdates,
+    defaultIntervalMs,
+    lastRunAt: updatedAt,
+    nowMs: now,
+  });
+  const lastUpdate = describeLastUpdate(updatedAt, now);
+  // With repos checked in the background, only one overdue on its own
+  // schedule flags it - not an old full run, which "Checked on schedule"
+  // would contradict (the run is in the title).
+  const { label, title, isStale } = checked.label ? checked : lastUpdate;
   return (
     <span className="app-header-status" data-tone={isStale ? 'attention' : undefined} title={title || undefined}>
       <span className="app-header-status-dot" aria-hidden="true" />
@@ -53,19 +87,17 @@ function LastUpdatePill({ updatedAt, loaded }: { updatedAt: unknown; loaded: boo
  * repos the table shows rows from (one by name, else how many - the list on
  * hover), the view tabs (Pull requests / Review stats / Authors,
  * TabStateContext's data tab), the latest action's status, when the data
- * was last updated, the refresh (Quick check all), the background activity
- * (ActivityPopover) and the Settings drawer's button. The
- * auto-update-paused banner has its own root under it
- * (AutoUpdatePausedBanner).
+ * was last updated, adding a PR by URL (AddPrPopover), the background
+ * activity (ActivityPopover), and the buttons of the Tools drawer (things
+ * to do: Run & check, with the quick checks, Backfill, Export, the Action
+ * log) and the Settings drawer (choices kept). The auto-update-paused banner has its
+ * own root under it (AutoUpdatePausedBanner).
  */
-export interface AppHeaderProps {
-  onQuickCheckAll: QuickCheckAllButtonProps['onCheck'];
-}
-
-export function AppHeader({ onQuickCheckAll }: AppHeaderProps) {
+export function AppHeader() {
   const { payload, selectedRepo } = usePrData();
   const { activeDataTab, setActiveDataTab } = useTabState();
   const settings = useSettingsDrawer();
+  const openDrawer = useOpenDrawer();
   const repos = useMemo(
     () => describeRepos(Object.values(payload?.byPrNumber || {}), selectedRepo || String(payload?.lastRun?.repo || '')),
     [payload, selectedRepo],
@@ -93,17 +125,28 @@ export function AppHeader({ onQuickCheckAll }: AppHeaderProps) {
         <div className="app-header-actions">
           <LatestStatus />
           <NowProvider>
-            <LastUpdatePill updatedAt={payload?.lastRun?.updatedAt} loaded={Boolean(payload?.ok)} />
+            <LastUpdatePill
+              updatedAt={payload?.lastRun?.updatedAt}
+              loaded={Boolean(payload?.ok)}
+              repos={repos.all}
+              liveSummary={payload?.dataMeta?.liveSummary}
+              backgroundUpdates={payload?.dataMeta?.backgroundUpdates}
+              defaultIntervalMs={readDefaultQuickCheckIntervalMs(payload?.scheduler)}
+            />
           </NowProvider>
-          <QuickCheckAllButton onCheck={onQuickCheckAll} />
+          <AddPrPopover />
           <ActivityPopover />
-          <Button icon="sliders" aria-haspopup="dialog" aria-expanded={settings.isOpen} onClick={() => settings.open()}>
+          <Button icon="wrench" aria-haspopup="dialog" aria-expanded={openDrawer === 'tools'} onClick={() => settings.open('tools')}>
+            Tools
+          </Button>
+          <Button icon="sliders" aria-haspopup="dialog" aria-expanded={openDrawer === 'settings'} onClick={() => settings.open('settings')}>
             Settings
           </Button>
           {/* The server this app is mounted in (the app hub, at /view-prs). */}
           <a className="app-header-link" href="/">
             Home
           </a>
+          <KeyboardShortcutsPopover />
           <a className="app-header-link" href="./README.md">
             README
           </a>

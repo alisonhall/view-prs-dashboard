@@ -303,13 +303,14 @@ describe('PrDataProvider', () => {
       loadOnMount = false,
       setStatusText = () => {},
       showError = () => {},
+      hide = () => {},
       autoRenderActions = {},
       backfillActions = {},
       children = <Probe />,
     } = {}) =>
       render(
         <StatusTextContext.Provider value={{ statusText: '', setStatusText }}>
-          <SnackbarContext.Provider value={{ showError, showWarning: () => {}, hide: () => {} }}>
+          <SnackbarContext.Provider value={{ showError, showWarning: () => {}, hide }}>
             <BackfillStatusActionsContext.Provider
               value={{
                 getBackfillTrackingState: () => ({ isBackfillRunning: false, isBackfillActionPending: false }),
@@ -342,7 +343,8 @@ describe('PrDataProvider', () => {
       await act(async () => {});
 
       expect(global.fetch).toHaveBeenCalledTimes(1);
-      expect(global.fetch).toHaveBeenCalledWith('/view-prs/data');
+      // With the time limit's signal (fetch-with-timeout.helpers.ts).
+      expect(global.fetch).toHaveBeenCalledWith('/view-prs/data', { signal: expect.any(AbortSignal) });
       expect(latest.payload).toEqual(PAYLOAD);
       expect(latest.selectedRepo).toBe('owner/repo');
       expect(latest.hasRenderedPrData).toBe(true);
@@ -372,6 +374,46 @@ describe('PrDataProvider', () => {
       expect(showError).toHaveBeenCalledTimes(1);
       expect(showError.mock.calls[0][0]).toBe('Failed to load stored data');
       expect(latest.hasRenderedPrData).toBe(false);
+    });
+
+    // The initial load can stall and give up (fetch-with-timeout.helpers.ts);
+    // polls don't wait for it.
+    test('given a poll loaded the data while the initial load stalled, when that load gives up, then no error shows', async () => {
+      const showError = jest.fn();
+      const setStatusText = jest.fn();
+      let giveUp;
+      global.fetch = jest.fn(() => new Promise((_resolve, reject) => (giveUp = () => reject(new Error('No complete answer')))));
+
+      renderWithContexts({ loadOnMount: true, showError, setStatusText });
+      await act(async () => {});
+      act(() => actions.applyLatestPrData({ payload: PAYLOAD }));
+      await act(async () => giveUp());
+
+      expect(showError).not.toHaveBeenCalled();
+      expect(setStatusText).not.toHaveBeenCalledWith('Failed to load stored data');
+    });
+
+    test('given the initial load failed with no data, when a poll then loads it, then the error is hidden', async () => {
+      const showError = jest.fn();
+      const hide = jest.fn();
+      global.fetch = jest.fn(async () => ({ ok: false, json: async () => ({ ok: false, error: 'boom' }) }));
+
+      renderWithContexts({ loadOnMount: true, showError, hide });
+      await act(async () => {});
+      expect(showError).toHaveBeenCalledTimes(1);
+      expect(hide).not.toHaveBeenCalled();
+
+      global.fetch = jest.fn(async (url) => ({
+        ok: true,
+        status: 200,
+        json: async () => (String(url).endsWith('/data-meta') ? { ok: true, dataVersion: 'v1' } : { ...PAYLOAD, dataMeta: { dataVersion: 'v1' } }),
+      }));
+      await act(async () => {
+        await latest.pollForDataChanges();
+      });
+
+      expect(latest.payload).toEqual(expect.objectContaining({ ok: PAYLOAD.ok }));
+      expect(hide).toHaveBeenCalled();
     });
 
     test('given applyFreshPrPayload, when called, then it displays the payload, clears the pending auto-render payload, and pushes its backfill status', () => {

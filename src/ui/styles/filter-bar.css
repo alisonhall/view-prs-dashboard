@@ -28,6 +28,36 @@
   color: var(--color-text-on-strong);
 }
 
+/* The search box: an icon inside its left edge. */
+.filter-bar-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 0 1 280px;
+  min-width: 160px;
+}
+
+.filter-bar-search > .ui-icon {
+  position: absolute;
+  left: 8px;
+  color: var(--color-text-muted);
+  pointer-events: none;
+}
+
+/* As the page's other text boxes (.filter-bar-field's, Settings'), with
+   room for the icon - it was left to the browser's own look. */
+.filter-bar-search input {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 30px;
+  padding: 4px 8px 4px 28px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  font: var(--font-size-md) var(--font-sans);
+  color: var(--color-text);
+}
+
 .filter-bar-count {
   margin: 0;
   font-size: var(--font-size-sm);
@@ -132,8 +162,9 @@
   color: var(--color-text-muted);
 }
 
+/* Not its checkboxes, which this would stretch to the column's width. */
 .filter-bar-field select,
-.filter-bar-field input {
+.filter-bar-field input:not([type="checkbox"]) {
   width: 100%;
   box-sizing: border-box;
   min-height: 30px;
@@ -150,4 +181,43 @@
   align-items: center;
   gap: 6px;
   font-size: var(--font-size-md);
+}
+
+/* The Last activity range (LastActivityRangeFilter.tsx): a fieldset laid
+   out like the other fields, its From and To dates one under the other
+   (side by side, the column is too narrow for a whole date). */
+.filter-bar-date-range {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.filter-bar-date-range legend {
+  padding: 0;
+  margin-bottom: 2px;
+}
+
+.filter-bar-date-range-inputs {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 4px 6px;
+}
+
+.filter-bar-warning {
+  color: var(--color-attention-text);
+}
+
+/* What a filter does, under it (its control's aria-describedby). */
+.filter-bar-hint {
+  margin: 0;
+  max-width: 34em;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+/* Saved views (SavedFilterViews.tsx; ui.css styles the chips' row). */
+.filter-bar-views {
+  margin-top: var(--space-2);
 }

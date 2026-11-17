@@ -4,6 +4,7 @@ import { createRef } from 'react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Chip, ChipGroup } from './Chip';
+import { Tooltip } from './Tooltip';
 
 describe('Chip', () => {
   test('is a toggle button that reports its state and count', () => {
@@ -45,5 +46,19 @@ describe('Chip', () => {
     );
 
     expect(ref.current).toBe(screen.getByRole('button', { name: 'All' }));
+  });
+
+  test("in a Tooltip, it's the tooltip's target and described by it (its attributes reach the button)", () => {
+    render(
+      <Tooltip content="Data: prNumber, title">
+        <Chip pressed={false} onClick={() => {}}>
+          Numbers
+        </Chip>
+      </Tooltip>,
+    );
+
+    const chip = screen.getByRole('button', { name: 'Numbers' });
+    expect(chip).toHaveAttribute('data-tip', 'Data: prNumber, title');
+    expect(chip).toHaveAccessibleDescription('Data: prNumber, title');
   });
 });

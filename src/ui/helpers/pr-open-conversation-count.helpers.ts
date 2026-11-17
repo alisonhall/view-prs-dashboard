@@ -1,12 +1,16 @@
 import type { PrData } from "../types/pr-data.ts";
 import { createPrReviewStatsAggregationHelpers } from "./pr-review-stats-aggregation.helpers.ts";
 import { createPrFormattingHelpers } from "./pr-formatting.helpers.ts";
+import { isWaitingOnViewer } from "./pr-review-threads.helpers.ts";
 
 // PrInsightsRow's "Open conversations" count: the data file's own count,
 // else the metrics estimate. With a known viewer it's "Open conversations
 // with me": unresolved threads the viewer took part in. The viewer comes
 // from the injected getEffectiveViewerLogin (ActorIdentityContext), which
 // falls back from the known viewer to the row's viewerLogin to the page.
+// Of those, waitingCount are waiting on the viewer - the Conversations
+// tab's "Waiting on me" (isWaitingOnViewer) - which the Review cell's icon
+// shows filled in.
 const { normalizeRowMetrics } = createPrReviewStatsAggregationHelpers();
 const { toCount } = createPrFormattingHelpers();
 
@@ -18,6 +22,8 @@ export interface PrOpenConversationCountDeps {
 export interface OpenConversationCountWithMe {
   count: number;
   isViewerSpecific: boolean;
+  // 0 without a known viewer.
+  waitingCount: number;
 }
 
 const createPrOpenConversationCountHelpers = ({ getEffectiveViewerLogin, asArray }: PrOpenConversationCountDeps = {}) => {
@@ -49,6 +55,7 @@ const createPrOpenConversationCountHelpers = ({ getEffectiveViewerLogin, asArray
       return {
         count: getOpenConversationCount(row),
         isViewerSpecific: false,
+        waitingCount: 0,
       };
     }
 
@@ -75,6 +82,7 @@ const createPrOpenConversationCountHelpers = ({ getEffectiveViewerLogin, asArray
         );
       }).length,
       isViewerSpecific: true,
+      waitingCount: openThreads.filter((thread) => isWaitingOnViewer(thread, viewerLogin)).length,
     };
   };
 

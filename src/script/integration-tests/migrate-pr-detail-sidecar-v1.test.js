@@ -56,6 +56,27 @@ describe("migrate-pr-detail-sidecar-v1", () => {
     }
   });
 
+  // The server passes the paths of its data folder.
+  test("uses the paths it's given over the env ones", () => {
+    const otherDir = path.join(tmpRoot, "elsewhere");
+    const otherFile = path.join(otherDir, "check-open-pr-updates.data.json");
+    writeJson(otherFile, {
+      byPrNumber: { 7: { repo: "owner/repo", data: { number: 7, activityEvents: [{ type: "comment" }] } } },
+    });
+
+    const { runMigration } = require("../migrate-pr-detail-sidecar-v1");
+    runMigration({
+      silent: true,
+      dataFile: otherFile,
+      detailDir: path.join(otherDir, "pr-details"),
+      backupDir: path.join(otherDir, "backups"),
+    });
+
+    expect(fs.readdirSync(path.join(otherDir, "pr-details"))).toEqual(["owner_repo__pr-7.json"]);
+    expect(fs.readdirSync(path.join(otherDir, "backups")).length).toBeGreaterThan(0);
+    expect(fs.existsSync(dataDir)).toBe(false);
+  });
+
   test("externalizes heavy fields into sidecar and strips them from main row", () => {
     writeJson(dataFile, {
       generatedAt: "2026-06-02T00:00:00Z",

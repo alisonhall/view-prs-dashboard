@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
 
-import { act, render, screen, within } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { PrDataProvider } from '../../state/PrDataProvider';
 import { SettingsDrawerProvider } from '../../state/SettingsDrawerContext';
@@ -23,28 +23,8 @@ function mockStandIn(name: string) {
 }
 jest.mock('../PrTableApp', () => ({ PrTableApp: mockStandIn('pr-table') }));
 jest.mock('../filter-bar/DataViewHeader', () => ({ DataViewHeader: mockStandIn('data-view-header') }));
-// Its form body needs the whole filter state; Quick check all has its own
-// tests. The stand-in follows a test-owned store instead, standing in for a
-// filter edit.
-const mockFormStore = {
-  version: 0,
-  listeners: new Set<() => void>(),
-  subscribe(listener: () => void) {
-    mockFormStore.listeners.add(listener);
-    return () => mockFormStore.listeners.delete(listener);
-  },
-  bump() {
-    mockFormStore.version += 1;
-    mockFormStore.listeners.forEach((listener) => listener());
-  },
-};
-jest.mock('../../state/useQuickCheckActions', () => ({
-  useQuickCheckActions: () => {
-    jest.requireActual('react').useSyncExternalStore(mockFormStore.subscribe, () => mockFormStore.version);
-    return { handleQuickCheckAll: async () => undefined };
-  },
-}));
 jest.mock('../settings/SettingsDrawer', () => ({ SettingsDrawer: mockStandIn('settings-drawer') }));
+jest.mock('../settings/ToolsDrawer', () => ({ ToolsDrawer: mockStandIn('tools-drawer') }));
 jest.mock('../ReviewStatsControls', () => ({ ReviewStatsControls: mockStandIn('stats-controls') }));
 jest.mock('../ReviewStatsContent', () => ({ ReviewStatsContent: mockStandIn('stats-content') }));
 jest.mock('../AuthorInsightsSelector', () => ({ AuthorInsightsSelector: mockStandIn('author-selector') }));
@@ -79,11 +59,12 @@ beforeEach(() => {
   mockFailing.clear();
 });
 
-test('renders the page: the header, the three views labelled by their tabs, and the Settings drawer', async () => {
+test('renders the page: the header, the three views labelled by their tabs, and the Tools and Settings drawers', async () => {
   const user = userEvent.setup();
   renderShell();
   expect(screen.getByRole('banner')).toBeInTheDocument();
   expect(panel('Pull requests')).toContainElement(document.getElementById('pr-sections'));
+  expect(screen.getByTestId('tools-drawer')).toBeInTheDocument();
   expect(screen.getByTestId('settings-drawer')).toBeInTheDocument();
   // The lazy views are empty until first shown.
   expect(panel('Review stats')).toBeEmptyDOMElement();
@@ -92,6 +73,9 @@ test('renders the page: the header, the three views labelled by their tabs, and 
   await user.click(screen.getByRole('tab', { name: 'Authors' }));
   expect(await screen.findByTestId('author-created-prs')).toBeInTheDocument();
   const stats = within(panel('Review stats') as HTMLElement);
+  // Each view names itself under the header's h1.
+  expect(stats.getByRole('heading', { level: 2, name: 'Review stats', hidden: true })).toBeInTheDocument();
+  expect(within(panel('Authors') as HTMLElement).getByRole('heading', { level: 2, name: 'Authors' })).toBeInTheDocument();
   expect(stats.getByRole('group', { name: 'Review statistics controls', hidden: true })).toContainElement(screen.getByTestId('stats-controls'));
   expect(stats.getByRole('region', { name: 'Review statistics', hidden: true })).toContainElement(screen.getByTestId('stats-content'));
   const authors = within(panel('Authors') as HTMLElement);
@@ -143,26 +127,17 @@ test('mounts Review stats and Authors the first time each is shown, and keeps th
 
 const renderCount = (name: string) => mockMounts.filter((mounted) => mounted === name).length;
 
-test('switching tabs re-renders only the panels, not the table, the data header or the drawer', async () => {
+test('switching tabs re-renders only the panels, not the table, the data header or the drawers', async () => {
   const user = userEvent.setup();
   renderShell();
   await user.click(screen.getByRole('tab', { name: 'Review stats' }));
   await screen.findByTestId('stats-content');
-  const before = ['pr-table', 'data-view-header', 'settings-drawer', 'stats-content'].map(renderCount);
+  const before = ['pr-table', 'data-view-header', 'tools-drawer', 'settings-drawer', 'stats-content'].map(renderCount);
 
   await user.click(screen.getByRole('tab', { name: 'Pull requests' }));
   await user.click(screen.getByRole('tab', { name: 'Review stats' }));
 
-  expect(['pr-table', 'data-view-header', 'settings-drawer', 'stats-content'].map(renderCount)).toEqual(before);
-});
-
-test('a change the Quick check action follows (a filter edit) re-renders the header, not the table', () => {
-  renderShell();
-  const before = ['pr-table', 'data-view-header', 'settings-drawer'].map(renderCount);
-  // The header follows the store, so the bump does re-render something.
-  expect(mockFormStore.listeners.size).toBeGreaterThan(0);
-  act(() => mockFormStore.bump());
-  expect(['pr-table', 'data-view-header', 'settings-drawer'].map(renderCount)).toEqual(before);
+  expect(['pr-table', 'data-view-header', 'tools-drawer', 'settings-drawer', 'stats-content'].map(renderCount)).toEqual(before);
 });
 
 test('a view that throws shows a notice in its place; the header and the other views carry on', async () => {

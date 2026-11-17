@@ -36,9 +36,9 @@ const renderProvider = () => {
 };
 
 const SECTIONS = [
-  { key: 'in-review', defaultOpen: true, prNumbers: ['1'] },
-  { key: 'needs-attention', defaultOpen: true, prNumbers: ['2', '1'] },
-  { key: 'open', defaultOpen: false, prNumbers: ['3', '2', '1'] },
+  { key: 'in-review', defaultOpen: true, prKeys: ['owner/repo#1'] },
+  { key: 'needs-attention', defaultOpen: true, prKeys: ['owner/repo#2', 'owner/repo#1'] },
+  { key: 'open', defaultOpen: false, prKeys: ['owner/repo#3', 'owner/repo#2', 'owner/repo#1'] },
 ];
 
 describe('PrTableUiStateProvider', () => {
@@ -132,12 +132,12 @@ describe('PrTableUiStateProvider', () => {
     renderProvider();
     act(() => table().reportRenderedSections(SECTIONS));
     expect(openSections().openSectionCount).toBe(2);
-    expect(openSections().prNumbersInOpenSections).toEqual(['1', '2']);
+    expect(openSections().prKeysInOpenSections).toEqual(['owner/repo#1', 'owner/repo#2']);
 
     act(() => table().setSectionOpen('in-review', false));
     act(() => table().setSectionOpen('open', true));
     expect(openSections().openSectionCount).toBe(2);
-    expect(openSections().prNumbersInOpenSections).toEqual(['2', '1', '3']);
+    expect(openSections().prKeysInOpenSections).toEqual(['owner/repo#2', 'owner/repo#1', 'owner/repo#3']);
   });
 
   test('a report of rendered sections re-renders only the open-sections consumers, not the table', () => {
@@ -154,7 +154,7 @@ describe('PrTableUiStateProvider', () => {
   test('a report that changes a closed section keeps the same PR-number list, so open-sections consumers do not re-render', () => {
     renderProvider();
     act(() => table().reportRenderedSections(SECTIONS));
-    const before = openSections().prNumbersInOpenSections;
+    const before = openSections().prKeysInOpenSections;
     const openSectionsCount = openSectionsRenders.length;
 
     // A new PR in the closed "open" section: the open sections' PRs are the same.
@@ -162,23 +162,23 @@ describe('PrTableUiStateProvider', () => {
       table().reportRenderedSections([
         SECTIONS[0] as (typeof SECTIONS)[number],
         SECTIONS[1] as (typeof SECTIONS)[number],
-        { key: 'open', defaultOpen: false, prNumbers: ['4', '3', '2', '1'] },
+        { key: 'open', defaultOpen: false, prKeys: ['owner/repo#4', 'owner/repo#3', 'owner/repo#2', 'owner/repo#1'] },
       ]),
     );
 
-    expect(openSections().prNumbersInOpenSections).toBe(before);
+    expect(openSections().prKeysInOpenSections).toBe(before);
     expect(openSectionsRenders.length).toBe(openSectionsCount);
   });
 
   test('an unchanged report, or setting a state it already has, re-renders nobody', () => {
     renderProvider();
-    act(() => table().reportRenderedSections([{ key: 'open', defaultOpen: false, prNumbers: ['3'] }]));
+    act(() => table().reportRenderedSections([{ key: 'open', defaultOpen: false, prKeys: ['owner/repo#3'] }]));
     act(() => table().setSectionOpen('open', true));
     act(() => table().setRowExpanded('open:owner/repo:3', true));
     const tableCount = tableRenders.length;
     const openSectionsCount = openSectionsRenders.length;
 
-    act(() => table().reportRenderedSections([{ key: 'open', defaultOpen: false, prNumbers: ['3'] }]));
+    act(() => table().reportRenderedSections([{ key: 'open', defaultOpen: false, prKeys: ['owner/repo#3'] }]));
     act(() => table().setSectionOpen('open', true));
     act(() => table().setRowExpanded('open:owner/repo:3', true));
     expect(tableRenders.length).toBe(tableCount);

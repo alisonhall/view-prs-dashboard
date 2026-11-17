@@ -7,9 +7,11 @@ const {
   AUTO_DATA_POLL_MS,
   AUTO_BACKFILL_POLL_MS,
   MIN_DATA_POLL_MS,
+  PUSHED_DATA_POLL_MS,
   readDataPollMsOverride,
 } = require('./PrDataPolling');
 const { PrDataContext } = require('../state/PrDataContext');
+const { JobEventsContext } = require('../state/JobEventsContext');
 const { RequestActivityContext } = require('../state/RequestActivityContext');
 
 // Phase F/F.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
@@ -164,6 +166,72 @@ describe('PrDataPolling', () => {
     expect(window.pollForDataChanges).toHaveBeenCalledTimes(1);
     jest.advanceTimersByTime(600);
     expect(window.pollForDataChanges).toHaveBeenCalledTimes(3);
+  });
+
+  // The server pushes "data-changed" over the open stream, so the poll is
+  // only a safety net then; back to every 30s when the stream drops.
+  test('given the event stream is open, then the data poll slows to its safety-net cadence', () => {
+    const renderWithConnection = (connection) =>
+      React.createElement(
+        JobEventsContext.Provider,
+        { value: { connection } },
+        React.createElement(
+          PrDataContext.Provider,
+          { value: { pollForDataChanges: (...args) => window.pollForDataChanges?.(...args) } },
+          React.createElement(PrDataPolling),
+        ),
+      );
+    const { rerender } = render(renderWithConnection('open'));
+
+    jest.advanceTimersByTime(AUTO_DATA_POLL_MS);
+    expect(window.pollForDataChanges).not.toHaveBeenCalled();
+    jest.advanceTimersByTime(PUSHED_DATA_POLL_MS - AUTO_DATA_POLL_MS);
+    expect(window.pollForDataChanges).toHaveBeenCalledTimes(1);
+
+    rerender(renderWithConnection('reconnecting'));
+    jest.advanceTimersByTime(AUTO_DATA_POLL_MS);
+    expect(window.pollForDataChanges).toHaveBeenCalledTimes(2);
+  });
+
+  // Open but delivering nothing - not even the heartbeat - for a minute:
+  // pushed changes may not be arriving, so the poll is back to every 30s
+  // until frames do.
+  test('given the open event stream goes stale, then the data poll is back to every 30s until it delivers again', () => {
+    const renderWith = (isStale) =>
+      React.createElement(
+        JobEventsContext.Provider,
+        { value: { connection: 'open', isStale } },
+        React.createElement(
+          PrDataContext.Provider,
+          { value: { pollForDataChanges: (...args) => window.pollForDataChanges?.(...args) } },
+          React.createElement(PrDataPolling),
+        ),
+      );
+    const { rerender } = render(renderWith(true));
+
+    jest.advanceTimersByTime(AUTO_DATA_POLL_MS);
+    expect(window.pollForDataChanges).toHaveBeenCalledTimes(1);
+
+    rerender(renderWith(false));
+    jest.advanceTimersByTime(AUTO_DATA_POLL_MS);
+    expect(window.pollForDataChanges).toHaveBeenCalledTimes(1);
+  });
+
+  test('given the event stream is open, a dataPollMs prop still sets the cadence', () => {
+    render(
+      React.createElement(
+        JobEventsContext.Provider,
+        { value: { connection: 'open' } },
+        React.createElement(
+          PrDataContext.Provider,
+          { value: { pollForDataChanges: (...args) => window.pollForDataChanges?.(...args) } },
+          React.createElement(PrDataPolling, { dataPollMs: 300 }),
+        ),
+      ),
+    );
+
+    jest.advanceTimersByTime(300);
+    expect(window.pollForDataChanges).toHaveBeenCalledTimes(1);
   });
 
   describe('readDataPollMsOverride', () => {

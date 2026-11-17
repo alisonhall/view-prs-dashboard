@@ -7,6 +7,9 @@ const {
   extractHeavyPrDetailFields,
   stripHeavyPrDetailFields,
   mergePrDetailFields,
+  slimPrDetailFields,
+  extractMentionedLogins,
+  hasPrDetailContent,
 } = require("../helpers/view-prs-pr-detail-storage.js");
 
 describe("view-prs PR detail storage helpers", () => {
@@ -94,6 +97,68 @@ describe("view-prs PR detail storage helpers", () => {
     HEAVY_PR_DETAIL_FIELDS.forEach((field) => {
       expect(Array.isArray(merged[field])).toBe(true);
       expect(merged[field]).toHaveLength(0);
+    });
+  });
+
+  describe("the list's slim detail", () => {
+    test("given a row's detail, when slimmed, then the text and links are gone and everything else is kept", () => {
+      const slim = slimPrDetailFields({
+        number: "5",
+        activityEvents: [{ sourceId: "e1", type: "commit", actor: "bob", occurredAt: "2026-01-01T00:00:00Z", messageHeadline: "Fix", messageBody: "Long", url: "u" }],
+        commentEvents: [{ sourceId: "c1", type: "comment", actor: "alice", body: "Hi", url: "u" }],
+        reviewThreads: [
+          {
+            id: "t1",
+            isResolved: false,
+            resolvedByLogin: "",
+            path: "a.ts",
+            comments: [
+              { id: "x", authorLogin: "alice", body: "@Bob and @carol-x, see @bob", state: "SUBMITTED", diffHunk: "@@", url: "u" },
+              { id: "y", authorLogin: "bob", body: "Done" },
+            ],
+          },
+        ],
+        activityTimeline: [{ date: "2026-01-01", events: [{ sourceId: "e1" }] }],
+      });
+
+      expect(slim.number).toBe("5");
+      expect(slim.activityTimeline).toEqual([]);
+      expect(slim.activityEvents).toEqual([{ sourceId: "e1", type: "commit", actor: "bob", occurredAt: "2026-01-01T00:00:00Z" }]);
+      expect(slim.commentEvents).toEqual([{ sourceId: "c1", type: "comment", actor: "alice" }]);
+      expect(slim.reviewThreads).toEqual([
+        {
+          id: "t1",
+          isResolved: false,
+          resolvedByLogin: "",
+          path: "a.ts",
+          comments: [
+            { id: "x", authorLogin: "alice", state: "SUBMITTED", mentions: ["bob", "carol-x"] },
+            { id: "y", authorLogin: "bob" },
+          ],
+        },
+      ]);
+    });
+
+    test("given a row with only a timeline (older data), when slimmed, then its events become the row's activityEvents", () => {
+      const slim = slimPrDetailFields({
+        activityEvents: [],
+        activityTimeline: [
+          { date: "d1", events: [{ sourceId: "a", body: "x" }] },
+          { date: "d2", events: [{ sourceId: "b" }] },
+        ],
+      });
+      expect(slim.activityEvents).toEqual([{ sourceId: "a" }, { sourceId: "b" }]);
+    });
+
+    test("finds the logins a comment mentions as the page's mentions() would", () => {
+      expect(extractMentionedLogins("Thanks @Alice. cc @dependabot[bot], not me@example.com or @-x or @bob-")).toEqual(["alice", "dependabot[bot]"]);
+      expect(extractMentionedLogins(undefined)).toEqual([]);
+    });
+
+    test("tells whether a row has any detail", () => {
+      expect(hasPrDetailContent({ reviewThreads: [{ id: "t" }] })).toBe(true);
+      expect(hasPrDetailContent({ reviewThreads: [], activityEvents: [] })).toBe(false);
+      expect(hasPrDetailContent(null)).toBe(false);
     });
   });
 });

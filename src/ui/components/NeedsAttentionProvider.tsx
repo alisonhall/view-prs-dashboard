@@ -64,6 +64,7 @@ export function NeedsAttentionProvider({ children }: { children?: ReactNode }) {
       asArray,
       isChangedStatus,
       getEffectiveViewerLogin,
+      normalizeActorLogin,
       collectAssignedUsers,
       collectRequestedReviewers,
       countPendingThreadComments,
@@ -82,7 +83,7 @@ export function NeedsAttentionProvider({ children }: { children?: ReactNode }) {
     [values.mergeCommitHeadlinePatterns, values.mergeCommitLogins],
   );
 
-  const attentionConfig = useMemo<AttentionConfig>(
+  const baseConfig = useMemo<AttentionConfig>(
     () => ({
       noActivityMode: values.attentionNoActivityMode ?? DEFAULT_ATTENTION_VALUES.attentionNoActivityMode,
       includePendingComments:
@@ -105,6 +106,24 @@ export function NeedsAttentionProvider({ children }: { children?: ReactNode }) {
       mergeCommitRules,
     ],
   );
+
+  // Each repo with rules of its own (Settings › Rules for a repo): the
+  // all-repos config with its groups laid over it. The merge-commit logins
+  // are the same for every repo.
+  const attentionConfig = useMemo<AttentionConfig>(() => {
+    const byRepo: Record<string, AttentionConfig> = {};
+    Object.entries(values.repoRules || {}).forEach(([repo, rules]) => {
+      if (!rules.attention && !rules.mergeCommitHeadlinePatterns) return;
+      byRepo[repo.toLowerCase()] = {
+        ...baseConfig,
+        ...(rules.attention || {}),
+        mergeCommitRules: rules.mergeCommitHeadlinePatterns
+          ? { headlinePatterns: parseRuleLines(rules.mergeCommitHeadlinePatterns.join('\n')), logins: mergeCommitRules.logins }
+          : mergeCommitRules,
+      };
+    });
+    return Object.keys(byRepo).length > 0 ? { ...baseConfig, byRepo } : baseConfig;
+  }, [baseConfig, mergeCommitRules, values.repoRules]);
 
   const value = useMemo(() => ({ ...helpers, attentionConfig }), [helpers, attentionConfig]);
 

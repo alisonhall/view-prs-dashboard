@@ -180,7 +180,7 @@ describe("Smart Groups Helpers", () => {
         repo: "owner/repo",
       });
 
-      expect(configs).toHaveLength(7);
+      expect(configs).toHaveLength(8);
       expect(configs[0]).toMatchObject({
         groupKey: "flagged",
         title: "Flagged",
@@ -210,6 +210,11 @@ describe("Smart Groups Helpers", () => {
         icon: "💬",
         defaultOpen: false,
       });
+      expect(configs[7]).toMatchObject({
+        groupKey: "on-this-computer",
+        title: "On This Computer",
+        defaultOpen: false,
+      });
     });
 
     test("given no parameters, when building configs, then returns configs with empty context", () => {
@@ -217,8 +222,10 @@ describe("Smart Groups Helpers", () => {
 
       const configs = buildSmartGroupConfigs();
 
-      expect(configs).toHaveLength(7);
+      expect(configs).toHaveLength(8);
       expect(typeof configs[0].predicate).toBe("function");
+      // No local branches known: On This Computer is empty.
+      expect(configs[7].predicate({ repo: "owner/repo", data: { number: 1 } })).toBe(false);
     });
 
     test("given config predicates, when called with matching entry, then predicates work correctly", () => {

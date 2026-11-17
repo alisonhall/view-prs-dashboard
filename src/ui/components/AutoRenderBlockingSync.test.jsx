@@ -62,7 +62,7 @@ describe('AutoRenderBlockingSync', () => {
   test('given nothing is unsaved, when mounted, then the blocking state is empty and nothing blocks', () => {
     renderSync();
 
-    expect(blocking.blockingPrNumbers).toEqual([]);
+    expect(blocking.blockingPrKeys).toEqual([]);
     expect(blocking.blockingAuthorInsightsLogins).toEqual([]);
     expect(blockingActions.getHasDirtyPrSectionsFields()).toBe(false);
   });
@@ -71,12 +71,12 @@ describe('AutoRenderBlockingSync', () => {
     renderSync();
 
     act(() => {
-      notesDirty.setNotesDirty('42', true);
-      notesDirty.setNotesDirty('7', true);
+      notesDirty.setNotesDirty('acme/web#42', true);
+      notesDirty.setNotesDirty('acme/web#7', true);
     });
 
-    expect(blocking.blockingPrNumbers).toEqual(['7', '42']);
-    expect(blocking.blockingPrLabel).toBe('Blocking PRs: #7, #42');
+    expect(blocking.blockingPrKeys).toEqual(['acme/web#7', 'acme/web#42']);
+    expect(blocking.blockingPrLabel).toBe('Blocking PRs: acme/web#7, acme/web#42');
     expect(blockingActions.getHasDirtyPrSectionsFields()).toBe(true);
 
     act(() => {
@@ -91,7 +91,7 @@ describe('AutoRenderBlockingSync', () => {
     renderSync();
     act(() => {
       blockingActions.setFreshPayloadApplier(applier);
-      notesDirty.setNotesDirty('42', true);
+      notesDirty.setNotesDirty('acme/web#42', true);
     });
     const payload = { byPrNumber: { 42: {} } };
     act(() => {
@@ -103,14 +103,14 @@ describe('AutoRenderBlockingSync', () => {
     expect(applier).not.toHaveBeenCalledWith(payload);
 
     act(() => {
-      notesDirty.setNotesDirty('42', false);
+      notesDirty.setNotesDirty('acme/web#42', false);
     });
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 10));
     });
 
     expect(applier).toHaveBeenCalledWith(payload);
-    expect(blocking.blockingPrNumbers).toEqual([]);
+    expect(blocking.blockingPrKeys).toEqual([]);
     expect(blocking.isBlocked).toBe(false);
   });
 

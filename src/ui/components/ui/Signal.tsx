@@ -16,7 +16,8 @@ import { Tooltip, useTooltipController } from './Tooltip';
  * <EmptySignal /> holds an empty slot open, so an absent signal reads as
  * "no" and the slots line up from row to row.
  */
-export type SignalTone = 'success' | 'danger' | 'attention' | 'pending' | 'muted' | 'accent';
+// done: purple, GitHub's colour for merged.
+export type SignalTone = 'success' | 'danger' | 'attention' | 'pending' | 'muted' | 'accent' | 'done';
 
 export interface SignalProps {
   icon: IconName;

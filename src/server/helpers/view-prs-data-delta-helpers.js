@@ -6,7 +6,9 @@ const createViewPrsDataDeltaHelpers = ({ isObject }) => {
 
     const requestedPrNumbers = body.prNumbers
       .map((value) => String(value || "").trim())
-      .filter((value) => /^\d+$/.test(value));
+      // Row keys: repo#number (see view-prs-pr-keys.js), or a bare number
+      // (a row without a repo, or an older page).
+      .filter((value) => /^\d+$/.test(value) || /^[\w.-]+\/[\w.-]+#\d+$/.test(value));
 
     return Array.from(new Set(requestedPrNumbers));
   };

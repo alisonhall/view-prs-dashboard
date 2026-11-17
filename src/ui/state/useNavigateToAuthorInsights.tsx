@@ -1,13 +1,14 @@
 import { useCallback } from 'react';
 import { useTabState } from './TabStateContext';
 import { usePrData } from './PrDataContext';
-import { useAuthorInsights } from './AuthorInsightsContext';
+import { useAuthorPickerOptions } from './useAuthorPickerOptions';
 import { resolveValidAuthorLogin } from '../helpers/pr-author-insights-display.helpers.ts';
 
 /**
  * Returns a function that opens an author on the Author Insights tab: it
  * switches tabs, selects the author (the requested login, or the first
- * author option when that login isn't one - resolveValidAuthorLogin),
+ * author in the picker's order when that login isn't one -
+ * resolveValidAuthorLogin),
  * then focuses the author dropdown, or with `focusUnsaved` that author's
  * comment textarea. Used by
  * AutoRenderBlockedLinks' "jump to unsaved author draft" links (the app
@@ -22,8 +23,8 @@ export type NavigateToAuthorInsights = (authorLogin: unknown, options?: { focusU
 
 export function useNavigateToAuthorInsights(): NavigateToAuthorInsights {
   const { setActiveDataTab } = useTabState();
-  const { payload, setSelectedAuthorLogin } = usePrData();
-  const { buildAuthorInsightsEntries } = useAuthorInsights();
+  const { setSelectedAuthorLogin } = usePrData();
+  const { rowCount, options: authorOptions } = useAuthorPickerOptions();
 
   return useCallback<NavigateToAuthorInsights>(
     (authorLogin, { focusUnsaved = false } = {}) => {
@@ -34,10 +35,7 @@ export function useNavigateToAuthorInsights(): NavigateToAuthorInsights {
 
       setActiveDataTab('author-insights');
 
-      const rows = Object.values(payload?.byPrNumber || {});
-      const actorsMap = payload?.actorsMap || {};
-      const authorOptions = rows.length ? buildAuthorInsightsEntries(rows, actorsMap) : [];
-      const finalAuthorLogin = authorOptions.length
+      const finalAuthorLogin = rowCount && authorOptions.length
         ? resolveValidAuthorLogin(authorOptions, requestedLogin)
         : requestedLogin;
       setSelectedAuthorLogin(finalAuthorLogin);
@@ -71,6 +69,6 @@ export function useNavigateToAuthorInsights(): NavigateToAuthorInsights {
 
       return true;
     },
-    [setActiveDataTab, payload, setSelectedAuthorLogin, buildAuthorInsightsEntries],
+    [setActiveDataTab, rowCount, authorOptions, setSelectedAuthorLogin],
   );
 }

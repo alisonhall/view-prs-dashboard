@@ -2,7 +2,7 @@ import { createContext, useContext } from 'react';
 import type { CheckedByListIdValue } from './useCheckedByListIdState';
 
 /**
- * Checked state for the 5 row-filtering multi-selects (include/exclude
+ * Checked state for the 6 row-filtering multi-selects (repo, include/exclude
  * label, author, assigned, approver), which useVisiblePrNumbers reads to
  * filter the table live. The other 4 multi-selects don't feed row
  * filtering and have their own Contexts (AuthorThreadResolutionSelection
@@ -12,7 +12,13 @@ import type { CheckedByListIdValue } from './useCheckedByListIdState';
  * List ids are the filter bar's list ids (filter-bar-fields.ts's
  * ROW_FILTER_LISTS).
  */
-export type RowFilterListId = 'label-list' | 'exclude-label-list' | 'author-list' | 'assigned-list' | 'approver-list';
+export type RowFilterListId =
+  | 'repo-list'
+  | 'label-list'
+  | 'exclude-label-list'
+  | 'author-list'
+  | 'assigned-list'
+  | 'approver-list';
 
 export type RowFilterSelectionValue = CheckedByListIdValue<RowFilterListId>;
 

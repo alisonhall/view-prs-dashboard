@@ -1,12 +1,11 @@
 import { Suspense, lazy, useEffect, useRef, type ReactNode, type RefObject } from 'react';
 import { usePrData } from '../../state/PrDataContext';
+import { usePrArchive, WithArchivedRows } from '../../state/PrArchiveContext';
+import { reviewStatsReachesArchive } from '../../helpers/pr-archive.helpers';
+import { useTableArchiveSections } from '../../state/useTableArchiveSections';
 import { type TabPanelId, useHasTabPanelBeenVisible, useIsTabPanelVisible } from '../../state/useIsTabPanelVisible';
-import { useMergedRequestMoreActionOptions } from '../../state/useMergedRequestMoreActionOptions';
 import { useMultiSelectDropdownClosing } from '../../state/useMultiSelectDropdownClosing';
-import { useQuickCheckActions } from '../../state/useQuickCheckActions';
-import { useRequestMoreMerged } from '../../state/useRequestMoreMerged';
 import { AuthorInsightsProvider } from '../AuthorInsightsProvider';
-import { MergedRequestMoreAction } from '../MergedRequestMoreAction';
 import { NeedsAttentionProvider } from '../NeedsAttentionProvider';
 import { PrInsightsDisplayProvider } from '../PrInsightsDisplayProvider';
 import { PrTableApp } from '../PrTableApp';
@@ -15,9 +14,12 @@ import { ReviewStatsProvider } from '../ReviewStatsProvider';
 import { Snackbar } from '../Snackbar';
 import { DataViewHeader } from '../filter-bar/DataViewHeader';
 import { SettingsDrawer } from '../settings/SettingsDrawer';
+import { ToolsDrawer } from '../settings/ToolsDrawer';
 import { ErrorBoundary } from '../ui/ErrorBoundary';
+import { ViewHeading } from '../ui/ViewHeading';
 import { AppHeader } from './AppHeader';
 import { AutoUpdatePausedBanner } from './AutoUpdatePausedBanner';
+import { ReturnToViewBanner } from './ReturnToViewBanner';
 import { ErrorNotice } from './ErrorNotice';
 
 // The Review stats and Authors views aren't visible on load, so their code
@@ -47,13 +49,6 @@ const AuthorInsightsNotesSection = lazy(() =>
 const AuthorCreatedPrsSection = lazy(() =>
   import('../AuthorCreatedPrsSection').then((m) => ({ default: m.AuthorCreatedPrsSection })),
 );
-
-// Its own component so only it follows the filter state (useQuickCheckActions
-// reads the form body).
-function AppHeaderLive() {
-  const quickCheckActions = useQuickCheckActions();
-  return <AppHeader onQuickCheckAll={() => quickCheckActions.handleQuickCheckAll()} />;
-}
 
 // The Auto update paused banner sticks to the top of the window while it
 // shows; its height goes in --sticky-top on <html>, so the section headers
@@ -115,14 +110,6 @@ function PrTable() {
   );
 }
 
-// key={repo}: its pending and status messages are about one repo's request,
-// so a repo change starts it afresh.
-function MergedRequestMoreActionLive() {
-  const { isVisible, repo } = useMergedRequestMoreActionOptions();
-  const requestMoreMerged = useRequestMoreMerged();
-  return <MergedRequestMoreAction key={repo} isVisible={isVisible} repo={repo} onRequestMore={requestMoreMerged} />;
-}
-
 /**
  * The page: the snackbar, the app header and the auto-update-paused banner,
  * the three views (the header's tabs choose which shows), and the Settings
@@ -135,6 +122,26 @@ function MergedRequestMoreActionLive() {
  * Authors each have one Provider for all their parts (they used to be
  * separate portals, each with its own).
  */
+// The table's archived PRs: those of the Closed and Merged sections whose
+// "Show older" was pressed, and all of them while the search or PR number
+// field has something in it (useTableArchiveSections).
+function TableArchiveScope({ children }: { children: ReactNode }) {
+  const sections = useTableArchiveSections();
+  return (
+    <WithArchivedRows include={sections.size > 0} sections={sections}>
+      {children}
+    </WithArchivedRows>
+  );
+}
+
+// Review stats' archived PRs: when its dates reach back past the newest
+// one (or it has no start date).
+function ReviewStatsArchiveScope({ children }: { children: ReactNode }) {
+  const { statsViewState } = usePrData();
+  const { summary } = usePrArchive();
+  return <WithArchivedRows include={reviewStatsReachesArchive(summary, statsViewState?.startDate)}>{children}</WithArchivedRows>;
+}
+
 export function AppShell() {
   // Outside clicks close the filter dropdowns.
   useMultiSelectDropdownClosing();
@@ -148,11 +155,12 @@ export function AppShell() {
         <Snackbar />
       </div>
       <div id="app-header-root">
-        <AppHeaderLive />
+        <AppHeader />
       </div>
       {/* Its own element at the top level, so it can stay stuck to the top
           of the window while you scroll (styles/shell.css). */}
       <div id="app-banner-root" className="app-banner-root" ref={bannerRootRef}>
+        <ReturnToViewBanner />
         <AuthorInsightsProvider>
           <AutoUpdatePausedBanner />
         </AuthorInsightsProvider>
@@ -160,19 +168,23 @@ export function AppShell() {
 
       <div className="data-tabs" id="data-tabs">
         <TabPanel id="tab-panel-pr-data" labelledBy="tab-pr-data">
-          <DataViewHeader />
-          <div id="pr-sections" role="region" aria-label="Pull requests">
-            <PrTable />
-          </div>
-          <div id="merged-request-more-action" className="merged-request-more-action">
-            <MergedRequestMoreActionLive />
-          </div>
+          <TableArchiveScope>
+            <DataViewHeader />
+            <div id="pr-sections" role="region" aria-label="Pull requests">
+              <PrTable />
+            </div>
+          </TableArchiveScope>
         </TabPanel>
 
         <TabPanel id="tab-panel-review-stats" labelledBy="tab-review-stats">
           <LazyView id="tab-panel-review-stats">
+            <ReviewStatsArchiveScope>
             <ReviewStatsProvider>
-              <div id="pr-stats" className="stats-panel">
+              <div id="pr-stats">
+                <ViewHeading
+                  title="Review stats"
+                  description="How each reviewer has reviewed other people's PRs - comments, approvals and how risky those were - from the stored PRs in the dates below."
+                />
                 <div id="stats-controls-root" role="group" aria-label="Review statistics controls">
                   <ReviewStatsControls />
                 </div>
@@ -181,15 +193,22 @@ export function AppShell() {
                 </div>
               </div>
             </ReviewStatsProvider>
+            </ReviewStatsArchiveScope>
           </LazyView>
         </TabPanel>
 
         <TabPanel id="tab-panel-author-insights" labelledBy="tab-author-insights">
           <LazyView id="tab-panel-author-insights">
             {/* The selected author's data; AuthorInsightsDraftsProvider,
-                above the shell, keeps unsaved comments. */}
+                above the shell, keeps unsaved comments. Authors covers
+                every PR, archived ones included. */}
+            <WithArchivedRows include>
             <AuthorInsightsProvider>
-              <div id="author-insights" className="author-insights-panel">
+              <div id="author-insights">
+                <ViewHeading
+                  title="Authors"
+                  description="One author at a time: your comments about them, your notes on their PRs, and the PRs they've opened."
+                />
                 <div id="author-insights-selector-root">
                   <AuthorInsightsSelector />
                 </div>
@@ -207,12 +226,17 @@ export function AppShell() {
                 </div>
               </div>
             </AuthorInsightsProvider>
+            </WithArchivedRows>
           </LazyView>
         </TabPanel>
       </div>
 
       <div id="settings-drawer-root">
-        <SettingsDrawer />
+        <ToolsDrawer />
+        {/* Export works from the table's rows, older ones shown included. */}
+        <TableArchiveScope>
+          <SettingsDrawer />
+        </TableArchiveScope>
       </div>
     </>
   );

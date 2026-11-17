@@ -60,7 +60,7 @@ describe('AutoRenderBlockedLinks', () => {
           React.createElement(
             AuthorInsightsContext.Provider,
             { value: defaultAuthorInsights },
-            React.createElement(AutoRenderBlockedLinks, { prNumbers: [], authorLogins: [] }),
+            React.createElement(AutoRenderBlockedLinks, { prKeys: [], authorLogins: [] }),
           ),
         ),
       ),
@@ -68,31 +68,31 @@ describe('AutoRenderBlockedLinks', () => {
     expect(container.querySelector('button')).toBeNull();
   });
 
-  test('given PR numbers, when rendering, then a chip is shown per PR number', () => {
-    renderWithOverrides(React.createElement(AutoRenderBlockedLinks, { prNumbers: ['15', '22'], authorLogins: [] }));
-    expect(screen.getByRole('button', { name: '#15' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '#22' })).toBeInTheDocument();
+  test('given PR keys, when rendering, then a chip is shown per PR, named with its repo', () => {
+    renderWithOverrides(React.createElement(AutoRenderBlockedLinks, { prKeys: ['acme/api#15', 'acme/web#15'], authorLogins: [] }));
+    expect(screen.getByRole('button', { name: 'acme/api#15' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'acme/web#15' })).toBeInTheDocument();
   });
 
-  test('given a PR number chip, when clicked, then it switches to the pr-data tab and dispatches pr-navigate-to-insights with focusUnsaved', () => {
+  test('given a PR chip, when clicked, then it switches to the pr-data tab and dispatches pr-navigate-to-insights with its repo and focusUnsaved', () => {
     const events = [];
     const handler = (event) => events.push(event.detail);
     window.addEventListener('pr-navigate-to-insights', handler);
 
-    renderWithOverrides(React.createElement(AutoRenderBlockedLinks, { prNumbers: ['15'], authorLogins: [] }));
+    renderWithOverrides(React.createElement(AutoRenderBlockedLinks, { prKeys: ['acme/web#15'], authorLogins: [] }));
 
     act(() => {
-      fireEvent.click(screen.getByRole('button', { name: '#15' }));
+      fireEvent.click(screen.getByRole('button', { name: 'acme/web#15' }));
     });
 
     expect(latestTabState.activeDataTab).toBe('pr-data');
-    expect(events).toEqual([{ prNumber: '15', repo: '', focusUnsaved: true }]);
+    expect(events).toEqual([{ prNumber: '15', repo: 'acme/web', focusUnsaved: true }]);
 
     window.removeEventListener('pr-navigate-to-insights', handler);
   });
 
   test('given author logins, when rendering, then a chip using the resolved display name is shown per author', () => {
-    renderWithOverrides(React.createElement(AutoRenderBlockedLinks, { prNumbers: [], authorLogins: ['alice'] }), {
+    renderWithOverrides(React.createElement(AutoRenderBlockedLinks, { prKeys: [], authorLogins: ['alice'] }), {
       getAuthorInsightsDisplayName: (login) => ({ alice: 'Alice A' }[login] || login),
     });
 
@@ -101,7 +101,7 @@ describe('AutoRenderBlockedLinks', () => {
 
   test('given an author chip, when clicked, then it switches to the author-insights tab and writes the validated selected author', () => {
     renderWithOverrides(
-      React.createElement(AutoRenderBlockedLinks, { prNumbers: [], authorLogins: ['alice'] }),
+      React.createElement(AutoRenderBlockedLinks, { prKeys: [], authorLogins: ['alice'] }),
       {
         getAuthorInsightsDisplayName: (login) => login,
         buildAuthorInsightsEntries: () => [{ login: 'alice' }],
@@ -119,7 +119,7 @@ describe('AutoRenderBlockedLinks', () => {
 
   test('given the requested author no longer exists in the current options, when clicked, then it falls back to the first valid option instead of writing the stale login', () => {
     renderWithOverrides(
-      React.createElement(AutoRenderBlockedLinks, { prNumbers: [], authorLogins: ['stale-login'] }),
+      React.createElement(AutoRenderBlockedLinks, { prKeys: [], authorLogins: ['stale-login'] }),
       {
         getAuthorInsightsDisplayName: (login) => login,
         buildAuthorInsightsEntries: () => [{ login: 'alice' }],

@@ -4,6 +4,7 @@ import { useActorIdentity } from '../../state/ActorIdentityContext';
 import { useNeedsAttention } from '../../state/NeedsAttentionContext';
 import { usePrInsightsDisplay } from '../../state/PrInsightsDisplayContext';
 import { createPrAuthorCellHelpers } from '../../helpers/pr-author-cell.helpers.ts';
+import { attentionConfigForRepo } from '../../helpers/pr-needs-attention.helpers.ts';
 import { Avatar } from '../ui/Avatar';
 import { Tooltip } from '../ui/Tooltip';
 import type { ActorsMap } from '../../helpers/pr-actor-identity.helpers.ts';
@@ -15,13 +16,15 @@ import type { ActorsMap } from '../../helpers/pr-actor-identity.helpers.ts';
  */
 export interface PrWhoCellProps {
   pr: PrData;
+  // Its repo, whose merge-commit rules apply (Settings › Rules for a repo).
+  repo?: string;
   actorsMap?: ActorsMap;
 }
 
-export function PrWhoCell({ pr, actorsMap = {} }: PrWhoCellProps) {
-  const { getPreferredActorKey, resolveActorDisplayName, getEffectiveViewerLogin } = useActorIdentity();
+export function PrWhoCell({ pr, repo = '', actorsMap = {} }: PrWhoCellProps) {
+  const { getPreferredActorKey, resolveActorDisplayName, getEffectiveViewerKey, loginOfActorKey } = useActorIdentity();
   const { getUserInitials } = usePrInsightsDisplay();
-  const { mergeCommitRules } = useNeedsAttention().attentionConfig;
+  const { mergeCommitRules } = attentionConfigForRepo(useNeedsAttention().attentionConfig, repo);
   // The real, alias-resolving getPreferredActorKey, so a co-author who's
   // an alias of the PR author is deduped (as the old Author column did).
   const { collectPrAuthors } = useMemo(
@@ -42,8 +45,10 @@ export function PrWhoCell({ pr, actorsMap = {} }: PrWhoCellProps) {
     );
   }
 
-  const viewerLogin = String(getEffectiveViewerLogin(pr) || '').toLowerCase();
-  const isViewer = (login: string) => Boolean(viewerLogin) && login.toLowerCase() === viewerLogin;
+  // Authors' keys are their people's (getPreferredActorKey): compared with
+  // the viewer's, so any of the viewer's logins is them.
+  const viewerKey = getEffectiveViewerKey(pr);
+  const isViewer = (key: string) => Boolean(viewerKey) && key.toLowerCase() === viewerKey;
   const name = `Author: ${primary.displayName}${isViewer(primary.key) ? ' (you)' : ''}`;
   const label = others.length
     ? `${name}\nAlso committed: ${others.map((other) => other.displayName).join(', ')}`
@@ -53,7 +58,11 @@ export function PrWhoCell({ pr, actorsMap = {} }: PrWhoCellProps) {
     <td className="pr-cell pr-cell-who">
       <Tooltip content={label} focusTarget>
         <span className="pr-who" role="img" aria-label={name}>
-          <Avatar initials={getUserInitials(primary.displayName, primary.key)} login={primary.key} isViewer={isViewer(primary.key)} />
+          <Avatar
+            initials={getUserInitials(primary.displayName, loginOfActorKey(primary.key))}
+            login={loginOfActorKey(primary.key)}
+            isViewer={isViewer(primary.key)}
+          />
           {/* The name itself (up to two lines), so the author doesn't have to
               be guessed from initials; the tooltip has it all. */}
           <span className="pr-who-name" aria-hidden="true">

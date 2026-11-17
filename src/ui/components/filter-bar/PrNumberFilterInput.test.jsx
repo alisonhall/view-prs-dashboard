@@ -37,7 +37,7 @@ describe('PrNumberFilterInput', () => {
   // DOM id after React rendered the input.
   test('given the input renders, when read, then it carries the non-credential-field hints', () => {
     renderWithProvider('');
-    const input = screen.getByPlaceholderText('912, 921');
+    const input = screen.getByPlaceholderText('912, acme/api#921, acme/web');
     expect(input).toHaveAttribute('autocomplete', 'off');
     expect(input).toHaveAttribute('autocapitalize', 'off');
     expect(input).toHaveAttribute('autocorrect', 'off');
@@ -50,7 +50,7 @@ describe('PrNumberFilterInput', () => {
 
   test('given the provider seeds an empty value, when rendering, then renders an empty input with the expected id/name', () => {
     renderWithProvider('');
-    const input = screen.getByPlaceholderText('912, 921');
+    const input = screen.getByPlaceholderText('912, acme/api#921, acme/web');
     expect(input).toHaveAttribute('id', 'filter-pr-numbers');
     expect(input).toHaveAttribute('name', 'filterPrNumbers');
     expect(input).toHaveValue('');
@@ -58,13 +58,13 @@ describe('PrNumberFilterInput', () => {
 
   test('given the provider seeds a value, when rendering, then the input starts with that value', () => {
     renderWithProvider('912,921');
-    expect(screen.getByPlaceholderText('912, 921')).toHaveValue('912,921');
+    expect(screen.getByPlaceholderText('912, acme/api#921, acme/web')).toHaveValue('912,921');
   });
 
   test('given a user types into the input, when typing, then the displayed value updates and filterStateProbe.readValues() reflects it', async () => {
     const user = userEvent.setup();
     renderWithProvider();
-    const input = screen.getByPlaceholderText('912, 921');
+    const input = screen.getByPlaceholderText('912, acme/api#921, acme/web');
 
     await user.type(input, '55');
 
@@ -74,7 +74,7 @@ describe('PrNumberFilterInput', () => {
 
   test('given an external native value change (e.g. some other legacy code manipulating this element directly), when the native setter + input event fire, then React state picks it up', () => {
     renderWithProvider();
-    const input = screen.getByPlaceholderText('912, 921');
+    const input = screen.getByPlaceholderText('912, acme/api#921, acme/web');
 
     const nativeSetter = Object.getOwnPropertyDescriptor(
       window.HTMLInputElement.prototype,

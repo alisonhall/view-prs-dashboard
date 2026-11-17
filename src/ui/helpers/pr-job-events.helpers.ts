@@ -13,18 +13,14 @@ export interface JobState {
   lastFinishedAt: string | null;
   lastOk: boolean | null;
   lastError: unknown;
-  lastSkip: { reason: string | null; at: string } | null;
+  // `kind`: an auto refresh's (a full refresh, or of changed PRs, or the
+  // drain's), when its event says.
+  lastSkip: { reason: string | null; at: string; kind?: string } | null;
   // Only quickCheck: the job it's waiting for, when deferred.
   waitingOn?: { job: string | null; since: string } | null;
-}
-
-export interface SchedulerSummary {
-  intervalMinutes: number;
-  manualCooldownMinutes: number;
-  lastManualRunAt: unknown;
-  lastAutoRunAt: unknown;
-  lastAutoSkipReason: unknown;
-  lastAutoError: unknown;
+  // While running: its start event's detail (the repos it's working on,
+  // for the activity popover). Not in the connect-time snapshot.
+  runningDetail?: Record<string, unknown> | null;
 }
 
 export interface FinishedJob {
@@ -45,7 +41,22 @@ export interface JobEventsState {
   recentFinished: FinishedJob[];
   dispatcherQueue: unknown[];
   openAutoCircuitRepos: unknown[];
-  schedulerSummary: SchedulerSummary;
+  // What's running and how far it's got (the server's
+  // view-prs-progress-helpers.js); null from a server without it.
+  tasks: ProgressTask[] | null;
+}
+
+// One task the server is running: a background job's run, or a request
+// someone made - counting PRs or repos done, of how many when known.
+export interface ProgressTask {
+  id: string;
+  kind: string;
+  origin: "background" | "you";
+  repos: string[];
+  unit: "PR" | "repo";
+  done: number;
+  total: number | null;
+  startedAt: string;
 }
 
 // The scheduler state the server bundles with every SSE frame.
@@ -67,6 +78,7 @@ export interface SchedulerSnapshot {
   pendingMergedClosedCount?: unknown;
   dispatcherQueue?: unknown;
   openAutoCircuitRepos?: unknown;
+  tasks?: unknown;
 }
 
 // A `job` envelope ({job, phase, ok, detail, seq}) or a job-agnostic
@@ -122,48 +134,21 @@ const createPrJobEventsHelpers = ({ now }: { now?: () => string } = {}) => {
     // (see autoCircuitByRepo in app.js) - same job-agnostic,
     // whole-scheduler-snapshot category as dispatcherQueue above.
     openAutoCircuitRepos: [],
-    // The scheduler fields the PR data summary's "Applied filters" text
-    // shows (interval, cooldown, last manual/auto run, last skip reason
-    // and error) - same whole-scheduler-snapshot category, read off every
-    // envelope's bundled scheduler object.
-    schedulerSummary: {
-      intervalMinutes: 15,
-      manualCooldownMinutes: 15,
-      lastManualRunAt: null,
-      lastAutoRunAt: null,
-      lastAutoSkipReason: null,
-      lastAutoError: null,
-    },
+    tasks: null,
   });
 
   const extractDispatcherQueue = (scheduler: SchedulerSnapshot | undefined): unknown[] =>
     Array.isArray(scheduler?.dispatcherQueue) ? scheduler.dispatcherQueue : [];
 
+  // Kept when a frame has no scheduler state at all; null from a server
+  // that doesn't send tasks.
+  const extractTasks = (scheduler: SchedulerSnapshot | undefined, previous: ProgressTask[] | null): ProgressTask[] | null => {
+    if (!scheduler) return previous;
+    return Array.isArray(scheduler.tasks) ? (scheduler.tasks as ProgressTask[]) : null;
+  };
+
   const extractOpenAutoCircuitRepos = (scheduler: SchedulerSnapshot | undefined): unknown[] =>
     Array.isArray(scheduler?.openAutoCircuitRepos) ? scheduler.openAutoCircuitRepos : [];
-
-  // Missing fields keep their previous values.
-  const extractSchedulerSummary = (
-    scheduler: SchedulerSnapshot | undefined,
-    previous: SchedulerSummary,
-  ): SchedulerSummary => ({
-    intervalMinutes: Number.isFinite(Number(scheduler?.intervalMinutes))
-      ? Number(scheduler?.intervalMinutes)
-      : previous.intervalMinutes,
-    manualCooldownMinutes: Number.isFinite(Number(scheduler?.manualCooldownMinutes))
-      ? Number(scheduler?.manualCooldownMinutes)
-      : previous.manualCooldownMinutes,
-    lastManualRunAt:
-      scheduler?.lastManualRunAt !== undefined ? scheduler.lastManualRunAt : previous.lastManualRunAt,
-    lastAutoRunAt:
-      scheduler?.lastAutoRunAt !== undefined ? scheduler.lastAutoRunAt : previous.lastAutoRunAt,
-    lastAutoSkipReason:
-      scheduler?.lastAutoSkipReason !== undefined
-        ? scheduler.lastAutoSkipReason
-        : previous.lastAutoSkipReason,
-    lastAutoError:
-      scheduler?.lastAutoError !== undefined ? scheduler.lastAutoError : previous.lastAutoError,
-  });
 
   const extractPendingCounts = (scheduler: SchedulerSnapshot | undefined) => ({
     pendingOpenCount: Number(scheduler?.pendingOpenCount) || 0,
@@ -215,6 +200,15 @@ const createPrJobEventsHelpers = ({ now }: { now?: () => string } = {}) => {
       },
     };
 
+    // A job the snapshot says is idle isn't working on anything any more;
+    // one it says is running that wasn't before (a reconnect mid-run)
+    // started at a time - and on repos - the snapshot doesn't say, not
+    // those of an earlier run.
+    (Object.keys(jobs) as JobKey[]).forEach((key) => {
+      if (jobs[key].status !== "running") jobs[key] = { ...jobs[key], runningDetail: null };
+      else if (state.jobs[key].status !== "running") jobs[key] = { ...jobs[key], startedAt: null, runningDetail: null };
+    });
+
     return {
       ...state,
       connection: "open",
@@ -225,7 +219,7 @@ const createPrJobEventsHelpers = ({ now }: { now?: () => string } = {}) => {
       ...extractPendingCounts(scheduler),
       dispatcherQueue: extractDispatcherQueue(scheduler),
       openAutoCircuitRepos: extractOpenAutoCircuitRepos(scheduler),
-      schedulerSummary: extractSchedulerSummary(scheduler, state.schedulerSummary),
+      tasks: extractTasks(payload?.scheduler, state.tasks),
     };
   };
 
@@ -249,7 +243,7 @@ const createPrJobEventsHelpers = ({ now }: { now?: () => string } = {}) => {
     const pendingCounts = extractPendingCounts(envelope.scheduler);
     const dispatcherQueue = extractDispatcherQueue(envelope.scheduler);
     const openAutoCircuitRepos = extractOpenAutoCircuitRepos(envelope.scheduler);
-    const schedulerSummary = extractSchedulerSummary(envelope.scheduler, state.schedulerSummary);
+    const tasks = extractTasks(envelope.scheduler, state.tasks);
 
     if (!previousJob || !isJobKey(jobKey)) {
       return {
@@ -260,7 +254,7 @@ const createPrJobEventsHelpers = ({ now }: { now?: () => string } = {}) => {
         ...pendingCounts,
         dispatcherQueue,
         openAutoCircuitRepos,
-        schedulerSummary,
+        tasks,
       };
     }
 
@@ -273,6 +267,7 @@ const createPrJobEventsHelpers = ({ now }: { now?: () => string } = {}) => {
           ...previousJob,
           status: "running",
           startedAt: at,
+          runningDetail: envelope.detail || null,
           ...(isQuickCheck ? { waitingOn: null } : {}),
         };
         break;
@@ -280,6 +275,7 @@ const createPrJobEventsHelpers = ({ now }: { now?: () => string } = {}) => {
         nextJob = {
           ...previousJob,
           status: "idle",
+          runningDetail: null,
           lastFinishedAt: at,
           lastOk: envelope.ok ?? null,
           lastError: envelope.detail?.error ?? null,
@@ -291,7 +287,11 @@ const createPrJobEventsHelpers = ({ now }: { now?: () => string } = {}) => {
         // a dropped manual trigger never flickers "running".
         nextJob = {
           ...previousJob,
-          lastSkip: { reason: envelope.detail?.reason || null, at },
+          lastSkip: {
+            reason: envelope.detail?.reason || null,
+            at,
+            ...(typeof envelope.detail?.kind === "string" ? { kind: envelope.detail.kind } : {}),
+          },
           ...(isQuickCheck ? { waitingOn: null } : {}),
         };
         break;
@@ -323,7 +323,7 @@ const createPrJobEventsHelpers = ({ now }: { now?: () => string } = {}) => {
       ...pendingCounts,
       dispatcherQueue,
       openAutoCircuitRepos,
-      schedulerSummary,
+      tasks,
     };
   };
 
@@ -332,11 +332,6 @@ const createPrJobEventsHelpers = ({ now }: { now?: () => string } = {}) => {
     setConnectionState,
     applyJobEventsSnapshot,
     applyJobEvent,
-    // Exported for JobEventsProvider.tsx's own payload.scheduler fallback
-    // (see that file's comment) - lets it normalize payload.scheduler
-    // into the exact same schedulerSummary shape, until the first real
-    // SSE snapshot arrives.
-    extractSchedulerSummary,
   };
 };
 

@@ -44,6 +44,9 @@ export interface AuthorInsightsDraftsValue {
   getManualComments: (login: unknown) => AuthorManualComment[];
   setManualComments: (login: unknown, comments: unknown) => void;
   getManualCommentsLoadState: (login: unknown) => { loading: boolean; error: string };
+  // The author's comments have loaded without an error: getManualComments
+  // is all of them, not an empty list for now.
+  hasLoadedManualComments: (login: unknown) => boolean;
   loadManualComments: (login: unknown, onComplete?: () => void) => void | Promise<void>;
   saveManualComment: (input: AuthorCommentInput) => Promise<PostJsonResult<AuthorCommentsResponse>>;
   updateManualComment: (
@@ -72,6 +75,7 @@ export const AuthorInsightsDraftsContext = createContext<AuthorInsightsDraftsVal
   getManualComments: () => [],
   setManualComments: () => {},
   getManualCommentsLoadState: () => ({ loading: false, error: '' }),
+  hasLoadedManualComments: () => false,
   loadManualComments: () => {},
   saveManualComment: noProvider,
   updateManualComment: noProvider,

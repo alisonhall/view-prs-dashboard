@@ -1,7 +1,9 @@
 import type { PrApprover, PrData, PrEntry } from '../../types/pr-data.ts';
 import { useActorIdentity } from '../../state/ActorIdentityContext';
+import { useOptionalPrData } from '../../state/PrDataContext';
 import { usePrInsightsDisplay } from '../../state/PrInsightsDisplayContext';
 import { describeNotes, describeViewedFiles } from '../../helpers/pr-row-signals.helpers.ts';
+import { countThreadsToCheck, threadConfirmationsFor } from '../../helpers/pr-review-threads.helpers.ts';
 import { Avatar } from '../ui/Avatar';
 import { EmptySignal, Signal, SignalGroup } from '../ui/Signal';
 import { useTooltipController } from '../ui/Tooltip';
@@ -15,14 +17,17 @@ const toCount = (value: unknown): number => {
 /**
  * The Review column, in fixed slots:
  * 1. Approvals (green once approved), with the approvers in the tooltip.
- * 2. Open conversations (with you, when that's what's counted).
+ * 2. Open conversations (with you, when that's what's counted), the icon
+ *    filled in when any is waiting on you.
  * 3. Viewed files.
  * 4. Notes, listing the fields that have content.
  *
  * On lines under the slots, labelled so they read without hovering:
  * "Assigned" and the assigned users' avatars, as the old Approved column
  * showed; and "Reviewer" with the viewer's, when their review is requested
- * but they aren't assigned. "Reviewer", not "Review requested": shorter,
+ * but they aren't assigned. And "N to check": threads you started that
+ * someone else resolved, until you confirm in the Conversations tab that
+ * they were handled. "Reviewer", not "Review requested": shorter,
  * and some projects add reviewers automatically, so a request doesn't
  * always mean a review is needed. Its tooltip still says "review
  * requested".
@@ -38,7 +43,9 @@ export interface PrReviewCellProps {
 
 export function PrReviewCell({ entry, pr, actorsMap = {} }: PrReviewCellProps) {
   useTooltipController();
-  const { getEffectiveViewerLogin, resolveActorDisplayName } = useActorIdentity();
+  const { getEffectiveViewerLogin, getEffectiveViewerKey, resolveActorDisplayName, normalizeActorLogin, loginOfActorKey } =
+    useActorIdentity();
+  const payload = useOptionalPrData()?.payload;
   const { collectAssignedUsers, collectPendingReviewRequests, getUserInitials, getOpenConversationCountWithMe } =
     usePrInsightsDisplay();
 
@@ -59,36 +66,51 @@ export function PrReviewCell({ entry, pr, actorsMap = {} }: PrReviewCellProps) {
 
   const conversations = getOpenConversationCountWithMe(pr);
   const openCount = toCount(conversations?.count);
-  const conversationsLabel = `${openCount} open conversation${openCount === 1 ? '' : 's'}${conversations?.isViewerSpecific ? ' with you' : ''}`;
+  // Filled in when any is waiting on you (the Conversations tab's "Waiting
+  // on me").
+  const waitingCount = toCount(conversations?.waitingCount);
+  const conversationsLabel = `${openCount} open conversation${openCount === 1 ? '' : 's'}${conversations?.isViewerSpecific ? ' with you' : ''}${waitingCount > 0 ? `, ${waitingCount} waiting on you` : ''}`;
 
   const viewedFiles = describeViewedFiles(pr);
   const notes = describeNotes(entry, pr);
 
+  // Conversations compare logins as GitHub gives them; people compare by
+  // their key (any of a person's logins is them).
   const viewerLogin = String(getEffectiveViewerLogin(pr) || '').trim().toLowerCase();
+  const viewerKey = getEffectiveViewerKey(pr);
   const assignees = collectAssignedUsers(pr);
   // Outstanding requests only: the fallback to whoever has reviewed would
   // label them "review requested" too.
   const reviewers = collectPendingReviewRequests(pr);
   const loginOf = (person: { login?: unknown }) => String(person?.login || '').trim();
-  const assigneeLogins = new Set(assignees.map((person) => loginOf(person).toLowerCase()).filter(Boolean));
-  const reviewerLogins = new Set(reviewers.map((person) => loginOf(person).toLowerCase()).filter(Boolean));
+  const keyOf = (person: { login?: unknown }) => normalizeActorLogin(loginOf(person)).toLowerCase();
+  const assigneeKeys = new Set(assignees.map(keyOf).filter(Boolean));
+  const reviewerKeys = new Set(reviewers.map(keyOf).filter(Boolean));
   const viewerReviewerOnly =
-    viewerLogin && reviewerLogins.has(viewerLogin) && !assigneeLogins.has(viewerLogin)
-      ? reviewers.find((person) => loginOf(person).toLowerCase() === viewerLogin)
+    viewerKey && reviewerKeys.has(viewerKey) && !assigneeKeys.has(viewerKey)
+      ? reviewers.find((person) => keyOf(person) === viewerKey)
       : undefined;
   const toPerson = (person: { login?: unknown; name?: string }): Person => {
-    const login = loginOf(person);
-    const key = login.toLowerCase();
-    const displayName = resolveActorDisplayName(login, actorsMap, person.name) || login;
-    const roles = [key === viewerLogin ? 'you' : '', reviewerLogins.has(key) ? 'review requested' : ''].filter(Boolean);
+    const key = keyOf(person);
+    const login = loginOfActorKey(loginOf(person));
+    const displayName = resolveActorDisplayName(loginOf(person), actorsMap, person.name) || login;
+    const roles = [key === viewerKey ? 'you' : '', reviewerKeys.has(key) ? 'review requested' : ''].filter(Boolean);
     return {
       login,
       displayName,
-      isViewer: Boolean(viewerLogin) && key === viewerLogin,
+      isViewer: Boolean(viewerKey) && key === viewerKey,
       label: roles.length ? `${displayName} (${roles.join(', ')})` : displayName,
     };
   };
   const assigned = assignees.map(toPerson).filter((person) => person.login);
+  // Logins as GitHub gives them: the threads' comments are compared with them.
+  const toCheck = countThreadsToCheck(
+    pr,
+    viewerLogin,
+    String(pr?.authorLogin || pr?.author || ''),
+    threadConfirmationsFor(payload?.threadChecksByRepo, entry?.repo, entry?.prNumber),
+  );
+  const toCheckLabel = `${toCheck} conversation${toCheck === 1 ? '' : 's'} you started resolved by someone else, to check`;
   const requested = viewerReviewerOnly ? [toPerson(viewerReviewerOnly)].filter((person) => person.login) : [];
 
   const summary = [
@@ -98,6 +120,7 @@ export function PrReviewCell({ entry, pr, actorsMap = {} }: PrReviewCellProps) {
     notes || '',
     assigned.length ? `Assigned: ${assigned.map((person) => person.label).join(', ')}` : '',
     requested.length ? `Reviewer: ${requested.map((person) => person.label).join(', ')}` : '',
+    toCheck > 0 ? toCheckLabel : '',
   ].filter(Boolean);
 
   return (
@@ -106,7 +129,14 @@ export function PrReviewCell({ entry, pr, actorsMap = {} }: PrReviewCellProps) {
         <span className="pr-signal-slots pr-review-slots">
           <Signal icon="approve" tone={approved ? 'success' : 'muted'} text={String(approvalCount)} label={approvalsLabel} size={14} inGroup />
           {openCount > 0 ? (
-            <Signal icon="chat" tone="attention" text={String(openCount)} label={conversationsLabel} size={14} inGroup />
+            <Signal
+              icon={waitingCount > 0 ? 'chatFilled' : 'chat'}
+              tone="attention"
+              text={String(openCount)}
+              label={conversationsLabel}
+              size={14}
+              inGroup
+            />
           ) : (
             <EmptySignal />
           )}
@@ -117,6 +147,11 @@ export function PrReviewCell({ entry, pr, actorsMap = {} }: PrReviewCellProps) {
           )}
           {notes ? <Signal icon="note" label={notes} size={14} inGroup /> : <EmptySignal />}
         </span>
+        {toCheck > 0 && (
+          <span className="pr-review-check">
+            <Signal icon="alert" tone="attention" text={`${toCheck} to check`} label={toCheckLabel} size={13} inGroup />
+          </span>
+        )}
         {(assigned.length > 0 || requested.length > 0) && (
           <span className="pr-review-people">
             {assigned.length > 0 && <PeopleGroup label="Assigned" people={assigned} getUserInitials={getUserInitials} />}

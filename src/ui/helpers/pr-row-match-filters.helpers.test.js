@@ -45,6 +45,37 @@ describe("pr-row-match-filters helpers", () => {
     expect(rowMatchesUiFilters({ data: { number: 1 } }, emptyCriteria())).toBe(true);
   });
 
+  test("given repos picked, then only their PRs match, whatever the case", () => {
+    const { rowMatchesUiFilters } = makeHelpers();
+    const criteria = { ...emptyCriteria(), repoNames: ["Owner/Repo", "owner/other"] };
+    expect(rowMatchesUiFilters({ repo: "owner/repo", data: { number: 1 } }, criteria)).toBe(true);
+    expect(rowMatchesUiFilters({ repo: "owner/other", data: { number: 2 } }, criteria)).toBe(true);
+    expect(rowMatchesUiFilters({ repo: "owner/third", data: { number: 3 } }, criteria)).toBe(false);
+  });
+
+  test("given a last activity range, then only PRs last active in it match, an empty side without limit", () => {
+    const { rowMatchesUiFilters } = makeHelpers();
+    const at = (day) => ({ data: { number: day, sourceUpdatedAt: new Date(2026, 10, day, 12).toISOString() } });
+    const range = { ...emptyCriteria(), lastActivityFrom: "2026-11-03", lastActivityTo: "2026-11-05" };
+    expect([2, 3, 5, 6].map((day) => rowMatchesUiFilters(at(day), range))).toEqual([false, true, true, false]);
+    const fromOnly = { ...emptyCriteria(), lastActivityFrom: "2026-11-03", lastActivityTo: "" };
+    expect([2, 30].map((day) => rowMatchesUiFilters(at(day), fromOnly))).toEqual([false, true]);
+  });
+
+  test("given PRs named in the PRs field, then they show whatever the repos and dates say, as with the other lists", () => {
+    const { rowMatchesUiFilters } = makeHelpers();
+    const criteria = {
+      ...emptyCriteria(),
+      prNumbers: ["7"],
+      prKeys: [],
+      repos: [],
+      repoNames: ["owner/other"],
+      lastActivityFrom: "2026-11-03",
+      lastActivityTo: "",
+    };
+    expect(rowMatchesUiFilters({ repo: "owner/repo", data: { number: "7", sourceUpdatedAt: "2020-01-01T00:00:00Z" } }, criteria)).toBe(true);
+  });
+
   test("given alwaysShowInReview and the row is in review, when called, then it matches regardless of every other filter", () => {
     const { rowMatchesUiFilters } = makeHelpers();
     const entry = { data: { number: 1, inReview: true, authorLogin: "nobody" } };
@@ -70,6 +101,20 @@ describe("pr-row-match-filters helpers", () => {
     const entry = { data: { number: 1, inReview: "true", authorLogin: "nobody" } };
     const criteria = { ...emptyCriteria(), alwaysShowInReview: true, authorLogins: ["someone-else"] };
     expect(rowMatchesUiFilters(entry, criteria)).toBe(true);
+  });
+
+  test("given search words, when called, then only rows with every word match - the author's shown name included", () => {
+    const { rowMatchesUiFilters } = makeHelpers({ getAuthorDisplayName: (row) => (row.authorLogin === "ada" ? "Ada Lovelace" : "") });
+    const entry = { data: { number: 1, title: "Fix the parser", authorLogin: "ada" } };
+    expect(rowMatchesUiFilters(entry, { ...emptyCriteria(), searchTerms: ["parser"] })).toBe(true);
+    expect(rowMatchesUiFilters(entry, { ...emptyCriteria(), searchTerms: ["parser", "lovelace"] })).toBe(true);
+    expect(rowMatchesUiFilters(entry, { ...emptyCriteria(), searchTerms: ["parser", "lexer"] })).toBe(false);
+  });
+
+  test("given search words and alwaysShowInReview, when the row is in review, then it shows whatever the search", () => {
+    const { rowMatchesUiFilters } = makeHelpers();
+    const entry = { data: { number: 1, title: "Unrelated", inReview: "true" } };
+    expect(rowMatchesUiFilters(entry, { ...emptyCriteria(), alwaysShowInReview: true, searchTerms: ["parser"] })).toBe(true);
   });
 
   test("given a PR-number filter, when the row's number isn't in it, then it doesn't match", () => {

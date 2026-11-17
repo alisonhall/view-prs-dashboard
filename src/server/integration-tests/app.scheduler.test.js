@@ -4,6 +4,8 @@ const {
   parseTimestamp,
   getManualCooldownSkipReason,
   getViewPrsAutoRefreshRepos,
+  inferTrackedRepos,
+  viewPrsSourcesStorage,
   getViewPrsAutoCircuitOpenState,
   buildAckRefreshBudgetSkipErrors,
   runViewPrsAutoRefresh,
@@ -19,6 +21,17 @@ const {
   viewPrsSchedulerFile,
 } = appModule;
 
+// Puts the sources file back as a test found it - removed if there was
+// none, with its seeded marker, so it seeds again.
+const restoreSources = (saved) => {
+  if (saved) {
+    viewPrsSourcesStorage.writeSources(saved);
+  } else {
+    fs.rmSync(viewPrsSourcesStorage.sourcesFile, { force: true });
+    fs.rmSync(`${viewPrsSourcesStorage.sourcesFile}.seeded`, { force: true });
+  }
+};
+
 const resetSchedulerState = () => {
   viewPrsSchedulerState.isAutoRunInProgress = false;
   viewPrsSchedulerState.activePrNumbers = [];
@@ -27,6 +40,7 @@ const resetSchedulerState = () => {
   viewPrsSchedulerState.lastAutoError = null;
   viewPrsSchedulerState.lastAutoRunAt = null;
   viewPrsSchedulerState.lastManualRunAt = null;
+  viewPrsSchedulerState.manualFullRunAtByRepo = {};
   viewPrsSchedulerState.isQuickCheckInProgress = false;
   viewPrsSchedulerState.lastQuickCheckAttemptAt = null;
   viewPrsSchedulerState.lastQuickCheckSkipReason = null;
@@ -102,9 +116,11 @@ describe("scheduler helper behavior", () => {
     });
   });
 
-  describe("getViewPrsAutoRefreshRepos", () => {
+  // The repos tracked before the sources file - which seed its first
+  // subscriptions.
+  describe("inferTrackedRepos", () => {
     test("includes configured repos, stored repos, and last-run repo without duplicates, and does not add the hardcoded default repo when real repos are already known", () => {
-      const result = getViewPrsAutoRefreshRepos(
+      const result = inferTrackedRepos(
         {
           byPrNumber: {
             1: { repo: "owner/one" },
@@ -121,7 +137,7 @@ describe("scheduler helper behavior", () => {
     });
 
     test("given placeholder owner/repo values, when building auto-refresh repos, then excludes placeholder entries and does not add the hardcoded default repo since a real repo is still known", () => {
-      const result = getViewPrsAutoRefreshRepos(
+      const result = inferTrackedRepos(
         {
           byPrNumber: {
             1: { repo: "owner/repo" },
@@ -142,9 +158,60 @@ describe("scheduler helper behavior", () => {
     // bootstrapping against some other user's repo - see
     // app-config.test.js's own "no fallback" test for that case).
     test("given no configured repos, no stored data, and no last-run repo, when building auto-refresh repos, then falls back to VIEW_PRS_REPO so a fresh install can still bootstrap", () => {
-      const result = getViewPrsAutoRefreshRepos({ byPrNumber: {}, lastRun: null }, "");
+      const result = inferTrackedRepos({ byPrNumber: {}, lastRun: null }, "");
 
       expect(result).toEqual(["test-org/test-repo"]);
+    });
+  });
+
+  // The sources file decides now: VIEW_PRS_AUTO_REPOS and the "recent"
+  // subscriptions, not every repo with a stored row.
+  describe("getViewPrsAutoRefreshRepos", () => {
+    let savedSources;
+    beforeEach(() => {
+      savedSources = viewPrsSourcesStorage.readSources();
+    });
+    afterEach(() => {
+      restoreSources(savedSources);
+    });
+
+    test("lists VIEW_PRS_AUTO_REPOS and the recent subscriptions, then the repos with PRs fetched on their own", () => {
+      viewPrsSourcesStorage.writeSources({
+        subscriptions: [
+          { repo: "acme/api", mode: "recent" },
+          { repo: "acme/web", mode: "numbers", numbers: ["4"] },
+        ],
+        trackedPrs: [{ repo: "other/lib", number: "9" }],
+      });
+
+      expect(getViewPrsAutoRefreshRepos("acme/extra, acme/api")).toEqual(["acme/extra", "acme/api", "acme/web", "other/lib"]);
+    });
+
+    // Seeded from data that couldn't be read, the file would stand empty
+    // for good - every repo dropped from the background updates.
+    test("without a sources file, data that can't be read seeds nothing: the repos are inferred until it can", () => {
+      const savedRead = appModule.readViewPrsData;
+      restoreSources(null);
+      try {
+        appModule.readViewPrsData = () => ({ byPrNumber: {}, lastRun: null, readError: "Unexpected end of JSON input" });
+        expect(getViewPrsAutoRefreshRepos("")).toEqual(["test-org/test-repo"]);
+        expect(fs.existsSync(viewPrsSourcesStorage.sourcesFile)).toBe(false);
+
+        appModule.readViewPrsData = () => ({ byPrNumber: { "acme/api#1": { repo: "acme/api" } }, lastRun: null });
+        expect(getViewPrsAutoRefreshRepos("")).toEqual(["acme/api"]);
+        expect(viewPrsSourcesStorage.readSources().subscriptions).toEqual([{ repo: "acme/api", mode: "recent" }]);
+      } finally {
+        appModule.readViewPrsData = savedRead;
+      }
+    });
+
+    // Unsubscribing the last repo mustn't bring VIEW_PRS_REPO back: the
+    // fallback is for a fresh install, before the file is seeded.
+    test("doesn't fall back to VIEW_PRS_REPO once the sources exist, though nothing is subscribed", () => {
+      viewPrsSourcesStorage.writeSources({ subscriptions: [] });
+
+      expect(getViewPrsAutoRefreshRepos("")).toEqual([]);
+      expect(viewPrsSourcesStorage.readSources().subscriptions).toEqual([]);
     });
   });
 
@@ -360,7 +427,12 @@ describe("runViewPrsAutoRefresh behavior", () => {
   const savedRunViewPrsScript = appModule.runViewPrsScript;
   const savedReadViewPrsData = appModule.readViewPrsData;
 
+  // The fixture's repo, subscribed (the sources file decides which repos
+  // auto refresh fetches), and the sources as they were put back after.
+  let savedSources;
   beforeAll(() => {
+    savedSources = viewPrsSourcesStorage.readSources();
+    viewPrsSourcesStorage.writeSources({ subscriptions: [{ repo: "acme-org/acme-repo", mode: "recent" }] });
     appModule.getDependencyStatus = () => ({ ok: true, missing: [] });
     appModule.runViewPrsScript = async () => ({ stdout: "", stderr: "" });
     // "owner/repo" is deliberately NOT used here even though it reads like
@@ -389,6 +461,7 @@ describe("runViewPrsAutoRefresh behavior", () => {
   });
 
   afterAll(() => {
+    restoreSources(savedSources);
     if (savedDependencyStatus !== undefined) {
       appModule.getDependencyStatus = savedDependencyStatus;
     } else {
@@ -431,9 +504,10 @@ describe("runViewPrsAutoRefresh behavior", () => {
   });
 
   test("sets a manual-cooldown skip reason when runViewPrsAutoRefresh is called inside cooldown", async () => {
-    viewPrsSchedulerState.lastManualRunAt = new Date(
-      Date.now() - 5 * 60 * 1000,
-    ).toISOString();
+    // A manual run with no --repo refreshed every repo.
+    viewPrsSchedulerState.manualFullRunAtByRepo = {
+      "*": new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+    };
 
     await runViewPrsAutoRefresh();
 
@@ -456,9 +530,9 @@ describe("runViewPrsAutoRefresh behavior", () => {
   });
 
   test("bypasses manual cooldown when runViewPrsAutoRefresh receives skipCooldownChecks=true", async () => {
-    viewPrsSchedulerState.lastManualRunAt = new Date(
-      Date.now() - 5 * 60 * 1000,
-    ).toISOString();
+    viewPrsSchedulerState.manualFullRunAtByRepo = {
+      "*": new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+    };
 
     await runViewPrsAutoRefresh({ skipCooldownChecks: true });
 
@@ -617,26 +691,47 @@ describe("runViewPrsAutoRefresh behavior", () => {
     ).toBeGreaterThanOrEqual(beforeRun);
   });
 
-  test("seeds only the latest merged PRs before auto refresh starts", async () => {
-    let observedActivePrNumbers = null;
+  // The rows' spinners: a PR is active only while a run is fetching it (the
+  // script's progress markers). Before 2026-11-05 a full refresh marked the
+  // repo's latest merged PRs active for its whole run, and a run of chosen
+  // PRs all of them, finished or not.
+  test("a full refresh marks no PR busy up front: each is active only while its fetch runs", async () => {
+    let observed = null;
     appModule.runViewPrsScript = async () => {
       // Captured rather than asserted inline: a thrown expect() here would
       // be swallowed by runViewPrsAutoRefresh's own try/catch (it becomes a
-      // logged "auto refresh had failures" instead of a failed test) - see
-      // the beforeAll fixture's own comment for how that previously masked
-      // this exact test not actually checking anything.
-      observedActivePrNumbers = viewPrsSchedulerState.activePrNumbers;
+      // logged "auto refresh had failures" instead of a failed test).
+      observed = { active: viewPrsSchedulerState.activePrNumbers, queued: viewPrsSchedulerState.queuedPrNumbers };
       return { stdout: "", stderr: "" };
     };
 
     await runViewPrsAutoRefresh({ skipCooldownChecks: true });
 
-    expect(observedActivePrNumbers).toEqual([
-      { repo: "acme-org/acme-repo", prNumber: "1" },
-      { repo: "acme-org/acme-repo", prNumber: "3" },
-    ]);
-    expect(viewPrsSchedulerState.activePrNumbers).toEqual([]);
+    expect(observed).toEqual({ active: [], queued: [] });
     expect(viewPrsSchedulerState.isAutoRunInProgress).toBe(false);
+  });
+
+  test("a run of chosen PRs queues them; each leaves the queue as its fetch starts, and none is left queued after", async () => {
+    const observed = [];
+    appModule.runViewPrsScript = async (_args, _maxBuffer, options) => {
+      observed.push({ active: viewPrsSchedulerState.activePrNumbers, queued: viewPrsSchedulerState.queuedPrNumbers });
+      // As runViewPrsScript does with the script's START marker for #1.
+      options.progressTracker.onStart("1", "acme-org/acme-repo");
+      observed.push({ active: viewPrsSchedulerState.activePrNumbers, queued: viewPrsSchedulerState.queuedPrNumbers });
+      options.progressTracker.onEnd("1", "acme-org/acme-repo");
+      return { stdout: "", stderr: "" };
+    };
+
+    await runViewPrsAutoRefresh({ skipCooldownChecks: true, reposOverride: ["acme-org/acme-repo"], prNumbersByRepo: { "acme-org/acme-repo": ["1", "3"] } });
+
+    const pr = (prNumber) => ({ repo: "acme-org/acme-repo", prNumber });
+    expect(observed[0]).toEqual({ active: [], queued: [pr("1"), pr("3")] });
+    // (Active is the real runViewPrsScript's own tracker, combined with this
+    // one - replaced here.)
+    expect(observed[1].queued).toEqual([pr("3")]);
+    // #3 never started (the run didn't reach it): no longer queued either.
+    expect(viewPrsSchedulerState.queuedPrNumbers).toEqual([]);
+    expect(viewPrsSchedulerState.activePrNumbers).toEqual([]);
   });
 
   test("on startup, initializeScheduler runs the quick check (and its pending-repo priority refresh) before the full every-repo update", async () => {
@@ -743,7 +838,8 @@ describe("runViewPrsAutoRefresh behavior", () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
 
       expect(quickCheckCalled).toBe(true);
-      expect(autoRefreshArgs).toEqual({ reposOverride: ["acme-org/acme-repo"] });
+      // The startup run is the full one: nothing has been queued yet.
+      expect(autoRefreshArgs).toEqual({ reposOverride: ["acme-org/acme-repo"], prNumbersByRepo: {} });
     } finally {
       createdIntervals.forEach((id) => clearInterval(id));
       setIntervalSpy.mockRestore();
@@ -1372,6 +1468,35 @@ describe("runViewPrsQuickCheck behavior", () => {
     }
   });
 
+  // runViewPrsScript rejects with { error, stdout, stderr, ... }, not an
+  // Error: its reason, not "[object Object]".
+  test("a repo whose quick-check script fails is reported with the script's reason", async () => {
+    const consoleWarnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
+    appModule.runViewPrsScript = async () => {
+      throw {
+        error: new Error("Command exited with code 1"),
+        stdout: "",
+        stderr: "Checking owner/repo-failing...\nHTTP 401: Bad credentials\n",
+      };
+    };
+
+    try {
+      let result;
+      await withAutoRepos("owner/repo-failing", async () => {
+        result = await runViewPrsQuickCheck();
+      });
+
+      expect(result.reposFailed).toEqual([
+        { repo: "owner/repo-failing", error: "Command exited with code 1: HTTP 401: Bad credentials" },
+      ]);
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        "[view-prs] quick-check failed for owner/repo-failing: Command exited with code 1: HTTP 401: Bad credentials",
+      );
+    } finally {
+      consoleWarnSpy.mockRestore();
+    }
+  });
+
   test("treats unparseable script output as no pending changes rather than throwing", async () => {
     appModule.runViewPrsScript = async () => ({ stdout: "not json", stderr: "" });
 
@@ -1699,7 +1824,13 @@ describe("runViewPrsMergedQueueDrain behavior", () => {
       appModule.runViewPrsAutoRefresh = originalRunViewPrsAutoRefresh;
     }
 
-    expect(receivedArgs).toEqual({ reposOverride: ["owner/repo-drain-override"] });
+    // Only the queued merged/closed PR, not the whole repo.
+    expect(receivedArgs).toEqual({
+      reposOverride: ["owner/repo-drain-override"],
+      prNumbersByRepo: { "owner/repo-drain-override": ["301"] },
+      // Shown as the drain's run, not auto refresh's.
+      progressKind: "mergedQueueDrain",
+    });
   });
 
   test("skips a repo that also has a pending open change, leaving it for the fast-follow path instead", async () => {

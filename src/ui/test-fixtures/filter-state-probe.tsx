@@ -12,8 +12,8 @@ import { useFilterState, type FilterStateValue } from '../state/FilterStateConte
  *
  *   const probe = createFilterStateProbe();
  *   render(<FilterStateProvider ...><probe.FilterStateProbe /><Thing /></FilterStateProvider>);
- *   expect(probe.readValues().scopeMode).toBe('last-run');
- *   act(() => probe.setValue('scopeMode', 'all'));
+ *   expect(probe.readValues().onlyNeedsAttention).toBe(true);
+ *   act(() => probe.setValue('onlyNeedsAttention', false));
  *
  * `readValues()` is the `values` of the probe's most recent render, i.e. what a
  * `useFilterState()` consumer sees. Create one probe per test file (or per

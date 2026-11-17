@@ -1,4 +1,4 @@
-const { createPrExportHelpers, getPrNumbersInOpenSections } = require("./pr-export.helpers.ts");
+const { createPrExportHelpers, getPrKeysInOpenSections } = require("./pr-export.helpers.ts");
 
 const getPerPrUserStateFromPayload = (payload, entry, prNumber, repo) => ({
   notesByPrNumber: entry?.notes || null,
@@ -8,6 +8,24 @@ const getPerPrUserStateFromPayload = (payload, entry, prNumber, repo) => ({
 });
 
 describe("pr export helpers", () => {
+  test("buildExportPayload exports the visible rows by key, not another repo's PR with the same number", () => {
+    const helpers = createPrExportHelpers({ getPerPrUserStateFromPayload });
+    const exported = helpers.buildExportPayload({
+      payload: {
+        byPrNumber: {
+          "acme/api#12": { repo: "acme/api", prNumber: "12", data: { title: "API" } },
+          "acme/web#12": { repo: "acme/web", prNumber: "12", data: { title: "Web" } },
+          "acme/api#13": { repo: "acme/api", prNumber: "13", data: { title: "Not visible" } },
+        },
+      },
+      visiblePrKeys: ["acme/api#12"],
+      selectedDataPaths: ["data.title"],
+    });
+    expect(exported.prs.map((item) => [item.repo, item.prNumber, item.data.data.title])).toEqual([
+      ["acme/api", "12", "API"],
+    ]);
+  });
+
   test("getFieldCatalog tracks nested object fields and treats arrays as leaf fields", () => {
     const helpers = createPrExportHelpers({ getPerPrUserStateFromPayload });
     const payload = {
@@ -35,22 +53,44 @@ describe("pr export helpers", () => {
     ]);
   });
 
-  test("getPrNumbersInOpenSections returns only rows from expanded sections", () => {
-    expect(
-      getPrNumbersInOpenSections([
-        { open: true, prNumbers: ["101"] },
-        { open: false, prNumbers: ["202"] },
-      ]),
-    ).toEqual(["101"]);
+  test("given the list's slim rows, when the field catalog is built, then their markers aren't offered as fields, nor exported", () => {
+    const helpers = createPrExportHelpers({ getPerPrUserStateFromPayload });
+    const payload = {
+      byPrNumber: {
+        "owner/repo#123": {
+          prNumber: "123",
+          repo: "owner/repo",
+          data: { title: "Feature", reviewThreads: [], detailSlim: true, detailVersion: "abc" },
+        },
+      },
+    };
+
+    expect(helpers.getFieldCatalog(payload).dataPaths).toEqual(["data.reviewThreads", "data.title", "prNumber", "repo"]);
+    const exported = helpers.buildExportPayload({
+      payload,
+      visiblePrKeys: ["owner/repo#123"],
+      selectedDataPaths: ["data.title", "data.detailSlim"],
+    });
+    expect(exported.prs[0].data).toEqual({ data: { title: "Feature" } });
+    expect(payload.byPrNumber["owner/repo#123"].data.detailSlim).toBe(true);
   });
 
-  test("getPrNumbersInOpenSections keeps display order and lists a PR shown in two open sections once", () => {
+  test("getPrKeysInOpenSections returns only rows from expanded sections", () => {
     expect(
-      getPrNumbersInOpenSections([
-        { open: true, prNumbers: ["7", "3"] },
-        { open: true, prNumbers: ["3", "9", ""] },
+      getPrKeysInOpenSections([
+        { open: true, prKeys: ["owner/repo#101"] },
+        { open: false, prKeys: ["owner/repo#202"] },
       ]),
-    ).toEqual(["7", "3", "9"]);
+    ).toEqual(["owner/repo#101"]);
+  });
+
+  test("getPrKeysInOpenSections keeps display order and lists a PR shown in two open sections once", () => {
+    expect(
+      getPrKeysInOpenSections([
+        { open: true, prKeys: ["owner/repo#7", "owner/repo#3"] },
+        { open: true, prKeys: ["owner/repo#3", "other/repo#3", ""] },
+      ]),
+    ).toEqual(["owner/repo#7", "owner/repo#3", "other/repo#3"]);
   });
 
   test("buildExportPayload applies selected data/user-state field paths per visible PR", () => {
@@ -85,7 +125,7 @@ describe("pr export helpers", () => {
 
     const exported = helpers.buildExportPayload({
       payload,
-      visiblePrNumbers: ["101"],
+      visiblePrKeys: ["owner/repo#101"],
       selectedDataPaths: ["prNumber", "data.title"],
       selectedUserStatePaths: ["notesByPrNumber.otherNotes", "ackByRepo"],
     });

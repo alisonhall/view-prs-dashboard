@@ -936,6 +936,41 @@ becomes a small `react-app.tsx`. Done in steps:
     Me" became "Me as Reviewer" for the same reason (its key stays, so
     saved section choices still apply). Size counts never break inside a number (common.css lets table
     text break anywhere), and counts from 10,000 are shortened (+12k).
+- **Follow-ups (2026-10-31)**, on `development`:
+  - The docked pane is sticky only within the workspace, so near the
+    list's end a full-height pane was pushed up and its close and
+    previous/next went above the window. PrTableApp now puts the room
+    left above the list's bottom in the pane's `--pr-pane-room` on scroll
+    and resize (docked-pane-room.helpers.ts), which its max-height takes
+    instead of its usual window-based height. Only when that room is less
+    than the usual height (so mid-list, scrolling writes nothing), set on
+    the pane rather than the workspace (an inherited property there
+    restyled every row), and never below 240px. The usual height, not the
+    window, decides whether a list is long enough: a list a little shorter
+    than the window can still be taller than the pane.
+  - Section choices no longer flash: PrSectionPreferencesProvider keeps a
+    localStorage copy (like the theme) and reports `isReady`; PrTableApp
+    shows its loading state until the choices are known, so a new browser
+    waits for user-defaults.json instead of drawing hidden sections first.
+    A failed read keeps the copy (or shows the defaults without one),
+    using the new `readUiSessionOverridesOrNull`, which tells a failed
+    read (null) from nothing saved ({}). `updateUiSessionOverride` and
+    the filter saves use it too: on a failed read they used to write back
+    only their own keys, wiping every other setting in the file.
+  - Settings › Background updates edits `schedulerRepoConfig` (the last
+    user-defaults.json setting with no form): per repo, the three checks'
+    intervals in minutes and a priority boost. The server's
+    `GET /view-prs/dispatcher/settings` gives the checked repos and the
+    defaults. Decided with it: `priority` is now a boost added to each
+    check's default (5 / 3 / 1) rather than replacing all three, which
+    had put a boosted repo's full refreshes level with its quick checks;
+    and a changed interval reschedules the wait under way (when the entry
+    was scheduled by a successful run) instead of applying after it.
+    Because of that, the form saves once typing pauses (800ms) or the
+    field is left, not per keystroke: "1" on the way to "15" could
+    otherwise make a check due on the next tick. Field ids come from
+    `useId` (repo names made into ids could collide), and a saved value
+    outside the form's range is noted as applying rather than flagged.
 
 ## Decisions (2026-10-24)
 

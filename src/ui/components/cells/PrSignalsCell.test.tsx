@@ -2,16 +2,25 @@
 
 import { render, screen } from '@testing-library/react';
 import { PrSignalsCell, type PrSignalsCellProps } from './PrSignalsCell';
+import { NowContext } from '../../state/NowContext';
+import { PrDataContext, type PrDataValue } from '../../state/PrDataContext';
+import type { PrDataPayload } from '../../types/pr-data.ts';
 
-const renderCell = (props: Partial<PrSignalsCellProps> = {}) =>
+const NOW = Date.parse('2026-10-24T12:00:00Z');
+
+const renderCell = (props: Partial<PrSignalsCellProps> = {}, payload: PrDataPayload = {}) =>
   render(
-    <table>
-      <tbody>
-        <tr>
-          <PrSignalsCell pr={{}} attentionReasons={[]} isFlagged={false} isInReview={false} {...props} />
-        </tr>
-      </tbody>
-    </table>,
+    <PrDataContext.Provider value={{ payload } as unknown as PrDataValue}>
+      <NowContext.Provider value={NOW}>
+        <table>
+          <tbody>
+            <tr>
+              <PrSignalsCell pr={{}} repo="o/r" attentionReasons={[]} isFlagged={false} isInReview={false} {...props} />
+            </tr>
+          </tbody>
+        </table>
+      </NowContext.Provider>
+    </PrDataContext.Provider>,
   );
 
 const slotCount = () => document.querySelector('.pr-signal-slots')?.children.length;
@@ -30,6 +39,41 @@ describe('PrSignalsCell', () => {
     renderCell({ pr: { status: 'CHANGED', reason: 'commit|review' }, attentionReasons: [] });
     const dot = screen.getByRole('img', { name: 'Changed since your last ack' });
     expect(dot.closest('[data-tip]')).toHaveAttribute('data-tip', 'Changed since your last ack\nNew commits\nNew reviews');
+  });
+
+  describe('what changed since you last looked', () => {
+    const changed = {
+      number: '7',
+      status: 'CHANGED',
+      reason: 'commit|review|unanswered-thread',
+      baseline: '2026-10-22T12:00:00Z',
+      activityEvents: [
+        { sourceId: 'c2', occurredAt: '2026-10-24T09:00:00Z', actor: 'ann', type: 'commit', channel: 'commit' },
+        { sourceId: 'r1', occurredAt: '2026-10-23T15:00:00Z', actor: 'sam', type: 'review', channel: 'review', state: 'CHANGES_REQUESTED' },
+        { sourceId: 'c1', occurredAt: '2026-10-23T09:00:00Z', actor: 'ann', type: 'commit', channel: 'commit' },
+        { sourceId: 'old', occurredAt: '2026-10-21T09:00:00Z', actor: 'ann', type: 'commit', channel: 'commit' },
+      ],
+    };
+
+    test('says since when and counts what is new, in place of the reasons the counts say', () => {
+      renderCell({ pr: changed, actorsMap: { sam: 'Sam Lee' } });
+      const dot = screen.getByRole('img', { name: 'Changed since your last activity on Oct 22' });
+      expect(dot.closest('[data-tip]')).toHaveAttribute(
+        'data-tip',
+        'Changed since your last activity on Oct 22\n2 commits · 1 review (changes requested by Sam Lee)\nUnanswered review threads',
+      );
+    });
+
+    test('from your Ack when it is later than your last activity', () => {
+      renderCell({ pr: changed }, { ackByRepo: { 'o/r': { '7': '2026-10-23T12:00:00Z' } } });
+      const dot = screen.getByRole('img', { name: 'Changed since you acked on Oct 23' });
+      expect(dot.closest('[data-tip]')?.getAttribute('data-tip')).toMatch(/\n1 commit · 1 review \(changes requested by sam\)\n/);
+    });
+
+    test("an Ack taken back still counts as when you looked (it's in the history)", () => {
+      renderCell({ pr: changed }, { ackHistoryByRepo: { 'o/r': { '7': ['2026-10-23T12:00:00Z'] } } });
+      expect(screen.getByRole('img', { name: 'Changed since you acked on Oct 23' })).toBeInTheDocument();
+    });
   });
 
   test('a changed PR without reason tokens just says it changed', () => {
