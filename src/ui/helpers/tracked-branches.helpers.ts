@@ -125,11 +125,13 @@ export const describeBranchChips = (status: TrackedBranchStatus | undefined, cha
     } else if (typeof status.baseAhead === 'number' && typeof status.baseBehind === 'number') {
       chips.push({
         key: 'base',
-        // Still where it started: said plainly, rather than "0 ahead".
+        // Nothing of its own, said plainly rather than "0 ahead": on the
+        // base's commit, nothing yet; behind it, everything it has is in
+        // the base - never committed to, or merged (which can't be told).
         text:
           status.baseAhead === 0
             ? status.baseBehind > 0
-              ? `No commits yet · ${status.baseBehind} behind ${status.base}`
+              ? `All in ${status.base} · ${status.baseBehind} behind`
               : 'No commits yet'
             : `${status.baseAhead} ahead, ${status.baseBehind} behind ${status.base}`,
         tone: status.baseBehind > 0 ? 'accent' : 'muted',

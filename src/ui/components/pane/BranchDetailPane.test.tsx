@@ -21,6 +21,7 @@ const fetchMock = jest.fn(async (url: string, init?: RequestInit) => {
     if (url.endsWith('/tracked-branches/pull')) return { ok: true, status: 200, json: async () => ({ ok: true, commits: 2 }) };
     return { ok: true, status: 200, json: async () => ({ ok: true }) };
   }
+  if (init?.method === 'DELETE') return { ok: true, status: 200, json: async () => ({ ok: true }) };
   if (url.startsWith('/view-prs/tracked-branches/commits?')) {
     return { ok: commitsAnswer.status < 400, status: commitsAnswer.status, json: async () => commitsAnswer.body };
   }
@@ -223,6 +224,31 @@ describe('BranchDetailPane', () => {
     expect(onSelectBranch).toHaveBeenLastCalledWith('acme/app', 'spike/cache');
     await user.keyboard('{Escape}');
     expect(onClearSelection).toHaveBeenCalled();
+  });
+
+  test('untracking the branch shown in the pane unselects it; another one leaves it', async () => {
+    const user = userEvent.setup();
+    const onClearSelection = jest.fn();
+    const second = { repo: 'acme/app', branch: 'wip' };
+    const value = local({ branches: { 'acme/app:spike/cache': STATUS, 'acme/app:wip': { ...STATUS, branch: 'wip' } } });
+    render(
+      wrap(
+        <TrackedBranchesSection
+          trackedBranches={[ENTRY, second]}
+          isOpen
+          onToggleSection={jest.fn()}
+          onSelectBranch={jest.fn()}
+          onClearSelection={onClearSelection}
+          selectedBranchKey="acme/app:spike/cache"
+        />,
+        value,
+      ),
+    );
+    await user.click(screen.getByRole('button', { name: 'Untrack wip' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Undo' })).toBeInTheDocument());
+    expect(onClearSelection).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Untrack spike/cache' }));
+    await waitFor(() => expect(onClearSelection).toHaveBeenCalledTimes(1));
   });
 
   test("a tracked row's name shows it in the pane, marked while it's there", async () => {

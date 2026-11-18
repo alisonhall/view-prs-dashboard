@@ -87,7 +87,7 @@ const { AuthorThreadResolutionSelectionProvider } = require('../state/AuthorThre
 const { ChangeFilterActorSelectionProvider } = require('../state/ChangeFilterActorSelectionProvider');
 const { PrActivityQueueProvider } = require('./PrActivityQueueProvider');
 const { usePrActivityQueue } = require('../state/PrActivityQueueContext');
-const { PrTableUiStateProvider } = require('../state/PrTableUiStateProvider');
+const { PrTableUiStateProvider, SELECTED_PR_STORAGE_KEY, SELECTED_BRANCH_STORAGE_KEY } = require('../state/PrTableUiStateProvider');
 const { usePrTableUiState, usePrTableOpenSections } = require('../state/PrTableUiStateContext');
 const { NotesDirtyContext } = require('../state/NotesDirtyContext');
 const { PrSectionPreferencesProvider } = require('../state/PrSectionPreferencesProvider');
@@ -920,6 +920,52 @@ describe('PrTableApp', () => {
       onToggleInsights('1', 'open', 'owner/repo');
     });
     expect(capturedSectionProps.at(-1).expandedInsights['open:owner/repo:1']).toBeFalsy();
+  });
+
+  describe('what the pane showed, opened again after a reload', () => {
+    const payload = () => ({ byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } });
+    afterEach(() => document.body.querySelectorAll('[data-test-row]').forEach((node) => node.remove()));
+
+    test('given the saved PR is in the data, then it is selected and its row brought into view', () => {
+      window.sessionStorage.setItem(SELECTED_PR_STORAGE_KEY, JSON.stringify({ repo: 'owner/repo', prNumber: '1' }));
+      // The row as PrTable renders it (PrSection is mocked here).
+      const table = document.createElement('table');
+      table.setAttribute('data-test-row', '');
+      table.innerHTML = '<tbody><tr class="pr-row" data-pr-number="1" data-repo="owner/repo"><td><a class="pr-link">#1</a></td></tr></tbody>';
+      document.body.appendChild(table);
+      const row = table.querySelector('tr');
+      row.scrollIntoView = jest.fn();
+      renderPrTableApp({ initialPayload: payload(), selectedRepo: 'owner/repo' });
+      expect(capturedUiState.selectedPr).toEqual({ repo: 'owner/repo', prNumber: '1' });
+      expect(latestPane().entry.prNumber).toBe('1');
+      expect(row.scrollIntoView).toHaveBeenCalledTimes(1);
+      // Only the once.
+      React.act(() => capturedUiState.setPaneTab('notes'));
+      expect(row.scrollIntoView).toHaveBeenCalledTimes(1);
+    });
+
+    test('given the saved PR or tracked branch is no longer in the data, then it is dropped', () => {
+      window.sessionStorage.setItem(SELECTED_PR_STORAGE_KEY, JSON.stringify({ repo: 'owner/repo', prNumber: '9' }));
+      window.sessionStorage.setItem(SELECTED_BRANCH_STORAGE_KEY, 'owner/repo:gone');
+      renderPrTableApp({ initialPayload: { ...payload(), dataMeta: { sources: { trackedBranches: [] } } }, selectedRepo: 'owner/repo' });
+      expect(capturedUiState.selectedPr).toBeNull();
+      expect(window.sessionStorage.getItem(SELECTED_PR_STORAGE_KEY)).toBeNull();
+      expect(window.sessionStorage.getItem(SELECTED_BRANCH_STORAGE_KEY)).toBeNull();
+    });
+
+    test('given data that does not list the tracked branches (a run\'s own payload), then the saved branch is kept', () => {
+      window.sessionStorage.setItem(SELECTED_BRANCH_STORAGE_KEY, 'owner/repo:wip');
+      renderPrTableApp({ initialPayload: payload(), selectedRepo: 'owner/repo' });
+      expect(window.sessionStorage.getItem(SELECTED_BRANCH_STORAGE_KEY)).toBe('owner/repo:wip');
+    });
+
+    test('given no data yet, then the saved PR is kept until it loads', () => {
+      window.sessionStorage.setItem(SELECTED_PR_STORAGE_KEY, JSON.stringify({ repo: 'owner/repo', prNumber: '1' }));
+      renderPrTableApp({ initialPayload: null, selectedRepo: 'owner/repo' });
+      expect(capturedUiState.selectedPr).toEqual({ repo: 'owner/repo', prNumber: '1' });
+      React.act(() => prDataProbe.applyFreshTablePayload(payload(), 'owner/repo'));
+      expect(capturedUiState.selectedPr).toEqual({ repo: 'owner/repo', prNumber: '1' });
+    });
   });
 
   describe('detail pane selection', () => {

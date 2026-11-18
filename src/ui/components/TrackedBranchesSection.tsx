@@ -212,6 +212,8 @@ export function TrackedBranchesSection({
         const note = noteOf(entry);
         setUntracked({ ...entry, ...(note ? { note } : { note: undefined }) });
         if (noteEditor?.key === key) setNoteEditor(null);
+        // Shown in the pane: closed now, not kept for a later Track.
+        if (key === selectedBranchKey) onClearSelection?.();
         refresh();
       }
     } catch (error) {

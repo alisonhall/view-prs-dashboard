@@ -1254,6 +1254,36 @@ export function PrTableApp() {
     if (target && selectPr(target)) findRowLink(target)?.closest('tr')?.scrollIntoView?.({ block: 'nearest' });
   };
 
+  // A selection kept for the tab, or one whose PR or tracked branch has
+  // since gone (archived, untracked): once the data's loaded, one no longer
+  // in it is dropped, so the pane shows its usual empty state and an
+  // untracked branch doesn't come back if tracked again.
+  useEffect(() => {
+    // Not loaded yet: the payload is {} until the first data arrives.
+    if (!payload?.byPrNumber) return;
+    if (selectedPr && !selectedEntry) setSelectedPr(null);
+    // Only from data that lists the tracked branches (a run's own payload
+    // has no dataMeta).
+    if (selectedBranchKey && !selectedBranch && payload.dataMeta?.sources) setSelectedBranchKey('');
+  }, [payload, selectedPr, selectedEntry, setSelectedPr, selectedBranchKey, selectedBranch]);
+
+  // After a reload, the row of what the pane opened again is brought into
+  // view once it's in the table - unless something else is picked first.
+  const restoredSelectionRef = useRef(selectedPr ? `pr:${selectedPrKey}` : selectedBranchKey ? `branch:${selectedBranchKey}` : '');
+  useEffect(() => {
+    const restored = restoredSelectionRef.current;
+    if (!restored) return;
+    const current = selectedPr ? `pr:${selectedPrKey}` : selectedBranchKey ? `branch:${selectedBranchKey}` : '';
+    if (current !== restored || !isPaneVisible) {
+      restoredSelectionRef.current = '';
+      return;
+    }
+    const row = selectedPr ? findRowLink(selectedPr)?.closest('tr') : findBranchButton(selectedBranchKey)?.closest('tr');
+    if (!row) return;
+    restoredSelectionRef.current = '';
+    row.scrollIntoView?.({ block: 'center' });
+  });
+
   // Hiding the pane unmounts its Notes too.
   const handleTogglePane = () => {
     if (isPaneVisible && !confirmLeavingPr()) return;
