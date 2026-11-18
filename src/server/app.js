@@ -4179,6 +4179,7 @@ const createViewPrsApp = ({ production = isProductionEnv } = {}) => {
     fetchPr: (...args) => viewPrsLocalCheckout.fetchPr(...args),
     pullPr: (...args) => viewPrsLocalCheckout.pullPr(...args),
     pullBranch: (...args) => viewPrsLocalCheckout.pullBranch(...args),
+    fetchBranch: (...args) => viewPrsLocalCheckout.fetchBranch(...args),
     createBranch: (...args) => viewPrsLocalCheckout.createBranch(...args),
     listCleanup: (...args) => viewPrsLocalCheckout.listCleanup(...args),
     removeCleanup: (...args) => viewPrsLocalCheckout.removeCleanup(...args),

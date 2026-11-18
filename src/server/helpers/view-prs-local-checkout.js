@@ -523,6 +523,40 @@ const createViewPrsLocalCheckout = ({
     }
   };
 
+  // A tracked branch's Fetch: the remote branch it tracks fetched into the
+  // clone, so its behind count is current - no files or local branches
+  // change. => { branch, remote, ref, behind?, ahead? } (against the
+  // fetched commit) - or throws with .status.
+  const fetchBranch = async ({ repo, cloneFolder, branch: name }) => {
+    if (busy.has(repo)) throw checkoutError(busyMessage(repo), { status: 409 });
+    busy.add(repo);
+    try {
+      const clone = await localBranches.readCloneFresh(repo, cloneFolder);
+      if (!clone.ok) throw checkoutError(clone.error);
+      const branch = clone.branches.find((item) => item.name === name);
+      if (!branch) throw checkoutError(`${repo}'s clone has no branch ${name}`, { status: 404 });
+      if (!branch.remote || !(clone.remotes || []).some((item) => item.name === branch.remote) || !branch.remoteRef.startsWith("refs/heads/")) {
+        throw checkoutError(`${name} tracks no remote branch, so there's nothing to fetch`, { status: 409 });
+      }
+      try {
+        await fetchInto(clone, branch.remote, branch.remoteRef);
+      } finally {
+        localBranches.forgetClone(repo);
+      }
+      const to = (await git(clone.folder, ["rev-parse", "--verify", "-q", "FETCH_HEAD^{commit}"])).trim();
+      let counts = {};
+      try {
+        const [ahead, behind] = (await git(clone.folder, ["rev-list", "--left-right", "--count", `${branch.oid}...${to}`])).trim().split(/\s+/).map(Number);
+        if (Number.isFinite(ahead) && Number.isFinite(behind)) counts = { ahead, behind };
+      } catch (_error) {
+        // Fetched; the counts come with the page's next read.
+      }
+      return { branch: name, remote: branch.remote, ref: branch.remoteRef, ...counts };
+    } finally {
+      busy.delete(repo);
+    }
+  };
+
   // The shared part of Pull: ref fetched from remote, then the local branch
   // fast-forwarded to it - in its worktree, git merge --ff-only; one not
   // checked out has its ref moved, only from the commit it was read at.
@@ -989,7 +1023,7 @@ const createViewPrsLocalCheckout = ({
   };
 
   // userShell: for Open in editor and Terminal's own commands, run the same way.
-  return { checkOut, fetchPr, pullPr, pullBranch, createBranch, checkCommands, listCleanup, removeCleanup, userShell };
+  return { checkOut, fetchPr, pullPr, pullBranch, fetchBranch, createBranch, checkCommands, listCleanup, removeCleanup, userShell };
 };
 
 module.exports = {

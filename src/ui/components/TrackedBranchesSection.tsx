@@ -27,7 +27,7 @@ import { Icon, type IconName } from './ui/Icon';
 import { Button, IconButton } from './ui/Button';
 import { Tooltip } from './ui/Tooltip';
 import { TrackBranchPicker, useBranchCandidates, useReadableCloneRepos } from './TrackBranchPicker';
-import { NewBranchForm, describeNewBranch } from './NewBranchForm';
+import { NewBranchForm, OpenFolderButtons, describeNewBranch } from './NewBranchForm';
 import { useLocalBranches } from '../state/LocalBranchesContext';
 import { useSnackbar } from '../state/SnackbarContext';
 import { useSearchTerms } from '../state/SearchTermsContext';
@@ -130,10 +130,13 @@ export function TrackedBranchesSection({
   const [newFromKey, setNewFromKey] = useState('');
   const [pullingKey, setPullingKey] = useState('');
   // What a Pull or New branch did, for a while.
-  const [notice, setNotice] = useState('');
+  // folder: a new branch's, with Editor and Terminal beside the words.
+  const [notice, setNotice] = useState<{ text: string; repo?: string; folder?: string } | null>(null);
+  const [fetchingKey, setFetchingKey] = useState('');
   useEffect(() => {
     if (!notice) return undefined;
-    const timer = window.setTimeout(() => setNotice(''), NOTICE_MS);
+    // Longer with buttons to use.
+    const timer = window.setTimeout(() => setNotice(null), notice.folder ? NOTICE_MS * 3 : NOTICE_MS);
     return () => window.clearTimeout(timer);
   }, [notice]);
   // The branch just untracked, for a while: Undo puts it back as it was.
@@ -271,16 +274,49 @@ export function TrackedBranchesSection({
         showError("Couldn't pull", [result.error || `HTTP ${response.status}`, result.output ? result.output.split('\n').slice(-4).join('\n') : ''].filter(Boolean).join('\n'));
         return;
       }
-      setNotice(
-        result.already
+      setNotice({
+        text: result.already
           ? `${entry.branch} is up to date with ${upstream.remote}/${upstream.branch}.`
           : `Pulled ${result.commits} commit${result.commits === 1 ? '' : 's'} into ${entry.branch}.`,
-      );
+      });
       refresh();
     } catch (error) {
       showError("Couldn't pull", error instanceof Error ? error.message : String(error));
     } finally {
       setPullingKey('');
+    }
+  };
+
+  // Fetch: the remote branch it tracks fetched, so how far behind it is
+  // is current; the branch itself is left as it is.
+  const fetchBranch = async (entry: PrTrackedBranch) => {
+    const key = trackedBranchKey(entry.repo, entry.branch);
+    const upstream = statuses[key]?.upstream;
+    if (!upstream) return;
+    setFetchingKey(key);
+    try {
+      const { response, result } = await postJson<{ ok?: boolean; error?: string; output?: string; behind?: number; ahead?: number }>(
+        '/view-prs/tracked-branches/fetch',
+        { repo: entry.repo, branch: entry.branch },
+      );
+      if (!response.ok || result.ok === false) {
+        showError("Couldn't fetch", result.error || `HTTP ${response.status}`);
+        return;
+      }
+      const behind = result.behind || 0;
+      setNotice({
+        text:
+          typeof result.behind !== 'number'
+            ? `Fetched ${upstream.remote}/${upstream.branch}.`
+            : behind > 0
+              ? `Fetched ${upstream.remote}/${upstream.branch}: ${entry.branch} is ${behind} commit${behind === 1 ? '' : 's'} behind it - Pull brings ${behind === 1 ? 'it' : 'them'} in.`
+              : `Fetched ${upstream.remote}/${upstream.branch}: ${entry.branch} is up to date with it.`,
+      });
+      refresh();
+    } catch (error) {
+      showError("Couldn't fetch", error instanceof Error ? error.message : String(error));
+    } finally {
+      setFetchingKey('');
     }
   };
 
@@ -346,7 +382,8 @@ export function TrackedBranchesSection({
         </div>
         {notice && (
           <p className="tracked-branches-notice" role="status">
-            {notice}
+            <span>{notice.text}</span>
+            {notice.repo && notice.folder && <OpenFolderButtons repo={notice.repo} folder={notice.folder} />}
           </p>
         )}
         {untracked && (
@@ -449,6 +486,15 @@ export function TrackedBranchesSection({
                       <div className="tracked-branch-actions-inner">
                       {status?.found && status.upstream && !status.upstream.gone && (
                         <IconButton
+                          icon="refresh"
+                          label={`Fetch ${entry.branch}`}
+                          hint={`Fetch ${status.upstream.remote}/${status.upstream.branch}, so how far behind it is is current - ${entry.branch} itself isn't changed`}
+                          disabled={fetchingKey === key}
+                          onClick={() => void fetchBranch(entry)}
+                        />
+                      )}
+                      {status?.found && status.upstream && !status.upstream.gone && (
+                        <IconButton
                           icon="arrowDown"
                           label={`Pull ${entry.branch}`}
                           hint={`Fetch ${status.upstream.remote}/${status.upstream.branch} and fast-forward ${entry.branch} to it (asks first)`}
@@ -488,7 +534,7 @@ export function TrackedBranchesSection({
                           onCancel={() => setNewFromKey('')}
                           onDone={(result) => {
                             setNewFromKey('');
-                            setNotice(describeNewBranch(result));
+                            setNotice({ text: describeNewBranch(result), repo: entry.repo, folder: result.worktreePath });
                           }}
                         />
                       </td>

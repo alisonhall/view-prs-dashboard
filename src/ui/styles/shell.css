@@ -543,3 +543,28 @@
   outline: none;
   box-shadow: var(--focus-ring);
 }
+
+.new-branch-hint {
+  min-height: 1.4em;
+  margin: -2px 0 0;
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.new-branch-hint[data-tone="error"] {
+  color: var(--color-danger);
+  font-family: var(--font-sans);
+}
+
+.new-branch-fields input[aria-invalid="true"] {
+  border-color: var(--color-danger);
+}
+
+.open-folder-buttons {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: 6px;
+  vertical-align: middle;
+}

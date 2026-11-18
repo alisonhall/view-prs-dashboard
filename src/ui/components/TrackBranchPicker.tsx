@@ -4,7 +4,7 @@ import { postJson } from '../helpers/pr-http.helpers.ts';
 import { formatShortAge } from '../helpers/pr-row-signals.helpers.ts';
 import { formatCommitAge } from '../helpers/tracked-branches.helpers.ts';
 import { useLocalBranches } from '../state/LocalBranchesContext';
-import { NewBranchForm, describeNewBranch, useBranchStarts } from './NewBranchForm';
+import { NewBranchForm, OpenFolderButtons, describeNewBranch, useBranchStarts } from './NewBranchForm';
 
 // A local branch that could be tracked (GET /view-prs/local-repos/branches).
 export interface BranchCandidate {
@@ -106,7 +106,8 @@ export function TrackBranchPicker({ version = '', onTracked }: { version?: strin
   const repo = repos.includes(chosenRepo) ? chosenRepo : repos[0] || '';
   const { byRepo, errors, loading, refresh } = useBranchCandidates(repo ? [repo] : [], version);
   const [tracking, setTracking] = useState('');
-  const [outcome, setOutcome] = useState<{ tone: 'done' | 'error'; text: string } | null>(null);
+  // folder: a new branch's, with Editor and Terminal beside the words.
+  const [outcome, setOutcome] = useState<{ tone: 'done' | 'error'; text: string; folder?: string } | null>(null);
   const filterId = useId();
   const [filter, setFilter] = useState('');
   // New branch: from any branch of the clone, local or remote.
@@ -194,7 +195,7 @@ export function TrackBranchPicker({ version = '', onTracked }: { version?: strin
               onCancel={() => setShowNew(false)}
               onDone={(result) => {
                 setShowNew(false);
-                setOutcome({ tone: 'done', text: describeNewBranch(result) });
+                setOutcome({ tone: 'done', text: describeNewBranch(result), folder: result.worktreePath });
                 refresh();
                 if (result.branch) onTracked?.(repo, result.branch);
               }}
@@ -269,7 +270,8 @@ export function TrackBranchPicker({ version = '', onTracked }: { version?: strin
       )}
       {outcome && (
         <p className="add-pr-outcome" data-tone={outcome.tone} role={outcome.tone === 'error' ? 'alert' : 'status'}>
-          {outcome.text}
+          <span>{outcome.text}</span>
+          {outcome.folder && <OpenFolderButtons repo={repo} folder={outcome.folder} />}
         </p>
       )}
     </div>

@@ -20,6 +20,7 @@ const fetchMock = jest.fn(async (url: string, init?: RequestInit) => {
       return { ok: true, status: 200, json: async () => ({ ok: true, branch: body.name, worktreePath: `D:/code/app-${String(body.name).replace(/\//g, "_")}`, startedFrom: 'origin/main' }) };
     }
     if (url.endsWith('/tracked-branches/pull')) return { ok: true, status: 200, json: async () => ({ ok: true, commits: 2 }) };
+    if (url.endsWith('/tracked-branches/fetch')) return { ok: true, status: 200, json: async () => ({ ok: true, ahead: 0, behind: 4 }) };
     return { ok: true, status: 200, json: async () => ({ ok: true, added: true }) };
   }
   if (url.startsWith('/view-prs/local-repos/branches?')) {
@@ -187,6 +188,16 @@ describe('TrackedBranchesSection', () => {
     }
   });
 
+  test('Fetch: the remote branch fetched, so how far behind is current; the branch untouched', async () => {
+    const user = userEvent.setup();
+    render(wrap(<TrackedBranchesSection trackedBranches={TRACKED} isOpen onToggleSection={jest.fn()} />, local({ branches: STATUSES })));
+    expect(screen.queryByRole('button', { name: 'Fetch wip' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Fetch spike/cache' }));
+    expect(posted).toEqual([{ url: '/view-prs/tracked-branches/fetch', method: 'POST', body: { repo: 'acme/app', branch: 'spike/cache' } }]);
+    expect(await screen.findByText('Fetched origin/spike/cache: spike/cache is 4 commits behind it - Pull brings them in.')).toBeInTheDocument();
+    expect(refresh).toHaveBeenCalled();
+  });
+
   test("New branch from a row: named, from that branch's newest, in a new worktree (or as the repo last chose), then tracked", async () => {
     const user = userEvent.setup();
     render(
@@ -200,14 +211,25 @@ describe('TrackedBranchesSection', () => {
     const form = screen.getByRole('form', { name: 'New branch from spike/cache' });
     // The repo's last choice first.
     expect(within(form).getByRole('radio', { name: /Switch the clone \(app\)/ })).toBeChecked();
+    const nameBox = within(form).getByRole('textbox', { name: 'New branch' });
+    // Where it'll go, and a name git won't take, as it's typed.
+    await user.type(nameBox, 'bad name');
+    expect(within(form).getByText('No spaces in a branch name')).toBeInTheDocument();
+    expect(within(form).getByRole('button', { name: 'Make and track it' })).toBeDisabled();
+    await user.clear(nameBox);
+    await user.type(nameBox, 'spike/cache-2');
+    expect(within(form).getByText("In app, the clone's own folder")).toBeInTheDocument();
     await user.click(within(form).getByRole('radio', { name: /A new worktree/ }));
-    await user.type(within(form).getByRole('textbox', { name: 'New branch' }), 'spike/cache-2');
+    expect(within(form).getByText('In ../app-spike_cache-2')).toBeInTheDocument();
     await user.click(within(form).getByRole('button', { name: 'Make and track it' }));
     expect(posted).toEqual([
       { url: '/view-prs/tracked-branches/new', method: 'POST', body: { repo: 'acme/app', name: 'spike/cache-2', start: 'refs/heads/spike/cache', fetch: true, mode: 'worktree' } },
     ]);
     expect(await screen.findByText('Made spike/cache-2 from origin/main in app-spike_cache-2, and tracking it.')).toBeInTheDocument();
     expect(screen.queryByRole('form')).not.toBeInTheDocument();
+    // Opened from there, as its row would be.
+    await user.click(screen.getByRole('button', { name: 'Open in editor' }));
+    expect(posted.at(-1)).toEqual({ url: '/view-prs/open-folder', method: 'POST', body: { repo: 'acme/app', path: 'D:/code/app-spike_cache-2', with: 'editor' } });
   });
 
   test("closed, the header says how many local branches could still be tracked; it opens the section with the picker", async () => {
@@ -281,6 +303,10 @@ describe('TrackBranchPicker', () => {
     await user.click(screen.getByRole('button', { name: 'New branch…' }));
     const form = await screen.findByRole('form', { name: 'New branch in acme/app' });
     const from = within(form).getByRole('combobox', { name: 'from' });
+    // A name the clone has already.
+    await user.type(within(form).getByRole('textbox', { name: 'New branch' }), 'other-work');
+    expect(within(form).getByText("acme/app's clone already has a branch other-work")).toBeInTheDocument();
+    await user.clear(within(form).getByRole('textbox', { name: 'New branch' }));
     expect(within(from).getAllByRole('option').map((option) => option.textContent)).toEqual(['main', 'other-work', 'origin/release']);
     await user.selectOptions(from, 'refs/remotes/origin/release');
     await user.type(within(form).getByRole('textbox', { name: 'New branch' }), 'hotfix');

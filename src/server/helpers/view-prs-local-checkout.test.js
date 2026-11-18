@@ -872,10 +872,17 @@ describe("checking out a PR into a worktree", () => {
     git(folder, "config", "branch.behind.merge", "refs/heads/main");
     expect(await checkout.pullBranch({ repo: "acme/app", cloneFolder: folder, branch: "behind" })).toMatchObject({ commits: 1, to: newer });
     expect(git(folder, "rev-parse", "behind")).toBe(newer);
+    // Fetch: the remote branch fetched, the branch left as it is.
+    git(folder, "update-ref", "refs/heads/behind", oids.base);
+    git(folder, "update-ref", "refs/remotes/origin/main", oids.base);
+    expect(await checkout.fetchBranch({ repo: "acme/app", cloneFolder: folder, branch: "behind" })).toMatchObject({ remote: "origin", ref: "refs/heads/main", ahead: 0, behind: 1 });
+    expect(git(folder, "rev-parse", "origin/main")).toBe(newer);
+    expect(git(folder, "rev-parse", "behind")).toBe(oids.base);
     // Local only: nothing to pull from.
     git(folder, "branch", "solo", "main");
     await expect(checkout.pullBranch({ repo: "acme/app", cloneFolder: folder, branch: "solo" })).rejects.toMatchObject({ status: 409, message: expect.stringContaining("tracks no branch") });
     await expect(checkout.pullBranch({ repo: "acme/app", cloneFolder: folder, branch: "nope" })).rejects.toMatchObject({ status: 404 });
+    await expect(checkout.fetchBranch({ repo: "acme/app", cloneFolder: folder, branch: "solo" })).rejects.toMatchObject({ status: 409 });
     // Uncommitted changes in its worktree: refused, nothing changed.
     git(folder, "update-ref", "refs/heads/main", oids.base);
     git(folder, "reset", "-q", "--hard", oids.base);

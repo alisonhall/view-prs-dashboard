@@ -21,12 +21,15 @@ const registerViewPrsLocalBranchesRoutes = ({
   // Finder by it, and says what Terminal opens.
   platform = process.platform,
   // view-prs-local-checkout.js's checkOut, fetchPr, pullPr, pullBranch,
-  // createBranch, checkCommands, listCleanup and removeCleanup.
+  // fetchBranch, createBranch, checkCommands, listCleanup and removeCleanup.
   checkOut,
   fetchPr,
   pullPr,
   pullBranch = async () => {
     throw Object.assign(new Error("Pull isn't available"), { status: 501 });
+  },
+  fetchBranch = async () => {
+    throw Object.assign(new Error("Fetch isn't available"), { status: 501 });
   },
   createBranch = async () => {
     throw Object.assign(new Error("New branch isn't available"), { status: 501 });
@@ -511,6 +514,29 @@ const registerViewPrsLocalBranchesRoutes = ({
         return;
       }
       res.json({ ok: true, ...(await pullBranch({ repo, cloneFolder: entry.path, branch })) });
+    } catch (error) {
+      if (!sendCheckoutError(res, error)) sendInternalError({ res, error });
+    }
+  });
+
+  // { repo, branch } - a tracked branch's remote branch fetched, so its
+  // behind count is current; nothing else changes
+  // (view-prs-local-checkout.js' fetchBranch): { branch, remote, ref,
+  // ahead?, behind? }.
+  app.post(["/tracked-branches/fetch", "/view-prs/tracked-branches/fetch"], async (req, res) => {
+    const repo = String(req.body?.repo || "").trim();
+    const branch = String(req.body?.branch || "").trim();
+    try {
+      const entry = localReposStorage.loadLocalRepoEntries()[repo];
+      if (!entry) {
+        res.status(404).json({ ok: false, error: `No clone of ${repo} saved (Settings › Local clones)` });
+        return;
+      }
+      if (!branch) {
+        res.status(400).json({ ok: false, error: "Which branch?" });
+        return;
+      }
+      res.json({ ok: true, ...(await fetchBranch({ repo, cloneFolder: entry.path, branch })) });
     } catch (error) {
       if (!sendCheckoutError(res, error)) sendInternalError({ res, error });
     }
