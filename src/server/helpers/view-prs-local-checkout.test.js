@@ -905,6 +905,15 @@ describe("checking out a PR into a worktree", () => {
     // The clone's own folder is left as it was.
     expect(git(folder, "rev-parse", "--abbrev-ref", "HEAD")).toBe("main");
 
+    // A local branch with commits of its own: those kept, not its remote branch's older commit.
+    git(folder, "branch", "--track", "ahead-here", "origin/main");
+    git(folder, "update-ref", "refs/heads/ahead-here", git(folder, "commit-tree", "-p", newer, "-m", "local only", `${newer}^{tree}`));
+    const ownCommit = git(folder, "rev-parse", "ahead-here");
+    git(folder, "config", "branch.ahead-here.merge", "refs/heads/main");
+    const kept = await checkout.createBranch({ repo: "acme/app", cloneFolder: folder, name: "from-ahead", start: "refs/heads/ahead-here" });
+    expect(kept).toMatchObject({ oid: ownCommit, startedFrom: "ahead-here", fetched: true });
+    expect(kept.warning).toBeUndefined();
+
     // Without fetching: the local branch as it is.
     const asIs = await checkout.createBranch({ repo: "acme/app", cloneFolder: folder, name: "as-is", start: "refs/heads/main", fetch: false });
     expect(asIs).toMatchObject({ oid: oids.base, startedFrom: "main", fetched: false });

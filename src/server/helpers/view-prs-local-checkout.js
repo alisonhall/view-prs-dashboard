@@ -638,13 +638,33 @@ const createViewPrsLocalCheckout = ({
       if (fetch && source) {
         // Can't be fetched (deleted on GitHub, offline): from what the clone
         // has, said so - nothing's lost by starting there.
+        let newest = "";
         try {
           await fetchInto(clone, source.remote, source.ref);
-          oid = (await git(clone.folder, ["rev-parse", "--verify", "-q", "FETCH_HEAD^{commit}"])).trim() || oid;
-          startedFrom = source.label;
+          newest = (await git(clone.folder, ["rev-parse", "--verify", "-q", "FETCH_HEAD^{commit}"])).trim();
           fetched = true;
         } catch (failure) {
           warning = `${source.label} couldn't be fetched (${failure.message.replace(/^git fetch failed: /, "")}), so it started from ${startedFrom} as the clone has it`;
+        }
+        const isAncestor = async (older, newer) => {
+          try {
+            await git(clone.folder, ["merge-base", "--is-ancestor", older, newer]);
+            return true;
+          } catch (_not) {
+            return false;
+          }
+        };
+        if (newest && newest !== oid) {
+          // A local branch's own commits aren't left behind: its remote
+          // branch only when that's ahead of it (or it's a remote branch).
+          if (!startText.startsWith("refs/heads/") || (await isAncestor(oid, newest))) {
+            oid = newest;
+            startedFrom = source.label;
+          } else if (!(await isAncestor(newest, oid))) {
+            warning = `${startedFrom} and ${source.label} have each moved on, so it started from ${startedFrom} as the clone has it (its own commits kept)`;
+          }
+        } else if (newest) {
+          startedFrom = source.label;
         }
       }
 
