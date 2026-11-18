@@ -840,6 +840,122 @@ describe("checking out a PR into a worktree", () => {
     });
   });
 
+  // A clone of its own remote (a bare copy of the shared one), so pushing
+  // to it changes nothing for the other tests.
+  const ownClone = (label) => {
+    const own = path.join(root, `${label}-remote.git`);
+    git(root, "clone", "-q", "--bare", remote, own);
+    const folder = path.join(root, label, "app");
+    fs.mkdirSync(path.dirname(folder), { recursive: true });
+    git(root, "clone", "-q", own, folder);
+    git(folder, "remote", "set-url", "origin", "https://github.com/acme/app.git");
+    git(folder, "config", `url.${toPosix(own)}.insteadOf`, "https://github.com/acme/app.git");
+    // Someone else's push: a commit on main the clone hasn't fetched.
+    const other = path.join(root, `${label}-other`);
+    git(root, "clone", "-q", own, other);
+    const newer = commit(other, "newer on main");
+    git(other, "push", "-q", "origin", "main");
+    return { folder, newer };
+  };
+
+  test("Pull a tracked branch: fetched, then fast-forwarded - checked out or not; one tracking nothing, or with changes, is refused", async () => {
+    const { folder, newer } = ownClone("pull-branch");
+    const { checkout } = setUp();
+    // main, checked out in the clone's folder: merged there.
+    const pulled = await checkout.pullBranch({ repo: "acme/app", cloneFolder: folder, branch: "main" });
+    expect(pulled).toMatchObject({ branch: "main", to: newer, commits: 1 });
+    expect(git(folder, "rev-parse", "HEAD")).toBe(newer);
+    expect((await checkout.pullBranch({ repo: "acme/app", cloneFolder: folder, branch: "main" })).already).toBe(true);
+    // Not checked out: its ref moved.
+    git(folder, "branch", "--track", "behind", "origin/main");
+    git(folder, "update-ref", "refs/heads/behind", oids.base);
+    git(folder, "config", "branch.behind.merge", "refs/heads/main");
+    expect(await checkout.pullBranch({ repo: "acme/app", cloneFolder: folder, branch: "behind" })).toMatchObject({ commits: 1, to: newer });
+    expect(git(folder, "rev-parse", "behind")).toBe(newer);
+    // Fetch: the remote branch fetched, the branch left as it is.
+    git(folder, "update-ref", "refs/heads/behind", oids.base);
+    git(folder, "update-ref", "refs/remotes/origin/main", oids.base);
+    expect(await checkout.fetchBranch({ repo: "acme/app", cloneFolder: folder, branch: "behind" })).toMatchObject({ remote: "origin", ref: "refs/heads/main", ahead: 0, behind: 1 });
+    expect(git(folder, "rev-parse", "origin/main")).toBe(newer);
+    expect(git(folder, "rev-parse", "behind")).toBe(oids.base);
+    // Local only: nothing to pull from.
+    git(folder, "branch", "solo", "main");
+    await expect(checkout.pullBranch({ repo: "acme/app", cloneFolder: folder, branch: "solo" })).rejects.toMatchObject({ status: 409, message: expect.stringContaining("tracks no branch") });
+    await expect(checkout.pullBranch({ repo: "acme/app", cloneFolder: folder, branch: "nope" })).rejects.toMatchObject({ status: 404 });
+    await expect(checkout.fetchBranch({ repo: "acme/app", cloneFolder: folder, branch: "solo" })).rejects.toMatchObject({ status: 409 });
+    // Uncommitted changes in its worktree: refused, nothing changed.
+    git(folder, "update-ref", "refs/heads/main", oids.base);
+    git(folder, "reset", "-q", "--hard", oids.base);
+    fs.writeFileSync(path.join(folder, "tracked.txt"), "x");
+    git(folder, "add", "tracked.txt");
+    await expect(checkout.pullBranch({ repo: "acme/app", cloneFolder: folder, branch: "main" })).rejects.toMatchObject({ status: 409, message: expect.stringContaining("Uncommitted") });
+    expect(git(folder, "rev-parse", "HEAD")).toBe(oids.base);
+  });
+
+  test("New branch: from a branch's newest (fetched first), in a new worktree tracking nothing - its after-command run there", async () => {
+    const { folder, newer } = ownClone("new-worktree");
+    const { checkout } = setUp();
+    const made = await checkout.createBranch({
+      repo: "acme/app",
+      cloneFolder: folder,
+      settings: { after: "touch after-ran" },
+      name: "spike/idea",
+      start: "refs/heads/main",
+    });
+    const tree = path.join(root, "new-worktree", "app-spike_idea");
+    expect(made).toMatchObject({ branch: "spike/idea", oid: newer, startedFrom: "origin/main", fetched: true });
+    samePath(made.worktreePath, tree);
+    expect(git(tree, "rev-parse", "--abbrev-ref", "HEAD")).toBe("spike/idea");
+    expect(git(tree, "rev-parse", "HEAD")).toBe(newer);
+    expect(() => git(folder, "config", "branch.spike/idea.remote")).toThrow();
+    expect(fs.existsSync(path.join(tree, "after-ran"))).toBe(true);
+    // The clone's own folder is left as it was.
+    expect(git(folder, "rev-parse", "--abbrev-ref", "HEAD")).toBe("main");
+
+    // A local branch with commits of its own: those kept, not its remote branch's older commit.
+    git(folder, "branch", "--track", "ahead-here", "origin/main");
+    git(folder, "update-ref", "refs/heads/ahead-here", git(folder, "commit-tree", "-p", newer, "-m", "local only", `${newer}^{tree}`));
+    const ownCommit = git(folder, "rev-parse", "ahead-here");
+    git(folder, "config", "branch.ahead-here.merge", "refs/heads/main");
+    const kept = await checkout.createBranch({ repo: "acme/app", cloneFolder: folder, name: "from-ahead", start: "refs/heads/ahead-here" });
+    expect(kept).toMatchObject({ oid: ownCommit, startedFrom: "ahead-here", fetched: true });
+    expect(kept.warning).toBeUndefined();
+
+    // Without fetching: the local branch as it is.
+    const asIs = await checkout.createBranch({ repo: "acme/app", cloneFolder: folder, name: "as-is", start: "refs/heads/main", fetch: false });
+    expect(asIs).toMatchObject({ oid: oids.base, startedFrom: "main", fetched: false });
+    // From a remote branch the clone has never checked out.
+    const remoteStart = await checkout.createBranch({ repo: "acme/app", cloneFolder: folder, name: "on-feature", start: "refs/remotes/origin/feature/x" });
+    expect(remoteStart).toMatchObject({ oid: oids.feature, startedFrom: "origin/feature/x" });
+
+    // Its remote branch deleted on GitHub (the clone's copy still there): from that copy, said so.
+    git(folder, "update-ref", "refs/remotes/origin/gone-upstream", oids.base);
+    const stale = await checkout.createBranch({ repo: "acme/app", cloneFolder: folder, name: "from-gone", start: "refs/remotes/origin/gone-upstream" });
+    expect(stale).toMatchObject({ oid: oids.base, startedFrom: "origin/gone-upstream", fetched: false, warning: expect.stringContaining("couldn't be fetched") });
+
+    await expect(checkout.createBranch({ repo: "acme/app", cloneFolder: folder, name: "as-is", start: "refs/heads/main" })).rejects.toMatchObject({ status: 409 });
+    await expect(checkout.createBranch({ repo: "acme/app", cloneFolder: folder, name: "bad..name", start: "refs/heads/main" })).rejects.toMatchObject({ status: 400 });
+    await expect(checkout.createBranch({ repo: "acme/app", cloneFolder: folder, name: "x", start: "refs/heads/nope" })).rejects.toMatchObject({ status: 404 });
+    await expect(checkout.createBranch({ repo: "acme/app", cloneFolder: folder, name: "x", start: "main" })).rejects.toMatchObject({ status: 400 });
+  });
+
+  test("New branch, switching the clone: its own folder moves to the new branch - refused with uncommitted changes there", async () => {
+    const { folder, newer } = ownClone("new-switch");
+    const { checkout } = setUp();
+    fs.writeFileSync(path.join(folder, "staged.txt"), "x");
+    git(folder, "add", "staged.txt");
+    await expect(
+      checkout.createBranch({ repo: "acme/app", cloneFolder: folder, name: "switched", start: "refs/heads/main", mode: "switch" }),
+    ).rejects.toMatchObject({ status: 409, message: expect.stringContaining("Uncommitted") });
+    expect(() => git(folder, "rev-parse", "--verify", "-q", "refs/heads/switched")).toThrow();
+    git(folder, "reset", "-q", "--hard");
+    fs.rmSync(path.join(folder, "staged.txt"), { force: true });
+    const made = await checkout.createBranch({ repo: "acme/app", cloneFolder: folder, name: "switched", start: "refs/heads/main", mode: "switch" });
+    samePath(made.worktreePath, folder);
+    expect(git(folder, "rev-parse", "--abbrev-ref", "HEAD")).toBe("switched");
+    expect(git(folder, "rev-parse", "HEAD")).toBe(newer);
+  });
+
   test("placeholders are the quoted variables; folder names have no / nor anything Windows refuses; the reason skips a shell's complaints", () => {
     expect(expandPlaceholders("my-tool add {branch} --pr {number} {unknown}")).toBe('my-tool add "$VIEW_PRS_BRANCH" --pr "$VIEW_PRS_NUMBER" {unknown}');
     expect(worktreeFolderFor("", path.join(root, "app"), "feature/a")).toBe(path.join(root, "app-feature_a"));

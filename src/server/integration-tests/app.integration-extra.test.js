@@ -1008,6 +1008,37 @@ describe("integration behavior", () => {
         expect((await request.patch("/view-prs/tracked-branches").send({ repo: "owner/repo", branch: "nope", note: "x" })).status).toBe(404);
         expect((await request.patch("/view-prs/tracked-branches").send({ repo: "owner/repo", branch: "wip", base: "bad base" })).status).toBe(400);
 
+        // Pull: a branch tracking nothing has nothing to pull.
+        const pull = await request.post("/view-prs/tracked-branches/pull").send({ repo: "owner/repo", branch: "wip" });
+        expect(pull.status).toBe(409);
+        expect(pull.body.error).toContain("tracks no branch");
+
+        // New branch from feature, in a worktree: tracked, compared with feature.
+        const made = await request.post("/view-prs/tracked-branches/new").send({ repo: "owner/repo", name: "from-feature", start: "refs/heads/feature", fetch: false });
+        expect(made.body).toMatchObject({ ok: true, branch: "from-feature", oid: oids.local, startedFrom: "feature", trackedBranch: { branch: "from-feature", base: "feature" } });
+        expect(fs.existsSync(made.body.worktreePath)).toBe(true);
+        expect(JSON.parse(fs.readFileSync(process.env.VIEW_PRS_LOCAL_REPOS_FILE, "utf8")).repos["owner/repo"].newBranch).toBeUndefined();
+        git(clone, "worktree", "remove", "--force", made.body.worktreePath);
+        git(clone, "branch", "-D", "from-feature");
+        expect((await request.post("/view-prs/tracked-branches/new").send({ repo: "owner/repo", name: "", start: "refs/heads/feature" })).status).toBe(400);
+        expect((await request.post("/view-prs/tracked-branches/new").send({ repo: "other/repo", name: "x", start: "refs/heads/feature" })).status).toBe(404);
+        await request.delete("/view-prs/tracked-branches").send({ repo: "owner/repo", branch: "from-feature" });
+
+        // Switching the clone instead: kept as the repo's choice for next time.
+        const before = git(clone, "rev-parse", "--abbrev-ref", "HEAD");
+        const switched = await request.post("/view-prs/tracked-branches/new").send({ repo: "owner/repo", name: "switched-here", start: "refs/heads/wip", fetch: false, mode: "switch" });
+        expect(switched.body).toMatchObject({ ok: true, branch: "switched-here" });
+        expect(git(clone, "rev-parse", "--abbrev-ref", "HEAD")).toBe("switched-here");
+        expect(JSON.parse(fs.readFileSync(process.env.VIEW_PRS_LOCAL_REPOS_FILE, "utf8")).repos["owner/repo"].newBranch).toBe("switch");
+        expect((await request.get("/view-prs/local-repos")).body.repos["owner/repo"].newBranch).toBe("switch");
+        git(clone, "switch", "-q", before);
+        git(clone, "branch", "-D", "switched-here");
+        await request.delete("/view-prs/tracked-branches").send({ repo: "owner/repo", branch: "switched-here" });
+
+        // Every branch a new one could start from, on asking.
+        const starts = (await request.get("/view-prs/local-repos/branches?repo=owner/repo&starts=1")).body.starts;
+        expect(starts.map((item) => item.ref)).toEqual(expect.arrayContaining(["refs/heads/feature", "refs/heads/wip"]));
+
         const removed = await request.delete("/view-prs/tracked-branches").send({ repo: "owner/repo", branch: "wip" });
         expect(removed.body).toMatchObject({ ok: true, removed: true });
         expect((await request.get("/view-prs/local-branches")).body.branches).toEqual({});

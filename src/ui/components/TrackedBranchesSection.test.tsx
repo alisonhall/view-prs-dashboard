@@ -9,16 +9,24 @@ import { TrackedBranchesSection } from './TrackedBranchesSection';
 import { TrackBranchPicker } from './TrackBranchPicker';
 
 let candidates: Record<string, unknown[]>;
+let starts: Record<string, unknown[]>;
 let changes: Record<string, unknown>;
 let posted: Array<{ url: string; method: string; body: unknown }>;
 const fetchMock = jest.fn(async (url: string, init?: RequestInit) => {
   if (init?.method && init.method !== 'GET') {
-    posted.push({ url, method: init.method, body: JSON.parse(String(init.body || '{}')) });
+    const body = JSON.parse(String(init.body || '{}'));
+    posted.push({ url, method: init.method, body });
+    if (url.endsWith('/tracked-branches/new')) {
+      return { ok: true, status: 200, json: async () => ({ ok: true, branch: body.name, worktreePath: `D:/code/app-${String(body.name).replace(/\//g, "_")}`, startedFrom: 'origin/main' }) };
+    }
+    if (url.endsWith('/tracked-branches/pull')) return { ok: true, status: 200, json: async () => ({ ok: true, commits: 2 }) };
+    if (url.endsWith('/tracked-branches/fetch')) return { ok: true, status: 200, json: async () => ({ ok: true, ahead: 0, behind: 4 }) };
     return { ok: true, status: 200, json: async () => ({ ok: true, added: true }) };
   }
   if (url.startsWith('/view-prs/local-repos/branches?')) {
-    const repo = new URLSearchParams(url.split('?')[1]).get('repo') || '';
-    return { ok: true, status: 200, json: async () => ({ ok: true, branches: candidates[repo] || [] }) };
+    const query = new URLSearchParams(url.split('?')[1]);
+    const repo = query.get('repo') || '';
+    return { ok: true, status: 200, json: async () => ({ ok: true, branches: candidates[repo] || [], ...(query.get('starts') ? { starts: starts[repo] || [] } : {}) }) };
   }
   if (url === '/view-prs/tracked-branches/changes') return { ok: true, status: 200, json: async () => ({ ok: true, changes }) };
   return { ok: false, status: 404, json: async () => ({ ok: false }) };
@@ -51,6 +59,7 @@ const STATUSES = {
   'acme/app:spike/cache': {
     found: true,
     branch: 'spike/cache',
+    upstream: { remote: 'origin', branch: 'spike/cache', ahead: 0, behind: 3 },
     committedAt: new Date(Date.now() - 3 * 86400000).toISOString(),
     subject: 'Add cache',
     worktreePath: 'D:/code/app-spike',
@@ -65,7 +74,13 @@ const STATUSES = {
 
 describe('TrackedBranchesSection', () => {
   beforeEach(() => {
-    candidates = { 'acme/app': [{ name: 'other-work', oid: 'abc', committedAt: new Date().toISOString(), subject: 'Start' }] };
+    candidates = {
+      'acme/app': [
+        { name: 'main', oid: 'm', upstream: 'origin/main', main: true },
+        { name: 'other-work', oid: 'abc', committedAt: new Date().toISOString(), subject: 'Start' },
+      ],
+    };
+    starts = {};
     changes = { 'acme/app:spike/cache': { worktreePath: 'D:/code/app-spike', staged: 0, changed: 1, untracked: 0, conflicted: 0, total: 1, files: [{ path: 'a.ts', code: ' M' }] } };
     posted = [];
     fetchMock.mockClear();
@@ -81,7 +96,8 @@ describe('TrackedBranchesSection', () => {
     // Newest commit first; those this computer can't say for last.
     expect(rows.map((row) => row.getAttribute('data-branch-key'))).toEqual(['acme/app:spike/cache', 'acme/app:wip', 'other/lib:elsewhere']);
     expect(rows[0]).toHaveTextContent('app-spike');
-    expect(rows[0]).toHaveTextContent('Local only · 2 commits');
+    expect(rows[0]).toHaveTextContent('2 not pushed');
+    expect(rows[0]).toHaveTextContent('3 behind');
     expect(rows[0]).toHaveTextContent('2 ahead, 5 behind main');
     expect(rows[0]).toHaveTextContent('3d ago');
     await waitFor(() => expect(rows[0]).toHaveTextContent('1 uncommitted'));
@@ -153,6 +169,69 @@ describe('TrackedBranchesSection', () => {
     expect(posted.at(-1)).toEqual({ url: '/view-prs/tracked-branches', method: 'POST', body: { repo: 'acme/app', branch: 'wip', note: 'Half done', restore: true } });
   });
 
+  test('Pull, after asking: the remote branch fetched and the branch fast-forwarded; only for one tracking a remote branch', async () => {
+    const user = userEvent.setup();
+    const confirm = jest.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
+    try {
+      render(wrap(<TrackedBranchesSection trackedBranches={TRACKED} isOpen onToggleSection={jest.fn()} />, local({ branches: STATUSES })));
+      expect(screen.queryByRole('button', { name: 'Pull wip' })).not.toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Pull spike/cache' }));
+      expect(confirm.mock.calls[0]?.[0]).toContain('Pull origin/spike/cache into spike/cache (checked out in D:/code/app-spike)?');
+      expect(confirm.mock.calls[0]?.[0]).toContain('3 new commits as of the last fetch');
+      expect(posted).toEqual([]);
+      await user.click(screen.getByRole('button', { name: 'Pull spike/cache' }));
+      expect(posted).toEqual([{ url: '/view-prs/tracked-branches/pull', method: 'POST', body: { repo: 'acme/app', branch: 'spike/cache' } }]);
+      expect(await screen.findByText('Pulled 2 commits into spike/cache.')).toBeInTheDocument();
+      expect(refresh).toHaveBeenCalled();
+    } finally {
+      confirm.mockRestore();
+    }
+  });
+
+  test('Fetch: the remote branch fetched, so how far behind is current; the branch untouched', async () => {
+    const user = userEvent.setup();
+    render(wrap(<TrackedBranchesSection trackedBranches={TRACKED} isOpen onToggleSection={jest.fn()} />, local({ branches: STATUSES })));
+    expect(screen.queryByRole('button', { name: 'Fetch wip' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Fetch spike/cache' }));
+    expect(posted).toEqual([{ url: '/view-prs/tracked-branches/fetch', method: 'POST', body: { repo: 'acme/app', branch: 'spike/cache' } }]);
+    expect(await screen.findByText('Fetched origin/spike/cache: spike/cache is 4 commits behind it - Pull brings them in.')).toBeInTheDocument();
+    expect(refresh).toHaveBeenCalled();
+  });
+
+  test("New branch from a row: named, from that branch's newest, in a new worktree (or as the repo last chose), then tracked", async () => {
+    const user = userEvent.setup();
+    render(
+      wrap(
+        <TrackedBranchesSection trackedBranches={TRACKED} isOpen onToggleSection={jest.fn()} />,
+        local({ branches: STATUSES, repos: { 'acme/app': { path: 'D:/code/app', ok: true, newBranch: 'switch' } } }),
+      ),
+    );
+    expect(screen.queryByRole('button', { name: 'New branch from wip' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'New branch from spike/cache' }));
+    const form = screen.getByRole('form', { name: 'New branch from spike/cache' });
+    // The repo's last choice first.
+    expect(within(form).getByRole('radio', { name: /Switch the clone \(app\)/ })).toBeChecked();
+    const nameBox = within(form).getByRole('textbox', { name: 'New branch' });
+    // Where it'll go, and a name git won't take, as it's typed.
+    await user.type(nameBox, 'bad name');
+    expect(within(form).getByText('No spaces in a branch name')).toBeInTheDocument();
+    expect(within(form).getByRole('button', { name: 'Make and track it' })).toBeDisabled();
+    await user.clear(nameBox);
+    await user.type(nameBox, 'spike/cache-2');
+    expect(within(form).getByText("In app, the clone's own folder")).toBeInTheDocument();
+    await user.click(within(form).getByRole('radio', { name: /A new worktree/ }));
+    expect(within(form).getByText('In ../app-spike_cache-2')).toBeInTheDocument();
+    await user.click(within(form).getByRole('button', { name: 'Make and track it' }));
+    expect(posted).toEqual([
+      { url: '/view-prs/tracked-branches/new', method: 'POST', body: { repo: 'acme/app', name: 'spike/cache-2', start: 'refs/heads/spike/cache', fetch: true, mode: 'worktree' } },
+    ]);
+    expect(await screen.findByText('Made spike/cache-2 from origin/main in app-spike_cache-2, and tracking it.')).toBeInTheDocument();
+    expect(screen.queryByRole('form')).not.toBeInTheDocument();
+    // Opened from there, as its row would be.
+    await user.click(screen.getByRole('button', { name: 'Open in editor' }));
+    expect(posted.at(-1)).toEqual({ url: '/view-prs/open-folder', method: 'POST', body: { repo: 'acme/app', path: 'D:/code/app-spike_cache-2', with: 'editor' } });
+  });
+
   test("closed, the header says how many local branches could still be tracked; it opens the section with the picker", async () => {
     const user = userEvent.setup();
     const onToggleSection = jest.fn();
@@ -201,10 +280,47 @@ describe('TrackBranchPicker', () => {
     const select = screen.getByRole('combobox', { name: 'Clone' });
     expect(within(select).getAllByRole('option').map((option) => option.textContent)).toEqual(['acme/app', 'acme/web']);
     await user.selectOptions(select, 'acme/web');
-    expect(await screen.findByText(/No local branches without a PR in acme\/web/)).toBeInTheDocument();
+    expect(await screen.findByText(/Nothing left to track in acme\/web/)).toBeInTheDocument();
     unmount();
     render(wrap(<TrackBranchPicker />, local({ repos: {} })));
     expect(screen.getByText(/Save a clone in Settings › Local clones first/)).toBeInTheDocument();
+  });
+
+  test('the main branches come first, marked; New branch starts from any branch of the clone, local or remote', async () => {
+    const user = userEvent.setup();
+    candidates['acme/app'] = [{ name: 'main', oid: 'm', upstream: 'origin/main', main: true }, ...(candidates['acme/app'] || [])];
+    starts = {
+      'acme/app': [
+        { ref: 'refs/heads/main', name: 'main' },
+        { ref: 'refs/heads/other-work', name: 'other-work' },
+        { ref: 'refs/remotes/origin/release', name: 'origin/release', remote: true },
+      ],
+    };
+    const onTracked = jest.fn();
+    render(wrap(<TrackBranchPicker onTracked={onTracked} />));
+    const first = (await screen.findAllByRole('listitem'))[0] as HTMLElement;
+    expect(first).toHaveTextContent('mainmain branch');
+    await user.click(screen.getByRole('button', { name: 'New branch…' }));
+    const form = await screen.findByRole('form', { name: 'New branch in acme/app' });
+    const from = within(form).getByRole('combobox', { name: 'from' });
+    // A name the clone has already.
+    await user.type(within(form).getByRole('textbox', { name: 'New branch' }), 'other-work');
+    expect(within(form).getByText("acme/app's clone already has a branch other-work")).toBeInTheDocument();
+    // One git can't keep beside a branch the clone has.
+    await user.type(within(form).getByRole('textbox', { name: 'New branch' }), '/fix');
+    expect(within(form).getByText("acme/app's clone has a branch other-work, and git can't keep other-work/fix beside it")).toBeInTheDocument();
+    expect(within(form).getByRole('button', { name: 'Make and track it' })).toBeDisabled();
+    await user.clear(within(form).getByRole('textbox', { name: 'New branch' }));
+    expect(within(from).getAllByRole('option').map((option) => option.textContent)).toEqual(['main', 'other-work', 'origin/release']);
+    await user.selectOptions(from, 'refs/remotes/origin/release');
+    await user.type(within(form).getByRole('textbox', { name: 'New branch' }), 'hotfix');
+    await user.click(within(form).getByRole('checkbox', { name: /Fetch it first/ }));
+    await user.click(within(form).getByRole('button', { name: 'Make and track it' }));
+    expect(posted).toEqual([
+      { url: '/view-prs/tracked-branches/new', method: 'POST', body: { repo: 'acme/app', name: 'hotfix', start: 'refs/remotes/origin/release', fetch: false, mode: 'worktree' } },
+    ]);
+    expect(await screen.findByText(/Made hotfix from origin\/main in app-hotfix, and tracking it/)).toBeInTheDocument();
+    expect(onTracked).toHaveBeenCalledWith('acme/app', 'hotfix');
   });
 
   test('a clone with many branches gets a filter: by name or commit subject', async () => {

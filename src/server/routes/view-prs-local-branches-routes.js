@@ -20,11 +20,20 @@ const registerViewPrsLocalBranchesRoutes = ({
   // The server's platform (process.platform): the page names Explorer or
   // Finder by it, and says what Terminal opens.
   platform = process.platform,
-  // view-prs-local-checkout.js's checkOut, fetchPr, pullPr, checkCommands,
-  // listCleanup and removeCleanup.
+  // view-prs-local-checkout.js's checkOut, fetchPr, pullPr, pullBranch,
+  // fetchBranch, createBranch, checkCommands, listCleanup and removeCleanup.
   checkOut,
   fetchPr,
   pullPr,
+  pullBranch = async () => {
+    throw Object.assign(new Error("Pull isn't available"), { status: 501 });
+  },
+  fetchBranch = async () => {
+    throw Object.assign(new Error("Fetch isn't available"), { status: 501 });
+  },
+  createBranch = async () => {
+    throw Object.assign(new Error("New branch isn't available"), { status: 501 });
+  },
   checkCommands,
   listCleanup,
   removeCleanup,
@@ -88,7 +97,14 @@ const registerViewPrsLocalBranchesRoutes = ({
   // them, and an answer without the settings would drop them from it.
   const withCheckout = (repos, entries = localReposStorage.loadLocalRepoEntries()) =>
     Object.fromEntries(
-      Object.entries(repos || {}).map(([repo, status]) => [repo, entries[repo]?.checkout ? { ...status, checkout: entries[repo].checkout } : status]),
+      Object.entries(repos || {}).map(([repo, status]) => [
+        repo,
+        {
+          ...status,
+          ...(entries[repo]?.checkout ? { checkout: entries[repo].checkout } : {}),
+          ...(entries[repo]?.newBranch ? { newBranch: entries[repo].newBranch } : {}),
+        },
+      ]),
     );
   const reposStatus = async () => {
     const { repos } = await localBranches.getLocalBranches({ localRepos: localReposStorage.loadLocalRepos(), prs: [] });
@@ -354,9 +370,11 @@ const registerViewPrsLocalBranchesRoutes = ({
   });
 
   // ?repo= - the clone's local branches that could be tracked (Track a
-  // branch): no PR's, not a PR's base, not the default branch, not tracked
-  // already - { branches: [{ name, oid, committedAt?, subject?,
-  // worktreePath?, upstream? }], defaultBranch }, newest first.
+  // branch): no PR's, not tracked already; the main branches (the default,
+  // open PRs' bases) first, marked main - { branches: [{ name, oid,
+  // committedAt?, subject?, worktreePath?, upstream?, main? }],
+  // defaultBranch }. &starts=1: and starts, every branch New branch could
+  // start from ([{ ref, name, remote? }]).
   app.get(["/local-repos/branches", "/view-prs/local-repos/branches"], async (req, res) => {
     const repo = String(req.query?.repo || "").trim();
     try {
@@ -371,6 +389,7 @@ const registerViewPrsLocalBranchesRoutes = ({
         folder,
         prs: listPrs({ [repo]: folder }),
         tracked: listTrackedBranches().filter((entry) => entry.repo === repo).map((entry) => entry.branch),
+        starts: req.query?.starts === "1",
       });
       if (!result.ok) {
         res.status(422).json(result);
@@ -467,6 +486,107 @@ const registerViewPrsLocalBranchesRoutes = ({
       if (removed) emitDataChanged();
     } catch (error) {
       changeError(res, error);
+    }
+  });
+
+  const sendCheckoutError = (res, error) => {
+    if (error?.status) {
+      res.status(error.status).json({ ok: false, error: error.message, output: error.output || "" });
+      return true;
+    }
+    return false;
+  };
+
+  // { repo, branch } - a tracked branch fast-forwarded to the remote branch
+  // it tracks, fetched first (view-prs-local-checkout.js' pullBranch; the
+  // row asks first): { branch, from, to, commits, worktreePath?, already? }.
+  app.post(["/tracked-branches/pull", "/view-prs/tracked-branches/pull"], async (req, res) => {
+    const repo = String(req.body?.repo || "").trim();
+    const branch = String(req.body?.branch || "").trim();
+    try {
+      const entry = localReposStorage.loadLocalRepoEntries()[repo];
+      if (!entry) {
+        res.status(404).json({ ok: false, error: `No clone of ${repo} saved (Settings › Local clones)` });
+        return;
+      }
+      if (!branch) {
+        res.status(400).json({ ok: false, error: "Which branch?" });
+        return;
+      }
+      res.json({ ok: true, ...(await pullBranch({ repo, cloneFolder: entry.path, branch })) });
+    } catch (error) {
+      if (!sendCheckoutError(res, error)) sendInternalError({ res, error });
+    }
+  });
+
+  // { repo, branch } - a tracked branch's remote branch fetched, so its
+  // behind count is current; nothing else changes
+  // (view-prs-local-checkout.js' fetchBranch): { branch, remote, ref,
+  // ahead?, behind? }.
+  app.post(["/tracked-branches/fetch", "/view-prs/tracked-branches/fetch"], async (req, res) => {
+    const repo = String(req.body?.repo || "").trim();
+    const branch = String(req.body?.branch || "").trim();
+    try {
+      const entry = localReposStorage.loadLocalRepoEntries()[repo];
+      if (!entry) {
+        res.status(404).json({ ok: false, error: `No clone of ${repo} saved (Settings › Local clones)` });
+        return;
+      }
+      if (!branch) {
+        res.status(400).json({ ok: false, error: "Which branch?" });
+        return;
+      }
+      res.json({ ok: true, ...(await fetchBranch({ repo, cloneFolder: entry.path, branch })) });
+    } catch (error) {
+      if (!sendCheckoutError(res, error)) sendInternalError({ res, error });
+    }
+  });
+
+  // { repo, name, start, fetch?, mode? } - New branch: name started from
+  // start (refs/heads/<branch> or refs/remotes/<remote>/<branch>; fetched
+  // first unless fetch is false), in a new worktree or (mode "switch") the
+  // clone's own folder (view-prs-local-checkout.js' createBranch) - then
+  // tracked, compared with the branch it started from, and the mode kept
+  // as the repo's next: { branch, oid, worktreePath, startedFrom, fetched,
+  // warning?, output, trackedBranch }.
+  app.post(["/tracked-branches/new", "/view-prs/tracked-branches/new"], async (req, res) => {
+    const repo = String(req.body?.repo || "").trim();
+    const name = String(req.body?.name || "").trim();
+    const start = String(req.body?.start || "").trim();
+    const mode = req.body?.mode === "switch" ? "switch" : "worktree";
+    if (!sourcesStorage) {
+      res.status(500).json({ ok: false, error: "No sources file" });
+      return;
+    }
+    try {
+      const entry = localReposStorage.loadLocalRepoEntries()[repo];
+      if (!entry) {
+        res.status(404).json({ ok: false, error: `No clone of ${repo} saved (Settings › Local clones)` });
+        return;
+      }
+      if (!name) {
+        res.status(400).json({ ok: false, error: "Name the new branch" });
+        return;
+      }
+      const made = await createBranch({ repo, cloneFolder: entry.path, settings: entry.checkout || null, name, start, fetch: req.body?.fetch !== false, mode });
+      localReposStorage.setLocalRepoNewBranch(repo, mode);
+      // Compared with what it started from: that branch's name, when the
+      // clone has it as the repo's (else the repo's default branch).
+      const clone = await localBranches.readCloneFresh(repo, entry.path);
+      const startBranch = start.startsWith("refs/heads/")
+        ? start.slice("refs/heads/".length)
+        : (clone.ok ? clone.repoRemotes : []).map((remote) => `refs/remotes/${remote}/`).filter((prefix) => start.startsWith(prefix)).map((prefix) => start.slice(prefix.length))[0] || "";
+      const base = startBranch && startBranch !== (clone.ok ? clone.defaultBranch : "") ? startBranch : "";
+      let trackedBranch = null;
+      try {
+        trackedBranch = sourcesStorage.addTrackedBranch({ repo, branch: name, base }, { seedRepos: seedSubscriptionRepos }).entry;
+        emitDataChanged();
+      } catch (error) {
+        made.warning = [made.warning, `It was made, but couldn't be tracked: ${error.message}`].filter(Boolean).join(". ");
+      }
+      res.json({ ok: true, ...made, trackedBranch });
+    } catch (error) {
+      if (!sendCheckoutError(res, error)) sendInternalError({ res, error });
     }
   });
 

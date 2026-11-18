@@ -4,6 +4,7 @@ import { postJson } from '../helpers/pr-http.helpers.ts';
 import { formatShortAge } from '../helpers/pr-row-signals.helpers.ts';
 import { formatCommitAge } from '../helpers/tracked-branches.helpers.ts';
 import { useLocalBranches } from '../state/LocalBranchesContext';
+import { NewBranchForm, OpenFolderButtons, describeNewBranch, useBranchStarts } from './NewBranchForm';
 
 // A local branch that could be tracked (GET /view-prs/local-repos/branches).
 export interface BranchCandidate {
@@ -14,6 +15,8 @@ export interface BranchCandidate {
   worktreePath?: string;
   // The remote branch it tracks (origin/feature).
   upstream?: string;
+  // The repo's default branch or an open PR's base: listed first.
+  main?: boolean;
 }
 
 interface CandidatesResult {
@@ -89,8 +92,8 @@ export const useReadableCloneRepos = () => {
 
 /**
  * Track a branch: the local branches of this computer's clones that have
- * no PR (not the default branch, not a PR's base, not tracked already),
- * newest first, each with Track (POST /view-prs/tracked-branches). In the
+ * no PR and aren't tracked already - the main branches (the default, PRs'
+ * bases) first, then newest first - each with Track (POST /view-prs/tracked-branches). In the
  * Add popover's Branch tab and the Tracked Branches section.
  *
  * `version` asks for the list again when it changes (the tracked list's).
@@ -103,9 +106,13 @@ export function TrackBranchPicker({ version = '', onTracked }: { version?: strin
   const repo = repos.includes(chosenRepo) ? chosenRepo : repos[0] || '';
   const { byRepo, errors, loading, refresh } = useBranchCandidates(repo ? [repo] : [], version);
   const [tracking, setTracking] = useState('');
-  const [outcome, setOutcome] = useState<{ tone: 'done' | 'error'; text: string } | null>(null);
+  // folder: a new branch's, with Editor and Terminal beside the words.
+  const [outcome, setOutcome] = useState<{ tone: 'done' | 'error'; text: string; folder?: string } | null>(null);
   const filterId = useId();
   const [filter, setFilter] = useState('');
+  // New branch: from any branch of the clone, local or remote.
+  const [showNew, setShowNew] = useState(false);
+  const { starts, error: startsError } = useBranchStarts(repo, showNew);
 
   if (repos.length === 0) {
     return (
@@ -153,6 +160,7 @@ export function TrackBranchPicker({ version = '', onTracked }: { version?: strin
             onChange={(event) => {
               setChosenRepo(event.target.value);
               setFilter('');
+              setShowNew(false);
             }}
           >
             {repos.map((item) => (
@@ -161,6 +169,38 @@ export function TrackBranchPicker({ version = '', onTracked }: { version?: strin
               </option>
             ))}
           </select>
+        </div>
+      )}
+      <div className="track-branch-new-toggle">
+        <Button icon="branch" pressed={showNew} onClick={() => setShowNew((value) => !value)}>
+          New branch…
+        </Button>
+        <span className="track-branch-new-hint">or track one you have:</span>
+      </div>
+      {showNew && (
+        <div className="track-branch-new">
+          {startsError ? (
+            <p className="track-branch-empty" role="alert">
+              Couldn't read {repo}'s branches: {startsError}
+            </p>
+          ) : starts.length === 0 ? (
+            <p className="track-branch-empty" role="status">
+              Reading {repo}'s branches…
+            </p>
+          ) : (
+            <NewBranchForm
+              key={repo}
+              repo={repo}
+              starts={starts}
+              onCancel={() => setShowNew(false)}
+              onDone={(result) => {
+                setShowNew(false);
+                setOutcome({ tone: 'done', text: describeNewBranch(result), folder: result.worktreePath });
+                refresh();
+                if (result.branch) onTracked?.(repo, result.branch);
+              }}
+            />
+          )}
         </div>
       )}
       {errors[repo] ? (
@@ -173,7 +213,7 @@ export function TrackBranchPicker({ version = '', onTracked }: { version?: strin
         </p>
       ) : branches.length === 0 ? (
         <p className="track-branch-empty">
-          No local branches without a PR in {repo} (the default branch, PRs' base branches and those tracked already aren't listed).
+          Nothing left to track in {repo}: its local branches are PRs' or tracked already.
         </p>
       ) : (
         <>
@@ -200,7 +240,14 @@ export function TrackBranchPicker({ version = '', onTracked }: { version?: strin
           {listed.map((branch) => (
             <li key={branch.name} className="track-branch-item">
               <span className="track-branch-text">
-                <span className="track-branch-name">{branch.name}</span>
+                <span className="track-branch-name">
+                  {branch.name}
+                  {branch.main && (
+                    <span className="track-branch-main" title="The repo's default branch, or the base of an open PR">
+                      main branch
+                    </span>
+                  )}
+                </span>
                 <span className="track-branch-meta">
                   {[
                     branch.worktreePath ? `in ${branch.worktreePath.replace(/[\\/]+$/, '').split(/[\\/]/).pop()}` : 'not checked out',
@@ -223,7 +270,8 @@ export function TrackBranchPicker({ version = '', onTracked }: { version?: strin
       )}
       {outcome && (
         <p className="add-pr-outcome" data-tone={outcome.tone} role={outcome.tone === 'error' ? 'alert' : 'status'}>
-          {outcome.text}
+          <span>{outcome.text}</span>
+          {outcome.folder && <OpenFolderButtons repo={repo} folder={outcome.folder} />}
         </p>
       )}
     </div>
