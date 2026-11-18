@@ -11,12 +11,23 @@ import { SearchTermsContext } from '../../state/SearchTermsContext';
 const hoursAgo = (hours: number) => new Date(Date.now() - hours * 3600000).toISOString();
 let commitsAnswer: { status: number; body: Record<string, unknown> };
 const asked: string[] = [];
-const fetchMock = jest.fn(async (url: string) => {
+let changes: Record<string, unknown> = {};
+const posted: Array<{ url: string; body: unknown }> = [];
+const fetchMock = jest.fn(async (url: string, init?: RequestInit) => {
   asked.push(url);
+  if (init?.method === 'POST') {
+    posted.push({ url, body: JSON.parse(String(init.body || '{}')) });
+    if (url.endsWith('/tracked-branches/fetch')) return { ok: true, status: 200, json: async () => ({ ok: true, ahead: 0, behind: 2 }) };
+    if (url.endsWith('/tracked-branches/pull')) return { ok: true, status: 200, json: async () => ({ ok: true, commits: 2 }) };
+    return { ok: true, status: 200, json: async () => ({ ok: true }) };
+  }
   if (url.startsWith('/view-prs/tracked-branches/commits?')) {
     return { ok: commitsAnswer.status < 400, status: commitsAnswer.status, json: async () => commitsAnswer.body };
   }
-  if (url === '/view-prs/tracked-branches/changes') return { ok: true, status: 200, json: async () => ({ ok: true, changes: {} }) };
+  if (url.startsWith('/view-prs/tracked-branches/commit-files?')) {
+    return { ok: true, status: 200, json: async () => ({ ok: true, files: [{ path: 'src/cache.ts', added: 12, removed: 3 }, { path: 'b.ts', oldPath: 'a.ts', added: 0, removed: 0 }, { path: 'logo.png', added: 0, removed: 0, binary: true }] }) };
+  }
+  if (url === '/view-prs/tracked-branches/changes') return { ok: true, status: 200, json: async () => ({ ok: true, changes }) };
   return { ok: false, status: 404, json: async () => ({ ok: false }) };
 });
 
@@ -53,6 +64,8 @@ const ENTRY = { repo: 'acme/app', branch: 'spike/cache', note: 'Try Redis' };
 describe('BranchDetailPane', () => {
   beforeEach(() => {
     asked.length = 0;
+    posted.length = 0;
+    changes = {};
     fetchMock.mockClear();
     commitsAnswer = {
       status: 200,
@@ -122,6 +135,56 @@ describe('BranchDetailPane', () => {
     expect(asked).toEqual([]);
   });
 
+  test('a commit opens to the files it changed: lines added and removed, a rename, a binary file', async () => {
+    const user = userEvent.setup();
+    render(wrap(<BranchDetailPane entry={ENTRY} mode="docked" onClose={jest.fn()} />));
+    const toggle = await screen.findByRole('button', { name: 'Cache the lookups' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    const files = await screen.findByRole('list', { name: 'Files changed in c2c2c2c' });
+    const items = within(files).getAllByRole('listitem');
+    expect(items[0]).toHaveTextContent('src/cache.ts+12 −3');
+    expect(items[1]).toHaveTextContent('a.ts → b.ts');
+    expect(items[2]).toHaveTextContent('logo.pngbinary');
+    expect(asked).toContain('/view-prs/tracked-branches/commit-files?repo=acme%2Fapp&oid=c2c2c2c2c2');
+    // Closed and opened again: not asked twice.
+    await user.click(toggle);
+    await user.click(toggle);
+    expect(asked.filter((url) => url.includes('commit-files'))).toHaveLength(1);
+  });
+
+  test("its uncommitted files, and Fetch, Pull and New branch as on its row", async () => {
+    const user = userEvent.setup();
+    changes = {
+      'acme/app:spike/cache': {
+        worktreePath: 'D:/code/app-spike',
+        total: 3,
+        files: [
+          { path: 'a.ts', code: ' M' },
+          { path: 'b.ts', code: 'M ' },
+          { path: 'new.ts', code: '??' },
+        ],
+      },
+    };
+    const confirm = jest.spyOn(window, 'confirm').mockReturnValue(true);
+    const statuses = { 'acme/app:spike/cache': { ...STATUS, upstream: { remote: 'origin', branch: 'spike/cache', ahead: 0, behind: 2 } } };
+    render(wrap(<BranchDetailPane entry={ENTRY} mode="docked" onClose={jest.fn()} />, local({ branches: statuses })));
+    const heading = await screen.findByRole('heading', { name: /Uncommitted changes/ });
+    const list = heading.parentElement?.querySelector('ul') as HTMLElement;
+    expect(within(list).getAllByRole('listitem').map((item) => item.textContent)).toEqual(['a.tschanged', 'b.tsstaged', 'new.tsnew']);
+    expect(screen.getByRole('complementary')).toHaveTextContent('3 uncommitted');
+
+    await user.click(screen.getByRole('button', { name: 'Fetch' }));
+    expect(await screen.findByText('Fetched origin/spike/cache: spike/cache is 2 commits behind it - Pull brings them in.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Pull' }));
+    expect(await screen.findByText('Pulled 2 commits into spike/cache.')).toBeInTheDocument();
+    expect(posted.map((item) => item.url)).toEqual(['/view-prs/tracked-branches/fetch', '/view-prs/tracked-branches/pull']);
+    await user.click(screen.getByRole('button', { name: 'New branch' }));
+    expect(screen.getByRole('form', { name: 'New branch from spike/cache' })).toBeInTheDocument();
+    confirm.mockRestore();
+  });
+
   test('close, and Esc in the docked pane clears it', async () => {
     const user = userEvent.setup();
     const onClose = jest.fn();
@@ -138,9 +201,12 @@ describe('BranchDetailPane', () => {
   test("a tracked row's name shows it in the pane, marked while it's there", async () => {
     const user = userEvent.setup();
     const onSelectBranch = jest.fn();
+    const onShownChange = jest.fn();
     const { rerender } = render(
-      wrap(<TrackedBranchesSection trackedBranches={[ENTRY]} isOpen onToggleSection={jest.fn()} onSelectBranch={onSelectBranch} />),
+      wrap(<TrackedBranchesSection trackedBranches={[ENTRY]} isOpen onToggleSection={jest.fn()} onSelectBranch={onSelectBranch} onShownChange={onShownChange} />),
     );
+    // The rows shown, for the pane's previous and next.
+    expect(onShownChange).toHaveBeenLastCalledWith(['acme/app:spike/cache']);
     await user.click(screen.getByRole('button', { name: 'spike/cache' }));
     expect(onSelectBranch).toHaveBeenCalledWith('acme/app', 'spike/cache');
     rerender(

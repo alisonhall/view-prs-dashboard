@@ -397,6 +397,28 @@ const registerViewPrsLocalBranchesRoutes = ({
     }
   });
 
+  // ?repo=&oid= - the files a commit of the clone changed, for a tracked
+  // branch's pane (view-prs-local-branches.js' getCommitFiles).
+  app.get(["/tracked-branches/commit-files", "/view-prs/tracked-branches/commit-files"], async (req, res) => {
+    const repo = String(req.query?.repo || "").trim();
+    const oid = String(req.query?.oid || "").trim();
+    try {
+      const folder = localReposStorage.loadLocalRepos()[repo];
+      if (!folder) {
+        res.status(404).json({ ok: false, error: `No clone of ${repo} saved (Settings › Local clones)` });
+        return;
+      }
+      const result = await localBranches.getCommitFiles({ repo, folder, oid });
+      if (!result.ok) {
+        res.status(result.status || 422).json({ ok: false, error: result.error });
+        return;
+      }
+      res.json(result);
+    } catch (error) {
+      sendInternalError({ res, error });
+    }
+  });
+
   // ?repo= - the clone's local branches that could be tracked (Track a
   // branch): no PR's, not tracked already; the main branches (the default,
   // open PRs' bases) first, marked main - { branches: [{ name, oid,

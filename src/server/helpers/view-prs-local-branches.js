@@ -710,6 +710,51 @@ const createViewPrsLocalBranches = ({
     return result;
   };
 
+  // The files a commit of a clone changed, for a tracked branch's pane: {
+  // ok, oid, files: [{ path, oldPath?, added, removed, binary? }], more } -
+  // a merge against its first parent; renames followed. more: past the
+  // first `limit`. { ok: false, status?, error } when it can't.
+  const getCommitFiles = async ({ repo, folder, oid, limit = 300 }) => {
+    if (!/^[0-9a-f]{7,64}$/i.test(String(oid || ""))) return { ok: false, status: 400, error: "Which commit?" };
+    const clone = await getClone(repo, folder);
+    if (!clone.ok) return { ok: false, error: clone.error };
+    let full;
+    try {
+      full = (await git(clone.folder, ["rev-parse", "--verify", "-q", `${oid}^{commit}`])).trim();
+    } catch (_error) {
+      full = "";
+    }
+    if (!full) return { ok: false, status: 404, error: `${repo}'s clone has no commit ${oid}` };
+    const parents = (await git(clone.folder, ["rev-list", "--parents", "-n1", full])).trim().split(/\s+/).slice(1);
+    // A merge: against its first parent (diff-tree's two-tree form).
+    const range = parents.length > 1 ? [parents[0], full] : ["--root", full];
+    const stdout = await git(clone.folder, ["diff-tree", "--no-commit-id", "-r", "-z", "--numstat", "-M", ...range]);
+    // -z numstat: "added\tremoved\tpath\0", or for a rename
+    // "added\tremoved\t\0old\0new\0".
+    const parts = stdout.split("\0");
+    const files = [];
+    for (let index = 0; index < parts.length; index += 1) {
+      const match = /^(-|\d+)\t(-|\d+)\t(.*)$/s.exec(parts[index].replace(/^\n/, ""));
+      if (!match) continue;
+      const [, added, removed, name] = match;
+      const file = { added: added === "-" ? 0 : Number(added), removed: removed === "-" ? 0 : Number(removed) };
+      if (added === "-" && removed === "-") file.binary = true;
+      if (name) file.path = name;
+      else {
+        file.oldPath = parts[index + 1] || "";
+        file.path = parts[index + 2] || "";
+        index += 2;
+      }
+      files.push(file);
+    }
+    return {
+      ok: true,
+      oid: full,
+      files: files.slice(0, limit).map(({ path: name, oldPath, ...rest }) => ({ path: name, ...(oldPath ? { oldPath } : {}), ...rest })),
+      more: files.length > limit,
+    };
+  };
+
   const mapLimited = async (items, limit, mapper) => {
     const results = new Array(items.length);
     let next = 0;
@@ -926,6 +971,7 @@ const createViewPrsLocalBranches = ({
     getTrackedBranchChanges,
     getBranchCandidates,
     getBranchCommits,
+    getCommitFiles,
     describeBranch,
     isOpenableFolder,
     checkClone,

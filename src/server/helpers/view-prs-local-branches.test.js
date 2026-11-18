@@ -636,6 +636,41 @@ describe("branches tracked without a PR", () => {
     expect(await helper().getBranchCommits({ repo: "acme/app", folder: clone, branch: "nope" })).toMatchObject({ ok: false, status: 404 });
   });
 
+  test("the files a commit changed: lines added and removed, a rename followed, a binary file, a merge against its first parent", async () => {
+    const tree = fs.mkdtempSync(path.join(root, "files-"));
+    git(root, "clone", "-q", clone, path.join(tree, "c"));
+    const folder = path.join(tree, "c");
+    git(folder, "remote", "set-url", "origin", "git@github.com:acme/files.git");
+    fs.writeFileSync(path.join(folder, "a.txt"), "one\ntwo\n");
+    fs.writeFileSync(path.join(folder, "old name.txt"), "a\nb\nc\nd\ne\n");
+    git(folder, "add", "-A");
+    git(folder, "-c", "user.name=T", "-c", "user.email=t@e.com", "commit", "-q", "-m", "files");
+    fs.writeFileSync(path.join(folder, "a.txt"), "one\nthree\nfour\n");
+    git(folder, "mv", "old name.txt", "new name.txt");
+    fs.writeFileSync(path.join(folder, "pic.bin"), Buffer.from([0, 1, 2, 0, 255]));
+    git(folder, "add", "-A");
+    git(folder, "-c", "user.name=T", "-c", "user.email=t@e.com", "commit", "-q", "-m", "change");
+    const oid = git(folder, "rev-parse", "HEAD");
+    const result = await helper().getCommitFiles({ repo: "acme/files", folder, oid: oid.slice(0, 10) });
+    expect(result.ok).toBe(true);
+    expect(result.oid).toBe(oid);
+    const byPath = Object.fromEntries(result.files.map((file) => [file.path, file]));
+    expect(byPath["a.txt"]).toMatchObject({ added: 2, removed: 1 });
+    expect(byPath["new name.txt"]).toMatchObject({ oldPath: "old name.txt", added: 0, removed: 0 });
+    expect(byPath["pic.bin"]).toMatchObject({ binary: true });
+    // A merge: what it brought in against its first parent.
+    git(folder, "checkout", "-q", "-b", "side", "HEAD~1");
+    fs.writeFileSync(path.join(folder, "side.txt"), "x\n");
+    git(folder, "add", "-A");
+    git(folder, "-c", "user.name=T", "-c", "user.email=t@e.com", "commit", "-q", "-m", "side");
+    git(folder, "checkout", "-q", "-");
+    git(folder, "-c", "user.name=T", "-c", "user.email=t@e.com", "merge", "-q", "--no-ff", "-m", "merge side", "side");
+    const merge = await helper().getCommitFiles({ repo: "acme/files", folder, oid: git(folder, "rev-parse", "HEAD") });
+    expect(merge.files).toEqual([{ path: "side.txt", added: 1, removed: 0 }]);
+    expect(await helper().getCommitFiles({ repo: "acme/files", folder, oid: "nothex" })).toMatchObject({ ok: false, status: 400 });
+    expect(await helper().getCommitFiles({ repo: "acme/files", folder, oid: "0123456789abcdef" })).toMatchObject({ ok: false, status: 404 });
+  });
+
   test("a branch the clone doesn't have, a base it doesn't have, an upstream gone, and a branch whose PR has opened", async () => {
     git(clone, "branch", "orphan", "main");
     track(clone, "orphan", "origin", "refs/heads/deleted-on-github");

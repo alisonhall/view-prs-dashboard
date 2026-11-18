@@ -1230,6 +1230,15 @@ export function PrTableApp() {
     setSelectedBranchKey(key);
     showPane(true, row);
   });
+  // The tracked rows shown, in order, for the branch pane's previous and next.
+  const [shownBranchKeys, setShownBranchKeys] = useState<string[]>([]);
+  const branchIndex = selectedBranchKey ? shownBranchKeys.indexOf(selectedBranchKey) : -1;
+  const previousBranch = branchIndex > 0 ? shownBranchKeys[branchIndex - 1] : '';
+  const nextBranch = branchIndex >= 0 ? shownBranchKeys[branchIndex + 1] || '' : '';
+  const stepBranch = (key: string) => {
+    setSelectedBranchKey(key);
+    findBranchButton(key)?.closest('tr')?.scrollIntoView?.({ block: 'nearest' });
+  };
   const handleCloseBranchPane = useStableCallback(() => {
     const closing = selectedBranchKey;
     setSelectedBranchKey('');
@@ -1336,6 +1345,7 @@ export function PrTableApp() {
                           onToggleSection={handleToggleSection}
                           selectedBranchKey={isPaneVisible && selectedBranch ? selectedBranchKey : ''}
                           onSelectBranch={handleSelectBranch}
+                          onShownChange={setShownBranchKeys}
                         />
                       ) : (
                       <PrSection
@@ -1374,6 +1384,8 @@ export function PrTableApp() {
                     mode={paneMode}
                     onClose={handleCloseBranchPane}
                     onClearSelection={() => setSelectedBranchKey('')}
+                    onPrevious={previousBranch ? () => stepBranch(previousBranch) : undefined}
+                    onNext={nextBranch ? () => stepBranch(nextBranch) : undefined}
                   />
                 )}
                 {isPaneVisible && !(selectedBranch && !selectedPr) && (

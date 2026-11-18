@@ -1014,6 +1014,10 @@ describe("integration behavior", () => {
         expect((await request.get("/view-prs/tracked-branches/commits?repo=owner/repo&branch=nope")).status).toBe(404);
         expect((await request.get("/view-prs/tracked-branches/commits?repo=owner/repo")).status).toBe(400);
         expect((await request.get("/view-prs/tracked-branches/commits?repo=other/repo&branch=wip")).status).toBe(404);
+        const head = git(clone, "rev-parse", "wip");
+        const files = await request.get(`/view-prs/tracked-branches/commit-files?repo=owner/repo&oid=${head}`);
+        expect(files.body).toMatchObject({ ok: true, oid: head, files: expect.any(Array) });
+        expect((await request.get("/view-prs/tracked-branches/commit-files?repo=owner/repo&oid=zzz")).status).toBe(400);
 
         // Pull: a branch tracking nothing has nothing to pull.
         const pull = await request.post("/view-prs/tracked-branches/pull").send({ repo: "owner/repo", branch: "wip" });
