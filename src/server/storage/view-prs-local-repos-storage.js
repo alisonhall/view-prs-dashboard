@@ -2,7 +2,8 @@ const path = require("path");
 const { writeFileReplacingSync } = require("../helpers/file-io-helpers");
 
 // Where the repos' clones are on this computer (VIEW_PRS_LOCAL_REPOS_FILE,
-// data/local-repos.json): { repos: { "owner/name": { path, checkout? } } }.
+// data/local-repos.json): { repos: { "owner/name": { path, checkout?,
+// newBranch? } } }.
 // Its own file, not user-defaults.json, as the paths only mean something on
 // this computer - a data folder shared or backed up elsewhere shouldn't
 // carry them. Only the server writes it, whole.
@@ -14,6 +15,10 @@ const { writeFileReplacingSync } = require("../helpers/file-io-helpers");
 // git's worktrees, and variables to give the commands. With them,
 // cleanupList? and cleanupRemove?: the repo's own commands for Clean up
 // (the worktrees safe to remove, and removing one), else plain git.
+//
+// newBranch: "switch" when New branch (Tracked Branches) last switched the
+// clone's own folder to the new branch rather than making a worktree for
+// it - what it offers first next time; a worktree without.
 //
 // openWith: this computer's { editor?, terminal? } commands for the pane's
 // Open in editor and Terminal (view-prs-local-open.js), else VS Code's
@@ -118,7 +123,10 @@ const createViewPrsLocalReposStorage = ({ fs, localReposFile, isRepoSlug }) => {
       Object.entries(repos)
         .map(([repo, entry]) => {
           const checkout = normalizeCheckout(entry?.checkout);
-          return [toTrimmed(repo), { path: toTrimmed(entry?.path), ...(checkout ? { checkout } : {}) }];
+          return [
+            toTrimmed(repo),
+            { path: toTrimmed(entry?.path), ...(checkout ? { checkout } : {}), ...(entry?.newBranch === "switch" ? { newBranch: "switch" } : {}) },
+          ];
         })
         .filter(([repo, entry]) => isRepoSlug(repo) && entry.path && path.isAbsolute(entry.path)),
     );
@@ -161,6 +169,16 @@ const createViewPrsLocalReposStorage = ({ fs, localReposFile, isRepoSlug }) => {
     return true;
   };
 
+  // How New branch makes the next one: "switch" (the clone's folder) or
+  // "worktree". Whether the repo has a clone saved.
+  const setLocalRepoNewBranch = (repo, mode) => {
+    const entries = loadLocalRepoEntries();
+    if (!entries[repo]) return false;
+    const { newBranch: _dropped, ...rest } = entries[repo];
+    save({ ...entries, [repo]: mode === "switch" ? { ...rest, newBranch: "switch" } : rest });
+    return true;
+  };
+
   // Whether it had one.
   const removeLocalRepo = (repo) => {
     const entries = loadLocalRepoEntries();
@@ -170,7 +188,7 @@ const createViewPrsLocalReposStorage = ({ fs, localReposFile, isRepoSlug }) => {
     return true;
   };
 
-  return { loadLocalRepos, loadLocalRepoEntries, setLocalRepo, setLocalRepoCheckout, removeLocalRepo, loadOpenWith, setOpenWith };
+  return { loadLocalRepos, loadLocalRepoEntries, setLocalRepo, setLocalRepoCheckout, setLocalRepoNewBranch, removeLocalRepo, loadOpenWith, setOpenWith };
 };
 
 module.exports = { createViewPrsLocalReposStorage, checkCheckoutSettings, normalizeCheckout, checkOpenWithSettings };

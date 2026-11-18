@@ -1009,6 +1009,12 @@ a.pr-summary-file {
   gap: 6px;
 }
 
+.tracked-branches-notice {
+  margin: var(--space-2) 14px 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
 .tracked-branches-undo {
   display: flex;
   align-items: center;

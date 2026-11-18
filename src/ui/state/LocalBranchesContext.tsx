@@ -10,6 +10,9 @@ export interface LocalRepoStatus {
   worktreeCount?: number;
   // How Check out makes a PR's worktree; plain git without.
   checkout?: LocalRepoCheckout;
+  // How New branch (Tracked Branches) last made one: "switch" the clone's
+  // folder; a new worktree without.
+  newBranch?: 'switch';
 }
 
 // The user's own checkout command instead of git (forks: for forks' PRs

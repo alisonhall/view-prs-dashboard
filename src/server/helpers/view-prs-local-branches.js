@@ -552,33 +552,44 @@ const createViewPrsLocalBranches = ({
     return result;
   };
 
-  // The local branches that could be tracked, newest commit first: those
-  // no PR's branch is (findBranch, for each PR of the repo), not a PR's
-  // base, not the repo's default branch and not tracked already - { name,
-  // oid, committedAt?, subject?, worktreePath?, upstream? (the remote
-  // branch it tracks) }.
+  // The local branches that could be tracked: those no PR's branch is
+  // (findBranch, for each PR of the repo) and not tracked already - {
+  // name, oid, committedAt?, subject?, worktreePath?, upstream? (the
+  // remote branch it tracks), main? }. main: the repo's default branch or
+  // an open PR's base (develop, say) - long-lived, listed first (A-Z),
+  // even when it's also a PR's branch (develop into main); the rest newest
+  // commit first.
   const listBranchCandidates = (clone, { prs = [], tracked = [] } = {}) => {
     const excluded = new Set(tracked);
-    if (clone.defaultBranch) excluded.add(clone.defaultBranch);
+    const main = new Set();
+    if (clone.defaultBranch) main.add(clone.defaultBranch);
     prs.forEach((pr) => {
-      if (pr.targetBranch) excluded.add(pr.targetBranch);
+      if (pr.targetBranch && !pr.done) main.add(pr.targetBranch);
       const branch = findBranch(clone, pr);
       if (branch) excluded.add(branch.name);
     });
     return clone.branches
-      .filter((branch) => !excluded.has(branch.name))
+      .filter((branch) => !tracked.includes(branch.name) && (main.has(branch.name) || !excluded.has(branch.name)))
       .map((branch) => {
         const worktree = clone.worktrees.find((item) => item.branch === branch.name);
+        const upstream = remoteUpstreamOf(branch);
         return {
           name: branch.name,
           oid: branch.oid,
           ...(branch.committedAt ? { committedAt: branch.committedAt } : {}),
           ...(branch.subject ? { subject: branch.subject } : {}),
           ...(worktree ? { worktreePath: worktree.path } : {}),
-          ...(remoteUpstreamOf(branch) ? { upstream: `${branch.remote}/${remoteUpstreamOf(branch).branch}` } : {}),
+          ...(upstream ? { upstream: `${upstream.remote}/${upstream.branch}` } : {}),
+          ...(main.has(branch.name) ? { main: true } : {}),
         };
       })
-      .sort((a, b) => String(b.committedAt || "").localeCompare(String(a.committedAt || "")) || a.name.localeCompare(b.name));
+      .sort(
+        (a, b) =>
+          Number(Boolean(b.main)) - Number(Boolean(a.main)) ||
+          (a.main ? a.name.localeCompare(b.name) : 0) ||
+          String(b.committedAt || "").localeCompare(String(a.committedAt || "")) ||
+          a.name.localeCompare(b.name),
+      );
   };
 
   // A PR's local branch is a tracked branch's, so its PR has opened: the
@@ -613,10 +624,30 @@ const createViewPrsLocalBranches = ({
 
   // The branches a clone could track (Track a branch): { ok, branches,
   // defaultBranch } - or { ok: false, error }.
-  const getBranchCandidates = async ({ repo, folder, prs = [], tracked = [] }) => {
+  // With starts, also every branch a new one could start from (New
+  // branch): [{ ref, name, remote? }] - local branches (A-Z, the default
+  // first), then the remote branches the clone has (refs/remotes/..., not
+  // HEAD).
+  const getBranchCandidates = async ({ repo, folder, prs = [], tracked = [], starts = false }) => {
     const clone = await getClone(repo, folder);
     if (!clone.ok) return { ok: false, error: clone.error };
-    return { ok: true, defaultBranch: clone.defaultBranch, branches: listBranchCandidates(clone, { prs, tracked }) };
+    return {
+      ok: true,
+      defaultBranch: clone.defaultBranch,
+      branches: listBranchCandidates(clone, { prs, tracked }),
+      ...(starts ? { starts: listStarts(clone) } : {}),
+    };
+  };
+  const listStarts = (clone) => {
+    const first = (name) => (name === clone.defaultBranch ? 0 : 1);
+    const local = clone.branches
+      .map((branch) => ({ ref: `refs/heads/${branch.name}`, name: branch.name }))
+      .sort((a, b) => first(a.name) - first(b.name) || a.name.localeCompare(b.name));
+    const remote = [...clone.remoteRefs.keys()]
+      .filter((ref) => ref.startsWith("refs/remotes/") && !ref.endsWith("/HEAD"))
+      .map((ref) => ({ ref, name: ref.slice("refs/remotes/".length), remote: true }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    return [...local, ...remote];
   };
 
   const mapLimited = async (items, limit, mapper) => {

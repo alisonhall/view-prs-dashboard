@@ -27,6 +27,7 @@ import { Icon, type IconName } from './ui/Icon';
 import { Button, IconButton } from './ui/Button';
 import { Tooltip } from './ui/Tooltip';
 import { TrackBranchPicker, useBranchCandidates, useReadableCloneRepos } from './TrackBranchPicker';
+import { NewBranchForm, describeNewBranch } from './NewBranchForm';
 import { useLocalBranches } from '../state/LocalBranchesContext';
 import { useSnackbar } from '../state/SnackbarContext';
 import { useSearchTerms } from '../state/SearchTermsContext';
@@ -49,6 +50,8 @@ export const TRACKED_BRANCHES_SECTION_KEY = 'tracked-branches';
 const CHANGES_POLL_MS = 60 * 1000;
 // How long Undo is offered after Untrack.
 const UNDO_MS = 15 * 1000;
+// How long what a Pull or New branch did is shown.
+const NOTICE_MS = 12 * 1000;
 const NO_BRANCHES: PrTrackedBranch[] = [];
 // As the server takes it (view-prs-sources-storage.js).
 const MAX_NOTE_LENGTH = 4000;
@@ -123,6 +126,16 @@ export function TrackedBranchesSection({
   // Notes saved here, shown until the data (the sources) has them.
   const [savedNotes, setSavedNotes] = useState<Record<string, string>>({});
   useEffect(() => setSavedNotes({}), [trackedBranches]);
+  // The row whose New branch form is open (its key).
+  const [newFromKey, setNewFromKey] = useState('');
+  const [pullingKey, setPullingKey] = useState('');
+  // What a Pull or New branch did, for a while.
+  const [notice, setNotice] = useState('');
+  useEffect(() => {
+    if (!notice) return undefined;
+    const timer = window.setTimeout(() => setNotice(''), NOTICE_MS);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
   // The branch just untracked, for a while: Undo puts it back as it was.
   const [untracked, setUntracked] = useState<PrTrackedBranch | null>(null);
   useEffect(() => {
@@ -154,7 +167,8 @@ export function TrackedBranchesSection({
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
   }, [isOpen, cloneRepos.length, refreshCandidates]);
-  const untrackedCount = isOpen ? 0 : Object.values(candidatesByRepo).reduce((sum, list) => sum + list.length, 0);
+  // Not the main branches: they're always there.
+  const untrackedCount = isOpen ? 0 : Object.values(candidatesByRepo).reduce((sum, list) => sum + list.filter((branch) => !branch.main).length, 0);
 
   const checkedOutKey = trackedBranches
     .map((entry) => trackedBranchKey(entry.repo, entry.branch))
@@ -229,6 +243,47 @@ export function TrackedBranchesSection({
     }
   };
 
+  // Pull: the remote branch it tracks fetched, then the branch
+  // fast-forwarded to it - after asking, as the PR pane's Pull does.
+  const pull = async (entry: PrTrackedBranch) => {
+    const key = trackedBranchKey(entry.repo, entry.branch);
+    const status = statuses[key];
+    const upstream = status?.upstream;
+    if (!upstream) return;
+    const behind = upstream.behind || 0;
+    const where = status?.worktreePath ? ` (checked out in ${status.worktreePath})` : '';
+    if (
+      !window.confirm(
+        `Pull ${upstream.remote}/${upstream.branch} into ${entry.branch}${where}?\n\n${
+          behind > 0 ? `${behind} new commit${behind === 1 ? '' : 's'} as of the last fetch - maybe more. ` : ''
+        }Fast-forward only: it's fetched, then ${entry.branch} is moved up to it. Nothing changes if ${entry.branch} has commits of its own or uncommitted changes.`,
+      )
+    ) {
+      return;
+    }
+    setPullingKey(key);
+    try {
+      const { response, result } = await postJson<{ ok?: boolean; error?: string; output?: string; commits?: number; already?: boolean }>(
+        '/view-prs/tracked-branches/pull',
+        { repo: entry.repo, branch: entry.branch },
+      );
+      if (!response.ok || result.ok === false) {
+        showError("Couldn't pull", [result.error || `HTTP ${response.status}`, result.output ? result.output.split('\n').slice(-4).join('\n') : ''].filter(Boolean).join('\n'));
+        return;
+      }
+      setNotice(
+        result.already
+          ? `${entry.branch} is up to date with ${upstream.remote}/${upstream.branch}.`
+          : `Pulled ${result.commits} commit${result.commits === 1 ? '' : 's'} into ${entry.branch}.`,
+      );
+      refresh();
+    } catch (error) {
+      showError("Couldn't pull", error instanceof Error ? error.message : String(error));
+    } finally {
+      setPullingKey('');
+    }
+  };
+
   const openFolder = async (entry: PrTrackedBranch, folder: string, kind: OpenKind) => {
     try {
       const { response, result } = await postJson<{ ok?: boolean; error?: string }>('/view-prs/open-folder', { repo: entry.repo, path: folder, with: kind });
@@ -289,6 +344,11 @@ export function TrackedBranchesSection({
             Track a branch
           </Button>
         </div>
+        {notice && (
+          <p className="tracked-branches-notice" role="status">
+            {notice}
+          </p>
+        )}
         {untracked && (
           <p className="tracked-branches-undo" role="status">
             <span>
@@ -387,6 +447,24 @@ export function TrackedBranchesSection({
                     </td>
                     <td className="tracked-branch-actions">
                       <div className="tracked-branch-actions-inner">
+                      {status?.found && status.upstream && !status.upstream.gone && (
+                        <IconButton
+                          icon="arrowDown"
+                          label={`Pull ${entry.branch}`}
+                          hint={`Fetch ${status.upstream.remote}/${status.upstream.branch} and fast-forward ${entry.branch} to it (asks first)`}
+                          disabled={pullingKey === key}
+                          onClick={() => void pull(entry)}
+                        />
+                      )}
+                      {status?.found && hasClone && (
+                        <IconButton
+                          icon="branch"
+                          label={`New branch from ${entry.branch}`}
+                          hint="Make a new branch from it, in a new worktree or the clone's folder, and track it"
+                          pressed={newFromKey === key}
+                          onClick={() => setNewFromKey((current) => (current === key ? '' : key))}
+                        />
+                      )}
                       {folder && (
                         <>
                           <Button aria-label={`Open ${entry.branch} in the editor`} title={`Open ${folder} in the editor`} onClick={() => void openFolder(entry, folder, 'editor')}>
@@ -401,6 +479,21 @@ export function TrackedBranchesSection({
                       </div>
                     </td>
                   </tr>
+                  {newFromKey === key && status?.found && (
+                    <tr className="tracked-branch-note-row">
+                      <td colSpan={5}>
+                        <NewBranchForm
+                          repo={entry.repo}
+                          start={{ ref: `refs/heads/${entry.branch}`, name: entry.branch }}
+                          onCancel={() => setNewFromKey('')}
+                          onDone={(result) => {
+                            setNewFromKey('');
+                            setNotice(describeNewBranch(result));
+                          }}
+                        />
+                      </td>
+                    </tr>
+                  )}
                   {editing && (
                     <tr className="tracked-branch-note-row">
                       <td colSpan={5}>

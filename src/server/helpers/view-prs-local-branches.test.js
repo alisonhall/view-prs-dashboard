@@ -570,11 +570,18 @@ describe("branches tracked without a PR", () => {
     expect(findDefaultBranch("", ["origin"], [])).toBe("");
   });
 
-  test("candidates: local branches with no PR, not the default or a PR's base, not tracked already, newest first", async () => {
+  test("candidates: the main branches first (the default, PRs' bases), then local branches with no PR, not tracked already, newest first", async () => {
     const result = await helper().getBranchCandidates({ repo: "acme/app", folder: clone, prs, tracked: ["stale"] });
     expect(result.ok).toBe(true);
     const names = result.branches.map((branch) => branch.name);
-    expect(names.sort()).toEqual(["local-only", "pushed"]);
+    expect(names[0]).toBe("main");
+    expect(result.branches[0]).toMatchObject({ main: true, upstream: "origin/main" });
+    expect(names.slice(1).sort()).toEqual(["local-only", "pushed"]);
+    expect(result.branches.filter((branch) => branch.main)).toHaveLength(1);
+    // A PR's base is a main branch too, even when it's another PR's branch (develop into main).
+    const develop = [{ ...prs[0], key: "acme/app#6", number: "6", branch: "pushed", targetBranch: "main" }, { ...prs[0], key: "acme/app#7", number: "7", targetBranch: "pushed" }];
+    const withBase = await helper().getBranchCandidates({ repo: "acme/app", folder: clone, prs: develop, tracked: ["stale"] });
+    expect(withBase.branches.filter((branch) => branch.main).map((branch) => branch.name)).toEqual(["main", "pushed"]);
     const localOnly = result.branches.find((branch) => branch.name === "local-only");
     expect(localOnly).toMatchObject({ subject: "local 2", committedAt: expect.any(String), worktreePath: expect.stringContaining("local-tree") });
     expect(localOnly.upstream).toBeUndefined();
