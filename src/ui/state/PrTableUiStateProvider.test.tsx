@@ -1,7 +1,7 @@
 /** @jest-environment jsdom */
 
 import { act, render } from '@testing-library/react';
-import { PANE_VISIBLE_STORAGE_KEY, PrTableUiStateProvider } from './PrTableUiStateProvider';
+import { PANE_VISIBLE_STORAGE_KEY, PrTableUiStateProvider, SELECTED_PR_STORAGE_KEY } from './PrTableUiStateProvider';
 import {
   usePrTableOpenSections,
   usePrTableUiState,
@@ -183,5 +183,23 @@ describe('PrTableUiStateProvider', () => {
     act(() => table().setRowExpanded('open:owner/repo:3', true));
     expect(tableRenders.length).toBe(tableCount);
     expect(openSectionsRenders.length).toBe(openSectionsCount);
+  });
+});
+
+describe('the selected PR, kept for the tab', () => {
+  afterEach(() => window.sessionStorage.clear());
+
+  test('a reload opens the PR that was selected; clearing it forgets it; anything unreadable is none', () => {
+    renderProvider();
+    expect(table().selectedPr).toBeNull();
+    act(() => table().setSelectedPr({ repo: 'owner/repo', prNumber: '7' }));
+    expect(JSON.parse(window.sessionStorage.getItem(SELECTED_PR_STORAGE_KEY) || 'null')).toEqual({ repo: 'owner/repo', prNumber: '7' });
+    renderProvider();
+    expect(table().selectedPr).toEqual({ repo: 'owner/repo', prNumber: '7' });
+    act(() => table().setSelectedPr(null));
+    expect(window.sessionStorage.getItem(SELECTED_PR_STORAGE_KEY)).toBeNull();
+    window.sessionStorage.setItem(SELECTED_PR_STORAGE_KEY, '{not json');
+    renderProvider();
+    expect(table().selectedPr).toBeNull();
   });
 });

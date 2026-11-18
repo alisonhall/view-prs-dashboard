@@ -673,6 +673,7 @@ describe("index page rendering with Testing Library", () => {
   beforeEach(async () => {
     // The detail pane's shown/hidden choice is saved here; start shown.
     window.localStorage.clear();
+    window.sessionStorage.clear();
     trackedIntervalIds = [];
     const trackingSetInterval = (...args) => {
       const id = realSetInterval(...args);

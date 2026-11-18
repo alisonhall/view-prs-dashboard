@@ -97,6 +97,9 @@ export function useTrackedBranchChanges(checkedOutKey: string, pollMs = CHANGES_
 
 type OpenKind = 'editor' | 'terminal';
 
+const isEditable = (target: EventTarget | null) =>
+  target instanceof Element && Boolean(target.closest('input, textarea, select, [contenteditable="true"]'));
+
 // A click on a row itself, to open it in the pane: not on one of its
 // buttons, links or fields, and not the end of selecting its text.
 const isRowClick = (event: MouseEvent) => {
@@ -119,6 +122,8 @@ export interface TrackedBranchesSectionProps {
   // The rows shown, in order (their keys): what the pane's previous and
   // next step through.
   onShownChange?: (keys: string[]) => void;
+  // Esc on a row: the pane's branch unselected.
+  onClearSelection?: () => void;
 }
 
 export function TrackedBranchesSection({
@@ -130,6 +135,7 @@ export function TrackedBranchesSection({
   selectedBranchKey = '',
   onSelectBranch,
   onShownChange,
+  onClearSelection,
 }: TrackedBranchesSectionProps) {
   const { repos, branches: statuses, refresh } = useLocalBranches();
   const { showError } = useSnackbar();
@@ -347,7 +353,37 @@ export function TrackedBranchesSection({
               : 'No tracked branches match the search or repo filter.'}
           </p>
         ) : (
-          <table className="tracked-branches-table" aria-label={title}>
+          <table
+            className="tracked-branches-table"
+            aria-label={title}
+            onKeyDown={(event) => {
+              // As a PR table (PrTable): from a row, ↓/↑ (or j/k) show the
+              // next or previous branch in the pane - the row itself first
+              // when it isn't the one shown - and Esc unselects it.
+              if (!onSelectBranch || event.defaultPrevented || isEditable(event.target)) return;
+              const row = (event.target as Element).closest<HTMLTableRowElement>('tr.tracked-branch-row');
+              if (!row) return;
+              if (event.key === 'Escape') {
+                if (!selectedBranchKey) return;
+                event.preventDefault();
+                onClearSelection?.();
+                return;
+              }
+              const plainKey = event.ctrlKey || event.metaKey || event.altKey ? '' : event.key.length === 1 ? event.key.toLowerCase() : '';
+              const delta = event.key === 'ArrowDown' || plainKey === 'j' ? 1 : event.key === 'ArrowUp' || plainKey === 'k' ? -1 : 0;
+              if (!delta) return;
+              event.preventDefault();
+              const rows = Array.from(event.currentTarget.querySelectorAll<HTMLTableRowElement>('tbody > tr.tracked-branch-row'));
+              const index = rows.indexOf(row);
+              const fromSelected = row.dataset.branchKey === selectedBranchKey;
+              const target = fromSelected ? rows[Math.min(Math.max(index + delta, 0), rows.length - 1)] : row;
+              if (!target || (fromSelected && target === row)) return;
+              const entry = shown.find((item) => trackedBranchKey(item.repo, item.branch) === target.dataset.branchKey);
+              if (!entry) return;
+              onSelectBranch(entry.repo, entry.branch);
+              target.querySelector<HTMLElement>('.tracked-branch-open')?.focus();
+            }}
+          >
             <thead>
               <tr>
                 <th scope="col">Branch</th>

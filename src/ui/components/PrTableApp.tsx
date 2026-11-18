@@ -25,6 +25,7 @@ import { useStableCallback } from '../state/useStableCallback';
 import { useHeldSectionOrder } from '../state/useHeldSectionOrder';
 import { useAckLabelActions } from '../state/useAckLabelActions';
 import { usePrTableUiState, type SelectedPr } from '../state/PrTableUiStateContext';
+import { SELECTED_BRANCH_STORAGE_KEY, readSessionValue, writeSessionValue } from '../state/PrTableUiStateProvider';
 import { NowProvider } from '../state/NowContext';
 import { readDefaultQuickCheckIntervalMs, RepoFreshnessProvider } from '../state/RepoFreshnessContext';
 import type { RepoRefreshFailure } from '../helpers/pr-row-freshness.helpers.ts';
@@ -864,7 +865,9 @@ export function PrTableApp() {
 
   // The tracked branch shown in the pane instead of a PR (repo:branch);
   // the pane shows a PR again once one's selected.
-  const [selectedBranchKey, setSelectedBranchKey] = useState('');
+  const [selectedBranchKey, setSelectedBranchKey] = useState(() => readSessionValue(SELECTED_BRANCH_STORAGE_KEY));
+  // Kept for the tab, as the selected PR is, so a reload opens it again.
+  useEffect(() => writeSessionValue(SELECTED_BRANCH_STORAGE_KEY, selectedBranchKey), [selectedBranchKey]);
   const selectedBranch = useMemo(
     () => (selectedBranchKey ? trackedBranches.find((entry) => trackedBranchKey(entry.repo, entry.branch) === selectedBranchKey) || null : null),
     [selectedBranchKey, trackedBranches],
@@ -1346,6 +1349,7 @@ export function PrTableApp() {
                           selectedBranchKey={isPaneVisible && selectedBranch ? selectedBranchKey : ''}
                           onSelectBranch={handleSelectBranch}
                           onShownChange={setShownBranchKeys}
+                          onClearSelection={() => setSelectedBranchKey('')}
                         />
                       ) : (
                       <PrSection

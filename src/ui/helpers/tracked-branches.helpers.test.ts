@@ -51,7 +51,8 @@ describe('tracked branches', () => {
     // Commits of its own on a remote branch, tracking none: said so. Still
     // where its base was, with no upstream: not "on a remote branch".
     expect(texts(describeBranchChips({ found: true, pushed: true, unpushed: 0, base: 'main', baseAhead: 2, baseBehind: 0 }))).toEqual(['On a remote branch', '2 ahead, 0 behind main']);
-    expect(texts(describeBranchChips({ found: true, pushed: true, unpushed: 0, base: 'main', baseAhead: 0, baseBehind: 1 }))).toEqual(['0 ahead, 1 behind main']);
+    expect(texts(describeBranchChips({ found: true, pushed: true, unpushed: 0, base: 'main', baseAhead: 0, baseBehind: 1 }))).toEqual(['No commits yet · 1 behind main']);
+    expect(texts(describeBranchChips({ found: true, base: 'main', baseAhead: 0, baseBehind: 0 }))).toEqual(['No commits yet']);
     expect(describeBranchChips({ found: false })).toEqual([]);
     expect(texts(describeBranchChips({ found: true }, { worktreePath: 'x', error: 'git status took over 45s' }))).toEqual(["Can't read changes"]);
   });

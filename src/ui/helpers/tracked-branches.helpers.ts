@@ -125,7 +125,13 @@ export const describeBranchChips = (status: TrackedBranchStatus | undefined, cha
     } else if (typeof status.baseAhead === 'number' && typeof status.baseBehind === 'number') {
       chips.push({
         key: 'base',
-        text: `${status.baseAhead} ahead, ${status.baseBehind} behind ${status.base}`,
+        // Still where it started: said plainly, rather than "0 ahead".
+        text:
+          status.baseAhead === 0
+            ? status.baseBehind > 0
+              ? `No commits yet · ${status.baseBehind} behind ${status.base}`
+              : 'No commits yet'
+            : `${status.baseAhead} ahead, ${status.baseBehind} behind ${status.base}`,
         tone: status.baseBehind > 0 ? 'accent' : 'muted',
         hint: `Against ${status.base} as the clone has it (its copy of the remote's, as of the last fetch): ${plural(status.baseAhead, 'commit')} of its own, ${plural(status.baseBehind, 'commit')} on ${status.base} it hasn't got`,
       });

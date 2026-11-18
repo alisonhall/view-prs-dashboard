@@ -331,8 +331,10 @@ describe('PrTableApp', () => {
   beforeEach(() => {
     capturedSectionProps.length = 0;
     capturedPaneProps.length = 0;
-    // The pane's shown/hidden choice is saved there.
+    // The pane's shown/hidden choice is saved there, and what the pane
+    // shows is kept for the tab.
     window.localStorage.clear();
+    window.sessionStorage.clear();
     postJson.mockReset();
     installSectionHelpers();
     // ES module cleanup (see REACT_MIGRATION_PLAN.md): PrTableApp.tsx's

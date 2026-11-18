@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   PrTableOpenSectionsContext,
   PrTableUiStateContext,
@@ -30,6 +30,40 @@ const writePaneVisible = (visible: boolean) => {
   }
 };
 
+// What the detail pane shows - a PR here, or a tracked branch
+// (PrTableApp) - kept for the tab (sessionStorage), so a reload opens it
+// again; a new tab starts with none. Unreadable or missing: none.
+export const SELECTED_PR_STORAGE_KEY = 'view-prs:selected-pr';
+export const SELECTED_BRANCH_STORAGE_KEY = 'view-prs:selected-branch';
+
+export const readSessionValue = (key: string): string => {
+  try {
+    return window.sessionStorage.getItem(key) || '';
+  } catch {
+    return '';
+  }
+};
+
+export const writeSessionValue = (key: string, value: string) => {
+  try {
+    if (value) window.sessionStorage.setItem(key, value);
+    else window.sessionStorage.removeItem(key);
+  } catch {
+    // Not kept; it's still shown until the page reloads.
+  }
+};
+
+const readSelectedPr = (): SelectedPr | null => {
+  try {
+    const value = JSON.parse(readSessionValue(SELECTED_PR_STORAGE_KEY) || 'null') as Partial<SelectedPr> | null;
+    return value && typeof value.repo === 'string' && typeof value.prNumber === 'string' && value.repo && value.prNumber
+      ? { repo: value.repo, prNumber: value.prNumber }
+      : null;
+  } catch {
+    return null;
+  }
+};
+
 const sameStrings = (a: string[], b: string[]): boolean =>
   a.length === b.length && a.every((value, index) => value === b[index]);
 
@@ -54,7 +88,10 @@ const sameSections = (a: RenderedSection[], b: RenderedSection[]): boolean =>
 export function PrTableUiStateProvider({ children }: { children?: ReactNode }) {
   const [sectionOpenOverrides, setSectionOpenOverrides] = useState<Record<string, boolean>>({});
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
-  const [selectedPr, setSelectedPrState] = useState<SelectedPr | null>(null);
+  const [selectedPr, setSelectedPrState] = useState<SelectedPr | null>(readSelectedPr);
+  useEffect(() => {
+    writeSessionValue(SELECTED_PR_STORAGE_KEY, selectedPr ? JSON.stringify({ repo: selectedPr.repo, prNumber: selectedPr.prNumber }) : '');
+  }, [selectedPr]);
   const [isPaneVisible, setPaneVisibleState] = useState(readPaneVisible);
   const [paneTab, setPaneTab] = useState<PaneTab>('overview');
   const [renderedSections, setRenderedSections] = useState<RenderedSection[]>([]);

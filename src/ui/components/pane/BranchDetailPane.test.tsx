@@ -198,6 +198,33 @@ describe('BranchDetailPane', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  test('↓/↑ (and j/k) on a row show the next or previous branch, the row itself first; Esc unselects', async () => {
+    const user = userEvent.setup();
+    const onSelectBranch = jest.fn();
+    const onClearSelection = jest.fn();
+    const second = { repo: 'acme/app', branch: 'wip' };
+    const value = local({ branches: { 'acme/app:spike/cache': STATUS, 'acme/app:wip': { ...STATUS, branch: 'wip', committedAt: hoursAgo(30) } } });
+    const props = { trackedBranches: [ENTRY, second], isOpen: true, onToggleSection: jest.fn(), onSelectBranch, onClearSelection };
+    const { rerender } = render(wrap(<TrackedBranchesSection {...props} />, value));
+    // Nothing shown: the focused row first.
+    screen.getByRole('button', { name: 'spike/cache' }).focus();
+    await user.keyboard('{ArrowDown}');
+    expect(onSelectBranch).toHaveBeenLastCalledWith('acme/app', 'spike/cache');
+    rerender(wrap(<TrackedBranchesSection {...props} selectedBranchKey="acme/app:spike/cache" />, value));
+    screen.getByRole('button', { name: 'spike/cache' }).focus();
+    await user.keyboard('j');
+    expect(onSelectBranch).toHaveBeenLastCalledWith('acme/app', 'wip');
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'wip' }));
+    rerender(wrap(<TrackedBranchesSection {...props} selectedBranchKey="acme/app:wip" />, value));
+    onSelectBranch.mockClear();
+    await user.keyboard('{ArrowDown}');
+    expect(onSelectBranch).not.toHaveBeenCalled();
+    await user.keyboard('{ArrowUp}');
+    expect(onSelectBranch).toHaveBeenLastCalledWith('acme/app', 'spike/cache');
+    await user.keyboard('{Escape}');
+    expect(onClearSelection).toHaveBeenCalled();
+  });
+
   test("a tracked row's name shows it in the pane, marked while it's there", async () => {
     const user = userEvent.setup();
     const onSelectBranch = jest.fn();
