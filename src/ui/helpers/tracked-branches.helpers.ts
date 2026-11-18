@@ -94,8 +94,15 @@ export const describeBranchChips = (status: TrackedBranchStatus | undefined, cha
       tone: 'attention',
       hint: `${plural(status.unpushed, 'commit')} on none of the repo's remote branches (as the clone last fetched them)`,
     });
-  } else if (status.pushed && !status.upstream) {
-    chips.push({ key: 'pushed', text: 'On a remote branch', tone: 'muted', hint: "Its commits are on one of the repo's remote branches, though it tracks none" });
+  } else if (status.pushed && !status.upstream && (status.baseAhead ?? 1) > 0) {
+    // Only for commits of its own: a branch still where its base was is
+    // "on a remote branch" just by being its base's commit.
+    chips.push({
+      key: 'pushed',
+      text: 'On a remote branch',
+      tone: 'muted',
+      hint: "Its own commits are on one of the repo's remote branches, though it tracks none (pushed without setting an upstream?)",
+    });
   }
   if (status.upstream?.gone) {
     chips.push({

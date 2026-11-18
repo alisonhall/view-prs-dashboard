@@ -209,6 +209,16 @@ describe('BranchDetailPane', () => {
     expect(onShownChange).toHaveBeenLastCalledWith(['acme/app:spike/cache']);
     await user.click(screen.getByRole('button', { name: 'spike/cache' }));
     expect(onSelectBranch).toHaveBeenCalledWith('acme/app', 'spike/cache');
+    // Anywhere on the row, as a PR row - but not its buttons.
+    onSelectBranch.mockClear();
+    const row = document.querySelector('tr.tracked-branch-row') as HTMLElement;
+    await user.click(within(row).getByText('acme/app'));
+    expect(onSelectBranch).toHaveBeenCalledTimes(1);
+    await user.click(within(row).getByText('app-spike'));
+    expect(onSelectBranch).toHaveBeenCalledTimes(2);
+    await user.click(within(row).getByRole('button', { name: 'Note: Try Redis' }));
+    expect(onSelectBranch).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole('textbox', { name: 'Note on spike/cache' })).toBeInTheDocument();
     rerender(
       wrap(
         <TrackedBranchesSection

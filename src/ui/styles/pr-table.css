@@ -928,6 +928,26 @@ a.pr-summary-file {
   min-width: 180px;
 }
 
+/* The name and repo, with the note button beside them (not in their
+   lines, where it made them taller). */
+.tracked-branch-name-inner {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  /* The column's narrowest (a td's own min-width isn't): room for a
+     name of 20 or so characters and the button. */
+  min-width: 220px;
+}
+
+.tracked-branch-name-text {
+  min-width: 0;
+}
+
+/* A click on the row opens it in the pane, as a PR row's does. */
+.tracked-branch-row[data-selectable="true"] {
+  cursor: pointer;
+}
+
 .tracked-branch-name {
   display: block;
   overflow-wrap: anywhere;
@@ -971,13 +991,12 @@ a.pr-summary-file {
 
 .tracked-branch-note {
   display: inline-flex;
-  margin-left: 6px;
+  flex: none;
   padding: 2px;
   border: 0;
   border-radius: var(--radius-sm);
   background: none;
   color: var(--color-text-muted);
-  vertical-align: middle;
   cursor: pointer;
 }
 
@@ -992,8 +1011,7 @@ a.pr-summary-file {
 
 /* Add a note: there on hover or focus, so quiet rows stay quiet. */
 .tracked-branch-add-note {
-  margin-left: 2px;
-  vertical-align: middle;
+  flex: none;
   opacity: 0;
 }
 

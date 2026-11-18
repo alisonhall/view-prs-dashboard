@@ -21,7 +21,7 @@
  * @module components/TrackedBranchesSection
  */
 
-import { Fragment, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useContext, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import type { PrTrackedBranch } from '../types/pr-data.ts';
 import { Icon, type IconName } from './ui/Icon';
 import { Button, IconButton } from './ui/Button';
@@ -96,6 +96,14 @@ export function useTrackedBranchChanges(checkedOutKey: string, pollMs = CHANGES_
 }
 
 type OpenKind = 'editor' | 'terminal';
+
+// A click on a row itself, to open it in the pane: not on one of its
+// buttons, links or fields, and not the end of selecting its text.
+const isRowClick = (event: MouseEvent) => {
+  const target = event.target as Element | null;
+  if (target?.closest('button, a, input, textarea, select, label, [role="button"], [role="menu"]')) return false;
+  return !window.getSelection?.()?.toString();
+};
 
 export interface TrackedBranchesSectionProps {
   trackedBranches?: PrTrackedBranch[];
@@ -365,8 +373,18 @@ export function TrackedBranchesSection({
                 const editNote = () => setNoteEditor({ key, text: note, saving: false });
                 return (
                   <Fragment key={key}>
-                  <tr className="tracked-branch-row" data-branch-key={key} aria-current={selectedBranchKey === key ? true : undefined}>
+                  <tr
+                    className="tracked-branch-row"
+                    data-branch-key={key}
+                    data-selectable={onSelectBranch ? true : undefined}
+                    aria-current={selectedBranchKey === key ? true : undefined}
+                    onClick={(event) => {
+                      if (onSelectBranch && isRowClick(event)) onSelectBranch(entry.repo, entry.branch);
+                    }}
+                  >
                     <td className="tracked-branch-name-cell">
+                      <div className="tracked-branch-name-inner">
+                      <div className="tracked-branch-name-text">
                       {onSelectBranch ? (
                         <button
                           type="button"
@@ -381,6 +399,7 @@ export function TrackedBranchesSection({
                         <span className="tracked-branch-name">{entry.branch}</span>
                       )}
                       <span className="tracked-branch-repo">{entry.repo}</span>
+                      </div>
                       {note && editing ? (
                         // No hover text while it's being written: that would
                         // take the first Escape (tooltip-controller.ts).
@@ -398,6 +417,7 @@ export function TrackedBranchesSection({
                           <IconButton className="tracked-branch-add-note" icon="pencil" label={`Add a note to ${entry.branch}`} onClick={editNote} />
                         )
                       )}
+                      </div>
                     </td>
                     <td className="tracked-branch-where">
                       <Tooltip content={where.hint}>
