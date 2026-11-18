@@ -306,6 +306,10 @@ describe('TrackBranchPicker', () => {
     // A name the clone has already.
     await user.type(within(form).getByRole('textbox', { name: 'New branch' }), 'other-work');
     expect(within(form).getByText("acme/app's clone already has a branch other-work")).toBeInTheDocument();
+    // One git can't keep beside a branch the clone has.
+    await user.type(within(form).getByRole('textbox', { name: 'New branch' }), '/fix');
+    expect(within(form).getByText("acme/app's clone has a branch other-work, and git can't keep other-work/fix beside it")).toBeInTheDocument();
+    expect(within(form).getByRole('button', { name: 'Make and track it' })).toBeDisabled();
     await user.clear(within(form).getByRole('textbox', { name: 'New branch' }));
     expect(within(from).getAllByRole('option').map((option) => option.textContent)).toEqual(['main', 'other-work', 'origin/release']);
     await user.selectOptions(from, 'refs/remotes/origin/release');

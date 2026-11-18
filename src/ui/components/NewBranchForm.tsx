@@ -75,6 +75,21 @@ export const branchNameProblem = (name: string) => {
   return '';
 };
 
+// Why the clone's own branches rule a name out: one already has it, or
+// git can't keep both (feature beside feature/x - a branch's name is a
+// file, so it can't also be a folder); "" when none do.
+export const takenProblem = (repo: string, name: string, starts: BranchStart[]) => {
+  if (!name) return '';
+  for (const item of starts) {
+    if (item.remote) continue;
+    if (item.name === name) return `${repo}'s clone already has a branch ${name}`;
+    if (item.name.startsWith(`${name}/`) || name.startsWith(`${item.name}/`)) {
+      return `${repo}'s clone has a branch ${item.name}, and git can't keep ${name} beside it`;
+    }
+  }
+  return '';
+};
+
 // Editor and Terminal for a folder of the repo's clone (POST
 // /view-prs/open-folder), as a row's.
 export function OpenFolderButtons({ repo, folder }: { repo: string; folder: string }) {
@@ -139,7 +154,7 @@ export function NewBranchForm({
   const startRef = start?.ref || (options.some((item) => item.ref === chosenStart) ? chosenStart : options[0]?.ref || '');
   const trimmed = name.trim();
   const clonePath = repos[repo]?.path || '';
-  const problem = branchNameProblem(trimmed) || (options.some((item) => !item.remote && item.name === trimmed) ? `${repo}'s clone already has a branch ${trimmed}` : '');
+  const problem = branchNameProblem(trimmed) || takenProblem(repo, trimmed, options);
 
   const create = async () => {
     if (!trimmed || !startRef || busy || problem) return;
