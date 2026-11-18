@@ -1008,6 +1008,13 @@ describe("integration behavior", () => {
         expect((await request.patch("/view-prs/tracked-branches").send({ repo: "owner/repo", branch: "nope", note: "x" })).status).toBe(404);
         expect((await request.patch("/view-prs/tracked-branches").send({ repo: "owner/repo", branch: "wip", base: "bad base" })).status).toBe(400);
 
+        // Its commits for the pane, against its own base.
+        const commits = await request.get("/view-prs/tracked-branches/commits?repo=owner/repo&branch=wip");
+        expect(commits.body).toMatchObject({ ok: true, branch: "wip", base: "feature", commits: expect.any(Array), more: false });
+        expect((await request.get("/view-prs/tracked-branches/commits?repo=owner/repo&branch=nope")).status).toBe(404);
+        expect((await request.get("/view-prs/tracked-branches/commits?repo=owner/repo")).status).toBe(400);
+        expect((await request.get("/view-prs/tracked-branches/commits?repo=other/repo&branch=wip")).status).toBe(404);
+
         // Pull: a branch tracking nothing has nothing to pull.
         const pull = await request.post("/view-prs/tracked-branches/pull").send({ repo: "owner/repo", branch: "wip" });
         expect(pull.status).toBe(409);

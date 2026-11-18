@@ -617,6 +617,25 @@ describe("branches tracked without a PR", () => {
     expect(found["acme/app:stale"]).toMatchObject({ pushed: true, upstream: { ahead: 0, behind: 1 }, base: "pushed", baseAhead: 1, baseBehind: 0 });
   });
 
+  test("commits since a branch left its base, newest first, each marked when it isn't on GitHub; a main branch lists its newest", async () => {
+    const local = await helper().getBranchCommits({ repo: "acme/app", folder: clone, branch: "local-only" });
+    expect(local).toMatchObject({ ok: true, branch: "local-only", base: "main", behind: 0, more: false, mergeBase: git(clone, "rev-parse", "main") });
+    expect(local.commits.map((item) => [item.subject, item.pushed])).toEqual([
+      ["local 2", false],
+      ["local 1", false],
+    ]);
+    expect(local.commits[0]).toMatchObject({ oid: git(clone, "rev-parse", "local-only"), author: expect.any(String), committedAt: expect.any(String), parents: [git(clone, "rev-parse", "local-only~1")] });
+    // A base of its own; pushed commits.
+    const stale = await helper().getBranchCommits({ repo: "acme/app", folder: clone, branch: "stale", base: "pushed" });
+    expect(stale.commits.map((item) => [item.subject, item.pushed])).toEqual([["stale 1", true]]);
+    // Its own base (main): the newest commits, with more past the limit.
+    const main = await helper().getBranchCommits({ repo: "acme/app", folder: clone, branch: "main", limit: 1 });
+    expect(main).toMatchObject({ recent: true, more: false, commits: [{ subject: "base" }] });
+    const pushed = await helper().getBranchCommits({ repo: "acme/app", folder: clone, branch: "pushed", base: "nope", limit: 1 });
+    expect(pushed).toMatchObject({ recent: true, baseMissing: true, more: true, commits: [{ subject: "pushed 1", pushed: true }] });
+    expect(await helper().getBranchCommits({ repo: "acme/app", folder: clone, branch: "nope" })).toMatchObject({ ok: false, status: 404 });
+  });
+
   test("a branch the clone doesn't have, a base it doesn't have, an upstream gone, and a branch whose PR has opened", async () => {
     git(clone, "branch", "orphan", "main");
     track(clone, "orphan", "origin", "refs/heads/deleted-on-github");

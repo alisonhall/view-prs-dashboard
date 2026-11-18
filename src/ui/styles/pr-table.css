@@ -934,6 +934,36 @@ a.pr-summary-file {
   font-family: var(--font-mono);
 }
 
+/* The name opens the branch in the detail pane (BranchDetailPane). */
+.tracked-branch-open {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-accent-text);
+  font-size: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.tracked-branch-open:hover {
+  text-decoration: underline;
+}
+
+.tracked-branch-open:focus-visible {
+  outline: none;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--focus-ring);
+}
+
+/* The branch shown in the pane, marked as a PR row is. */
+.tracked-branch-row[aria-current="true"] > td {
+  background: var(--color-surface-selected);
+}
+
+.tracked-branch-row[aria-current="true"] > td:first-child {
+  box-shadow: inset 3px 0 0 var(--color-accent);
+}
+
 .tracked-branch-repo {
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);

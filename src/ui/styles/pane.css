@@ -960,3 +960,94 @@
   text-transform: uppercase;
   color: var(--color-text-muted);
 }
+
+/* A tracked branch in the pane (BranchDetailPane). */
+.branch-pane-name {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-base);
+  overflow-wrap: anywhere;
+}
+
+.branch-pane-chips {
+  gap: 4px;
+}
+
+.branch-pane-note {
+  grid-column: 1;
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.branch-pane-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-size-md);
+  font-weight: 600;
+}
+
+.branch-pane-count {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--color-surface-muted, var(--color-border));
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: 400;
+}
+
+.branch-pane-commit-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.branch-pane-commit {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.branch-pane-commit:last-child {
+  border-bottom: 0;
+}
+
+.branch-pane-commit-subject {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--space-2);
+  overflow-wrap: anywhere;
+}
+
+.branch-pane-commit-tag {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.branch-pane-commit-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--space-2);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.branch-pane-commit-meta code {
+  font-family: var(--font-mono);
+}
+
+.branch-pane-more {
+  margin-top: var(--space-2);
+  font-size: var(--font-size-sm);
+}
+
+.branch-pane-error {
+  margin: 0;
+}

@@ -650,6 +650,66 @@ const createViewPrsLocalBranches = ({
     return [...local, ...remote];
   };
 
+  // A tracked branch's commits for its pane: those since it left its base
+  // (base..branch, newest first), each marked when it's on none of the
+  // repo's remote branches. A branch that is its base (main, say), or
+  // whose base the clone hasn't got, lists its newest commits instead
+  // (recent: true). => { ok, branch, base, baseMissing?, recent?,
+  // mergeBase?, behind?, commits: [{ oid, subject, author, authorEmail,
+  // committedAt, parents, pushed }], more } - more: there are older ones
+  // past the first `limit`. { ok: false, status?, error } when it can't.
+  const COMMIT_FIELDS = ["%H", "%P", "%an", "%ae", "%cI", "%s"].join("%x1f");
+  const getBranchCommits = async ({ repo, folder, branch: name, base: chosenBase, limit = 100 }) => {
+    const clone = await getClone(repo, folder);
+    if (!clone.ok) return { ok: false, error: clone.error };
+    const branch = clone.branches.find((item) => item.name === name);
+    if (!branch) return { ok: false, status: 404, error: `${repo}'s clone has no branch ${name}` };
+    const base = chosenBase || clone.defaultBranch || "";
+    const onBase = base && base !== branch.name ? baseOid(clone, base) : "";
+    const range = onBase ? [branch.oid, `^${onBase}`] : [branch.oid];
+    const stdout = await git(clone.folder, ["log", `--format=${COMMIT_FIELDS}%x1e`, `-n${limit + 1}`, ...range, "--"]);
+    const rows = stdout
+      .split("\x1e")
+      .map((text) => text.trim())
+      .filter(Boolean)
+      .map((text) => {
+        const [oid, parents, author, authorEmail, committedAt, subject] = text.split("\x1f");
+        return { oid, parents: parents ? parents.split(" ") : [], author, authorEmail, committedAt, subject: subject || "" };
+      });
+    const commits = rows.slice(0, limit);
+    // Which aren't on GitHub: the branch's commits on none of the repo's
+    // remote branches (as the clone last fetched or pushed them).
+    let unpushed = new Set();
+    if (clone.repoRemotes.length > 0) {
+      try {
+        const out = await git(clone.folder, ["rev-list", `-n${limit}`, branch.oid, "--not", ...clone.repoRemotes.map((remote) => `--remotes=${remote}`)]);
+        unpushed = new Set(out.split("\n").map((line) => line.trim()).filter(Boolean));
+      } catch (_error) {
+        // Unknown: all shown as pushed would mislead less than none.
+      }
+    }
+    const result = {
+      ok: true,
+      branch: branch.name,
+      base,
+      commits: commits.map((commit) => ({ ...commit, pushed: clone.repoRemotes.length > 0 && !unpushed.has(commit.oid) })),
+      more: rows.length > limit,
+    };
+    if (!onBase) {
+      result.recent = true;
+      if (base && base !== branch.name) result.baseMissing = true;
+      return result;
+    }
+    try {
+      result.mergeBase = (await git(clone.folder, ["merge-base", branch.oid, onBase])).trim();
+    } catch (_error) {
+      // No common commit: everything on the branch is listed.
+    }
+    const counts = onBase === branch.oid ? { behind: 0 } : await countAheadBehind(clone.folder, branch.oid, onBase);
+    if (counts) result.behind = counts.behind;
+    return result;
+  };
+
   const mapLimited = async (items, limit, mapper) => {
     const results = new Array(items.length);
     let next = 0;
@@ -865,6 +925,7 @@ const createViewPrsLocalBranches = ({
     getTrackedBranches,
     getTrackedBranchChanges,
     getBranchCandidates,
+    getBranchCommits,
     describeBranch,
     isOpenableFolder,
     checkClone,

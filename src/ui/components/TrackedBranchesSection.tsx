@@ -105,6 +105,10 @@ export interface TrackedBranchesSectionProps {
   // A smart group's icon and colour chosen in Settings › Appearance.
   icon?: { icon: IconName; tone: string };
   title?: string;
+  // The branch shown in the detail pane (repo:branch), and showing one
+  // there (its name clicked).
+  selectedBranchKey?: string;
+  onSelectBranch?: (repo: string, branch: string) => void;
 }
 
 export function TrackedBranchesSection({
@@ -113,6 +117,8 @@ export function TrackedBranchesSection({
   onToggleSection,
   icon,
   title = 'Tracked Branches',
+  selectedBranchKey = '',
+  onSelectBranch,
 }: TrackedBranchesSectionProps) {
   const { repos, branches: statuses, refresh } = useLocalBranches();
   const { showError } = useSnackbar();
@@ -433,9 +439,21 @@ export function TrackedBranchesSection({
                 const editNote = () => setNoteEditor({ key, text: note, saving: false });
                 return (
                   <Fragment key={key}>
-                  <tr className="tracked-branch-row" data-branch-key={key}>
+                  <tr className="tracked-branch-row" data-branch-key={key} aria-current={selectedBranchKey === key ? true : undefined}>
                     <td className="tracked-branch-name-cell">
-                      <span className="tracked-branch-name">{entry.branch}</span>
+                      {onSelectBranch ? (
+                        <button
+                          type="button"
+                          className="tracked-branch-name tracked-branch-open"
+                          title={selectedBranchKey === key ? 'Close its details' : 'Show its commits and details'}
+                          aria-pressed={selectedBranchKey === key}
+                          onClick={() => onSelectBranch(entry.repo, entry.branch)}
+                        >
+                          {entry.branch}
+                        </button>
+                      ) : (
+                        <span className="tracked-branch-name">{entry.branch}</span>
+                      )}
                       <span className="tracked-branch-repo">{entry.repo}</span>
                       {note && editing ? (
                         // No hover text while it's being written: that would
