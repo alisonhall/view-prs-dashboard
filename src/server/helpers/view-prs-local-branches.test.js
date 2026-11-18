@@ -617,6 +617,60 @@ describe("branches tracked without a PR", () => {
     expect(found["acme/app:stale"]).toMatchObject({ pushed: true, upstream: { ahead: 0, behind: 1 }, base: "pushed", baseAhead: 1, baseBehind: 0 });
   });
 
+  test("commits since a branch left its base, newest first, each marked when it isn't on GitHub; a main branch lists its newest", async () => {
+    const local = await helper().getBranchCommits({ repo: "acme/app", folder: clone, branch: "local-only" });
+    expect(local).toMatchObject({ ok: true, branch: "local-only", base: "main", behind: 0, more: false, mergeBase: git(clone, "rev-parse", "main") });
+    expect(local.commits.map((item) => [item.subject, item.pushed])).toEqual([
+      ["local 2", false],
+      ["local 1", false],
+    ]);
+    expect(local.commits[0]).toMatchObject({ oid: git(clone, "rev-parse", "local-only"), author: expect.any(String), committedAt: expect.any(String), parents: [git(clone, "rev-parse", "local-only~1")] });
+    // A base of its own; pushed commits.
+    const stale = await helper().getBranchCommits({ repo: "acme/app", folder: clone, branch: "stale", base: "pushed" });
+    expect(stale.commits.map((item) => [item.subject, item.pushed])).toEqual([["stale 1", true]]);
+    // Its own base (main): the newest commits, with more past the limit.
+    const main = await helper().getBranchCommits({ repo: "acme/app", folder: clone, branch: "main", limit: 1 });
+    expect(main).toMatchObject({ recent: true, more: false, commits: [{ subject: "base" }] });
+    const pushed = await helper().getBranchCommits({ repo: "acme/app", folder: clone, branch: "pushed", base: "nope", limit: 1 });
+    expect(pushed).toMatchObject({ recent: true, baseMissing: true, more: true, commits: [{ subject: "pushed 1", pushed: true }] });
+    expect(await helper().getBranchCommits({ repo: "acme/app", folder: clone, branch: "nope" })).toMatchObject({ ok: false, status: 404 });
+  });
+
+  test("the files a commit changed: lines added and removed, a rename followed, a binary file, a merge against its first parent", async () => {
+    const tree = fs.mkdtempSync(path.join(root, "files-"));
+    git(root, "clone", "-q", clone, path.join(tree, "c"));
+    const folder = path.join(tree, "c");
+    git(folder, "remote", "set-url", "origin", "git@github.com:acme/files.git");
+    fs.writeFileSync(path.join(folder, "a.txt"), "one\ntwo\n");
+    fs.writeFileSync(path.join(folder, "old name.txt"), "a\nb\nc\nd\ne\n");
+    git(folder, "add", "-A");
+    git(folder, "-c", "user.name=T", "-c", "user.email=t@e.com", "commit", "-q", "-m", "files");
+    fs.writeFileSync(path.join(folder, "a.txt"), "one\nthree\nfour\n");
+    git(folder, "mv", "old name.txt", "new name.txt");
+    fs.writeFileSync(path.join(folder, "pic.bin"), Buffer.from([0, 1, 2, 0, 255]));
+    git(folder, "add", "-A");
+    git(folder, "-c", "user.name=T", "-c", "user.email=t@e.com", "commit", "-q", "-m", "change");
+    const oid = git(folder, "rev-parse", "HEAD");
+    const result = await helper().getCommitFiles({ repo: "acme/files", folder, oid: oid.slice(0, 10) });
+    expect(result.ok).toBe(true);
+    expect(result.oid).toBe(oid);
+    const byPath = Object.fromEntries(result.files.map((file) => [file.path, file]));
+    expect(byPath["a.txt"]).toMatchObject({ added: 2, removed: 1 });
+    expect(byPath["new name.txt"]).toMatchObject({ oldPath: "old name.txt", added: 0, removed: 0 });
+    expect(byPath["pic.bin"]).toMatchObject({ binary: true });
+    // A merge: what it brought in against its first parent.
+    git(folder, "checkout", "-q", "-b", "side", "HEAD~1");
+    fs.writeFileSync(path.join(folder, "side.txt"), "x\n");
+    git(folder, "add", "-A");
+    git(folder, "-c", "user.name=T", "-c", "user.email=t@e.com", "commit", "-q", "-m", "side");
+    git(folder, "checkout", "-q", "-");
+    git(folder, "-c", "user.name=T", "-c", "user.email=t@e.com", "merge", "-q", "--no-ff", "-m", "merge side", "side");
+    const merge = await helper().getCommitFiles({ repo: "acme/files", folder, oid: git(folder, "rev-parse", "HEAD") });
+    expect(merge.files).toEqual([{ path: "side.txt", added: 1, removed: 0 }]);
+    expect(await helper().getCommitFiles({ repo: "acme/files", folder, oid: "nothex" })).toMatchObject({ ok: false, status: 400 });
+    expect(await helper().getCommitFiles({ repo: "acme/files", folder, oid: "0123456789abcdef" })).toMatchObject({ ok: false, status: 404 });
+  });
+
   test("a branch the clone doesn't have, a base it doesn't have, an upstream gone, and a branch whose PR has opened", async () => {
     git(clone, "branch", "orphan", "main");
     track(clone, "orphan", "origin", "refs/heads/deleted-on-github");

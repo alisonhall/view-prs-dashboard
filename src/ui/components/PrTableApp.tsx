@@ -11,6 +11,7 @@
 import { Fragment, useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from 'react';
 import { PrSection } from './PrSection';
 import { TrackedBranchesSection, TRACKED_BRANCHES_SECTION_KEY } from './TrackedBranchesSection';
+import { trackedBranchKey } from '../helpers/tracked-branches.helpers.ts';
 import { PrJsonModal } from './PrJsonModal';
 import { usePrData } from '../state/PrDataContext';
 import { useNeedsAttention } from '../state/NeedsAttentionContext';
@@ -45,6 +46,7 @@ import type { SmartGroupData } from '../helpers/pr-section-config.helpers.ts';
 import { captureRowAnchor, restoreRowAnchor, type RowAnchor } from '../helpers/row-scroll-anchor.helpers.ts';
 import { dockedPaneRoom } from '../helpers/docked-pane-room.helpers.ts';
 import { PrDetailPane } from './pane/PrDetailPane';
+import { BranchDetailPane } from './pane/BranchDetailPane';
 import { Button } from './ui/Button';
 import { useRowCheckboxActions } from '../state/useRowCheckboxActions';
 import { buildActivePrKey, buildExpandedInsightsKey } from './pr-row-keys';
@@ -860,6 +862,14 @@ export function PrTableApp() {
     );
   }, [sections, hiddenPrCount, reportRenderedSections, areSectionPreferencesReady]);
 
+  // The tracked branch shown in the pane instead of a PR (repo:branch);
+  // the pane shows a PR again once one's selected.
+  const [selectedBranchKey, setSelectedBranchKey] = useState('');
+  const selectedBranch = useMemo(
+    () => (selectedBranchKey ? trackedBranches.find((entry) => trackedBranchKey(entry.repo, entry.branch) === selectedBranchKey) || null : null),
+    [selectedBranchKey, trackedBranches],
+  );
+
   // The selected PR's entry, looked up again in each payload; null when
   // nothing is selected or the PR is no longer in the data.
   const selectedEntry = useMemo(() => {
@@ -904,9 +914,14 @@ export function PrTableApp() {
     return window.confirm(`PR #${selectedPr.prNumber} has unsaved notes. Discard them?`);
   };
   const selectPr = (next: SelectedPr | null): boolean => {
-    if (samePr(next, selectedPr)) return true;
+    if (samePr(next, selectedPr)) {
+      if (next) setSelectedBranchKey('');
+      return true;
+    }
     if (!confirmLeavingPr()) return false;
     setSelectedPr(next);
+    // A PR in the pane takes the place of a tracked branch.
+    if (next) setSelectedBranchKey('');
     return true;
   };
 
@@ -1198,6 +1213,39 @@ export function PrTableApp() {
     if (keptLink) keptLink.focus({ preventScroll: true });
     else findRowLink(closing)?.focus();
   });
+  // A tracked branch's row (its name): shown in the pane, the PR there
+  // unselected (asking first with unsaved notes); clicked again while
+  // shown, the pane closes, as a PR row's does.
+  const findBranchButton = (key: string) =>
+    Array.from(document.querySelectorAll<HTMLElement>('tr.tracked-branch-row')).find((row) => row.dataset.branchKey === key)?.querySelector<HTMLElement>('.tracked-branch-open') || null;
+  const handleSelectBranch = useStableCallback((repo: string, branch: string) => {
+    const key = trackedBranchKey(repo, branch);
+    const row = findBranchButton(key)?.closest('tr') || null;
+    if (key === selectedBranchKey && isPaneVisible) {
+      setSelectedBranchKey('');
+      showPane(false, row);
+      return;
+    }
+    if (selectedPr && !selectPr(null)) return;
+    setSelectedBranchKey(key);
+    showPane(true, row);
+  });
+  // The tracked rows shown, in order, for the branch pane's previous and next.
+  const [shownBranchKeys, setShownBranchKeys] = useState<string[]>([]);
+  const branchIndex = selectedBranchKey ? shownBranchKeys.indexOf(selectedBranchKey) : -1;
+  const previousBranch = branchIndex > 0 ? shownBranchKeys[branchIndex - 1] : '';
+  const nextBranch = branchIndex >= 0 ? shownBranchKeys[branchIndex + 1] || '' : '';
+  const stepBranch = (key: string) => {
+    setSelectedBranchKey(key);
+    findBranchButton(key)?.closest('tr')?.scrollIntoView?.({ block: 'nearest' });
+  };
+  const handleCloseBranchPane = useStableCallback(() => {
+    const closing = selectedBranchKey;
+    setSelectedBranchKey('');
+    showPane(false, findBranchButton(closing)?.closest('tr') || null);
+    findBranchButton(closing)?.focus({ preventScroll: true });
+  });
+
   // The whole row comes into view, below the stuck headers (pr-table.css).
   const handleStepPr = (target: SelectedPr | undefined) => {
     if (target && selectPr(target)) findRowLink(target)?.closest('tr')?.scrollIntoView?.({ block: 'nearest' });
@@ -1295,6 +1343,9 @@ export function PrTableApp() {
                           icon={section.icon}
                           isOpen={isSectionOpen(section.key, Boolean(section.defaultOpen))}
                           onToggleSection={handleToggleSection}
+                          selectedBranchKey={isPaneVisible && selectedBranch ? selectedBranchKey : ''}
+                          onSelectBranch={handleSelectBranch}
+                          onShownChange={setShownBranchKeys}
                         />
                       ) : (
                       <PrSection
@@ -1326,7 +1377,18 @@ export function PrTableApp() {
                     </Fragment>
                   ))}
                 </div>
-                {isPaneVisible && (
+                {isPaneVisible && selectedBranch && !selectedPr && (
+                  <BranchDetailPane
+                    key={selectedBranchKey}
+                    entry={selectedBranch}
+                    mode={paneMode}
+                    onClose={handleCloseBranchPane}
+                    onClearSelection={() => setSelectedBranchKey('')}
+                    onPrevious={previousBranch ? () => stepBranch(previousBranch) : undefined}
+                    onNext={nextBranch ? () => stepBranch(nextBranch) : undefined}
+                  />
+                )}
+                {isPaneVisible && !(selectedBranch && !selectedPr) && (
                   <PrDetailPane
                     entry={selectedEntry}
                     repo={effectiveRepo}

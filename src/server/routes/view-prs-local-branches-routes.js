@@ -369,6 +369,56 @@ const registerViewPrsLocalBranchesRoutes = ({
     }
   });
 
+  // ?repo=&branch= - a tracked branch's commits since it left its base
+  // (its own base, else the repo's default branch), for its pane
+  // (view-prs-local-branches.js' getBranchCommits).
+  app.get(["/tracked-branches/commits", "/view-prs/tracked-branches/commits"], async (req, res) => {
+    const repo = String(req.query?.repo || "").trim();
+    const branch = String(req.query?.branch || "").trim();
+    try {
+      const folder = localReposStorage.loadLocalRepos()[repo];
+      if (!folder) {
+        res.status(404).json({ ok: false, error: `No clone of ${repo} saved (Settings › Local clones)` });
+        return;
+      }
+      if (!branch) {
+        res.status(400).json({ ok: false, error: "Which branch?" });
+        return;
+      }
+      const entry = listTrackedBranches().find((item) => item.repo === repo && item.branch === branch);
+      const result = await localBranches.getBranchCommits({ repo, folder, branch, base: entry?.base || "" });
+      if (!result.ok) {
+        res.status(result.status || 422).json({ ok: false, error: result.error });
+        return;
+      }
+      res.json(result);
+    } catch (error) {
+      sendInternalError({ res, error });
+    }
+  });
+
+  // ?repo=&oid= - the files a commit of the clone changed, for a tracked
+  // branch's pane (view-prs-local-branches.js' getCommitFiles).
+  app.get(["/tracked-branches/commit-files", "/view-prs/tracked-branches/commit-files"], async (req, res) => {
+    const repo = String(req.query?.repo || "").trim();
+    const oid = String(req.query?.oid || "").trim();
+    try {
+      const folder = localReposStorage.loadLocalRepos()[repo];
+      if (!folder) {
+        res.status(404).json({ ok: false, error: `No clone of ${repo} saved (Settings › Local clones)` });
+        return;
+      }
+      const result = await localBranches.getCommitFiles({ repo, folder, oid });
+      if (!result.ok) {
+        res.status(result.status || 422).json({ ok: false, error: result.error });
+        return;
+      }
+      res.json(result);
+    } catch (error) {
+      sendInternalError({ res, error });
+    }
+  });
+
   // ?repo= - the clone's local branches that could be tracked (Track a
   // branch): no PR's, not tracked already; the main branches (the default,
   // open PRs' bases) first, marked main - { branches: [{ name, oid,
