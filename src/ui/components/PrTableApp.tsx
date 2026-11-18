@@ -1267,23 +1267,6 @@ export function PrTableApp() {
     if (selectedBranchKey && !selectedBranch && payload.dataMeta?.sources) setSelectedBranchKey('');
   }, [payload, selectedPr, selectedEntry, setSelectedPr, selectedBranchKey, selectedBranch]);
 
-  // After a reload, the row of what the pane opened again is brought into
-  // view once it's in the table - unless something else is picked first.
-  const restoredSelectionRef = useRef(selectedPr ? `pr:${selectedPrKey}` : selectedBranchKey ? `branch:${selectedBranchKey}` : '');
-  useEffect(() => {
-    const restored = restoredSelectionRef.current;
-    if (!restored) return;
-    const current = selectedPr ? `pr:${selectedPrKey}` : selectedBranchKey ? `branch:${selectedBranchKey}` : '';
-    if (current !== restored || !isPaneVisible) {
-      restoredSelectionRef.current = '';
-      return;
-    }
-    const row = selectedPr ? findRowLink(selectedPr)?.closest('tr') : findBranchButton(selectedBranchKey)?.closest('tr');
-    if (!row) return;
-    restoredSelectionRef.current = '';
-    row.scrollIntoView?.({ block: 'center' });
-  });
-
   // Hiding the pane unmounts its Notes too.
   const handleTogglePane = () => {
     if (isPaneVisible && !confirmLeavingPr()) return;

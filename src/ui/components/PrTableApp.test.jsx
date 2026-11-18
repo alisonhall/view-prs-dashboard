@@ -924,24 +924,12 @@ describe('PrTableApp', () => {
 
   describe('what the pane showed, opened again after a reload', () => {
     const payload = () => ({ byPrNumber: { 1: makeEntry({ prNumber: '1', repo: 'owner/repo', section: 'open' }) } });
-    afterEach(() => document.body.querySelectorAll('[data-test-row]').forEach((node) => node.remove()));
 
-    test('given the saved PR is in the data, then it is selected and its row brought into view', () => {
+    test('given the saved PR is in the data, then it is selected', () => {
       window.sessionStorage.setItem(SELECTED_PR_STORAGE_KEY, JSON.stringify({ repo: 'owner/repo', prNumber: '1' }));
-      // The row as PrTable renders it (PrSection is mocked here).
-      const table = document.createElement('table');
-      table.setAttribute('data-test-row', '');
-      table.innerHTML = '<tbody><tr class="pr-row" data-pr-number="1" data-repo="owner/repo"><td><a class="pr-link">#1</a></td></tr></tbody>';
-      document.body.appendChild(table);
-      const row = table.querySelector('tr');
-      row.scrollIntoView = jest.fn();
       renderPrTableApp({ initialPayload: payload(), selectedRepo: 'owner/repo' });
       expect(capturedUiState.selectedPr).toEqual({ repo: 'owner/repo', prNumber: '1' });
       expect(latestPane().entry.prNumber).toBe('1');
-      expect(row.scrollIntoView).toHaveBeenCalledTimes(1);
-      // Only the once.
-      React.act(() => capturedUiState.setPaneTab('notes'));
-      expect(row.scrollIntoView).toHaveBeenCalledTimes(1);
     });
 
     test('given the saved PR or tracked branch is no longer in the data, then it is dropped', () => {
