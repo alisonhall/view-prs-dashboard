@@ -21,7 +21,7 @@
  * @module components/TrackedBranchesSection
  */
 
-import { Fragment, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useContext, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import type { PrTrackedBranch } from '../types/pr-data.ts';
 import { Icon, type IconName } from './ui/Icon';
 import { Button, IconButton } from './ui/Button';
@@ -97,6 +97,17 @@ export function useTrackedBranchChanges(checkedOutKey: string, pollMs = CHANGES_
 
 type OpenKind = 'editor' | 'terminal';
 
+const isEditable = (target: EventTarget | null) =>
+  target instanceof Element && Boolean(target.closest('input, textarea, select, [contenteditable="true"]'));
+
+// A click on a row itself, to open it in the pane: not on one of its
+// buttons, links or fields, and not the end of selecting its text.
+const isRowClick = (event: MouseEvent) => {
+  const target = event.target as Element | null;
+  if (target?.closest('button, a, input, textarea, select, label, [role="button"], [role="menu"]')) return false;
+  return !window.getSelection?.()?.toString();
+};
+
 export interface TrackedBranchesSectionProps {
   trackedBranches?: PrTrackedBranch[];
   isOpen: boolean;
@@ -111,6 +122,8 @@ export interface TrackedBranchesSectionProps {
   // The rows shown, in order (their keys): what the pane's previous and
   // next step through.
   onShownChange?: (keys: string[]) => void;
+  // Esc on a row: the pane's branch unselected.
+  onClearSelection?: () => void;
 }
 
 export function TrackedBranchesSection({
@@ -122,6 +135,7 @@ export function TrackedBranchesSection({
   selectedBranchKey = '',
   onSelectBranch,
   onShownChange,
+  onClearSelection,
 }: TrackedBranchesSectionProps) {
   const { repos, branches: statuses, refresh } = useLocalBranches();
   const { showError } = useSnackbar();
@@ -198,6 +212,8 @@ export function TrackedBranchesSection({
         const note = noteOf(entry);
         setUntracked({ ...entry, ...(note ? { note } : { note: undefined }) });
         if (noteEditor?.key === key) setNoteEditor(null);
+        // Shown in the pane: closed now, not kept for a later Track.
+        if (key === selectedBranchKey) onClearSelection?.();
         refresh();
       }
     } catch (error) {
@@ -339,7 +355,37 @@ export function TrackedBranchesSection({
               : 'No tracked branches match the search or repo filter.'}
           </p>
         ) : (
-          <table className="tracked-branches-table" aria-label={title}>
+          <table
+            className="tracked-branches-table"
+            aria-label={title}
+            onKeyDown={(event) => {
+              // As a PR table (PrTable): from a row, ↓/↑ (or j/k) show the
+              // next or previous branch in the pane - the row itself first
+              // when it isn't the one shown - and Esc unselects it.
+              if (!onSelectBranch || event.defaultPrevented || isEditable(event.target)) return;
+              const row = (event.target as Element).closest<HTMLTableRowElement>('tr.tracked-branch-row');
+              if (!row) return;
+              if (event.key === 'Escape') {
+                if (!selectedBranchKey) return;
+                event.preventDefault();
+                onClearSelection?.();
+                return;
+              }
+              const plainKey = event.ctrlKey || event.metaKey || event.altKey ? '' : event.key.length === 1 ? event.key.toLowerCase() : '';
+              const delta = event.key === 'ArrowDown' || plainKey === 'j' ? 1 : event.key === 'ArrowUp' || plainKey === 'k' ? -1 : 0;
+              if (!delta) return;
+              event.preventDefault();
+              const rows = Array.from(event.currentTarget.querySelectorAll<HTMLTableRowElement>('tbody > tr.tracked-branch-row'));
+              const index = rows.indexOf(row);
+              const fromSelected = row.dataset.branchKey === selectedBranchKey;
+              const target = fromSelected ? rows[Math.min(Math.max(index + delta, 0), rows.length - 1)] : row;
+              if (!target || (fromSelected && target === row)) return;
+              const entry = shown.find((item) => trackedBranchKey(item.repo, item.branch) === target.dataset.branchKey);
+              if (!entry) return;
+              onSelectBranch(entry.repo, entry.branch);
+              target.querySelector<HTMLElement>('.tracked-branch-open')?.focus();
+            }}
+          >
             <thead>
               <tr>
                 <th scope="col">Branch</th>
@@ -365,8 +411,18 @@ export function TrackedBranchesSection({
                 const editNote = () => setNoteEditor({ key, text: note, saving: false });
                 return (
                   <Fragment key={key}>
-                  <tr className="tracked-branch-row" data-branch-key={key} aria-current={selectedBranchKey === key ? true : undefined}>
+                  <tr
+                    className="tracked-branch-row"
+                    data-branch-key={key}
+                    data-selectable={onSelectBranch ? true : undefined}
+                    aria-current={selectedBranchKey === key ? true : undefined}
+                    onClick={(event) => {
+                      if (onSelectBranch && isRowClick(event)) onSelectBranch(entry.repo, entry.branch);
+                    }}
+                  >
                     <td className="tracked-branch-name-cell">
+                      <div className="tracked-branch-name-inner">
+                      <div className="tracked-branch-name-text">
                       {onSelectBranch ? (
                         <button
                           type="button"
@@ -381,6 +437,7 @@ export function TrackedBranchesSection({
                         <span className="tracked-branch-name">{entry.branch}</span>
                       )}
                       <span className="tracked-branch-repo">{entry.repo}</span>
+                      </div>
                       {note && editing ? (
                         // No hover text while it's being written: that would
                         // take the first Escape (tooltip-controller.ts).
@@ -398,6 +455,7 @@ export function TrackedBranchesSection({
                           <IconButton className="tracked-branch-add-note" icon="pencil" label={`Add a note to ${entry.branch}`} onClick={editNote} />
                         )
                       )}
+                      </div>
                     </td>
                     <td className="tracked-branch-where">
                       <Tooltip content={where.hint}>

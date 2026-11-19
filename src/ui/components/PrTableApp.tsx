@@ -25,6 +25,7 @@ import { useStableCallback } from '../state/useStableCallback';
 import { useHeldSectionOrder } from '../state/useHeldSectionOrder';
 import { useAckLabelActions } from '../state/useAckLabelActions';
 import { usePrTableUiState, type SelectedPr } from '../state/PrTableUiStateContext';
+import { SELECTED_BRANCH_STORAGE_KEY, readSessionValue, writeSessionValue } from '../state/PrTableUiStateProvider';
 import { NowProvider } from '../state/NowContext';
 import { readDefaultQuickCheckIntervalMs, RepoFreshnessProvider } from '../state/RepoFreshnessContext';
 import type { RepoRefreshFailure } from '../helpers/pr-row-freshness.helpers.ts';
@@ -864,7 +865,9 @@ export function PrTableApp() {
 
   // The tracked branch shown in the pane instead of a PR (repo:branch);
   // the pane shows a PR again once one's selected.
-  const [selectedBranchKey, setSelectedBranchKey] = useState('');
+  const [selectedBranchKey, setSelectedBranchKey] = useState(() => readSessionValue(SELECTED_BRANCH_STORAGE_KEY));
+  // Kept for the tab, as the selected PR is, so a reload opens it again.
+  useEffect(() => writeSessionValue(SELECTED_BRANCH_STORAGE_KEY, selectedBranchKey), [selectedBranchKey]);
   const selectedBranch = useMemo(
     () => (selectedBranchKey ? trackedBranches.find((entry) => trackedBranchKey(entry.repo, entry.branch) === selectedBranchKey) || null : null),
     [selectedBranchKey, trackedBranches],
@@ -1251,6 +1254,19 @@ export function PrTableApp() {
     if (target && selectPr(target)) findRowLink(target)?.closest('tr')?.scrollIntoView?.({ block: 'nearest' });
   };
 
+  // A selection kept for the tab, or one whose PR or tracked branch has
+  // since gone (archived, untracked): once the data's loaded, one no longer
+  // in it is dropped, so the pane shows its usual empty state and an
+  // untracked branch doesn't come back if tracked again.
+  useEffect(() => {
+    // Not loaded yet: the payload is {} until the first data arrives.
+    if (!payload?.byPrNumber) return;
+    if (selectedPr && !selectedEntry) setSelectedPr(null);
+    // Only from data that lists the tracked branches (a run's own payload
+    // has no dataMeta).
+    if (selectedBranchKey && !selectedBranch && payload.dataMeta?.sources) setSelectedBranchKey('');
+  }, [payload, selectedPr, selectedEntry, setSelectedPr, selectedBranchKey, selectedBranch]);
+
   // Hiding the pane unmounts its Notes too.
   const handleTogglePane = () => {
     if (isPaneVisible && !confirmLeavingPr()) return;
@@ -1346,6 +1362,7 @@ export function PrTableApp() {
                           selectedBranchKey={isPaneVisible && selectedBranch ? selectedBranchKey : ''}
                           onSelectBranch={handleSelectBranch}
                           onShownChange={setShownBranchKeys}
+                          onClearSelection={() => setSelectedBranchKey('')}
                         />
                       ) : (
                       <PrSection

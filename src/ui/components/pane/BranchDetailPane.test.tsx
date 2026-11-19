@@ -21,6 +21,7 @@ const fetchMock = jest.fn(async (url: string, init?: RequestInit) => {
     if (url.endsWith('/tracked-branches/pull')) return { ok: true, status: 200, json: async () => ({ ok: true, commits: 2 }) };
     return { ok: true, status: 200, json: async () => ({ ok: true }) };
   }
+  if (init?.method === 'DELETE') return { ok: true, status: 200, json: async () => ({ ok: true }) };
   if (url.startsWith('/view-prs/tracked-branches/commits?')) {
     return { ok: commitsAnswer.status < 400, status: commitsAnswer.status, json: async () => commitsAnswer.body };
   }
@@ -198,6 +199,58 @@ describe('BranchDetailPane', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  test('↓/↑ (and j/k) on a row show the next or previous branch, the row itself first; Esc unselects', async () => {
+    const user = userEvent.setup();
+    const onSelectBranch = jest.fn();
+    const onClearSelection = jest.fn();
+    const second = { repo: 'acme/app', branch: 'wip' };
+    const value = local({ branches: { 'acme/app:spike/cache': STATUS, 'acme/app:wip': { ...STATUS, branch: 'wip', committedAt: hoursAgo(30) } } });
+    const props = { trackedBranches: [ENTRY, second], isOpen: true, onToggleSection: jest.fn(), onSelectBranch, onClearSelection };
+    const { rerender } = render(wrap(<TrackedBranchesSection {...props} />, value));
+    // Nothing shown: the focused row first.
+    screen.getByRole('button', { name: 'spike/cache' }).focus();
+    await user.keyboard('{ArrowDown}');
+    expect(onSelectBranch).toHaveBeenLastCalledWith('acme/app', 'spike/cache');
+    rerender(wrap(<TrackedBranchesSection {...props} selectedBranchKey="acme/app:spike/cache" />, value));
+    screen.getByRole('button', { name: 'spike/cache' }).focus();
+    await user.keyboard('j');
+    expect(onSelectBranch).toHaveBeenLastCalledWith('acme/app', 'wip');
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'wip' }));
+    rerender(wrap(<TrackedBranchesSection {...props} selectedBranchKey="acme/app:wip" />, value));
+    onSelectBranch.mockClear();
+    await user.keyboard('{ArrowDown}');
+    expect(onSelectBranch).not.toHaveBeenCalled();
+    await user.keyboard('{ArrowUp}');
+    expect(onSelectBranch).toHaveBeenLastCalledWith('acme/app', 'spike/cache');
+    await user.keyboard('{Escape}');
+    expect(onClearSelection).toHaveBeenCalled();
+  });
+
+  test('untracking the branch shown in the pane unselects it; another one leaves it', async () => {
+    const user = userEvent.setup();
+    const onClearSelection = jest.fn();
+    const second = { repo: 'acme/app', branch: 'wip' };
+    const value = local({ branches: { 'acme/app:spike/cache': STATUS, 'acme/app:wip': { ...STATUS, branch: 'wip' } } });
+    render(
+      wrap(
+        <TrackedBranchesSection
+          trackedBranches={[ENTRY, second]}
+          isOpen
+          onToggleSection={jest.fn()}
+          onSelectBranch={jest.fn()}
+          onClearSelection={onClearSelection}
+          selectedBranchKey="acme/app:spike/cache"
+        />,
+        value,
+      ),
+    );
+    await user.click(screen.getByRole('button', { name: 'Untrack wip' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Undo' })).toBeInTheDocument());
+    expect(onClearSelection).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Untrack spike/cache' }));
+    await waitFor(() => expect(onClearSelection).toHaveBeenCalledTimes(1));
+  });
+
   test("a tracked row's name shows it in the pane, marked while it's there", async () => {
     const user = userEvent.setup();
     const onSelectBranch = jest.fn();
@@ -209,6 +262,16 @@ describe('BranchDetailPane', () => {
     expect(onShownChange).toHaveBeenLastCalledWith(['acme/app:spike/cache']);
     await user.click(screen.getByRole('button', { name: 'spike/cache' }));
     expect(onSelectBranch).toHaveBeenCalledWith('acme/app', 'spike/cache');
+    // Anywhere on the row, as a PR row - but not its buttons.
+    onSelectBranch.mockClear();
+    const row = document.querySelector('tr.tracked-branch-row') as HTMLElement;
+    await user.click(within(row).getByText('acme/app'));
+    expect(onSelectBranch).toHaveBeenCalledTimes(1);
+    await user.click(within(row).getByText('app-spike'));
+    expect(onSelectBranch).toHaveBeenCalledTimes(2);
+    await user.click(within(row).getByRole('button', { name: 'Note: Try Redis' }));
+    expect(onSelectBranch).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole('textbox', { name: 'Note on spike/cache' })).toBeInTheDocument();
     rerender(
       wrap(
         <TrackedBranchesSection

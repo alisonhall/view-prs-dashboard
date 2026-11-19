@@ -94,8 +94,15 @@ export const describeBranchChips = (status: TrackedBranchStatus | undefined, cha
       tone: 'attention',
       hint: `${plural(status.unpushed, 'commit')} on none of the repo's remote branches (as the clone last fetched them)`,
     });
-  } else if (status.pushed && !status.upstream) {
-    chips.push({ key: 'pushed', text: 'On a remote branch', tone: 'muted', hint: "Its commits are on one of the repo's remote branches, though it tracks none" });
+  } else if (status.pushed && !status.upstream && (status.baseAhead ?? 1) > 0) {
+    // Only for commits of its own: a branch still where its base was is
+    // "on a remote branch" just by being its base's commit.
+    chips.push({
+      key: 'pushed',
+      text: 'On a remote branch',
+      tone: 'muted',
+      hint: "Its own commits are on one of the repo's remote branches, though it tracks none (pushed without setting an upstream?)",
+    });
   }
   if (status.upstream?.gone) {
     chips.push({
@@ -118,7 +125,15 @@ export const describeBranchChips = (status: TrackedBranchStatus | undefined, cha
     } else if (typeof status.baseAhead === 'number' && typeof status.baseBehind === 'number') {
       chips.push({
         key: 'base',
-        text: `${status.baseAhead} ahead, ${status.baseBehind} behind ${status.base}`,
+        // Nothing of its own, said plainly rather than "0 ahead": on the
+        // base's commit, nothing yet; behind it, everything it has is in
+        // the base - never committed to, or merged (which can't be told).
+        text:
+          status.baseAhead === 0
+            ? status.baseBehind > 0
+              ? `All in ${status.base} · ${status.baseBehind} behind`
+              : 'No commits yet'
+            : `${status.baseAhead} ahead, ${status.baseBehind} behind ${status.base}`,
         tone: status.baseBehind > 0 ? 'accent' : 'muted',
         hint: `Against ${status.base} as the clone has it (its copy of the remote's, as of the last fetch): ${plural(status.baseAhead, 'commit')} of its own, ${plural(status.baseBehind, 'commit')} on ${status.base} it hasn't got`,
       });
