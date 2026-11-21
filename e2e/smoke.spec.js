@@ -1225,7 +1225,7 @@ test("with the detail pane hidden, clicking a row shows it again for that PR", a
 
   const summaryToggle = await firstSummaryToggle(page);
   const prNumber = prNumberFromLabel(await summaryToggle.getAttribute("aria-label"));
-  await summaryToggle.locator("xpath=ancestor::tr[1]").locator(".pr-cell-who").click();
+  await summaryToggle.locator("xpath=ancestor::tr[1]").locator(".pr-cell-size").click();
   await expect(page.getByRole("button", { name: "Detail pane", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(detailPane(page).getByRole("tablist", { name: `PR #${prNumber} details`, exact: true })).toBeVisible();
 });
@@ -1235,13 +1235,13 @@ test("clicking the PR shown in the detail pane again closes the pane", async ({ 
   await waitForPrTable(page);
   const summaryToggle = await firstSummaryToggle(page);
   const prNumber = prNumberFromLabel(await summaryToggle.getAttribute("aria-label"));
-  const authorCell = summaryToggle.locator("xpath=ancestor::tr[1]").locator(".pr-cell-who");
+  const sizeCell = summaryToggle.locator("xpath=ancestor::tr[1]").locator(".pr-cell-size");
 
-  await authorCell.click();
+  await sizeCell.click();
   await expect(detailPane(page).getByRole("tablist", { name: `PR #${prNumber} details`, exact: true })).toBeVisible();
 
   // Closed, not left open saying "No PR selected".
-  await authorCell.click();
+  await sizeCell.click();
   await expect(detailPane(page)).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Detail pane", exact: true })).toHaveAttribute("aria-pressed", "false");
 });
@@ -1313,14 +1313,14 @@ test("opening and closing the detail pane keeps the clicked PR row where it was 
   const topBefore = (await row.boundingBox()).y;
   const tableWidthBefore = (await prTables(page).getByRole("table").last().boundingBox()).width;
 
-  await row.locator(".pr-cell-who").click();
+  await row.locator(".pr-cell-size").click();
   await expect(detailPane(page)).toHaveCount(1);
   // The table did reflow (narrower beside the pane)...
   expect((await prTables(page).getByRole("table").last().boundingBox()).width).toBeLessThan(tableWidthBefore);
   // ...but the row stayed put.
   expect(Math.abs((await row.boundingBox()).y - topBefore)).toBeLessThanOrEqual(1);
 
-  await row.locator(".pr-cell-who").click();
+  await row.locator(".pr-cell-size").click();
   await expect(detailPane(page)).toHaveCount(0);
   expect(Math.abs((await row.boundingBox()).y - topBefore)).toBeLessThanOrEqual(1);
 
@@ -1333,7 +1333,7 @@ test("opening and closing the detail pane keeps the clicked PR row where it was 
   await page.setViewportSize({ width: 1440, height: 1400 });
   await page.evaluate(() => window.scrollTo(0, 0));
   const topRow = prTables(page).locator("tr.pr-row").nth(2);
-  await topRow.locator(".pr-cell-who").click();
+  await topRow.locator(".pr-cell-size").click();
   await expect(detailPane(page)).toHaveCount(1);
   const closeButton = detailPane(page).getByRole("button", { name: "Close details", exact: true });
   await closeButton.scrollIntoViewIfNeeded();
@@ -1343,7 +1343,7 @@ test("opening and closing the detail pane keeps the clicked PR row where it was 
   await expect(detailPane(page)).toHaveCount(0);
   expect(Math.abs((await topRow.boundingBox()).y - topRowBeforeClose)).toBeLessThanOrEqual(1);
 
-  await topRow.locator(".pr-cell-who").click();
+  await topRow.locator(".pr-cell-size").click();
   await expect(detailPane(page)).toHaveCount(1);
   const toolbarToggle = page.getByRole("button", { name: "Detail pane", exact: true });
   await toolbarToggle.scrollIntoViewIfNeeded();
