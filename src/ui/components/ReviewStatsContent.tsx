@@ -50,6 +50,7 @@ import { useRowRepoName } from '../state/RowRepoNamesContext';
 import { useReviewStatsColumns } from '../state/useReviewStatsColumns';
 import { REVIEW_STATS_FILTER_MODES } from './ReviewStatsControls';
 import { Avatar } from './ui/Avatar';
+import { AuthorLink } from './AuthorLink';
 import { Button } from './ui/Button';
 import { MultiSelectDropdown } from './ui/MultiSelectDropdown';
 import { Tooltip } from './ui/Tooltip';
@@ -291,8 +292,9 @@ function StatsTableEmpty({
   );
 }
 
-// The reviewer's avatar and name, as the PR table's Who column; the
-// login on hover when the name differs.
+// The reviewer's avatar and name, as the PR table's Who column, the
+// login on hover when the name differs; a button that opens them on
+// Authors.
 function ReviewerIdentity({ reviewer }: { reviewer: ReviewerRowData }) {
   const { getEffectiveViewerKey, normalizeActorLogin, loginOfActorKey } = useActorIdentity();
   // A reviewer's `login` is their person's key; their main login is shown.
@@ -302,13 +304,18 @@ function ReviewerIdentity({ reviewer }: { reviewer: ReviewerRowData }) {
   const viewerKey = getEffectiveViewerKey({});
   const isViewer = Boolean(viewerKey) && normalizeActorLogin(key).toLowerCase() === viewerKey;
   return (
-    <span className="stats-reviewer" title={name !== login ? login : undefined}>
+    <AuthorLink
+      login={key}
+      fallbackName={name}
+      className="stats-reviewer"
+      title={name !== login ? `${login} - open on Authors` : undefined}
+    >
       <Avatar initials={getUserInitials(name, login)} login={login} isViewer={isViewer} size="sm" />
       <span>
         {name}
         {isViewer && <span className="stats-reviewer-you"> (you)</span>}
       </span>
-    </span>
+    </AuthorLink>
   );
 }
 

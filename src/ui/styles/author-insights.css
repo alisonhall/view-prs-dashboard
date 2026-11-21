@@ -205,3 +205,44 @@
   align-items: center;
   gap: 6px;
 }
+
+/* The selected author's stats (AuthorStatsSection): Review stats' cards. */
+.author-stats-grid {
+  margin-bottom: 0;
+}
+
+.author-stats-reviewers {
+  display: grid;
+  gap: var(--space-1);
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--font-size-sm);
+}
+
+.author-stats-reviewers li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.author-stats-reviewer {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  color: var(--color-text);
+}
+
+.author-stats-reviewer > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.author-stats-reviewer-count {
+  flex: none;
+  color: var(--color-text-muted);
+}

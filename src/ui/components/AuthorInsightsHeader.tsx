@@ -2,7 +2,8 @@
  * AuthorInsightsHeader - the selected author at the top of the Authors
  * view: their avatar, display name (with "(you)" for the viewer) and login
  * when it isn't their name, then how many of the stored PRs they've opened
- * are open and merged (useAuthorPickerOptions' activity) and how many
+ * are open, merged and (when any are) closed without merging
+ * (useAuthorPickerOptions' activity) and how many
  * comments you've saved about them, once those have loaded. Nothing when
  * no author is selected (the picker clears the selection when there are
  * none).
@@ -43,6 +44,7 @@ export function AuthorInsightsHeader() {
   const counts = [
     count(activity?.open ?? 0, 'open PR', 'open PRs'),
     `${activity?.merged ?? 0} merged`,
+    ...(activity?.closed ? [`${activity.closed} closed`] : []),
     ...(drafts.hasLoadedManualComments(login)
       ? [count(drafts.getManualComments(login).length, 'comment saved', 'comments saved')]
       : []),

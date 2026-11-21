@@ -555,6 +555,28 @@
   min-width: 0;
 }
 
+.pr-who-button {
+  width: 100%;
+  padding: 2px;
+  margin: -2px;
+  border: 0;
+  border-radius: var(--radius-md, 6px);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pr-who-button:hover .pr-who-name {
+  text-decoration: underline;
+}
+
+.pr-who-button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
 .pr-who .ui-avatar {
   flex: none;
 }

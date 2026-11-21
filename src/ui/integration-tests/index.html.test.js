@@ -1604,7 +1604,7 @@ describe("index page rendering with Testing Library", () => {
     expect(row).toBeTruthy();
 
     // The Who column names the author, and only rings the viewer's avatar.
-    const authorAvatar = within(row).getByRole("img", { name: "Author: PR Author" });
+    const authorAvatar = within(row).getByRole("button", { name: "Author: PR Author. Open on Authors" });
     expect(authorAvatar.querySelector(".ui-avatar")).not.toHaveAttribute("data-viewer");
 
     const insightsContent = await openPrPane(user, row, "Conversations");
@@ -3630,7 +3630,7 @@ describe("index page rendering with Testing Library", () => {
     // with content (it was a "📝 Notes" marker plus five squares).
     const pr11Row = within(openSectionTable).getByText("#11").closest("tr");
     expect(pr11Row).toBeTruthy();
-    expect(pr11Row?.querySelector(".pr-cell-who [role='img']")).toHaveAttribute("aria-label", "Author: Alison Hall");
+    expect(pr11Row?.querySelector(".pr-cell-who .pr-who-button")).toHaveAttribute("aria-label", "Author: Alison Hall. Open on Authors");
     expect(pr11Row?.querySelector(".pr-cell-review [aria-label^='Notes:']")).toHaveAttribute(
       "aria-label",
       "Notes: 1 comment · other notes · difficulty 4 · stories · analysis of PR",

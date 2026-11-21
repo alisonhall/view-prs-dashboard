@@ -21,6 +21,7 @@ const {
 } = require('../helpers/review-stats-explanations.helpers');
 const { ActorIdentityContext, defaultActorIdentity } = require('../state/ActorIdentityContext');
 const { StoredPrRepoNamesProvider } = require('../state/RowRepoNamesContext');
+const { OPEN_AUTHOR_EVENT } = require('../state/useOpenAuthor');
 
 // A stand-in for /view-prs/user-defaults: GET returns `savedDefaults`, PUT
 // replaces it.
@@ -636,14 +637,22 @@ describe('ReviewStatsContent', () => {
       expect(sourcesRow).toHaveAttribute('hidden');
     });
 
-    test('each reviewer is a row header with an avatar, the display name, and the login on hover', () => {
+    test('each reviewer is a row header with an avatar, the display name, and the login on hover, opening them on Authors', () => {
       const stats = buildStats();
       stats.reviewerRows[0] = { ...stats.reviewerRows[0], login: 'alex-k', name: 'Alex Kim' };
       renderContent(stats);
 
       const header = screen.getByRole('rowheader', { name: 'Alex Kim' });
       expect(header.querySelector('.ui-avatar')).toHaveTextContent('AK');
-      expect(header.querySelector('.stats-reviewer')).toHaveAttribute('title', 'alex-k');
+      const reviewer = within(header).getByRole('button', { name: 'Alex Kim' });
+      expect(reviewer).toHaveAttribute('title', 'alex-k - open on Authors');
+
+      const opened = [];
+      const handler = (event) => opened.push(event.detail);
+      window.addEventListener(OPEN_AUTHOR_EVENT, handler);
+      reviewer.click();
+      window.removeEventListener(OPEN_AUTHOR_EVENT, handler);
+      expect(opened).toEqual([{ login: 'alex-k', fallbackName: 'Alex Kim' }]);
     });
 
     test('the viewer is marked "(you)" with the avatar ring', () => {

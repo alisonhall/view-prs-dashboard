@@ -7,12 +7,14 @@ import { createPrAuthorCellHelpers } from '../../helpers/pr-author-cell.helpers.
 import { attentionConfigForRepo } from '../../helpers/pr-needs-attention.helpers.ts';
 import { Avatar } from '../ui/Avatar';
 import { Tooltip } from '../ui/Tooltip';
+import { openAuthor } from '../../state/useOpenAuthor';
 import type { ActorsMap } from '../../helpers/pr-actor-identity.helpers.ts';
 
 /**
  * The Who column: the PR author's avatar and name, plus "+N" for anyone
  * else with non-merge commits (the old Author column listed them all).
  * Their names are in the tooltip; the accessible name is the author's.
+ * Clicking it opens the author on the Authors view (openAuthor).
  */
 export interface PrWhoCellProps {
   pr: PrData;
@@ -56,8 +58,13 @@ export function PrWhoCell({ pr, repo = '', actorsMap = {} }: PrWhoCellProps) {
 
   return (
     <td className="pr-cell pr-cell-who">
-      <Tooltip content={label} focusTarget>
-        <span className="pr-who" role="img" aria-label={name}>
+      <Tooltip content={`${label}\nClick to open on Authors`}>
+        <button
+          type="button"
+          className="pr-who pr-who-button"
+          aria-label={`${name}. Open on Authors`}
+          onClick={() => openAuthor(primary.key, primary.name)}
+        >
           <Avatar
             initials={getUserInitials(primary.displayName, loginOfActorKey(primary.key))}
             login={loginOfActorKey(primary.key)}
@@ -69,7 +76,7 @@ export function PrWhoCell({ pr, repo = '', actorsMap = {} }: PrWhoCellProps) {
             {primary.displayName}
             {others.length > 0 && <span className="pr-who-more"> +{others.length}</span>}
           </span>
-        </span>
+        </button>
       </Tooltip>
     </td>
   );
