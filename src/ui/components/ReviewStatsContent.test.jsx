@@ -20,6 +20,7 @@ const {
   REVIEW_STATS_COLUMN_EXPLANATIONS,
 } = require('../helpers/review-stats-explanations.helpers');
 const { ActorIdentityContext, defaultActorIdentity } = require('../state/ActorIdentityContext');
+const { StoredPrRepoNamesProvider } = require('../state/RowRepoNamesContext');
 
 // A stand-in for /view-prs/user-defaults: GET returns `savedDefaults`, PUT
 // replaces it.
@@ -238,6 +239,36 @@ describe('ReviewStatsContent', () => {
     expect(events).toEqual([{ prNumber: '101', repo: '', focusUnsaved: false }]);
     // For the table's Back to Review stats.
     expect(rememberedReturnTarget).toEqual(expect.objectContaining({ tab: 'review-stats', prNumber: '101', focusTarget: viewInTable }));
+    window.removeEventListener('pr-navigate-to-insights', handler);
+  });
+
+  test('given a source from one of several repos, when clicking its "View in table", then it names the repo and passes it along', async () => {
+    const user = userEvent.setup();
+    const events = [];
+    const handler = (event) => events.push(event.detail);
+    window.addEventListener('pr-navigate-to-insights', handler);
+    const stats = buildStats();
+    stats.summary.sources.rows = [{ prNumber: 12, repo: 'acme/api', prTitle: 'Alpha', prAuthor: 'octocat' }];
+    render(
+      <TabStateContext.Provider
+        value={{ activeDataTab: 'review-stats', setActiveDataTab: () => {}, returnTarget: null, rememberReturnTarget: () => {}, forgetReturnTarget: () => {}, returnToPreviousView: () => {} }}
+      >
+        <PrDataProvider initialPayload={{ byPrNumber: { 'acme/web#12': { repo: 'acme/web' }, 'acme/api#12': { repo: 'acme/api' } } }}>
+          <StoredPrRepoNamesProvider>
+            <ReviewStatsContext.Provider value={{ ...defaultReviewStats, ...buildReviewStatsOverrides(stats) }}>
+              <ReviewStatsContent />
+            </ReviewStatsContext.Provider>
+          </StoredPrRepoNamesProvider>
+        </PrDataProvider>
+      </TabStateContext.Provider>,
+    );
+
+    const filteredRowsCard = screen.getByRole('group', { name: 'PRs' });
+    await user.click(filteredRowsCard.querySelector('summary'));
+    expect(within(filteredRowsCard).getByText('PR api#12: Alpha')).toBeInTheDocument();
+    await user.click(within(filteredRowsCard).getByRole('button', { name: 'View in table' }));
+
+    expect(events).toEqual([{ prNumber: '12', repo: 'acme/api', focusUnsaved: false }]);
     window.removeEventListener('pr-navigate-to-insights', handler);
   });
 

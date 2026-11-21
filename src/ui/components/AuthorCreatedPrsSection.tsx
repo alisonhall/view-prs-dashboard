@@ -46,7 +46,7 @@ export function AuthorCreatedPrsSection() {
       ) : (
         <div className="author-insights-list">
           {createdPrs.map((entry, index) => (
-            <div className="author-insights-item" key={entry?.prNumber || entry?.data?.number || index}>
+            <div className="author-insights-item" key={`${entry?.repo || ''}#${entry?.prNumber || entry?.data?.number || index}`}>
               <AuthorInsightsPrRow entry={entry} />
             </div>
           ))}

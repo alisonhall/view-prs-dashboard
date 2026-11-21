@@ -21,6 +21,7 @@ import { AppHeader } from './AppHeader';
 import { AutoUpdatePausedBanner } from './AutoUpdatePausedBanner';
 import { ReturnToViewBanner } from './ReturnToViewBanner';
 import { ErrorNotice } from './ErrorNotice';
+import { StoredPrRepoNamesProvider } from '../../state/RowRepoNamesContext';
 
 // The Review stats and Authors views aren't visible on load, so their code
 // loads the first time each is shown (the Settings drawer splits its own
@@ -180,6 +181,7 @@ export function AppShell() {
           <LazyView id="tab-panel-review-stats">
             <ReviewStatsArchiveScope>
             <ReviewStatsProvider>
+            <StoredPrRepoNamesProvider>
               <div id="pr-stats">
                 <ViewHeading
                   title="Review stats"
@@ -192,6 +194,7 @@ export function AppShell() {
                   <ReviewStatsContent />
                 </div>
               </div>
+            </StoredPrRepoNamesProvider>
             </ReviewStatsProvider>
             </ReviewStatsArchiveScope>
           </LazyView>
@@ -204,6 +207,7 @@ export function AppShell() {
                 every PR, archived ones included. */}
             <WithArchivedRows include>
             <AuthorInsightsProvider>
+            <StoredPrRepoNamesProvider>
               <div id="author-insights">
                 <ViewHeading
                   title="Authors"
@@ -225,6 +229,7 @@ export function AppShell() {
                   <AuthorCreatedPrsSection />
                 </div>
               </div>
+            </StoredPrRepoNamesProvider>
             </AuthorInsightsProvider>
             </WithArchivedRows>
           </LazyView>
