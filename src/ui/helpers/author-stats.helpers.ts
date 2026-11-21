@@ -43,6 +43,12 @@ export const median = (values: number[]): number | null => {
   return sorted.length % 2 ? upper : ((sorted[middle - 1] ?? upper) + upper) / 2;
 };
 
+// Copilot, GitHub Apps ("app/…") and "…[bot]" accounts.
+export const isBotReviewer = (login: unknown, name: unknown = ""): boolean => {
+  const value = String(login || "").trim().toLowerCase();
+  return /copilot/i.test(`${value} ${String(name || "")}`) || value.startsWith("app/") || value.endsWith("[bot]");
+};
+
 const toLines = (value: unknown): number | null => {
   if (value === undefined || value === null || String(value).trim() === "") return null;
   const parsed = Number(value);
@@ -69,11 +75,12 @@ export const buildAuthorStats = (
     const createdAt = parseSortableTime(prCreatedAt(entry));
     const hasCreatedAt = Number.isFinite(createdAt);
 
-    // Reviews by anyone but the author (their replies to a review are
-    // reviews too).
+    // Reviews by people other than the author (their replies to a review
+    // are reviews too); a bot's, such as Copilot's automatic review, would
+    // make every PR look reviewed within minutes.
     const reviews = (Array.isArray(data.reviews) ? data.reviews : []).filter((review) => {
       const key = getPreferredActorKey(review?.authorLogin, review?.authorName);
-      return Boolean(key) && key !== authorKey;
+      return Boolean(key) && key !== authorKey && !isBotReviewer(review?.authorLogin, review?.authorName);
     });
     if (reviews.length > 0) {
       reviewedPrs += 1;

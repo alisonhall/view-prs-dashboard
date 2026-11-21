@@ -54,6 +54,28 @@ describe('buildAuthorStats', () => {
     });
   });
 
+  test("given bots' reviews (Copilot, an app, a [bot] account), then they don't count as reviews", () => {
+    const stats = buildAuthorStats(
+      [
+        pr(1, {
+          reviews: [
+            review('copilot-pull-request-reviewer', '2026-07-01T00:05:00Z'),
+            review('app/coderabbitai', '2026-07-01T00:06:00Z', 'CHANGES_REQUESTED'),
+            review('renovate[bot]', '2026-07-01T00:07:00Z'),
+            review('bo', '2026-07-01T02:00:00Z'),
+          ],
+        }),
+        pr(2, { reviews: [review('copilot-pull-request-reviewer', '2026-07-01T00:05:00Z')] }),
+      ],
+      'ana',
+      key,
+    );
+    expect(stats.firstReviewMs).toBe(2 * 60 * 60 * 1000);
+    expect(stats.reviewedPrs).toBe(1);
+    expect(stats.changesRequestedPrs).toBe(0);
+    expect(stats.topReviewers).toEqual([{ login: 'bo', prs: 1 }]);
+  });
+
   test('given missing or odd dates, then those PRs are left out of the medians', () => {
     const stats = buildAuthorStats(
       [

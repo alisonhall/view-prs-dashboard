@@ -543,11 +543,6 @@
 }
 
 /* Who: the avatar and the author's name, up to two lines */
-.pr-cell-who .ui-tooltip-target {
-  display: block;
-  min-width: 0;
-}
-
 .pr-who {
   display: flex;
   align-items: center;
@@ -556,7 +551,11 @@
 }
 
 .pr-who-button {
-  width: 100%;
+  /* Only as wide as the avatar and name: the rest of the cell opens the
+     row's detail pane, as clicking anywhere else in a row does. */
+  display: inline-flex;
+  width: auto;
+  max-width: 100%;
   padding: 2px;
   margin: -2px;
   border: 0;
