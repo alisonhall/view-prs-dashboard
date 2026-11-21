@@ -60,7 +60,7 @@ describe('PrWhoCell', () => {
     window.addEventListener(OPEN_AUTHOR_EVENT, handler);
     renderCell({ authorLogin: 'octocat', author: 'The Octocat' });
     fireEvent.click(screen.getByRole('button', { name: 'Author: The Octocat. Open on Authors' }));
-    expect(opened).toEqual([{ login: 'octocat', fallbackName: 'The Octocat' }]);
+    expect(opened).toEqual([{ login: 'octocat', fallbackName: 'The Octocat', from: screen.getByRole('button', { name: 'Author: The Octocat. Open on Authors' }) }]);
     window.removeEventListener(OPEN_AUTHOR_EVENT, handler);
   });
 

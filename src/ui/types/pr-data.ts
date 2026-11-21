@@ -233,6 +233,8 @@ export interface PrData {
   // When the PR was created (ISO); missing on rows saved before 2026-11-13
   // (prCreatedAt falls back to the "opened" activity event).
   createdAt?: string;
+  // When a PR opened as a draft was last marked ready for review (ISO).
+  readyForReviewAt?: string;
   metrics?: PrMetrics;
   // Older data kept notes on the row itself; current data has them on the
   // entry (PrEntry.notes).

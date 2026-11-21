@@ -8,7 +8,8 @@ import { TabStateContext, type DataTabKey, type ReturnTarget } from '../state/Ta
  * panels, through `useIsTabPanelVisible`.
  *
  * It also keeps where "View in table" was clicked from
- * (useNavigateToPrInTable), for ReturnToViewBanner's Back button. The
+ * (useNavigateToPrInTable), or a person opened on Authors from
+ * (OpenAuthorListener), for ReturnToViewBanner's Back button. The
  * views stay mounted while hidden, so going back finds the same author,
  * dates and open rows; this restores the page's scroll and puts the focus
  * on the button clicked (or the view's tab, if it's gone), after the view
@@ -24,11 +25,12 @@ export function TabStateProvider({ children }: { children?: ReactNode }) {
     setReturnTarget(target);
   }, []);
 
-  // Showing the table keeps it: "View in table" remembers it first.
+  // Showing the view its Back bar is on keeps it ("View in table", or
+  // opening a person on Authors, remembers it first); any other forgets it.
   const setActiveDataTab = useCallback(
     (key: DataTabKey) => {
       setActiveDataTabState(key);
-      if (key !== 'pr-data') keepReturnTarget(null);
+      if (key !== (returnTargetRef.current?.shownIn ?? 'pr-data')) keepReturnTarget(null);
     },
     [keepReturnTarget],
   );

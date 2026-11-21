@@ -56,7 +56,7 @@ describe('AuthorStatsSection', () => {
     renderSection('octocat');
     fireEvent.click(within(card('Reviewed most by')).getByRole('button', { name: /Hubot/ }));
     window.removeEventListener(OPEN_AUTHOR_EVENT, handler);
-    expect(opened).toEqual([{ login: 'hubot', fallbackName: 'Hubot' }]);
+    expect(opened).toEqual([expect.objectContaining({ login: 'hubot', fallbackName: 'Hubot' })]);
   });
 
   test('says what is missing rather than showing 0', () => {

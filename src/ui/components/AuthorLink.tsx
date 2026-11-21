@@ -28,7 +28,7 @@ export function AuthorLink({
       className={['author-link', className].filter(Boolean).join(' ')}
       title={title || 'Open on Authors'}
       aria-description="Opens them on the Authors view"
-      onClick={() => openAuthor(login, fallbackName)}
+      onClick={(event) => openAuthor(login, fallbackName, event.currentTarget)}
     >
       {children}
     </button>

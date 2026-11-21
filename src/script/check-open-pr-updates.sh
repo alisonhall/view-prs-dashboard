@@ -1934,7 +1934,7 @@ fetch_review_threads_json() {
         -f after="$cursor") || return 1
     else
       response=$(gh_with_retry gh api graphql \
-        -f query='query($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { reviewThreads(first: 100) { nodes { id isResolved isOutdated resolvedBy { login } comments(first: 100) { totalCount pageInfo { hasNextPage endCursor } nodes { id author { login } authorAssociation body createdAt publishedAt url replyTo { id } path line originalLine state } } } pageInfo { hasNextPage endCursor } } } } }' \
+        -f query='query($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { readyEvents: timelineItems(itemTypes: [READY_FOR_REVIEW_EVENT], last: 1) { nodes { ... on ReadyForReviewEvent { createdAt } } } reviewThreads(first: 100) { nodes { id isResolved isOutdated resolvedBy { login } comments(first: 100) { totalCount pageInfo { hasNextPage endCursor } nodes { id author { login } authorAssociation body createdAt publishedAt url replyTo { id } path line originalLine state } } } pageInfo { hasNextPage endCursor } } } } }' \
         -f owner="$REPO_OWNER" \
         -f name="$REPO_NAME" \
         -F number="$number") || return 1
@@ -1944,6 +1944,11 @@ fetch_review_threads_json() {
     # error): fail, rather than return no threads - an empty list would
     # replace the row's threads (the prefetch caches what this returns).
     printf '%s' "$response" | jq -e '.data.repository.pullRequest.reviewThreads.nodes | type == "array"' >/dev/null 2>&1 || return 1
+    # The first page also says when the PR was last marked ready for review
+    # (a draft's; "" otherwise), beside the cached threads, for its row.
+    if [[ -z "$cursor" ]]; then
+      printf '%s' "$response" | jq -c '.data.repository.pullRequest.readyEvents.nodes[0].createdAt // ""' >"$cache_file.ready" 2>/dev/null || true
+    fi
     printf '%s' "$response" | jq -c '.data.repository.pullRequest.reviewThreads.nodes[]?' >>"$tmp_nodes"
     has_next=$(printf '%s' "$response" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage')
     cursor=$(printf '%s' "$response" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.endCursor // ""')
@@ -2311,6 +2316,9 @@ compute_pr_state_json() {
   printf '%s' "$review_comments_json" >"$input_dir/review-comments.json"
   printf '%s' "$review_url_map_json" >"$input_dir/review-url-map.json"
   printf '%s' "$viewed_files_stats_json" >"$input_dir/viewed-files.json"
+  if [[ -f "$THREAD_CACHE_DIR/$number.json.ready" ]]; then
+    cp "$THREAD_CACHE_DIR/$number.json.ready" "$input_dir/ready-for-review.json"
+  fi
   jq -n \
     --arg viewerLogin "$VIEWER_LOGIN" \
     --arg ackAt "$(get_ack_ts "$number")" \

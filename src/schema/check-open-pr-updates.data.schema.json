@@ -188,6 +188,9 @@
         "createdAt": {
           "$ref": "#/$defs/isoDateTimeOrEmpty"
         },
+        "readyForReviewAt": {
+          "$ref": "#/$defs/isoDateTimeOrEmpty"
+        },
         "sourceUpdatedAt": {
           "$ref": "#/$defs/isoDateTimeOrEmpty"
         },

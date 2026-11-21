@@ -93,6 +93,15 @@ describe('buildAuthorStats', () => {
     expect(stats.size).toBeNull();
   });
 
+  test('given a PR opened as a draft, then its first review waits from when it was marked ready, not created', () => {
+    const stats = buildAuthorStats(
+      [pr(1, { readyForReviewAt: '2026-07-03T00:00:00Z', reviews: [review('bo', '2026-07-03T02:00:00Z')] })],
+      'ana',
+      key,
+    );
+    expect(stats.firstReviewMs).toBe(2 * 60 * 60 * 1000);
+  });
+
   test('given a row saved before createdAt was kept, then its "opened" event is when it was created', () => {
     const stats = buildAuthorStats(
       [pr(1, { createdAt: undefined, activityEvents: [{ type: 'opened', occurredAt: '2026-07-01T00:00:00Z' }], mergedAt: '2026-07-01T06:00:00Z' })],

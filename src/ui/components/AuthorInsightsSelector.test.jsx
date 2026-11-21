@@ -202,6 +202,30 @@ describe('AuthorInsightsSelector', () => {
     expect(picker()).toHaveValue('Hubot');
   });
 
+  test('a person opened from elsewhere who is not among the authors stays selected, as an option of their own', async () => {
+    const { OpenAuthorListener, openAuthor } = require('../state/useOpenAuthor');
+    const { TabStateContext } = require('../state/TabStateContext');
+    render(
+      <TabStateContext.Provider value={{ activeDataTab: 'pr-data', setActiveDataTab: () => {}, rememberReturnTarget: () => {} }}>
+        <PrDataProvider initialPayload={{ byPrNumber: ROWS }} initialSelectedAuthorLogin="octocat">
+          <prDataProbe.PrDataProbe />
+          <SelectedAuthorLoginProbe />
+          <OpenAuthorListener />
+          <AuthorInsightsContext.Provider value={{ ...defaultAuthorInsights, buildAuthorInsightsEntries: () => OPTIONS }}>
+            <AuthorInsightsSelector />
+          </AuthorInsightsContext.Provider>
+        </PrDataProvider>
+      </TabStateContext.Provider>,
+    );
+
+    act(() => {
+      openAuthor('bot-reviewer', 'A Reviewer');
+    });
+
+    await waitFor(() => expect(picker()).toHaveValue('A Reviewer'));
+    expect(latestSelectedAuthorLogin).toBe('bot-reviewer');
+  });
+
   test('with no stored PRs, it says so instead of the picker (even if buildAuthorInsightsEntries would give options)', () => {
     renderSelector({ rows: {} });
     expect(screen.getByText('No local rows available for author insights.')).toBeInTheDocument();

@@ -136,4 +136,42 @@ describe('ReturnToViewBanner', () => {
     expect(tabState.returnTarget).toBeNull();
     expect(screen.queryByRole('region')).not.toBeInTheDocument();
   });
+
+  test('after opening a person on Authors from the table: a bar over Authors with Back to Pull requests, which restores the scroll', async () => {
+    const user = userEvent.setup();
+    const whoButton = document.createElement('button');
+    document.body.append(whoButton);
+    render(
+      <TabStateProvider>
+        <App />
+      </TabStateProvider>,
+    );
+    act(() => {
+      tabState.rememberReturnTarget({ tab: 'pr-data', scrollY: 1200, focusTarget: whoButton, prNumber: '', shownIn: 'author-insights', subject: 'Hubot' });
+      tabState.setActiveDataTab('author-insights');
+    });
+
+    expect(screen.getByRole('region', { name: 'Back to Pull requests' })).toHaveTextContent('Hubot, from Pull requests');
+    await user.click(screen.getByRole('button', { name: 'Back to Pull requests' }));
+
+    expect(tabState.activeDataTab).toBe('pr-data');
+    expect(scrollTo).toHaveBeenCalledWith({ top: 1200, behavior: 'instant' });
+    expect(whoButton).toHaveFocus();
+    expect(screen.queryByRole('region')).not.toBeInTheDocument();
+    whoButton.remove();
+  });
+
+  test("a bar over Authors goes once another view is shown", () => {
+    render(
+      <TabStateProvider>
+        <App />
+      </TabStateProvider>,
+    );
+    act(() => {
+      tabState.rememberReturnTarget({ tab: 'pr-data', scrollY: 0, focusTarget: null, prNumber: '', shownIn: 'author-insights', subject: 'Hubot' });
+      tabState.setActiveDataTab('author-insights');
+    });
+    act(() => tabState.setActiveDataTab('review-stats'));
+    expect(tabState.returnTarget).toBeNull();
+  });
 });

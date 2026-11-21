@@ -652,7 +652,7 @@ describe('ReviewStatsContent', () => {
       window.addEventListener(OPEN_AUTHOR_EVENT, handler);
       reviewer.click();
       window.removeEventListener(OPEN_AUTHOR_EVENT, handler);
-      expect(opened).toEqual([{ login: 'alex-k', fallbackName: 'Alex Kim' }]);
+      expect(opened).toEqual([{ login: 'alex-k', fallbackName: 'Alex Kim', from: reviewer }]);
     });
 
     test('the viewer is marked "(you)" with the avatar ring', () => {

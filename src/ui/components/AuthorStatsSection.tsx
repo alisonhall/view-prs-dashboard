@@ -24,7 +24,7 @@ const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? o
 
 export const AUTHOR_STATS_EXPLANATIONS = {
   firstReview:
-    'The median time from a PR being opened to its first review by someone else (a comment, approval or change request; bots such as Copilot left out), over their PRs that have one. Time spent as a draft counts.',
+    'The median time from a PR being opened to its first review by someone else (a comment, approval or change request; bots such as Copilot left out), over their PRs that have one. A PR opened as a draft waits from when it was marked ready for review.',
   merge: 'The median time from a PR being opened to it being merged, over their merged PRs.',
   size: 'The median lines added plus lines deleted, over their PRs whose size is known.',
   changesRequested: 'How many of their reviewed PRs had at least one "changes requested" review from a person.',

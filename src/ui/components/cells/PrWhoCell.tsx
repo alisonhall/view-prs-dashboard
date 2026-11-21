@@ -63,7 +63,7 @@ export function PrWhoCell({ pr, repo = '', actorsMap = {} }: PrWhoCellProps) {
           type="button"
           className="pr-who pr-who-button"
           aria-label={`${name}. Open on Authors`}
-          onClick={() => openAuthor(primary.key, primary.name)}
+          onClick={(event) => openAuthor(primary.key, primary.name, event.currentTarget)}
         >
           <Avatar
             initials={getUserInitials(primary.displayName, loginOfActorKey(primary.key))}

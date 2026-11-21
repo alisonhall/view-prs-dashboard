@@ -74,6 +74,9 @@ export const buildAuthorStats = (
     prs += 1;
     const createdAt = parseSortableTime(prCreatedAt(entry));
     const hasCreatedAt = Number.isFinite(createdAt);
+    // A first review's wait starts once the PR was ready for review: a PR
+    // opened as a draft waits from when it was marked ready, not created.
+    const readyAt = Math.max(createdAt, parseSortableTime(data.readyForReviewAt));
 
     // Reviews by people other than the author (their replies to a review
     // are reviews too); a bot's, such as Copilot's automatic review, would
@@ -90,8 +93,8 @@ export const buildAuthorStats = (
       const firstReviewAt = Math.min(
         ...reviews.map((review) => parseSortableTime(review?.submittedAt)).filter(Number.isFinite),
       );
-      if (hasCreatedAt && Number.isFinite(firstReviewAt) && firstReviewAt >= createdAt) {
-        firstReviewTimes.push(firstReviewAt - createdAt);
+      if (hasCreatedAt && Number.isFinite(firstReviewAt) && firstReviewAt >= readyAt) {
+        firstReviewTimes.push(firstReviewAt - readyAt);
       }
       new Set(reviews.map((review) => getPreferredActorKey(review?.authorLogin, review?.authorName))).forEach((key) => {
         prsByReviewer.set(key, (prsByReviewer.get(key) ?? 0) + 1);
