@@ -46,9 +46,12 @@ const GROUPS: Array<{ state: AuthorPrState; title: string; open: boolean }> = [
 
 function PrGroup({ title, open, entries }: { title: string; open: boolean; entries: PrEntry[] }) {
   const [shown, setShown] = useState(AUTHOR_PR_GROUP_PAGE);
+  // Only how it first opens: a data update that adds or removes another
+  // group doesn't fold or unfold this one under you.
+  const [initiallyOpen] = useState(open);
   const more = entries.length - shown;
   return (
-    <details className="author-insights-pr-group" open={open}>
+    <details className="author-insights-pr-group" open={initiallyOpen}>
       <summary>
         {title} <span className="author-insights-pr-group-count">{entries.length}</span>
       </summary>

@@ -129,4 +129,16 @@ describe('AuthorCreatedPrsSection', () => {
     expect(groups).toHaveLength(1);
     expect(groups[0].open).toBe(true);
   });
+
+  test("a group keeps how it was first shown when the data adds another group", () => {
+    const { act } = require('@testing-library/react');
+    const closed = buildEntry({ data: { closedAt: '2026-07-02T00:00:00Z' } });
+    renderSection([closed], 'octocat');
+    act(() => {
+      prDataProbe.applyFreshTablePayload({ byPrNumber: { 1: closed, 2: buildEntry({ prNumber: '2', data: { number: '2' } }) } });
+    });
+    const groups = [...document.querySelectorAll('.author-insights-pr-group')];
+    expect(groups.map((group) => group.querySelector('summary').textContent)).toEqual(['Open 1', 'Closed 1']);
+    expect(groups[1].open).toBe(true);
+  });
 });

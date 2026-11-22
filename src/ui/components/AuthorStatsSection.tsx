@@ -85,7 +85,7 @@ function SourceRow({ source, format }: { source: AuthorStatSource; format: (valu
   return (
     <li className="author-stats-source">
       <a className="author-stats-source-title" href={href} target="_blank" rel="noopener noreferrer">
-        {repoName}#{prNumber} {String(row.title || '').trim()}
+        {[`${repoName}#${prNumber}`, String(row.title || '').trim()].filter(Boolean).join(' ')}
       </a>
       {formatted && <span className="author-stats-source-value">{formatted}</span>}
       <button

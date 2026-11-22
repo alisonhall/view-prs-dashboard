@@ -114,7 +114,7 @@ describe('AuthorStatsSection', () => {
     const firstReview = card('First review');
     expect(within(firstReview).getByText('Show PRs (2)')).toBeInTheDocument();
     const items = within(firstReview).getAllByRole('listitem');
-    expect(items.map((item) => within(item).getByRole('link').textContent)).toEqual(['web#1 Add login', 'api#1 ']);
+    expect(items.map((item) => within(item).getByRole('link').textContent)).toEqual(['web#1 Add login', 'api#1']);
     expect(items[0]).toHaveTextContent('5h');
     expect(within(items[0]).getByRole('link')).toHaveAttribute('href', 'https://github.com/acme/web/pull/1');
     expect(within(items[0]).getByRole('button', { name: 'View in table' })).toBeInTheDocument();
