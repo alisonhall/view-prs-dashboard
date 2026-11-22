@@ -102,6 +102,16 @@ describe('buildAuthorStats', () => {
     expect(stats.firstReviewMs).toBe(2 * 60 * 60 * 1000);
   });
 
+  test('given a review while it was still a draft, then it waited no time once ready (not left out)', () => {
+    const stats = buildAuthorStats(
+      [pr(1, { readyForReviewAt: '2026-07-03T00:00:00Z', reviews: [review('bo', '2026-07-02T00:00:00Z')] })],
+      'ana',
+      key,
+    );
+    expect(stats.firstReviewMs).toBe(0);
+    expect(stats.firstReviewPrs).toBe(1);
+  });
+
   test('given a row saved before createdAt was kept, then its "opened" event is when it was created', () => {
     const stats = buildAuthorStats(
       [pr(1, { createdAt: undefined, activityEvents: [{ type: 'opened', occurredAt: '2026-07-01T00:00:00Z' }], mergedAt: '2026-07-01T06:00:00Z' })],
@@ -114,7 +124,9 @@ describe('buildAuthorStats', () => {
 
 describe('formatWait', () => {
   test('given minutes, hours and days, then the unit that reads best', () => {
-    expect(formatWait(10 * 1000)).toBe('1m');
+    expect(formatWait(0)).toBe('<1m');
+    expect(formatWait(10 * 1000)).toBe('<1m');
+    expect(formatWait(90 * 1000)).toBe('2m');
     expect(formatWait(25 * 60 * 1000)).toBe('25m');
     expect(formatWait(5 * 60 * 60 * 1000)).toBe('5h');
     expect(formatWait(84 * 60 * 60 * 1000)).toBe('3.5 days');

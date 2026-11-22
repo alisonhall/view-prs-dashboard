@@ -93,8 +93,10 @@ export const buildAuthorStats = (
       const firstReviewAt = Math.min(
         ...reviews.map((review) => parseSortableTime(review?.submittedAt)).filter(Number.isFinite),
       );
-      if (hasCreatedAt && Number.isFinite(firstReviewAt) && firstReviewAt >= readyAt) {
-        firstReviewTimes.push(firstReviewAt - readyAt);
+      // Someone who reviewed it while it was still a draft: no wait once
+      // it was ready.
+      if (hasCreatedAt && Number.isFinite(firstReviewAt) && firstReviewAt >= createdAt) {
+        firstReviewTimes.push(Math.max(0, firstReviewAt - readyAt));
       }
       new Set(reviews.map((review) => getPreferredActorKey(review?.authorLogin, review?.authorName))).forEach((key) => {
         prsByReviewer.set(key, (prsByReviewer.get(key) ?? 0) + 1);
@@ -134,9 +136,10 @@ export const buildAuthorStats = (
 
 const HOUR_MS = 60 * 60 * 1000;
 
-// A wait in the unit that reads best: "25m", "5h", "3.5 days".
+// A wait in the unit that reads best: "<1m", "25m", "5h", "3.5 days".
 export const formatWait = (ms: number): string => {
-  if (ms < HOUR_MS) return `${Math.max(1, Math.round(ms / 60000))}m`;
+  if (ms < 60000) return '<1m';
+  if (ms < HOUR_MS) return `${Math.round(ms / 60000)}m`;
   if (ms < 48 * HOUR_MS) return `${Math.round(ms / HOUR_MS)}h`;
   const days = Math.round((ms / (24 * HOUR_MS)) * 10) / 10;
   return `${days} days`;
