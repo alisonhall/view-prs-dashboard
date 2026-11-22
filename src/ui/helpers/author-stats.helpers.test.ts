@@ -1,4 +1,4 @@
-import { buildAuthorStats, formatWait, median } from './author-stats.helpers';
+import { authorStatsRangeStart, buildAuthorStats, formatWait, median } from './author-stats.helpers';
 
 const key = (login: unknown) => String(login || '').trim().toLowerCase();
 const review = (authorLogin: string, submittedAt: string, state = 'COMMENTED') => ({ authorLogin, submittedAt, state });
@@ -35,7 +35,7 @@ describe('buildAuthorStats', () => {
       key,
     );
 
-    expect(stats).toEqual({
+    expect(stats).toMatchObject({
       prs: 3,
       // PR 1's first review by someone else is 2h in (Ana's own reply doesn't count); PR 2's is 4h.
       firstReviewMs: 3 * 60 * 60 * 1000,
@@ -119,6 +119,42 @@ describe('buildAuthorStats', () => {
       key,
     );
     expect(stats.mergeMs).toBe(6 * 60 * 60 * 1000);
+  });
+});
+
+describe('buildAuthorStats: sources, team and range', () => {
+  const H = 60 * 60 * 1000;
+  const rows = [
+    pr(1, { reviews: [review('bo', '2026-07-01T01:00:00Z', 'CHANGES_REQUESTED')], additions: 10 }),
+    pr(2, { reviews: [review('bo', '2026-07-01T05:00:00Z')], additions: 50 }),
+    pr(3, { authorLogin: 'bo', reviews: [review('ana', '2026-07-01T09:00:00Z')], additions: 400 }),
+    pr(4, { authorLogin: 'cy', createdAt: '2026-01-01T00:00:00Z', reviews: [review('ana', '2026-01-01T20:00:00Z', 'CHANGES_REQUESTED')] }),
+  ];
+
+  test("each number's PRs, longest wait (or biggest) first, with their value", () => {
+    const { sources } = buildAuthorStats(rows, 'ana', key);
+    expect(sources.firstReview.map(({ entry, value }) => [entry.prNumber, value])).toEqual([
+      ['2', 5 * H],
+      ['1', 1 * H],
+    ]);
+    expect(sources.size.map(({ entry }) => entry.prNumber)).toEqual(['2', '1']);
+    expect(sources.changesRequested.map(({ entry }) => entry.prNumber)).toEqual(['1']);
+    expect(sources.merge).toEqual([]);
+  });
+
+  test("the team's medians come from every author's PRs", () => {
+    const { team } = buildAuthorStats(rows, 'ana', key);
+    // Waits 1h, 5h, 9h, 20h; sizes 10, 50, 400.
+    expect(team).toEqual({ firstReviewMs: 7 * H, mergeMs: null, size: 50, changesRequestedShare: 0.5 });
+  });
+
+  test('with a start, only PRs opened since then count, for the author and the team', () => {
+    const since = authorStatsRangeStart('90d', Date.parse('2026-07-15T00:00:00Z'));
+    const stats = buildAuthorStats(rows, 'ana', key, { since });
+    expect(stats.prs).toBe(2);
+    expect(stats.team.firstReviewMs).toBe(5 * H);
+    expect(stats.team.changesRequestedShare).toBeCloseTo(1 / 3);
+    expect(authorStatsRangeStart('all', Date.now())).toBe(Number.NEGATIVE_INFINITY);
   });
 });
 

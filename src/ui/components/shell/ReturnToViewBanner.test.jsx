@@ -174,4 +174,76 @@ describe('ReturnToViewBanner', () => {
     act(() => tabState.setActiveDataTab('review-stats'));
     expect(tabState.returnTarget).toBeNull();
   });
+
+  test('bars stack: table, then a person on Authors, then one of their PRs in the table - Back twice returns to the table where it began', async () => {
+    const user = userEvent.setup();
+    render(
+      <TabStateProvider>
+        <App />
+      </TabStateProvider>,
+    );
+    act(() => {
+      tabState.rememberReturnTarget({ tab: 'pr-data', scrollY: 1200, focusTarget: null, prNumber: '', shownIn: 'author-insights', subject: 'Hubot' });
+      tabState.setActiveDataTab('author-insights');
+    });
+    await user.click(screen.getByRole('button', { name: 'View in table' }));
+    expect(tabState.activeDataTab).toBe('pr-data');
+    expect(screen.getByRole('region', { name: 'Back to Authors' })).toHaveTextContent('PR #12, from Authors');
+
+    await user.click(screen.getByRole('button', { name: 'Back to Authors' }));
+    expect(tabState.activeDataTab).toBe('author-insights');
+    expect(screen.getByRole('region', { name: 'Back to Pull requests' })).toHaveTextContent('Hubot, from Pull requests');
+
+    await user.click(screen.getByRole('button', { name: 'Back to Pull requests' }));
+    expect(tabState.activeDataTab).toBe('pr-data');
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: 1200, behavior: 'instant' });
+    expect(screen.queryByRole('region')).not.toBeInTheDocument();
+  });
+
+  test('Dismiss, or showing another view, forgets the whole stack', async () => {
+    const user = userEvent.setup();
+    render(
+      <TabStateProvider>
+        <App />
+      </TabStateProvider>,
+    );
+    const stackTwo = async () => {
+      act(() => {
+        tabState.rememberReturnTarget({ tab: 'pr-data', scrollY: 0, focusTarget: null, prNumber: '', shownIn: 'author-insights', subject: 'Hubot' });
+        tabState.setActiveDataTab('author-insights');
+      });
+      await user.click(screen.getByRole('button', { name: 'View in table' }));
+    };
+    await stackTwo();
+    await user.click(screen.getByRole('button', { name: 'Dismiss' }));
+    act(() => tabState.setActiveDataTab('author-insights'));
+    expect(screen.queryByRole('region')).not.toBeInTheDocument();
+
+    act(() => tabState.setActiveDataTab('pr-data'));
+    await stackTwo();
+    act(() => tabState.setActiveDataTab('review-stats'));
+    act(() => tabState.setActiveDataTab('author-insights'));
+    expect(tabState.returnTarget).toBeNull();
+  });
+
+  test('remembers at most 10 views back', () => {
+    const { RETURN_TARGET_STACK_LIMIT } = require('../TabStateProvider');
+    render(
+      <TabStateProvider>
+        <App />
+      </TabStateProvider>,
+    );
+    act(() => {
+      for (let index = 0; index < RETURN_TARGET_STACK_LIMIT + 5; index += 1) {
+        tabState.rememberReturnTarget({ tab: 'author-insights', scrollY: index, focusTarget: null, prNumber: String(index) });
+      }
+    });
+    for (let index = 0; index < RETURN_TARGET_STACK_LIMIT; index += 1) {
+      act(() => {
+        tabState.returnToPreviousView();
+        tabState.setActiveDataTab('pr-data');
+      });
+    }
+    expect(tabState.returnTarget).toBeNull();
+  });
 });

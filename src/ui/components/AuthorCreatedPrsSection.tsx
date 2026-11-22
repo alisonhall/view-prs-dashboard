@@ -17,22 +17,62 @@
  * from useAuthorInsights() (Phase 7, sub-phase 7.0 - see
  * REACT_MIGRATION_PLAN.md).
  *
+ * The PRs are grouped as Open (drafts too), Merged and Closed, each a
+ * collapsible group with its count; Closed starts collapsed. A group shows
+ * its first AUTHOR_PR_GROUP_PAGE PRs, with "Show N more" for the rest.
+ *
  * Mounted once, in AppShell's #author-insights-created-prs-root.
  *
  * @module components/AuthorCreatedPrsSection
  */
 
+import { useState } from 'react';
 import { AuthorInsightsPrRow } from './AuthorInsightsPrRow';
 import { usePrData } from '../state/PrDataContext';
 import { useActorIdentity } from '../state/ActorIdentityContext';
 import { useAuthorInsights } from '../state/AuthorInsightsContext';
+import { getAuthorPrState, type AuthorPrState } from '../helpers/author-picker.helpers.ts';
+import type { PrEntry } from '../types/pr-data.ts';
+
+// How many PRs a group shows before "Show N more".
+export const AUTHOR_PR_GROUP_PAGE = 10;
+
+const GROUPS: Array<{ state: AuthorPrState; title: string; open: boolean }> = [
+  { state: 'open', title: 'Open', open: true },
+  { state: 'merged', title: 'Merged', open: true },
+  { state: 'closed', title: 'Closed', open: false },
+];
+
+function PrGroup({ title, open, entries }: { title: string; open: boolean; entries: PrEntry[] }) {
+  const [shown, setShown] = useState(AUTHOR_PR_GROUP_PAGE);
+  const more = entries.length - shown;
+  return (
+    <details className="author-insights-pr-group" open={open}>
+      <summary>
+        {title} <span className="author-insights-pr-group-count">{entries.length}</span>
+      </summary>
+      <div className="author-insights-list">
+        {entries.slice(0, shown).map((entry, index) => (
+          <div className="author-insights-item" key={`${entry?.repo || ''}#${entry?.prNumber || entry?.data?.number || index}`}>
+            <AuthorInsightsPrRow entry={entry} />
+          </div>
+        ))}
+      </div>
+      {more > 0 && (
+        <button type="button" className="ui-link-button author-insights-pr-group-more" onClick={() => setShown(entries.length)}>
+          Show {more} more
+        </button>
+      )}
+    </details>
+  );
+}
 
 export function AuthorCreatedPrsSection() {
   const { payload, selectedAuthorLogin } = usePrData();
   const { getPreferredActorKey } = useActorIdentity();
   const { sortAuthorInsightsCreatedPrsDesc } = useAuthorInsights();
   const rows = Object.values(payload?.byPrNumber || {});
-  const createdPrs = sortAuthorInsightsCreatedPrsDesc(
+  const createdPrs: PrEntry[] = sortAuthorInsightsCreatedPrsDesc(
     (Array.isArray(rows) ? rows : []).filter(
       (entry) => getPreferredActorKey(entry?.data?.authorLogin, entry?.data?.author) === selectedAuthorLogin,
     ),
@@ -44,13 +84,11 @@ export function AuthorCreatedPrsSection() {
       {createdPrs.length === 0 ? (
         <p className="stats-empty">No PRs by this author in the current local data scope.</p>
       ) : (
-        <div className="author-insights-list">
-          {createdPrs.map((entry, index) => (
-            <div className="author-insights-item" key={`${entry?.repo || ''}#${entry?.prNumber || entry?.data?.number || index}`}>
-              <AuthorInsightsPrRow entry={entry} />
-            </div>
-          ))}
-        </div>
+        GROUPS.map(({ state, title, open }) => {
+          const entries = createdPrs.filter((entry) => getAuthorPrState(entry) === state);
+          // Keyed by author: a new author starts with the groups as first shown.
+          return entries.length ? <PrGroup key={`${selectedAuthorLogin}:${state}`} title={title} open={open} entries={entries} /> : null;
+        })
       )}
     </section>
   );

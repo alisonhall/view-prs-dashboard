@@ -9,7 +9,9 @@
  * the options (none chosen yet, or gone from the data) - other than a
  * person just opened from elsewhere (openAuthor), who is added as an
  * option - the effect below picks the first - the author of the most recently updated PR - and
- * with no options it clears the selection. Each setSelectedAuthorLogin is guarded on the value
+ * with no options it clears the selection (with no stored PRs at all it
+ * leaves it, so the author kept from before a reload survives until the
+ * data loads). Each setSelectedAuthorLogin is guarded on the value
  * changing, so the effect settles. With no stored PRs, or no authors, it
  * says so instead of showing the picker.
  *
@@ -44,11 +46,14 @@ export function AuthorInsightsSelector() {
   }, [openedExtra, pickerOthers, pickerOptions]);
 
   useEffect(() => {
+    // No stored PRs (yet): keep the selection, which may be the one kept
+    // from before a reload, until the data arrives.
+    if (!rowCount) return;
     const validatedLogin = resolveValidAuthorLogin(options, selectedAuthorLogin);
     if (validatedLogin !== selectedAuthorLogin) {
       setSelectedAuthorLogin(validatedLogin);
     }
-  }, [options, selectedAuthorLogin, setSelectedAuthorLogin]);
+  }, [rowCount, options, selectedAuthorLogin, setSelectedAuthorLogin]);
 
   if (!rowCount) {
     return <p className="stats-empty">No local rows available for author insights.</p>;

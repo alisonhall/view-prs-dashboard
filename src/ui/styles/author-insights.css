@@ -71,6 +71,25 @@
   gap: var(--space-2);
 }
 
+.author-insights-pr-group + .author-insights-pr-group {
+  margin-top: var(--space-3);
+}
+
+.author-insights-pr-group > summary {
+  cursor: pointer;
+  margin-bottom: var(--space-2);
+  font-weight: 600;
+}
+
+.author-insights-pr-group-count {
+  color: var(--color-text-muted);
+  font-weight: 400;
+}
+
+.author-insights-pr-group-more {
+  margin-top: var(--space-2);
+}
+
 .author-insights-item {
   display: grid;
   gap: 6px;
@@ -245,4 +264,58 @@
 .author-stats-reviewer-count {
   flex: none;
   color: var(--color-text-muted);
+}
+
+.author-stats-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.author-stats-heading h3 {
+  margin: 0;
+}
+
+.author-stats-team {
+  margin-top: 2px;
+}
+
+.author-stats-sources {
+  margin-top: 6px;
+  font-size: var(--font-size-sm);
+}
+
+.author-stats-source-list {
+  display: grid;
+  gap: var(--space-1);
+  max-height: 16rem;
+  overflow-y: auto;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.author-stats-source {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px var(--space-2);
+  min-width: 0;
+}
+
+.author-stats-source-title {
+  flex: 1 1 12rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.author-stats-source-value {
+  flex: none;
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
 }

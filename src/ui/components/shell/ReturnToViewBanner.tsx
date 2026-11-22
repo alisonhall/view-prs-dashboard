@@ -6,8 +6,9 @@ import { DATA_TAB_LABELS, useTabState } from '../../state/TabStateContext';
  * stuck to the top of the window over the table: "PR #12, from Authors"
  * with `Back to Authors`; after opening a person on Authors from another
  * view, the same over Authors ("Hubot, from Pull requests"). `Back to …` which shows that view again scrolled and focused
- * as it was left (TabStateProvider's returnToPreviousView). Gone once you
- * go back, dismiss it, or show another view.
+ * as it was left (TabStateProvider's returnToPreviousView). Going back
+ * shows the bar for the step before, if there was one (the bars stack);
+ * dismissing it or showing another view forgets them all.
  */
 export function ReturnToViewBanner() {
   const { activeDataTab, returnTarget, returnToPreviousView, forgetReturnTarget } = useTabState();
