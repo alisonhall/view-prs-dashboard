@@ -43,6 +43,17 @@ export interface PrReviewMeasures {
   reviewed: boolean;
   changesRequested: boolean;
   reviewerKeys: string[];
+  // When the PR was ready for review (ms; NaN without a known opening).
+  readyAt: number;
+  // Each reviewer's first review (ms) and whether they approved or asked
+  // for changes, by their preferred key.
+  byReviewer: Record<string, ReviewerOnPr>;
+}
+
+export interface ReviewerOnPr {
+  firstAt: number;
+  approved: boolean;
+  changesRequested: boolean;
 }
 
 export interface TeamMedians {
@@ -67,6 +78,9 @@ export interface AuthorStats {
   changesRequestedPrs: number;
   reviewedPrs: number;
   topReviewers: AuthorReviewerCount[];
+  // 1 in 10 of their PRs waited (or were) longer than this; null with
+  // fewer than AUTHOR_P90_MIN_VALUES.
+  p90: { firstReviewMs: number | null; mergeMs: number | null; size: number | null };
   // The PRs behind each number, longest wait (or biggest) first.
   sources: {
     firstReview: AuthorStatSource[];
@@ -76,7 +90,84 @@ export interface AuthorStats {
   };
   // The same across every author's PRs in the range.
   team: TeamMedians;
+  // Their reviews of other people's PRs in the range.
+  given: ReviewsGiven;
+  // Their PRs by the month they were opened, oldest first.
+  months: AuthorMonth[];
+  // Their PRs by size.
+  bySize: AuthorSizeBucket[];
 }
+
+export interface ReviewsGiven {
+  prs: number;
+  approvedPrs: number;
+  changesRequestedPrs: number;
+  // From a PR being ready for review to their first review of it.
+  firstResponseMs: number | null;
+  firstResponsePrs: number;
+  firstResponseP90: number | null;
+  // The same over every reviewer's first review of every PR in the range.
+  teamFirstResponseMs: number | null;
+  // Whose PRs they reviewed most (preferred keys).
+  topAuthors: AuthorReviewerCount[];
+  // The PRs they reviewed, longest first response first.
+  sources: AuthorStatSource[];
+}
+
+export interface AuthorMonth {
+  // "2026-07", local time.
+  month: string;
+  prs: number;
+  firstReviewMs: number | null;
+  mergeMs: number | null;
+}
+
+export interface AuthorSizeBucket {
+  label: string;
+  // Lines, from (inclusive) and to (exclusive; null for no upper end).
+  from: number;
+  to: number | null;
+  prs: number;
+  firstReviewMs: number | null;
+  mergeMs: number | null;
+}
+
+// The size buckets "By size" compares.
+export const AUTHOR_SIZE_BUCKETS: Array<Pick<AuthorSizeBucket, "label" | "from" | "to">> = [
+  { label: "Under 100 lines", from: 0, to: 100 },
+  { label: "100 to 499 lines", from: 100, to: 500 },
+  { label: "500+ lines", from: 500, to: null },
+];
+
+// How many months "Over time" shows at most.
+export const AUTHOR_TREND_MONTHS = 12;
+
+const monthKey = (ms: number) => {
+  const date = new Date(ms);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+};
+
+// Every month from the first to the last (inclusive), at most the last
+// AUTHOR_TREND_MONTHS.
+const monthsBetween = (first: number, last: number): string[] => {
+  const months: string[] = [];
+  const cursor = new Date(first);
+  cursor.setDate(1);
+  const end = monthKey(last);
+  while (months.length < 1000) {
+    const key = monthKey(cursor.getTime());
+    months.push(key);
+    if (key >= end) break;
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+  return months.slice(-AUTHOR_TREND_MONTHS);
+};
+
+const topCounts = (counts: Map<string, number>): AuthorReviewerCount[] =>
+  [...counts]
+    .map(([login, count]) => ({ login, prs: count }))
+    .sort((a, b) => b.prs - a.prs || a.login.localeCompare(b.login))
+    .slice(0, AUTHOR_TOP_REVIEWERS);
 
 // The middle value (the mean of the middle two for an even count); null
 // for none.
@@ -86,6 +177,15 @@ export const median = (values: number[]): number | null => {
   const middle = Math.floor(sorted.length / 2);
   const upper = sorted[middle] ?? 0;
   return sorted.length % 2 ? upper : ((sorted[middle - 1] ?? upper) + upper) / 2;
+};
+
+// The value 1 in 10 are above (nearest rank), with enough values for that
+// to mean something; null otherwise.
+export const AUTHOR_P90_MIN_VALUES = 5;
+export const percentile90 = (values: number[]): number | null => {
+  if (values.length < AUTHOR_P90_MIN_VALUES) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.ceil(0.9 * sorted.length) - 1] ?? null;
 };
 
 // Copilot, GitHub Apps ("app/…") and "…[bot]" accounts.
@@ -133,8 +233,26 @@ export const measurePrReview = (entry: PrEntry, getPreferredActorKey: GetPreferr
     reviewed: reviews.length > 0,
     changesRequested: reviews.some((review) => String(review?.state || "").toUpperCase() === "CHANGES_REQUESTED"),
     reviewerKeys: [...new Set(reviews.map((review) => getPreferredActorKey(review?.authorLogin, review?.authorName)))],
+    readyAt,
+    byReviewer: reviewsByReviewer(reviews, getPreferredActorKey),
   };
 };
+
+function reviewsByReviewer(reviews: NonNullable<PrEntry["data"]>["reviews"], getPreferredActorKey: GetPreferredActorKey) {
+  const byReviewer: Record<string, ReviewerOnPr> = {};
+  (reviews || []).forEach((review) => {
+    const key = String(getPreferredActorKey(review?.authorLogin, review?.authorName) || "");
+    const at = parseSortableTime(review?.submittedAt);
+    const state = String(review?.state || "").toUpperCase();
+    const current = byReviewer[key] ?? { firstAt: Number.NaN, approved: false, changesRequested: false };
+    byReviewer[key] = {
+      firstAt: Number.isFinite(at) && !(current.firstAt <= at) ? at : current.firstAt,
+      approved: current.approved || state === "APPROVED",
+      changesRequested: current.changesRequested || state === "CHANGES_REQUESTED",
+    };
+  });
+  return byReviewer;
+}
 
 // When a range starts (ms), or -Infinity for all time.
 export const authorStatsRangeStart = (range: AuthorStatsRange, now: number): number =>
@@ -173,16 +291,51 @@ export const buildAuthorStats = (
 
   const prsByReviewer = new Map<string, number>();
   mine.forEach((m) => m.reviewerKeys.forEach((key) => prsByReviewer.set(key, (prsByReviewer.get(key) ?? 0) + 1)));
-  const topReviewers = [...prsByReviewer]
-    .map(([login, count]) => ({ login, prs: count }))
-    .sort((a, b) => b.prs - a.prs || a.login.localeCompare(b.login))
-    .slice(0, AUTHOR_TOP_REVIEWERS);
+  const topReviewers = topCounts(prsByReviewer);
 
   const firstReviewTimes = valuesOf(mine, (m) => m.firstReviewMs);
   const mergeTimes = valuesOf(mine, (m) => m.mergeMs);
   const sizes = valuesOf(mine, (m) => m.lines);
   const reviewed = mine.filter((m) => m.reviewed);
   const teamReviewed = all.filter((m) => m.reviewed);
+
+  // Their reviews of other people's PRs.
+  const givenOn = inRange.filter(({ measures }) => measures.authorKey !== authorKey && measures.byReviewer[authorKey]);
+  const givenSources = givenOn
+    .flatMap(({ entry, measures }) => {
+      const firstAt = measures.byReviewer[authorKey]?.firstAt ?? Number.NaN;
+      if (!Number.isFinite(firstAt) || !Number.isFinite(measures.createdAt) || firstAt < measures.createdAt) return [];
+      return [{ entry, value: Math.max(0, firstAt - measures.readyAt) }];
+    })
+    .sort((a, b) => b.value - a.value);
+  const responseTimes = givenSources.map((source) => source.value);
+  const prsByAuthor = new Map<string, number>();
+  givenOn.forEach(({ measures }) => prsByAuthor.set(measures.authorKey, (prsByAuthor.get(measures.authorKey) ?? 0) + 1));
+
+  // Their PRs by month opened, with every month in between.
+  const dated = mine.filter((m) => Number.isFinite(m.createdAt));
+  const monthKeys = dated.length
+    ? monthsBetween(Math.min(...dated.map((m) => m.createdAt)), Math.max(...dated.map((m) => m.createdAt)))
+    : [];
+  const months = monthKeys.map((month) => {
+    const inMonth = dated.filter((m) => monthKey(m.createdAt) === month);
+    return {
+      month,
+      prs: inMonth.length,
+      firstReviewMs: median(valuesOf(inMonth, (m) => m.firstReviewMs)),
+      mergeMs: median(valuesOf(inMonth, (m) => m.mergeMs)),
+    };
+  });
+
+  const bySize = AUTHOR_SIZE_BUCKETS.map((bucket) => {
+    const inBucket = mine.filter((m) => m.lines !== null && m.lines >= bucket.from && (bucket.to === null || m.lines < bucket.to));
+    return {
+      ...bucket,
+      prs: inBucket.length,
+      firstReviewMs: median(valuesOf(inBucket, (m) => m.firstReviewMs)),
+      mergeMs: median(valuesOf(inBucket, (m) => m.mergeMs)),
+    };
+  });
 
   return {
     prs: mine.length,
@@ -195,6 +348,7 @@ export const buildAuthorStats = (
     changesRequestedPrs: reviewed.filter((m) => m.changesRequested).length,
     reviewedPrs: reviewed.length,
     topReviewers,
+    p90: { firstReviewMs: percentile90(firstReviewTimes), mergeMs: percentile90(mergeTimes), size: percentile90(sizes) },
     sources: {
       firstReview: sourcesOf((m) => m.firstReviewMs),
       merge: sourcesOf((m) => m.mergeMs),
@@ -207,16 +361,37 @@ export const buildAuthorStats = (
       size: median(valuesOf(all, (m) => m.lines)),
       changesRequestedShare: share(teamReviewed.filter((m) => m.changesRequested).length, teamReviewed.length),
     },
+    given: {
+      prs: givenOn.length,
+      approvedPrs: givenOn.filter(({ measures }) => measures.byReviewer[authorKey]?.approved).length,
+      changesRequestedPrs: givenOn.filter(({ measures }) => measures.byReviewer[authorKey]?.changesRequested).length,
+      firstResponseMs: median(responseTimes),
+      firstResponsePrs: responseTimes.length,
+      firstResponseP90: percentile90(responseTimes),
+      teamFirstResponseMs: median(
+        all.flatMap((m) =>
+          Object.values(m.byReviewer)
+            .map((reviewer) => reviewer.firstAt)
+            .filter((firstAt) => Number.isFinite(m.createdAt) && firstAt >= m.createdAt)
+            .map((firstAt) => Math.max(0, firstAt - m.readyAt)),
+        ),
+      ),
+      topAuthors: topCounts(prsByAuthor),
+      sources: givenSources,
+    },
+    months,
+    bySize,
   };
 };
 
 const HOUR_MS = 60 * 60 * 1000;
 
-// A wait in the unit that reads best: "<1m", "25m", "5h", "3.5 days".
+// A wait in the unit that reads best: "<1m", "25m", "5h", "3.5 days",
+// "41 days" (whole days from 10 on).
 export const formatWait = (ms: number): string => {
   if (ms < 60000) return "<1m";
   if (ms < HOUR_MS) return `${Math.round(ms / 60000)}m`;
   if (ms < 48 * HOUR_MS) return `${Math.round(ms / HOUR_MS)}h`;
-  const days = Math.round((ms / (24 * HOUR_MS)) * 10) / 10;
-  return `${days} days`;
+  const days = ms / (24 * HOUR_MS);
+  return `${days >= 10 ? Math.round(days) : Math.round(days * 10) / 10} days`;
 };

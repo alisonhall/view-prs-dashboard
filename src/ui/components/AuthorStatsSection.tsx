@@ -9,11 +9,16 @@
  *   so it says whether that's fast or slow.
  * - "Show PRs" lists the PRs behind the number, longest wait (or biggest)
  *   first, each with its value and View in table.
+ * - Under a median, the slowest 1 in 10 once there are 5 or more PRs.
+ * - "Their reviews of others": how many PRs they reviewed, how soon they
+ *   first responded, how those reviews ended, and whose PRs they review most.
+ * - "Over time": their PRs by the month opened; "By size": how long small,
+ *   medium and large ones waited. Each as a table with bars.
  * - "Last 90 days" or "All time": PRs opened in the range, for the author
  *   and the team alike. The choice is kept in this browser.
  *
- * Nothing without a selected author, or when they have no stored PRs at
- * all; with none in the range, it says so beside the range switch.
+ * Nothing without a selected author, or when they have neither PRs nor
+ * reviews stored; with none in the range, it says so beside the range switch.
  *
  * @module components/AuthorStatsSection
  */
@@ -21,16 +26,16 @@
 import { useMemo, useState } from 'react';
 import { usePrData } from '../state/PrDataContext';
 import { useActorIdentity } from '../state/ActorIdentityContext';
-import { useNavigateToPrInTable } from '../state/useNavigateToPrInTable';
-import { useRowRepoName } from '../state/RowRepoNamesContext';
 import {
   AUTHOR_STATS_RANGE_DAYS,
   authorStatsRangeStart,
   buildAuthorStats,
   formatWait,
+  type AuthorReviewerCount,
   type AuthorStatSource,
   type AuthorStatsRange,
 } from '../helpers/author-stats.helpers.ts';
+import { AuthorPrLinkRow, authorPrRowKey } from './AuthorPrLinkRow';
 import { createPrUserInitialsHelpers } from '../helpers/pr-user-initials.helpers.ts';
 import { AuthorLink } from './AuthorLink';
 import { Avatar } from './ui/Avatar';
@@ -69,35 +74,15 @@ export const AUTHOR_STATS_EXPLANATIONS = {
   changesRequested: 'How many of their reviewed PRs had at least one "changes requested" review from a person.',
   reviewers: 'Who reviewed the most of their PRs (any review counts, once per PR; bots left out).',
   team: 'The same, worked out over every author\'s PRs in the range.',
+  teamFirstResponse: "The same over every reviewer's first review of every PR in the range.",
+  slowest: '1 in 10 of these PRs took longer than this (shown with 5 or more PRs), so a few stuck PRs don\'t hide behind a good median.',
+  given: 'Other people\'s PRs they reviewed (any review counts, once per PR), opened in the range.',
+  firstResponse:
+    'The median time from a PR being ready for review to their first review of it, over the other people\'s PRs they reviewed. Not from when they were asked, which isn\'t stored.',
+  reviewsMostFor: 'Whose PRs they reviewed the most (once per PR).',
+  months: 'Their PRs by the month they were opened: how many, and the median wait for a first review and to merge.',
+  bySize: 'Their PRs by lines added plus deleted: the median wait for a first review and to merge for each size.',
 };
-
-// One PR behind a number: `repo#N title` linking to GitHub, its value, and
-// View in table.
-function SourceRow({ source, format }: { source: AuthorStatSource; format: (value: number) => string }) {
-  const navigateToPrInTable = useNavigateToPrInTable();
-  const { entry, value } = source;
-  const row = entry?.data || {};
-  const prNumber = String(row.number || entry?.prNumber || '').trim();
-  const repo = String(entry?.repo || '');
-  const repoName = useRowRepoName(repo);
-  const href = row.url || `https://github.com/${repo}/pull/${prNumber}`;
-  const formatted = format(value);
-  return (
-    <li className="author-stats-source">
-      <a className="author-stats-source-title" href={href} target="_blank" rel="noopener noreferrer">
-        {[`${repoName}#${prNumber}`, String(row.title || '').trim()].filter(Boolean).join(' ')}
-      </a>
-      {formatted && <span className="author-stats-source-value">{formatted}</span>}
-      <button
-        type="button"
-        className="ui-link-button"
-        onClick={(event) => navigateToPrInTable(prNumber, { repo, from: event.currentTarget })}
-      >
-        View in table
-      </button>
-    </li>
-  );
-}
 
 interface StatCardProps {
   label: string;
@@ -105,11 +90,14 @@ interface StatCardProps {
   value: string;
   detail: string;
   team?: string;
+  teamExplanation?: string;
+  // The slowest 1 in 10, formatted.
+  slowest?: string;
   sources: AuthorStatSource[];
   formatSource: (value: number) => string;
 }
 
-function StatCard({ label, explanation, value, detail, team, sources, formatSource }: StatCardProps) {
+function StatCard({ label, explanation, value, detail, team, teamExplanation, slowest, sources, formatSource }: StatCardProps) {
   return (
     <div className="stat-card" role="group" aria-label={label}>
       <Tooltip content={explanation} focusTarget>
@@ -118,8 +106,13 @@ function StatCard({ label, explanation, value, detail, team, sources, formatSour
       <span className="stat-card-value">{value}</span>
       <span className="stat-card-detail">{detail}</span>
       {team && (
-        <Tooltip content={AUTHOR_STATS_EXPLANATIONS.team} focusTarget>
+        <Tooltip content={teamExplanation ?? AUTHOR_STATS_EXPLANATIONS.team} focusTarget>
           <span className="stat-card-detail author-stats-team">Team: {team}</span>
+        </Tooltip>
+      )}
+      {slowest && (
+        <Tooltip content={AUTHOR_STATS_EXPLANATIONS.slowest} focusTarget>
+          <span className="stat-card-detail author-stats-slowest">1 in 10 over {slowest}</span>
         </Tooltip>
       )}
       {sources.length > 0 && (
@@ -127,7 +120,7 @@ function StatCard({ label, explanation, value, detail, team, sources, formatSour
           <summary>Show PRs ({sources.length})</summary>
           <ul className="author-stats-source-list">
             {sources.map((source) => (
-              <SourceRow key={`${source.entry?.repo || ''}#${source.entry?.prNumber || source.entry?.data?.number}`} source={source} format={formatSource} />
+              <AuthorPrLinkRow key={authorPrRowKey(source.entry)} entry={source.entry} detail={formatSource(source.value)} />
             ))}
           </ul>
         </details>
@@ -136,14 +129,137 @@ function StatCard({ label, explanation, value, detail, team, sources, formatSour
   );
 }
 
+// People with a count each (top reviewers, whose PRs they review), each
+// opening on Authors.
+function PeopleCard({ label, explanation, people, empty }: { label: string; explanation: string; people: AuthorReviewerCount[]; empty: string }) {
+  const { payload } = usePrData();
+  const { resolveActorDisplayName, loginOfActorKey, getEffectiveViewerKey, normalizeActorLogin } = useActorIdentity();
+  const actorsMap = payload?.actorsMap || {};
+  const viewerKey = getEffectiveViewerKey({});
+  return (
+    <div className="stat-card" role="group" aria-label={label}>
+      <Tooltip content={explanation} focusTarget>
+        <span className="stats-explained stat-card-label">{label}</span>
+      </Tooltip>
+      {people.length === 0 ? (
+        <span className="stat-card-detail">{empty}</span>
+      ) : (
+        <ul className="author-stats-reviewers">
+          {people.map(({ login: key, prs }) => {
+            const login = loginOfActorKey(key);
+            const name = resolveActorDisplayName(key, actorsMap) || login;
+            const isViewer = Boolean(viewerKey) && normalizeActorLogin(key).toLowerCase() === viewerKey;
+            return (
+              <li key={key}>
+                <AuthorLink login={key} fallbackName={name} className="author-stats-reviewer">
+                  <Avatar initials={getUserInitials(name, login)} login={login} isViewer={isViewer} size="sm" />
+                  <span>{name}</span>
+                </AuthorLink>
+                <span className="author-stats-reviewer-count">{plural(prs, 'PR')}</span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+interface BarRow {
+  label: string;
+  prs: number;
+  firstReviewMs: number | null;
+  mergeMs: number | null;
+}
+
+// A wait with a bar as long as its share of the column's longest.
+function WaitBar({ value, longest }: { value: number | null; longest: number }) {
+  if (value === null) return <span className="author-stats-bar-empty">-</span>;
+  const width = longest > 0 ? Math.max(2, (value / longest) * 100) : 0;
+  return (
+    <span className="author-stats-bar-cell">
+      <span className="author-stats-bar" aria-hidden="true">
+        <span className="author-stats-bar-fill" style={{ width: `${width}%` }} />
+      </span>
+      <span className="author-stats-bar-value">{formatWait(value)}</span>
+    </span>
+  );
+}
+
+function BarsTable({
+  title,
+  explanation,
+  firstColumn,
+  rows,
+  empty,
+}: {
+  title: string;
+  explanation: string;
+  firstColumn: string;
+  rows: BarRow[];
+  empty: string;
+}) {
+  const longest = (pick: (row: BarRow) => number | null) => Math.max(0, ...rows.map(pick).filter((value): value is number => value !== null));
+  const longestFirstReview = longest((row) => row.firstReviewMs);
+  const longestMerge = longest((row) => row.mergeMs);
+  return (
+    <div className="stat-card author-stats-table-card" role="group" aria-label={title}>
+      <Tooltip content={explanation} focusTarget>
+        <span className="stats-explained stat-card-label">{title}</span>
+      </Tooltip>
+      {rows.length === 0 ? (
+        <span className="stat-card-detail">{empty}</span>
+      ) : (
+      <table className="author-stats-table">
+        <thead>
+          <tr>
+            <th scope="col">{firstColumn}</th>
+            <th scope="col">PRs</th>
+            <th scope="col">First review</th>
+            <th scope="col">Time to merge</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.label}>
+              <th scope="row">{row.label}</th>
+              <td>{row.prs}</td>
+              <td>
+                <WaitBar value={row.firstReviewMs} longest={longestFirstReview} />
+              </td>
+              <td>
+                <WaitBar value={row.mergeMs} longest={longestMerge} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      )}
+    </div>
+  );
+}
+
+const MONTH_FORMAT = new Intl.DateTimeFormat(undefined, { month: 'short', year: 'numeric' });
+const formatMonth = (month: string) => {
+  const [year, monthNumber] = month.split('-').map(Number);
+  return MONTH_FORMAT.format(new Date(year ?? 1970, (monthNumber ?? 1) - 1, 1));
+};
+
 export function AuthorStatsSection() {
   const { payload, selectedAuthorLogin } = usePrData();
-  const { getPreferredActorKey, resolveActorDisplayName, loginOfActorKey, getEffectiveViewerKey, normalizeActorLogin } =
-    useActorIdentity();
+  const { getPreferredActorKey } = useActorIdentity();
   const [range, setRange] = useState<AuthorStatsRange>(readStoredRange);
   const rows = useMemo(() => Object.values(payload?.byPrNumber || {}), [payload]);
-  const hasAnyPr = useMemo(
-    () => rows.some((entry) => getPreferredActorKey(entry?.data?.authorLogin, entry?.data?.author) === selectedAuthorLogin),
+  // Any of their PRs, or a review of someone else's, stored at all.
+  const hasAnything = useMemo(
+    () =>
+      rows.some((entry) => {
+        const data = entry?.data || {};
+        if (getPreferredActorKey(data.authorLogin, data.author) === selectedAuthorLogin) return true;
+        return (Array.isArray(data.reviews) ? data.reviews : []).some(
+          (review) => getPreferredActorKey(review?.authorLogin, review?.authorName) === selectedAuthorLogin,
+        );
+      }),
     [rows, selectedAuthorLogin, getPreferredActorKey],
   );
   const stats = useMemo(
@@ -151,7 +267,7 @@ export function AuthorStatsSection() {
     [rows, selectedAuthorLogin, getPreferredActorKey, range],
   );
 
-  if (!selectedAuthorLogin || !hasAnyPr) {
+  if (!selectedAuthorLogin || !hasAnything) {
     return null;
   }
 
@@ -159,9 +275,7 @@ export function AuthorStatsSection() {
     setRange(next);
     storeRange(next);
   };
-  const actorsMap = payload?.actorsMap || {};
-  const viewerKey = getEffectiveViewerKey({});
-  const { team } = stats;
+  const { team, p90, given } = stats;
   const changesShare = stats.reviewedPrs ? stats.changesRequestedPrs / stats.reviewedPrs : null;
   const rangeWords = range === 'all' ? 'stored' : `opened in the last ${AUTHOR_STATS_RANGE_DAYS} days`;
 
@@ -186,6 +300,7 @@ export function AuthorStatsSection() {
             value={stats.firstReviewMs === null ? '-' : formatWait(stats.firstReviewMs)}
             detail={stats.firstReviewPrs ? `median, over ${plural(stats.firstReviewPrs, 'PR')}` : 'No reviewed PRs yet'}
             team={team.firstReviewMs === null ? undefined : formatWait(team.firstReviewMs)}
+            slowest={p90.firstReviewMs === null ? undefined : formatWait(p90.firstReviewMs)}
             sources={stats.sources.firstReview}
             formatSource={formatWait}
           />
@@ -195,6 +310,7 @@ export function AuthorStatsSection() {
             value={stats.mergeMs === null ? '-' : formatWait(stats.mergeMs)}
             detail={stats.mergedPrs ? `median, over ${plural(stats.mergedPrs, 'merged PR')}` : 'No merged PRs yet'}
             team={team.mergeMs === null ? undefined : formatWait(team.mergeMs)}
+            slowest={p90.mergeMs === null ? undefined : formatWait(p90.mergeMs)}
             sources={stats.sources.merge}
             formatSource={formatWait}
           />
@@ -204,6 +320,7 @@ export function AuthorStatsSection() {
             value={stats.size === null ? '-' : formatLines(stats.size)}
             detail={stats.sizedPrs ? `median, over ${plural(stats.sizedPrs, 'PR')}` : 'No sizes known yet'}
             team={team.size === null ? undefined : formatLines(team.size)}
+            slowest={p90.size === null ? undefined : formatLines(p90.size)}
             sources={stats.sources.size}
             formatSource={formatLines}
           />
@@ -216,32 +333,58 @@ export function AuthorStatsSection() {
             sources={stats.sources.changesRequested}
             formatSource={() => ''}
           />
-          <div className="stat-card" role="group" aria-label="Reviewed most by">
-            <Tooltip content={AUTHOR_STATS_EXPLANATIONS.reviewers} focusTarget>
-              <span className="stats-explained stat-card-label">Reviewed most by</span>
-            </Tooltip>
-            {stats.topReviewers.length === 0 ? (
-              <span className="stat-card-detail">No reviews yet</span>
-            ) : (
-              <ul className="author-stats-reviewers">
-                {stats.topReviewers.map(({ login: key, prs }) => {
-                  const login = loginOfActorKey(key);
-                  const name = resolveActorDisplayName(key, actorsMap) || login;
-                  const isViewer = Boolean(viewerKey) && normalizeActorLogin(key).toLowerCase() === viewerKey;
-                  return (
-                    <li key={key}>
-                      <AuthorLink login={key} fallbackName={name} className="author-stats-reviewer">
-                        <Avatar initials={getUserInitials(name, login)} login={login} isViewer={isViewer} size="sm" />
-                        <span>{name}</span>
-                      </AuthorLink>
-                      <span className="author-stats-reviewer-count">{plural(prs, 'PR')}</span>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </div>
+          <PeopleCard
+            label="Reviewed most by"
+            explanation={AUTHOR_STATS_EXPLANATIONS.reviewers}
+            people={stats.topReviewers}
+            empty="No reviews yet"
+          />
         </div>
+      )}
+      {stats.prs > 0 && (
+        <div className="author-stats-tables">
+          <BarsTable
+            title="Over time"
+            explanation={AUTHOR_STATS_EXPLANATIONS.months}
+            firstColumn="Month"
+            rows={stats.months.map((month) => ({ ...month, label: formatMonth(month.month) }))}
+            empty="No opening dates known"
+          />
+          <BarsTable title="By size" explanation={AUTHOR_STATS_EXPLANATIONS.bySize} firstColumn="Size" rows={stats.bySize} empty="" />
+        </div>
+      )}
+      {given.prs > 0 && (
+        <>
+          <h4 className="author-stats-subheading">Their reviews of others</h4>
+          <div className="stats-grid author-stats-grid">
+            <div className="stat-card" role="group" aria-label="PRs reviewed">
+              <Tooltip content={AUTHOR_STATS_EXPLANATIONS.given} focusTarget>
+                <span className="stats-explained stat-card-label">PRs reviewed</span>
+              </Tooltip>
+              <span className="stat-card-value">{given.prs}</span>
+              <span className="stat-card-detail">
+                approved {given.approvedPrs}, asked for changes on {given.changesRequestedPrs}
+              </span>
+            </div>
+            <StatCard
+              label="First response"
+              explanation={AUTHOR_STATS_EXPLANATIONS.firstResponse}
+              value={given.firstResponseMs === null ? '-' : formatWait(given.firstResponseMs)}
+              detail={given.firstResponsePrs ? `median, over ${plural(given.firstResponsePrs, 'PR')}` : 'No times known'}
+              team={given.teamFirstResponseMs === null ? undefined : formatWait(given.teamFirstResponseMs)}
+              teamExplanation={AUTHOR_STATS_EXPLANATIONS.teamFirstResponse}
+              slowest={given.firstResponseP90 === null ? undefined : formatWait(given.firstResponseP90)}
+              sources={given.sources}
+              formatSource={formatWait}
+            />
+            <PeopleCard
+              label="Reviews most for"
+              explanation={AUTHOR_STATS_EXPLANATIONS.reviewsMostFor}
+              people={given.topAuthors}
+              empty="No one yet"
+            />
+          </div>
+        </>
       )}
     </section>
   );

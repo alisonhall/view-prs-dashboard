@@ -1,4 +1,4 @@
-import { authorStatsRangeStart, buildAuthorStats, formatWait, median } from './author-stats.helpers';
+import { authorStatsRangeStart, buildAuthorStats, formatWait, median, percentile90 } from './author-stats.helpers';
 
 const key = (login: unknown) => String(login || '').trim().toLowerCase();
 const review = (authorLogin: string, submittedAt: string, state = 'COMMENTED') => ({ authorLogin, submittedAt, state });
@@ -166,5 +166,74 @@ describe('formatWait', () => {
     expect(formatWait(25 * 60 * 1000)).toBe('25m');
     expect(formatWait(5 * 60 * 60 * 1000)).toBe('5h');
     expect(formatWait(84 * 60 * 60 * 1000)).toBe('3.5 days');
+    expect(formatWait(328.5 * 24 * 60 * 60 * 1000)).toBe('329 days');
+  });
+});
+
+describe('buildAuthorStats: reviews given, months, sizes and the slowest 1 in 10', () => {
+  const H = 60 * 60 * 1000;
+
+  test("their reviews of other people's PRs: how many, how soon, how they ended, and whose", () => {
+    const rows = [
+      pr(1, { authorLogin: 'bo', reviews: [review('ana', '2026-07-01T02:00:00Z'), review('ana', '2026-07-01T09:00:00Z', 'APPROVED')] }),
+      pr(2, { authorLogin: 'bo', reviews: [review('ana', '2026-07-01T06:00:00Z', 'CHANGES_REQUESTED')] }),
+      pr(3, { authorLogin: 'cy', readyForReviewAt: '2026-07-02T00:00:00Z', reviews: [review('ana', '2026-07-02T01:00:00Z')] }),
+      // Their own PR, and one they didn't review, don't count.
+      pr(4, { reviews: [review('ana', '2026-07-01T01:00:00Z')] }),
+      pr(5, { authorLogin: 'cy', reviews: [review('bo', '2026-07-01T01:00:00Z')] }),
+    ];
+    const { given } = buildAuthorStats(rows, 'ana', key);
+    expect(given).toMatchObject({ prs: 3, approvedPrs: 1, changesRequestedPrs: 1, firstResponsePrs: 3, firstResponseMs: 2 * H, firstResponseP90: null });
+    // Every reviewer's first review: ana's 2h, 6h, 1h and bo's 1h on #5 (ana's own #4 by ana is left out).
+    expect(given.teamFirstResponseMs).toBe(1.5 * H);
+    expect(given.topAuthors).toEqual([{ login: 'bo', prs: 2 }, { login: 'cy', prs: 1 }]);
+    expect(given.sources.map(({ entry, value }) => [entry.prNumber, value])).toEqual([['2', 6 * H], ['1', 2 * H], ['3', 1 * H]]);
+  });
+
+  test('their PRs by the month opened, with empty months in between', () => {
+    const rows = [
+      pr(1, { createdAt: '2026-05-10T12:00:00Z', reviews: [review('bo', '2026-05-10T14:00:00Z')] }),
+      pr(2, { createdAt: '2026-07-10T12:00:00Z', mergedAt: '2026-07-11T12:00:00Z' }),
+      pr(3, { createdAt: '2026-07-20T12:00:00Z', mergedAt: '2026-07-20T18:00:00Z' }),
+    ];
+    const { months } = buildAuthorStats(rows, 'ana', key);
+    expect(months).toEqual([
+      { month: '2026-05', prs: 1, firstReviewMs: 2 * H, mergeMs: null },
+      { month: '2026-06', prs: 0, firstReviewMs: null, mergeMs: null },
+      { month: '2026-07', prs: 2, firstReviewMs: null, mergeMs: 15 * H },
+    ]);
+  });
+
+  test('at most the last 12 months', () => {
+    const rows = [pr(1, { createdAt: '2024-01-15T12:00:00Z' }), pr(2, { createdAt: '2026-07-15T12:00:00Z' })];
+    const { months } = buildAuthorStats(rows, 'ana', key);
+    expect(months).toHaveLength(12);
+    expect(months[0]?.month).toBe('2025-08');
+    expect(months[11]).toMatchObject({ month: '2026-07', prs: 1 });
+  });
+
+  test('their PRs by size: how long small, medium and large ones waited', () => {
+    const rows = [
+      pr(1, { additions: 20, deletions: 5, reviews: [review('bo', '2026-07-01T01:00:00Z')] }),
+      pr(2, { additions: 300, reviews: [review('bo', '2026-07-01T10:00:00Z')] }),
+      pr(3, { additions: 900, deletions: 100, mergedAt: '2026-07-03T00:00:00Z' }),
+      pr(4, {}),
+    ];
+    const { bySize } = buildAuthorStats(rows, 'ana', key);
+    expect(bySize.map(({ label, prs, firstReviewMs, mergeMs }) => [label, prs, firstReviewMs, mergeMs])).toEqual([
+      ['Under 100 lines', 1, 1 * H, null],
+      ['100 to 499 lines', 1, 10 * H, null],
+      ['500+ lines', 1, null, 48 * H],
+    ]);
+  });
+
+  test('the slowest 1 in 10, once there are at least 5 values', () => {
+    expect(percentile90([1, 2, 3, 4])).toBeNull();
+    expect(percentile90([5, 1, 4, 2, 3])).toBe(5);
+    expect(percentile90([...Array(20)].map((_, i) => i + 1))).toBe(18);
+    const rows = [1, 2, 3, 4, 10].map((hours, i) =>
+      pr(i + 1, { reviews: [review('bo', new Date(Date.parse('2026-07-01T00:00:00Z') + hours * H).toISOString())] }),
+    );
+    expect(buildAuthorStats(rows, 'ana', key).p90).toEqual({ firstReviewMs: 10 * H, mergeMs: null, size: null });
   });
 });
