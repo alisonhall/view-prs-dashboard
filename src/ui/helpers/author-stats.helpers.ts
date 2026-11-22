@@ -106,6 +106,8 @@ export interface ReviewsGiven {
   firstResponseMs: number | null;
   firstResponsePrs: number;
   firstResponseP90: number | null;
+  // The same over every reviewer's first review of every PR in the range.
+  teamFirstResponseMs: number | null;
   // Whose PRs they reviewed most (preferred keys).
   topAuthors: AuthorReviewerCount[];
   // The PRs they reviewed, longest first response first.
@@ -366,6 +368,14 @@ export const buildAuthorStats = (
       firstResponseMs: median(responseTimes),
       firstResponsePrs: responseTimes.length,
       firstResponseP90: percentile90(responseTimes),
+      teamFirstResponseMs: median(
+        all.flatMap((m) =>
+          Object.values(m.byReviewer)
+            .map((reviewer) => reviewer.firstAt)
+            .filter((firstAt) => Number.isFinite(m.createdAt) && firstAt >= m.createdAt)
+            .map((firstAt) => Math.max(0, firstAt - m.readyAt)),
+        ),
+      ),
       topAuthors: topCounts(prsByAuthor),
       sources: givenSources,
     },

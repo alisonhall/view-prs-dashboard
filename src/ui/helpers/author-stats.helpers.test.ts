@@ -184,6 +184,8 @@ describe('buildAuthorStats: reviews given, months, sizes and the slowest 1 in 10
     ];
     const { given } = buildAuthorStats(rows, 'ana', key);
     expect(given).toMatchObject({ prs: 3, approvedPrs: 1, changesRequestedPrs: 1, firstResponsePrs: 3, firstResponseMs: 2 * H, firstResponseP90: null });
+    // Every reviewer's first review: ana's 2h, 6h, 1h and bo's 1h on #5 (ana's own #4 by ana is left out).
+    expect(given.teamFirstResponseMs).toBe(1.5 * H);
     expect(given.topAuthors).toEqual([{ login: 'bo', prs: 2 }, { login: 'cy', prs: 1 }]);
     expect(given.sources.map(({ entry, value }) => [entry.prNumber, value])).toEqual([['2', 6 * H], ['1', 2 * H], ['3', 1 * H]]);
   });

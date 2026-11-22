@@ -11,7 +11,8 @@ import { parseSortableTime } from "./pr-sortable-time.helpers.ts";
 // - changes-requested: a reviewer asked for changes and no commit has come
 //   since (waiting on the author).
 // - updated: commits came after the change request (waiting on the reviewer
-//   to look again; since the latest of them).
+//   to look again; since the latest of them, or the request when the
+//   commits keep older dates).
 // - approved: approved, with no change request outstanding, not merged.
 // - reviewed: reviewed, but neither approved nor changes requested.
 export type AuthorWaitingReason = "first-review" | "changes-requested" | "updated" | "approved" | "reviewed";
@@ -26,13 +27,16 @@ export interface AuthorWaitingPr {
 const max = (values: number[]) => values.filter(Number.isFinite).reduce((a, b) => Math.max(a, b), Number.NEGATIVE_INFINITY);
 
 export const describeWaiting = (entry: PrEntry, getPreferredActorKey: GetPreferredActorKey): AuthorWaitingPr | null => {
-  if (getAuthorPrState(entry) !== "open" || String(entry?.section || "").toLowerCase() === "draft") return null;
   const data = entry?.data || {};
+  // Drafts aren't waiting on anyone; a PR the latest listing no longer
+  // had was merged or closed since its last refresh.
+  if (getAuthorPrState(entry) !== "open" || String(entry?.section || "").toLowerCase() === "draft") return null;
+  if (data.live?.stillOpen === false) return null;
   const { authorKey, readyAt } = measurePrReview(entry, getPreferredActorKey);
 
   // Each other person's latest decisive review (an approval or change
   // request; a dismissal clears theirs), and when anyone last reviewed.
-  const latestDecision = new Map<string, { state: string; at: number }>();
+  const latestDecision = new Map<string, { state: string; at: number; commitOid: string }>();
   let lastReviewAt = Number.NEGATIVE_INFINITY;
   (Array.isArray(data.reviews) ? data.reviews : [])
     .map((review) => ({ review, at: parseSortableTime(review?.submittedAt) }))
@@ -43,7 +47,9 @@ export const describeWaiting = (entry: PrEntry, getPreferredActorKey: GetPreferr
       if (!key || key === authorKey || isBotReviewer(review?.authorLogin, review?.authorName)) return;
       lastReviewAt = Math.max(lastReviewAt, at);
       const state = String(review?.state || "").toUpperCase();
-      if (state === "APPROVED" || state === "CHANGES_REQUESTED") latestDecision.set(key, { state, at });
+      if (state === "APPROVED" || state === "CHANGES_REQUESTED") {
+        latestDecision.set(key, { state, at, commitOid: String(review?.commitOid || "") });
+      }
       else if (state === "DISMISSED") latestDecision.delete(key);
     });
 
@@ -51,12 +57,21 @@ export const describeWaiting = (entry: PrEntry, getPreferredActorKey: GetPreferr
     return Number.isFinite(readyAt) ? { entry, reason: "first-review", since: readyAt } : null;
   }
   const decisions = [...latestDecision.values()];
-  const changesAt = max(decisions.filter((d) => d.state === "CHANGES_REQUESTED").map((d) => d.at));
+  const changeRequests = decisions.filter((d) => d.state === "CHANGES_REQUESTED");
+  const changesAt = max(changeRequests.map((d) => d.at));
   if (Number.isFinite(changesAt)) {
-    const commitTimes = (Array.isArray(data.commits) ? data.commits : []).map((commit) => parseSortableTime(commit?.committedAt));
-    const lastCommitAfter = max(commitTimes.filter((at) => at > changesAt));
-    return Number.isFinite(lastCommitAfter)
-      ? { entry, reason: "updated", since: lastCommitAfter }
+    const commits = Array.isArray(data.commits) ? data.commits : [];
+    const headOid = String(commits[commits.length - 1]?.oid || "");
+    const lastCommitAt = max(commits.map((commit) => parseSortableTime(commit?.committedAt)));
+    // New commits since the latest change request: its review was on
+    // another commit than the head (a commit's date is when it was made,
+    // which a rebase keeps, not when it was pushed); without commit ids,
+    // a commit dated after it.
+    const latestRequest = changeRequests.find((d) => d.at === changesAt);
+    const updated =
+      latestRequest?.commitOid && headOid ? latestRequest.commitOid !== headOid : Number.isFinite(lastCommitAt) && lastCommitAt > changesAt;
+    return updated
+      ? { entry, reason: "updated", since: Math.max(changesAt, lastCommitAt) }
       : { entry, reason: "changes-requested", since: changesAt };
   }
   const approvedAt = max(decisions.filter((d) => d.state === "APPROVED").map((d) => d.at));

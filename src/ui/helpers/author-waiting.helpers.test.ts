@@ -58,4 +58,23 @@ describe('buildAuthorWaitingPrs', () => {
       ]),
     ).toEqual([['5', 'first-review', at('2026-07-01T00:00:00Z')]]);
   });
+
+  test("new commits after a change request are told by the review's commit, so a rebase's old dates don't hide them", () => {
+    const changes = { ...review('bo', '2026-07-03T00:00:00Z', 'CHANGES_REQUESTED'), commitOid: 'aaa' };
+    expect(
+      summary([
+        pr(1, { reviews: [changes], commits: [{ oid: 'bbb', committedAt: '2026-07-01T12:00:00Z' }] }),
+        pr(2, { reviews: [changes], commits: [{ oid: 'aaa', committedAt: '2026-07-01T12:00:00Z' }] }),
+      ]),
+    ).toEqual([
+      ['1', 'updated', at('2026-07-03T00:00:00Z')],
+      ['2', 'changes-requested', at('2026-07-03T00:00:00Z')],
+    ]);
+  });
+
+  test('leaves out a PR the latest listing no longer had (merged or closed since its refresh)', () => {
+    expect(summary([pr(1, { live: { stillOpen: false } }), pr(2, { live: { stillOpen: true } })])).toEqual([
+      ['2', 'first-review', at('2026-07-01T00:00:00Z')],
+    ]);
+  });
 });

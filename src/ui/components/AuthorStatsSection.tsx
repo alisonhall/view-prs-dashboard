@@ -74,6 +74,7 @@ export const AUTHOR_STATS_EXPLANATIONS = {
   changesRequested: 'How many of their reviewed PRs had at least one "changes requested" review from a person.',
   reviewers: 'Who reviewed the most of their PRs (any review counts, once per PR; bots left out).',
   team: 'The same, worked out over every author\'s PRs in the range.',
+  teamFirstResponse: "The same over every reviewer's first review of every PR in the range.",
   slowest: '1 in 10 of these PRs took longer than this (shown with 5 or more PRs), so a few stuck PRs don\'t hide behind a good median.',
   given: 'Other people\'s PRs they reviewed (any review counts, once per PR), opened in the range.',
   firstResponse:
@@ -89,13 +90,14 @@ interface StatCardProps {
   value: string;
   detail: string;
   team?: string;
+  teamExplanation?: string;
   // The slowest 1 in 10, formatted.
   slowest?: string;
   sources: AuthorStatSource[];
   formatSource: (value: number) => string;
 }
 
-function StatCard({ label, explanation, value, detail, team, slowest, sources, formatSource }: StatCardProps) {
+function StatCard({ label, explanation, value, detail, team, teamExplanation, slowest, sources, formatSource }: StatCardProps) {
   return (
     <div className="stat-card" role="group" aria-label={label}>
       <Tooltip content={explanation} focusTarget>
@@ -104,7 +106,7 @@ function StatCard({ label, explanation, value, detail, team, slowest, sources, f
       <span className="stat-card-value">{value}</span>
       <span className="stat-card-detail">{detail}</span>
       {team && (
-        <Tooltip content={AUTHOR_STATS_EXPLANATIONS.team} focusTarget>
+        <Tooltip content={teamExplanation ?? AUTHOR_STATS_EXPLANATIONS.team} focusTarget>
           <span className="stat-card-detail author-stats-team">Team: {team}</span>
         </Tooltip>
       )}
@@ -369,7 +371,8 @@ export function AuthorStatsSection() {
               explanation={AUTHOR_STATS_EXPLANATIONS.firstResponse}
               value={given.firstResponseMs === null ? '-' : formatWait(given.firstResponseMs)}
               detail={given.firstResponsePrs ? `median, over ${plural(given.firstResponsePrs, 'PR')}` : 'No times known'}
-              team={team.firstReviewMs === null ? undefined : formatWait(team.firstReviewMs)}
+              team={given.teamFirstResponseMs === null ? undefined : formatWait(given.teamFirstResponseMs)}
+              teamExplanation={AUTHOR_STATS_EXPLANATIONS.teamFirstResponse}
               slowest={given.firstResponseP90 === null ? undefined : formatWait(given.firstResponseP90)}
               sources={given.sources}
               formatSource={formatWait}
