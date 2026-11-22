@@ -2129,7 +2129,12 @@ test("'View in table' from Author Insights actually shows the PR in the detail p
   await waitForPrTable(page);
 
   await page.getByRole("tab", { name: "Authors" }).click();
-  const tableLink = page.getByRole("button", { name: "View in table", exact: true }).first();
+  // The created PRs' own button (the stats' Show PRs lists have one each too,
+  // folded away).
+  const tableLink = page
+    .getByRole("region", { name: "Author's created PRs", exact: true })
+    .getByRole("button", { name: "View in table", exact: true })
+    .first();
   await tableLink.waitFor();
   await tableLink.click();
 
@@ -2150,7 +2155,11 @@ test("'View in table' for a flagged PR shows and focuses it in an open section, 
 
   await page.getByRole("tab", { name: "Authors" }).click();
   await pickAuthor(page, "Hubot");
-  await page.getByRole("button", { name: "View in table", exact: true }).first().click();
+  await page
+    .getByRole("region", { name: "Author's created PRs", exact: true })
+    .getByRole("button", { name: "View in table", exact: true })
+    .first()
+    .click();
 
   const visiblePrLinks = prTables(page).getByRole("link", { name: "#2 opens GitHub in a new tab", exact: true }).filter({ visible: true });
   await expect(visiblePrLinks.first()).toBeFocused();

@@ -122,4 +122,11 @@ describe('AuthorCreatedPrsSection', () => {
     expect(group.querySelectorAll('.author-insights-item')).toHaveLength(13);
     expect(screen.queryByRole('button', { name: /Show \d+ more/ })).toBeNull();
   });
+
+  test('with only closed PRs, the Closed group starts open', () => {
+    renderSection([buildEntry({ data: { closedAt: '2026-07-02T00:00:00Z' } })], 'octocat');
+    const groups = [...document.querySelectorAll('.author-insights-pr-group')];
+    expect(groups).toHaveLength(1);
+    expect(groups[0].open).toBe(true);
+  });
 });

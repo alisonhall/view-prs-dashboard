@@ -18,7 +18,8 @@
  * REACT_MIGRATION_PLAN.md).
  *
  * The PRs are grouped as Open (drafts too), Merged and Closed, each a
- * collapsible group with its count; Closed starts collapsed. A group shows
+ * collapsible group with its count; Closed starts collapsed unless it's
+ * their only group. A group shows
  * its first AUTHOR_PR_GROUP_PAGE PRs, with "Show N more" for the rest.
  *
  * Mounted once, in AppShell's #author-insights-created-prs-root.
@@ -84,11 +85,17 @@ export function AuthorCreatedPrsSection() {
       {createdPrs.length === 0 ? (
         <p className="stats-empty">No PRs by this author in the current local data scope.</p>
       ) : (
-        GROUPS.map(({ state, title, open }) => {
-          const entries = createdPrs.filter((entry) => getAuthorPrState(entry) === state);
-          // Keyed by author: a new author starts with the groups as first shown.
-          return entries.length ? <PrGroup key={`${selectedAuthorLogin}:${state}`} title={title} open={open} entries={entries} /> : null;
-        })
+        (() => {
+          const groups = GROUPS.map((group) => ({
+            ...group,
+            entries: createdPrs.filter((entry) => getAuthorPrState(entry) === group.state),
+          })).filter((group) => group.entries.length > 0);
+          // Keyed by author: a new author starts with the groups as first
+          // shown. A group on its own is open, even Closed.
+          return groups.map(({ state, title, open, entries }) => (
+            <PrGroup key={`${selectedAuthorLogin}:${state}`} title={title} open={open || groups.length === 1} entries={entries} />
+          ));
+        })()
       )}
     </section>
   );
