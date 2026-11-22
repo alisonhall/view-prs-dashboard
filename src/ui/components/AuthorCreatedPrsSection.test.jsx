@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
 
-const { render, screen } = require('@testing-library/react');
+const { render, screen, fireEvent } = require('@testing-library/react');
 require('@testing-library/jest-dom');
 const { AuthorCreatedPrsSection } = require('./AuthorCreatedPrsSection');
 const { PrDataProvider } = require('../state/PrDataProvider');
@@ -93,5 +93,52 @@ describe('AuthorCreatedPrsSection', () => {
 
     expect(screen.queryByText('#1 Fix the thing')).not.toBeInTheDocument();
     expect(screen.getByText('#2 Fix the thing')).toBeInTheDocument();
+  });
+
+  test('groups their PRs as Open, Merged and Closed, with counts; Closed starts collapsed', () => {
+    renderSection(
+      [
+        buildEntry(),
+        buildEntry({ prNumber: '2', data: { number: '2', title: 'Merged one', mergedAt: '2026-07-01T00:00:00Z' } }),
+        buildEntry({ prNumber: '3', data: { number: '3', title: 'Closed one', closedAt: '2026-07-02T00:00:00Z' } }),
+      ],
+      'octocat',
+    );
+    const groups = [...document.querySelectorAll('.author-insights-pr-group')];
+    expect(groups.map((group) => group.querySelector('summary').textContent)).toEqual(['Open 1', 'Merged 1', 'Closed 1']);
+    expect(groups.map((group) => group.open)).toEqual([true, true, false]);
+    expect(groups[1]).toHaveTextContent('#2 Merged one');
+    expect(groups[2]).toHaveTextContent('#3 Closed one');
+  });
+
+  test('a group shows its first 10 PRs, and Show N more shows the rest', () => {
+    const rows = Array.from({ length: 13 }, (_, index) =>
+      buildEntry({ prNumber: String(index + 1), data: { number: String(index + 1), title: `PR ${index + 1}` } }),
+    );
+    renderSection(rows, 'octocat');
+    const group = document.querySelector('.author-insights-pr-group');
+    expect(group.querySelectorAll('.author-insights-item')).toHaveLength(10);
+    fireEvent.click(screen.getByRole('button', { name: 'Show 3 more' }));
+    expect(group.querySelectorAll('.author-insights-item')).toHaveLength(13);
+    expect(screen.queryByRole('button', { name: /Show \d+ more/ })).toBeNull();
+  });
+
+  test('with only closed PRs, the Closed group starts open', () => {
+    renderSection([buildEntry({ data: { closedAt: '2026-07-02T00:00:00Z' } })], 'octocat');
+    const groups = [...document.querySelectorAll('.author-insights-pr-group')];
+    expect(groups).toHaveLength(1);
+    expect(groups[0].open).toBe(true);
+  });
+
+  test("a group keeps how it was first shown when the data adds another group", () => {
+    const { act } = require('@testing-library/react');
+    const closed = buildEntry({ data: { closedAt: '2026-07-02T00:00:00Z' } });
+    renderSection([closed], 'octocat');
+    act(() => {
+      prDataProbe.applyFreshTablePayload({ byPrNumber: { 1: closed, 2: buildEntry({ prNumber: '2', data: { number: '2' } }) } });
+    });
+    const groups = [...document.querySelectorAll('.author-insights-pr-group')];
+    expect(groups.map((group) => group.querySelector('summary').textContent)).toEqual(['Open 1', 'Closed 1']);
+    expect(groups[1].open).toBe(true);
   });
 });

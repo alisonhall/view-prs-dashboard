@@ -44,14 +44,14 @@ const renderHeader = (selectedAuthorLogin, { rows = ROWS, comments } = {}) =>
 const counts = () => screen.getAllByRole('listitem').map((item) => item.textContent);
 
 describe('AuthorInsightsHeader', () => {
-  test('the selected author: avatar, display name and login, then their open and merged PRs', () => {
+  test('the selected author: avatar, display name and login, then their open, merged and closed PRs', () => {
     const { container } = renderHeader('octocat');
 
     expect(container.querySelector('.ui-avatar')).toHaveAttribute('data-size', 'lg');
     expect(container.querySelector('.ui-avatar')).toHaveTextContent('TO');
     expect(container.querySelector('.author-insights-selected-name')).toHaveTextContent('The Octocatoctocat');
     expect(screen.getByRole('list', { name: 'Counts' })).toBeInTheDocument();
-    expect(counts()).toEqual(['2 open PRs', '1 merged']);
+    expect(counts()).toEqual(['2 open PRs', '1 merged', '1 closed']);
   });
 
   test('no login when it is the name; one open PR in the singular', () => {
@@ -62,7 +62,7 @@ describe('AuthorInsightsHeader', () => {
 
   test('the comments saved about them, once those have loaded', () => {
     const { unmount } = renderHeader('octocat', { comments: { octocat: [{ id: 'a' }, { id: 'b' }, { id: 'c' }] } });
-    expect(counts()).toEqual(['2 open PRs', '1 merged', '3 comments saved']);
+    expect(counts()).toEqual(['2 open PRs', '1 merged', '1 closed', '3 comments saved']);
     unmount();
 
     renderHeader('hubot', { comments: { hubot: [{ id: 'a' }] } });

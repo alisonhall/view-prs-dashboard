@@ -6,16 +6,19 @@
  * it isn't their name.
  *
  * It decides which author is selected: when the selected one isn't among
- * the options (none chosen yet, or gone from the data), the effect below
- * picks the first - the author of the most recently updated PR - and
- * with no options it clears the selection. Each setSelectedAuthorLogin is guarded on the value
+ * the options (none chosen yet, or gone from the data) - other than a
+ * person just opened from elsewhere (openAuthor), who is added as an
+ * option - the effect below picks the first - the author of the most recently updated PR - and
+ * with no options it clears the selection (with no stored PRs at all it
+ * leaves it, so the author kept from before a reload survives until the
+ * data loads). Each setSelectedAuthorLogin is guarded on the value
  * changing, so the effect settles. With no stored PRs, or no authors, it
  * says so instead of showing the picker.
  *
  * @module components/AuthorInsightsSelector
  */
 
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { usePrData } from '../state/PrDataContext';
 import { useActorIdentity } from '../state/ActorIdentityContext';
 import { useAuthorPickerOptions } from '../state/useAuthorPickerOptions';
@@ -23,20 +26,34 @@ import { resolveValidAuthorLogin, type AuthorOption } from '../helpers/pr-author
 import { createPrUserInitialsHelpers } from '../helpers/pr-user-initials.helpers.ts';
 import { Avatar } from './ui/Avatar';
 import { ComboBox, type ComboBoxOption } from './ui/ComboBox';
+import { getOpenedAuthor } from '../state/useOpenAuthor';
 
 const { getUserInitials } = createPrUserInitialsHelpers();
 
 export function AuthorInsightsSelector() {
   const { selectedAuthorLogin, setSelectedAuthorLogin } = usePrData();
   const { getEffectiveViewerKey, normalizeActorLogin, loginOfActorKey } = useActorIdentity();
-  const { rowCount, recent, others, options } = useAuthorPickerOptions();
+  const { rowCount, recent, others: pickerOthers, options: pickerOptions } = useAuthorPickerOptions();
+  // A person opened from elsewhere (openAuthor) who isn't among the
+  // authors: an option of their own, so they stay selected.
+  const opened = getOpenedAuthor();
+  const openedExtra =
+    opened && opened.key === selectedAuthorLogin && !pickerOptions.some((option) => option.login === opened.key) ? opened : null;
+  const { others, options } = useMemo(() => {
+    if (!openedExtra) return { others: pickerOthers, options: pickerOptions };
+    const extra = { login: openedExtra.key, name: openedExtra.name };
+    return { others: [...pickerOthers, extra], options: [...pickerOptions, extra] };
+  }, [openedExtra, pickerOthers, pickerOptions]);
 
   useEffect(() => {
+    // No stored PRs (yet): keep the selection, which may be the one kept
+    // from before a reload, until the data arrives.
+    if (!rowCount) return;
     const validatedLogin = resolveValidAuthorLogin(options, selectedAuthorLogin);
     if (validatedLogin !== selectedAuthorLogin) {
       setSelectedAuthorLogin(validatedLogin);
     }
-  }, [options, selectedAuthorLogin, setSelectedAuthorLogin]);
+  }, [rowCount, options, selectedAuthorLogin, setSelectedAuthorLogin]);
 
   if (!rowCount) {
     return <p className="stats-empty">No local rows available for author insights.</p>;

@@ -4,6 +4,7 @@ import type { PrData, PrDataPayload, PrEntry } from '../../types/pr-data.ts';
 import type { ActorsMap } from '../../helpers/pr-actor-identity.helpers.ts';
 import type { PaneTab } from '../../state/PrTableUiStateContext';
 import { ActorIdentity } from '../ActorIdentity';
+import { AuthorLink } from '../AuthorLink';
 import { CopyIconButton } from '../CopyIconButton';
 import { Button, IconButton } from '../ui/Button';
 import { Icon } from '../ui/Icon';
@@ -281,7 +282,10 @@ function PaneContent({
         </h2>
         <p className="pr-pane-meta">
           <span>
-            by <ActorIdentity row={pr} login={pr.authorLogin} actorsMap={rowActorsMap} fallbackName={pr.author} />
+            by{' '}
+            <AuthorLink login={pr.authorLogin} fallbackName={pr.author}>
+              <ActorIdentity row={pr} login={pr.authorLogin} actorsMap={rowActorsMap} fallbackName={pr.author} />
+            </AuthorLink>
             {otherCommitters.length > 0 && (
               <>
                 , with{' '}

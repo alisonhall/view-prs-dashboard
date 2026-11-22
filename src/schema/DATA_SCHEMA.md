@@ -86,6 +86,7 @@ The `data` object is written by `compute_pr_state_json()` during retrieval.
 | `url` | string | yes | PR URL |
 | `mergedAt` | string | yes | ISO timestamp or empty string |
 | `createdAt` | string | no | When the PR was created (ISO timestamp); missing on rows saved before 2026-11-13, until the PR next changes (the page then uses its `opened` activity event) |
+| `readyForReviewAt` | string | no | When a PR opened as a draft was last marked ready for review (ISO timestamp); missing on PRs never marked ready, and on rows saved before 2026-11-21 until the PR next changes. The Authors view's "First review" counts from it, so time as a draft doesn't count |
 | `sourceUpdatedAt` | string | yes | Head/source branch updated timestamp |
 | `sourceFingerprint` | string | no | Digest of the fetched inputs the row was computed from (for example `fp:v2:sha256:<hex>`); not used to reuse rows since 2026-11-01 |
 | `localStateKey` | string | no | The local state the row's status was computed from: the checksum of the change filters, merge-commit rules and a row-format version, then the PR's ack timestamp, re-verify and in-review marks, separated by vertical bars (a single checksum before 2026-11-01). A full run reuses the row only while it matches, with the same `sourceUpdatedAt`; missing on rows computed before 2026-11-01 |

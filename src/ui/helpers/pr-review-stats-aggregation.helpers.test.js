@@ -290,6 +290,23 @@ describe("review stats aggregation helpers", () => {
     });
     const reviewerByLogin = (result, login) => result.reviewerRows.find((reviewer) => reviewer.login === login);
 
+    test("given the same PR number in two repos, when building stats, then each counts as its own PR and its sources say which repo", () => {
+      const { buildReviewerStats } = createHelpers();
+      const inRepo = (repo, prNumber) => ({
+        ...row(prNumber, { reviews: [{ authorLogin: "reviewer-a", submittedAt: "2026-07-10T12:00:00Z", state: "COMMENTED" }] }),
+        repo,
+      });
+
+      const result = buildReviewerStats([inRepo("acme/web", "12"), inRepo("acme/api", "12")], {});
+
+      const reviewer = reviewerByLogin(result, "reviewer-a");
+      expect(reviewer.prCount).toBe(2);
+      expect(reviewer.sources.reviews.map((source) => [source.repo, source.prNumber])).toEqual([
+        ["acme/web", "12"],
+        ["acme/api", "12"],
+      ]);
+    });
+
     test("given author commits around a reviewer comment, when building stats, then only later author commits count and 'within 24h' includes exactly 24h", () => {
       const { buildReviewerStats } = createHelpers();
 

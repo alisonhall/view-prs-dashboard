@@ -191,6 +191,36 @@ describe('PrDataProvider', () => {
     expect(selected).toBe('');
   });
 
+  test('the selected author is kept in this browser, so a remount (a reload) opens on them', () => {
+    const { SELECTED_AUTHOR_STORAGE_KEY } = require('./PrDataProvider');
+    let selected;
+    function Read() {
+      selected = usePrData().selectedAuthorLogin;
+      return null;
+    }
+    const tree = (
+      <PrDataProvider initialPayload={{}}>
+        <prDataProbe.PrDataProbe />
+        <Read />
+      </PrDataProvider>
+    );
+    const first = render(tree);
+    expect(selected).toBe('');
+    act(() => {
+      prDataProbe.setSelectedAuthorLogin('hubot');
+    });
+    expect(window.localStorage.getItem(SELECTED_AUTHOR_STORAGE_KEY)).toBe('hubot');
+    first.unmount();
+
+    render(tree);
+    expect(selected).toBe('hubot');
+
+    act(() => {
+      prDataProbe.setSelectedAuthorLogin('');
+    });
+    expect(window.localStorage.getItem(SELECTED_AUTHOR_STORAGE_KEY)).toBeNull();
+  });
+
 
   // Phase F.2 (see REACT_MIGRATION_PLAN.md, "Full migration roadmap"):
   // beginRequestActivity/renderRequestActivity/pollBackfillStatus moved

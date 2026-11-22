@@ -1,4 +1,6 @@
-import { createContext, useContext } from 'react';
+import { createContext, useContext, useMemo, type ReactNode } from 'react';
+import { usePrData } from './PrDataContext';
+import { rowRepoNamesFor } from '../helpers/pr-repo-grouping.helpers.ts';
 
 /**
  * What each row calls its repo (shortRepoNames), when rows from more than
@@ -15,3 +17,18 @@ export const useRowRepoName = (repo: string): string => {
   if (!names || !repo) return '';
   return names.get(repo) || repo;
 };
+
+/**
+ * Provides what the stored PRs call their repos (rowRepoNamesFor), for
+ * views outside the table that list PRs from them: Review stats' sources
+ * and the Authors view's PRs. Like the table, PRs only say their repo once
+ * the stored PRs come from more than one.
+ */
+export function StoredPrRepoNamesProvider({ children }: { children?: ReactNode }) {
+  const { payload } = usePrData();
+  const names = useMemo(
+    () => rowRepoNamesFor(Object.values(payload?.byPrNumber || {}), String(payload?.lastRun?.repo || '').trim()),
+    [payload],
+  );
+  return <RowRepoNamesContext.Provider value={names}>{children}</RowRepoNamesContext.Provider>;
+}

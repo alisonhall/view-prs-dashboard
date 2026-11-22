@@ -21,6 +21,8 @@ import { AppHeader } from './AppHeader';
 import { AutoUpdatePausedBanner } from './AutoUpdatePausedBanner';
 import { ReturnToViewBanner } from './ReturnToViewBanner';
 import { ErrorNotice } from './ErrorNotice';
+import { StoredPrRepoNamesProvider } from '../../state/RowRepoNamesContext';
+import { OpenAuthorListener } from '../../state/useOpenAuthor';
 
 // The Review stats and Authors views aren't visible on load, so their code
 // loads the first time each is shown (the Settings drawer splits its own
@@ -39,6 +41,9 @@ const AuthorInsightsSelector = lazy(() =>
 );
 const AuthorInsightsHeader = lazy(() =>
   import('../AuthorInsightsHeader').then((m) => ({ default: m.AuthorInsightsHeader })),
+);
+const AuthorStatsSection = lazy(() =>
+  import('../AuthorStatsSection').then((m) => ({ default: m.AuthorStatsSection })),
 );
 const AuthorInsightsCommentsSection = lazy(() =>
   import('../AuthorInsightsCommentsSection').then((m) => ({ default: m.AuthorInsightsCommentsSection })),
@@ -154,6 +159,8 @@ export function AppShell() {
       <div id="error-snackbar-root">
         <Snackbar />
       </div>
+      {/* Opens a person on the Authors view from wherever they're shown. */}
+      <OpenAuthorListener />
       <div id="app-header-root">
         <AppHeader />
       </div>
@@ -180,6 +187,7 @@ export function AppShell() {
           <LazyView id="tab-panel-review-stats">
             <ReviewStatsArchiveScope>
             <ReviewStatsProvider>
+            <StoredPrRepoNamesProvider>
               <div id="pr-stats">
                 <ViewHeading
                   title="Review stats"
@@ -192,6 +200,7 @@ export function AppShell() {
                   <ReviewStatsContent />
                 </div>
               </div>
+            </StoredPrRepoNamesProvider>
             </ReviewStatsProvider>
             </ReviewStatsArchiveScope>
           </LazyView>
@@ -204,16 +213,20 @@ export function AppShell() {
                 every PR, archived ones included. */}
             <WithArchivedRows include>
             <AuthorInsightsProvider>
+            <StoredPrRepoNamesProvider>
               <div id="author-insights">
                 <ViewHeading
                   title="Authors"
-                  description="One author at a time: your comments about them, your notes on their PRs, and the PRs they've opened."
+                  description="One author at a time: how their PRs go through review, your comments about them, your notes on their PRs, and the PRs they've opened."
                 />
                 <div id="author-insights-selector-root">
                   <AuthorInsightsSelector />
                 </div>
                 <div id="author-insights-header-root" role="region" aria-label="Selected author">
                   <AuthorInsightsHeader />
+                </div>
+                <div id="author-insights-stats-root" role="region" aria-label="Author's stats">
+                  <AuthorStatsSection />
                 </div>
                 <div id="author-insights-content-root" role="region" aria-label="Author comments">
                   <AuthorInsightsCommentsSection />
@@ -225,6 +238,7 @@ export function AppShell() {
                   <AuthorCreatedPrsSection />
                 </div>
               </div>
+            </StoredPrRepoNamesProvider>
             </AuthorInsightsProvider>
             </WithArchivedRows>
           </LazyView>

@@ -648,3 +648,25 @@
   font-size: var(--font-size-md);
   color: var(--color-text-muted);
 }
+
+/* A person that opens on the Authors view (AuthorLink): shown as they
+   would be anywhere, underlined on hover. */
+.author-link {
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm, 4px);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+
+.author-link:hover {
+  text-decoration: underline;
+}
+
+.author-link:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}

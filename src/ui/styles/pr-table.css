@@ -543,16 +543,37 @@
 }
 
 /* Who: the avatar and the author's name, up to two lines */
-.pr-cell-who .ui-tooltip-target {
-  display: block;
-  min-width: 0;
-}
-
 .pr-who {
   display: flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
+}
+
+.pr-who-button {
+  /* Only as wide as the avatar and name: the rest of the cell opens the
+     row's detail pane, as clicking anywhere else in a row does. */
+  display: inline-flex;
+  width: auto;
+  max-width: 100%;
+  padding: 2px;
+  margin: -2px;
+  border: 0;
+  border-radius: var(--radius-md, 6px);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pr-who-button:hover .pr-who-name {
+  text-decoration: underline;
+}
+
+.pr-who-button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .pr-who .ui-avatar {

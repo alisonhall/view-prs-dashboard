@@ -80,6 +80,27 @@ const describePollFailure = (errorSource: unknown): string => {
 const { formatIsoDatetime } = createPrFormattingHelpers();
 const { deriveRepoRunContext } = createPrRepoRunContextHelpers();
 
+// The Authors view's selected author, kept in this browser so a reload
+// opens on the same person (the picker falls back when they're gone).
+export const SELECTED_AUTHOR_STORAGE_KEY = 'view-prs.selected-author';
+
+const readStoredAuthor = (): string => {
+  try {
+    return window.localStorage.getItem(SELECTED_AUTHOR_STORAGE_KEY) || '';
+  } catch {
+    return '';
+  }
+};
+
+const storeAuthor = (login: string) => {
+  try {
+    if (login) window.localStorage.setItem(SELECTED_AUTHOR_STORAGE_KEY, login);
+    else window.localStorage.removeItem(SELECTED_AUTHOR_STORAGE_KEY);
+  } catch {
+    // Not kept (storage blocked): the selection still applies until a reload.
+  }
+};
+
 /**
  * Owns the PR table's data as React state (see PrDataContext.tsx): the
  * payload, its repo, the Review Stats view settings, the selected Author
@@ -124,13 +145,13 @@ export function PrDataProvider({
   // loadStoredData, or an earlier applyFreshPrPayload). AppShell only mounts
   // the PR table after that, so the table never flashes an empty "no PRs"
   // state before the data arrives.
-  const [state, setState] = useState<PrDataState>({
+  const [state, setState] = useState<PrDataState>(() => ({
     payload: initialPayload || {},
     selectedRepo: initialSelectedRepo || '',
-    selectedAuthorLogin: initialSelectedAuthorLogin || '',
+    selectedAuthorLogin: initialSelectedAuthorLogin ?? readStoredAuthor(),
     statsViewState: initialStatsViewState || {},
     hasRenderedPrData: false,
-  });
+  }));
 
   // pollForDataChanges' bookkeeping. A plain ref - nothing renders from it.
   //
@@ -490,6 +511,7 @@ export function PrDataProvider({
   // Written by state/useNavigateToAuthorInsights.tsx with a validated login.
   const setSelectedAuthorLogin = useCallback<PrDataValue['setSelectedAuthorLogin']>((login) => {
     setState((previous) => ({ ...previous, selectedAuthorLogin: login || '' }));
+    storeAuthor(login || '');
   }, []);
 
   // Memoized: this Provider re-renders on every status message and

@@ -213,6 +213,14 @@ describe("fetches too big for a command line", () => {
 });
 
 describe("check-open-pr-updates shell helper behavior", () => {
+  test("a draft's readyForReviewAt goes on its row; a PR never marked ready has none", () => {
+    const stats = { changedFiles: 0, viewedFiles: 0 };
+    expect(computePrRow({ pr: { number: 1 }, viewedFilesStats: stats, readyForReviewAt: "2026-07-02T09:00:00Z" }).row.readyForReviewAt).toBe(
+      "2026-07-02T09:00:00Z",
+    );
+    expect(computePrRow({ pr: { number: 1 }, viewedFilesStats: stats, readyForReviewAt: "" }).row).not.toHaveProperty("readyForReviewAt");
+  });
+
   test("a row's source fingerprint is a versioned SHA-256 digest", () => {
     const { row } = computePrRow({ pr: { number: 1 }, viewedFilesStats: { changedFiles: 0, viewedFiles: 0 } });
     expect(row.sourceFingerprint).toMatch(/^fp:v2:sha256:[a-f0-9]{64}$/);
@@ -1615,7 +1623,17 @@ describe("a PR whose threads or details couldn't be fetched", () => {
 
     const threads = JSON.parse(fetchThreads(cacheDir, `printf '%s' '${threadsResponse}'`));
     expect(threads).toEqual([expect.objectContaining({ id: "t1", isResolved: false })]);
-    expect(runShell(`ls -A "${cacheDir}"`)).toBe("5.json");
+    // Beside the threads: when it was marked ready for review ("" when never).
+    expect(runShell(`ls -A "${cacheDir}"`)).toBe("5.json\n5.json.ready");
+    expect(JSON.parse(runShell(`cat "${cacheDir}/5.json.ready"`))).toBe("");
+  });
+
+  test("fetch_review_threads_json keeps when a draft was last marked ready for review, for its row", () => {
+    const cacheDir = runShell("mktemp -d");
+    const withReady = JSON.parse(threadsResponse);
+    withReady.data.repository.pullRequest.readyEvents = { nodes: [{ createdAt: "2026-07-02T09:00:00Z" }] };
+    fetchThreads(cacheDir, `printf '%s' '${JSON.stringify(withReady)}'`);
+    expect(JSON.parse(runShell(`cat "${cacheDir}/5.json.ready"`))).toBe("2026-07-02T09:00:00Z");
   });
 
   const computeRow = ({ detail = `printf '%s' '{"comments":[],"reviews":[],"commits":[]}'`, threads = "printf '%s' '[]'" }) =>

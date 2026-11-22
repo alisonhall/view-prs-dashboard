@@ -22,18 +22,24 @@ export const DATA_TAB_LABELS: Record<DataTabKey, string> = {
   'author-insights': 'Authors',
 };
 
-// Where "View in table" was clicked from, for the table's Back button: the
-// view, how far the page was scrolled, and the button to focus again.
+// Where "View in table" (or opening a person on Authors) was clicked
+// from, for the Back button: the view, how far the page was scrolled, and
+// the button to focus again.
 export interface ReturnTarget {
   tab: DataTabKey;
   scrollY: number;
   focusTarget: HTMLElement | null;
   prNumber: string;
+  // The view the Back bar shows on: the table (the default), or Authors
+  // after opening a person there.
+  shownIn?: DataTabKey;
+  // What was opened, for the bar: "PR #N" when not given.
+  subject?: string;
 }
 
 export interface TabStateValue {
   activeDataTab: DataTabKey;
-  // Showing a view other than the table forgets the return target.
+  // Showing a view other than the return target's shownIn forgets it.
   setActiveDataTab: (key: DataTabKey) => void;
   returnTarget: ReturnTarget | null;
   rememberReturnTarget: (target: ReturnTarget) => void;

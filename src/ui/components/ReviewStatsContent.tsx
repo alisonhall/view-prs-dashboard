@@ -32,9 +32,9 @@
  * outright, along with its sibling window.navigateToPrInTableFromAuthorInsights) -
  * same hook AuthorInsightsPrRow.tsx now uses, same "dispatch
  * pr-navigate-to-insights, let PrTableApp own the DOM lookup/scroll/focus"
- * behavior the old bridge's navigateToPrInTable already had. No `repo` is
- * passed here (unchanged from before) - this component's source items
- * don't carry one yet, same as the bridge's own prior behavior.
+ * behavior the old bridge's navigateToPrInTable already had. Each source
+ * passes its PR's `repo`, and names it when PRs from several repos are
+ * stored (StoredPrRepoNamesProvider), as two repos can each have a PR #N.
  *
  * @module components/ReviewStatsContent
  */
@@ -46,9 +46,11 @@ import { useReviewStats, type ReviewStatsValue } from '../state/ReviewStatsConte
 import { useIsTabPanelVisible } from '../state/useIsTabPanelVisible';
 import { useNavigateToPrInTable } from '../state/useNavigateToPrInTable';
 import { useActorIdentity } from '../state/ActorIdentityContext';
+import { useRowRepoName } from '../state/RowRepoNamesContext';
 import { useReviewStatsColumns } from '../state/useReviewStatsColumns';
 import { REVIEW_STATS_FILTER_MODES } from './ReviewStatsControls';
 import { Avatar } from './ui/Avatar';
+import { AuthorLink } from './AuthorLink';
 import { Button } from './ui/Button';
 import { MultiSelectDropdown } from './ui/MultiSelectDropdown';
 import { Tooltip } from './ui/Tooltip';
@@ -78,8 +80,12 @@ type ControlledStats = ReturnType<ReviewStatsValue['applyStatsControls']> & { ac
 function SourceItemRow({ item, detailText }: { item: StatsSource; detailText: string }) {
   const navigateToPrInTable = useNavigateToPrInTable();
   const prNumber = String(item?.prNumber || '').trim();
+  const repo = String(item?.repo || '').trim();
+  // With PRs from several repos stored, the number alone doesn't say which.
+  const repoName = useRowRepoName(repo);
   const prTitle = String(item?.prTitle || '').trim();
-  const label = prNumber && prTitle ? `PR #${prNumber}: ${prTitle}` : prNumber ? `PR #${prNumber}` : prTitle || 'Unknown source';
+  const prRef = repoName ? `${repoName}#${prNumber}` : `#${prNumber}`;
+  const label = prNumber && prTitle ? `PR ${prRef}: ${prTitle}` : prNumber ? `PR ${prRef}` : prTitle || 'Unknown source';
   const prUrl = String(item?.prUrl || '').trim();
   const author = String(item?.prAuthor || item?.author || item?.authorLogin || '').trim();
   const detailParts: string[] = [];
@@ -107,7 +113,7 @@ function SourceItemRow({ item, detailText }: { item: StatsSource; detailText: st
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              navigateToPrInTable(prNumber, { from: e.currentTarget });
+              navigateToPrInTable(prNumber, { repo, from: e.currentTarget });
             }}
           >
             View in table
@@ -286,8 +292,9 @@ function StatsTableEmpty({
   );
 }
 
-// The reviewer's avatar and name, as the PR table's Who column; the
-// login on hover when the name differs.
+// The reviewer's avatar and name, as the PR table's Who column, the
+// login on hover when the name differs; a button that opens them on
+// Authors.
 function ReviewerIdentity({ reviewer }: { reviewer: ReviewerRowData }) {
   const { getEffectiveViewerKey, normalizeActorLogin, loginOfActorKey } = useActorIdentity();
   // A reviewer's `login` is their person's key; their main login is shown.
@@ -297,13 +304,18 @@ function ReviewerIdentity({ reviewer }: { reviewer: ReviewerRowData }) {
   const viewerKey = getEffectiveViewerKey({});
   const isViewer = Boolean(viewerKey) && normalizeActorLogin(key).toLowerCase() === viewerKey;
   return (
-    <span className="stats-reviewer" title={name !== login ? login : undefined}>
+    <AuthorLink
+      login={key}
+      fallbackName={name}
+      className="stats-reviewer"
+      title={name !== login ? `${login} - open on Authors` : undefined}
+    >
       <Avatar initials={getUserInitials(name, login)} login={login} isViewer={isViewer} size="sm" />
       <span>
         {name}
         {isViewer && <span className="stats-reviewer-you"> (you)</span>}
       </span>
-    </span>
+    </AuthorLink>
   );
 }
 

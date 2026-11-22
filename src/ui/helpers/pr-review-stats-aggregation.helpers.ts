@@ -64,8 +64,10 @@ export interface NormalizedRowMetrics {
 }
 
 // The PR a stats number came from (shown under "Show sources").
+// `repo` is the PR's owner/name, since two repos can each have a PR #N.
 export type StatsPrContext = {
   prNumber: string;
+  repo: string;
   prTitle: string;
   prUrl: string;
   prAuthor: string;
@@ -388,6 +390,9 @@ const createPrReviewStatsAggregationHelpers = ({
       const row = entry?.data || {};
       const rowAuthorKey = getPreferredActorKeySafe(row.authorLogin, row.author);
       const prNumber = String(row.number || entry?.prNumber || "").trim();
+      const repo = String(entry?.repo || "").trim();
+      // PRs touched are counted per repo and number, not number alone.
+      const prKey = prNumber ? `${repo}#${prNumber}` : "";
       const prTitle = formatTitleWithIconsSafe(row.titleDisplay, row.title);
       const metrics = normalizeRowMetrics(row);
       const filteredCommentEvents = asArraySafe(row.commentEvents).filter(
@@ -425,6 +430,7 @@ const createPrReviewStatsAggregationHelpers = ({
       });
       const prContext: StatsPrContext = {
         prNumber,
+        repo,
         prTitle,
         prUrl: String(row.url || "").trim(),
         prAuthor: resolveActorDisplayNameSafe(rowAuthorKey, actorsMap, row.author),
@@ -551,7 +557,7 @@ const createPrReviewStatsAggregationHelpers = ({
           commentStat.followedByAuthorCommitWithin24hCount,
         );
         reviewer.usefulnessSignals += toCountSafe(commentStat.usefulnessSignals);
-        if (prNumber) reviewer.prsTouched.add(prNumber);
+        if (prKey) reviewer.prsTouched.add(prKey);
         summary.commentsOnOthersPrs += toCountSafe(commentStat.totalCount);
         summary.usefulnessSignals += toCountSafe(commentStat.usefulnessSignals);
         summary.commentsFollowedByAuthorCommit += toCountSafe(
@@ -611,7 +617,7 @@ const createPrReviewStatsAggregationHelpers = ({
         if (!reviewer) continue;
         reviewer.reviews += toCountSafe(reviewStat.reviewCount);
         reviewer.approvals += toCountSafe(reviewStat.approvalCount);
-        if (prNumber) reviewer.prsTouched.add(prNumber);
+        if (prKey) reviewer.prsTouched.add(prKey);
         pushSource(reviewer.sources.reviews, {
           ...prContext,
           count: toCountSafe(reviewStat.reviewCount),
@@ -627,7 +633,7 @@ const createPrReviewStatsAggregationHelpers = ({
         reviewer.highRiskApprovals += approval.highRiskApproval ? 1 : 0;
         reviewer.approvalsBeforeChangeRequest +=
           toCountSafe(approval.changeRequestCountAfterApproval) > 0 ? 1 : 0;
-        if (prNumber) reviewer.prsTouched.add(prNumber);
+        if (prKey) reviewer.prsTouched.add(prKey);
         summary.approvals += 1;
         summary.riskyApprovals += approval.riskyApproval ? 1 : 0;
         summary.highRiskApprovals += approval.highRiskApproval ? 1 : 0;

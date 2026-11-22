@@ -748,6 +748,8 @@ const computePrRow = (input) => {
     pushes = [],
     // The stored row's viewerSeenHead.
     seenHead = null,
+    // When the PR was last marked ready for review (a draft's), or "".
+    readyForReviewAt: readyForReviewAtInput = "",
   } = input || {};
 
   const number = jqRaw(pr.number);
@@ -756,6 +758,7 @@ const computePrRow = (input) => {
   const mergedAt = jqRaw(alt(pr.mergedAt, ""));
   const closedAt = jqRaw(alt(pr.closedAt, ""));
   const createdAt = jqRaw(alt(pr.createdAt, ""));
+  const readyForReviewAt = jqRaw(alt(readyForReviewAtInput, ""));
   const mergedByLogin = jqRaw(alt(pr.mergedBy?.login, ""));
   const sourceUpdatedAt = jqRaw(alt(pr.updatedAt, ""));
   const sourceBranch = jqRaw(alt(pr.headRefName, ""));
@@ -1086,6 +1089,9 @@ const computePrRow = (input) => {
     mergedAt,
     closedAt,
     createdAt,
+    // A PR opened as a draft: when it was marked ready for review, so its
+    // wait for a first review doesn't count its time as a draft.
+    ...(readyForReviewAt ? { readyForReviewAt } : {}),
     sourceUpdatedAt,
     sourceFingerprint,
     sourceBranch,
@@ -1170,6 +1176,7 @@ const readInputDir = (dir) => {
     reviewUrlMap: read("review-url-map.json", {}),
     viewedFilesStats: read("viewed-files.json", {}),
     pushes: read("pushes.json", []),
+    readyForReviewAt: read("ready-for-review.json", ""),
   };
 };
 

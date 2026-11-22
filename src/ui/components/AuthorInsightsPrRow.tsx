@@ -3,7 +3,8 @@
  * PRs, and the PRs with notes about them), in two lines:
  *
  * - its state (open, draft, closed or merged, the icon the table's smart
- *   groups use), `#N title` linking to GitHub, and when it was merged,
+ *   groups use), `#N title` linking to GitHub (`repo#N` when PRs from
+ *   several repos are stored), and when it was merged,
  *   closed or last updated;
  * - the table's signals, as one keyboard stop with their tooltips: the
  *   script's status (changed, no recent activity...), approvals, checks,
@@ -16,6 +17,7 @@
 
 import { useAuthorInsights } from '../state/AuthorInsightsContext';
 import { useNavigateToPrInTable } from '../state/useNavigateToPrInTable';
+import { useRowRepoName } from '../state/RowRepoNamesContext';
 import { DEFAULT_REPO } from '../helpers/pr-default-repo.helpers.ts';
 import { getAuthorPrState } from '../helpers/author-picker.helpers.ts';
 import { createPrFormattingHelpers } from '../helpers/pr-formatting.helpers.ts';
@@ -43,6 +45,8 @@ export function AuthorInsightsPrRow({ entry }: { entry: PrEntry | null | undefin
   const prNumber = String(row.number || entry?.prNumber || '').trim();
   const href = row.url || `https://github.com/${entry?.repo || DEFAULT_REPO}/pull/${prNumber}`;
   const title = String(row.title || row.titleDisplay || '').trim();
+  // With PRs from several repos stored, the number alone doesn't say which.
+  const repoName = useRowRepoName(String(entry?.repo || ''));
 
   const state = getAuthorPrState(entry);
   const lifecycle = LIFECYCLE_SIGNALS[state === 'open' && entry?.section === 'draft' ? 'draft' : state];
@@ -76,7 +80,7 @@ export function AuthorInsightsPrRow({ entry }: { entry: PrEntry | null | undefin
       <div className="author-pr-row-line">
         {lifecycle && <Signal icon={lifecycle.icon} tone={lifecycle.tone} label={lifecycle.label} />}
         <a className="author-pr-row-title" href={href} target="_blank" rel="noopener noreferrer">
-          #{prNumber} {title}
+          {repoName}#{prNumber} {title}
         </a>
         {date && (
           <span className="author-pr-row-date">
