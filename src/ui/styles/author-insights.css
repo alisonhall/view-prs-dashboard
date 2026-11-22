@@ -319,3 +319,85 @@
   color: var(--color-text-muted);
   font-variant-numeric: tabular-nums;
 }
+
+.author-stats-slowest {
+  margin-top: 2px;
+}
+
+.author-stats-subheading {
+  margin: var(--space-4) 0 var(--space-2);
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+}
+
+/* Over time and By size, side by side when there's room. */
+.author-stats-tables {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.author-stats-table-card {
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.author-stats-table {
+  width: 100%;
+  margin-top: 6px;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.author-stats-table th,
+.author-stats-table td {
+  padding: 3px var(--space-2) 3px 0;
+  text-align: left;
+  white-space: nowrap;
+  font-weight: 400;
+}
+
+.author-stats-table :is(th, td):nth-child(2) {
+  width: 3rem;
+}
+
+.author-stats-table thead th {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.author-stats-table tbody th {
+  color: var(--color-text);
+}
+
+.author-stats-bar-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 7rem;
+}
+
+.author-stats-bar {
+  flex: 1 1 auto;
+  max-width: 6rem;
+  height: 8px;
+}
+
+.author-stats-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 0 4px 4px 0;
+  background: var(--color-accent);
+}
+
+.author-stats-bar-value,
+.author-stats-bar-empty {
+  flex: none;
+  color: var(--color-text-muted);
+}
+
+.author-waiting-list {
+  max-height: none;
+}

@@ -42,6 +42,9 @@ const AuthorInsightsSelector = lazy(() =>
 const AuthorInsightsHeader = lazy(() =>
   import('../AuthorInsightsHeader').then((m) => ({ default: m.AuthorInsightsHeader })),
 );
+const AuthorWaitingSection = lazy(() =>
+  import('../AuthorWaitingSection').then((m) => ({ default: m.AuthorWaitingSection })),
+);
 const AuthorStatsSection = lazy(() =>
   import('../AuthorStatsSection').then((m) => ({ default: m.AuthorStatsSection })),
 );
@@ -217,13 +220,16 @@ export function AppShell() {
               <div id="author-insights">
                 <ViewHeading
                   title="Authors"
-                  description="One author at a time: how their PRs go through review, your comments about them, your notes on their PRs, and the PRs they've opened."
+                  description="One author at a time: what their open PRs are waiting on, how their PRs go through review and how they review others, your comments about them, your notes on their PRs, and the PRs they've opened."
                 />
                 <div id="author-insights-selector-root">
                   <AuthorInsightsSelector />
                 </div>
                 <div id="author-insights-header-root" role="region" aria-label="Selected author">
                   <AuthorInsightsHeader />
+                </div>
+                <div id="author-insights-waiting-root" role="region" aria-label="Author's waiting PRs">
+                  <AuthorWaitingSection />
                 </div>
                 <div id="author-insights-stats-root" role="region" aria-label="Author's stats">
                   <AuthorStatsSection />

@@ -81,8 +81,8 @@ describe('AuthorStatsSection', () => {
     expect(card('Reviewed most by')).toHaveTextContent('No reviews yet');
   });
 
-  test('nothing for an author without stored PRs', () => {
-    const { container } = renderSection('mona');
+  test('nothing for someone with neither PRs nor reviews stored', () => {
+    const { container } = renderSection('nobody');
     expect(container).toBeEmptyDOMElement();
   });
 
@@ -142,5 +142,50 @@ describe('AuthorStatsSection', () => {
     expect(screen.getByRole('heading', { name: 'No PRs opened in the last 90 days' })).toBeInTheDocument();
     expect(screen.queryByRole('group', { name: 'First review' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'All time' })).toBeInTheDocument();
+  });
+
+  test("their reviews of others: how many, how soon, how they ended, and whose", () => {
+    renderSection('hubot');
+    expect(screen.getByRole('heading', { name: 'Their reviews of others' })).toBeInTheDocument();
+    expect(card('PRs reviewed')).toHaveTextContent('2approved 0, asked for changes on 1');
+    // First responses after 5h and 3h.
+    expect(card('First response')).toHaveTextContent('4hmedian, over 2 PRs');
+    expect(within(card('First response')).getByText('Show PRs (2)')).toBeInTheDocument();
+    expect(within(card('Reviews most for')).getAllByRole('listitem').map((item) => item.textContent)).toEqual(['OCoctocat2 PRs']);
+  });
+
+  test('Over time says so when none of their PRs has an opening date', () => {
+    renderSection('hubot');
+    expect(card('Over time')).toHaveTextContent('No opening dates known');
+    expect(within(card('Over time')).queryByRole('table')).not.toBeInTheDocument();
+  });
+
+  test('someone who only reviews still gets their reviews of others', () => {
+    renderSection('mona');
+    expect(screen.getByRole('heading', { name: 'No PRs stored' })).toBeInTheDocument();
+    expect(card('PRs reviewed')).toHaveTextContent('1approved 1');
+  });
+
+  test('Over time and By size tables, with a bar per wait', () => {
+    renderSection('octocat');
+    const months = within(card('Over time')).getAllByRole('row').map((row) => row.textContent);
+    expect(months[0]).toBe('MonthPRsFirst reviewTime to merge');
+    expect(months.slice(1)).toEqual([expect.stringMatching(/^Jul 2026\s*24h2\.5 days$/)]);
+    const sizes = within(card('By size')).getAllByRole('row').map((row) => row.textContent);
+    expect(sizes.slice(1)).toEqual(['Under 100 lines15h2.5 days', '100 to 499 lines0--', '500+ lines0--']);
+  });
+
+  test('the slowest 1 in 10 shows under a median once there are 5 PRs', () => {
+    const rows = {};
+    [1, 2, 3, 4, 20].forEach((hours, index) => {
+      rows[`acme/web#${index + 1}`] = {
+        repo: 'acme/web',
+        prNumber: String(index + 1),
+        data: { authorLogin: 'octocat', createdAt: '2026-07-01T00:00:00Z', reviews: [review('hubot', `2026-07-01T${String(hours).padStart(2, '0')}:00:00Z`)] },
+      };
+    });
+    renderSection('octocat', rows);
+    expect(card('First review')).toHaveTextContent('1 in 10 over 20h');
+    expect(card('Time to merge')).not.toHaveTextContent('1 in 10');
   });
 });
