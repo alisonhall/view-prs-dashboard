@@ -10,7 +10,7 @@ import { Tooltip, type TooltipPlacement } from './Tooltip';
  */
 export interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'type'> {
   icon?: IconName;
-  variant?: 'default' | 'primary';
+  variant?: 'default' | 'primary' | 'danger';
   pressed?: boolean;
   type?: 'button' | 'submit';
   hint?: string;

@@ -948,7 +948,13 @@ describe("integration behavior", () => {
         ok: true,
         by: "git",
         items: [{ branch: "done", oid: oids.local, worktreePath: expect.any(String), prs: [{ number: "8", done: true }], safe: true, reasons: [], notes: [] }],
+        others: expect.any(Array),
       });
+      // The rest of the clone: the open PR's branch, and the clone's own branch (never removable).
+      expect(listed.body.others.map((other) => [other.branch, other.safe, Boolean(other.blocked)])).toEqual([
+        ["feature", false, false],
+        ["master", false, true],
+      ]);
       const [item] = listed.body.items;
       expect(fs.realpathSync.native(item.worktreePath)).toBe(fs.realpathSync.native(doneTree));
       expect((await request.post("/view-prs/local-repos/cleanup/remove").send({ repo: "owner/repo" })).status).toBe(400);

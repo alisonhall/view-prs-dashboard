@@ -762,6 +762,62 @@ describe("checking out a PR into a worktree", () => {
       expect(after).toEqual({});
     });
 
+    test("the rest of the clone: every other branch and worktree, assessed by git; Remove anyway removes one that isn't safe, if nothing has changed since", async () => {
+      const clone = freshClone();
+      // Made here, no commits of its own, in a worktree: nothing lost.
+      const empty = path.join(path.dirname(clone), "empty");
+      git(clone, "worktree", "add", "-q", "-b", "my/empty", empty, "origin/main");
+      // Made here with a commit of its own, and uncommitted changes.
+      const wip = path.join(path.dirname(clone), "wip");
+      git(clone, "worktree", "add", "-q", "-b", "my/wip", wip, "origin/main");
+      commit(wip, "work");
+      fs.writeFileSync(path.join(wip, "draft.txt"), "x\n");
+      // A detached worktree.
+      const detached = path.join(path.dirname(clone), "detached");
+      git(clone, "worktree", "add", "-q", "--detach", detached, "origin/main");
+      tracked(clone, "done/merged", { worktree: false });
+      const prs = [row(1, "done/merged")];
+      const { checkout } = setUp();
+      const result = await checkout.listCleanup({ repo: "acme/app", cloneFolder: clone, settings: null, prs });
+      expect(result.items.map((item) => item.branch)).toEqual(["done/merged"]);
+      const others = Object.fromEntries(result.others.map((item) => [item.branch || toPosix(item.worktreePath), item]));
+      expect(Object.keys(others).sort()).toEqual([toPosix(detached), "main", "my/empty", "my/wip"].sort());
+      expect(others["my/empty"]).toMatchObject({ safe: true, reasons: [], notes: ["No commits of its own: everything on it is in main"] });
+      samePath(others["my/empty"].worktreePath, empty);
+      expect(others["my/wip"]).toMatchObject({ safe: false, reasons: ["Uncommitted: 1 new", "1 commit not on GitHub"] });
+      expect(others["my/wip"].blocked).toBeUndefined();
+      expect(others.main).toMatchObject({ safe: false, blocked: true, reasons: ["main is the base of #1 - a long-lived branch", "It's the clone's own folder"] });
+      expect(others[toPosix(detached)]).toMatchObject({ safe: true });
+      // The clone's own folder last.
+      expect(result.others[result.others.length - 1].branch).toBe("main");
+
+      const remove = (item, extra = {}) =>
+        checkout.removeCleanup({ repo: "acme/app", cloneFolder: clone, settings: null, prs, branch: item.branch, worktreePath: item.worktreePath, ...extra });
+      expect(await remove(others["my/empty"])).toMatchObject({ removed: { branch: "my/empty" } });
+      expect(fs.existsSync(empty)).toBe(false);
+      expect(git(clone, "branch", "--list", "my/empty")).toBe("");
+
+      // Not safe: refused without force, and with reasons that have changed since.
+      await expect(remove(others["my/wip"])).rejects.toMatchObject({ status: 409, message: "Not safe to remove: Uncommitted: 1 new; 1 commit not on GitHub" });
+      fs.writeFileSync(path.join(wip, "more.txt"), "x\n");
+      await expect(remove(others["my/wip"], { force: true, reasons: others["my/wip"].reasons })).rejects.toMatchObject({
+        status: 409,
+        message: "It has changed since you looked - look again. Now: Uncommitted: 2 new; 1 commit not on GitHub",
+      });
+      expect(fs.existsSync(wip)).toBe(true);
+      const removed = await remove(others["my/wip"], { force: true, reasons: ["Uncommitted: 2 new", "1 commit not on GitHub"] });
+      expect(removed).toMatchObject({ removed: { branch: "my/wip" }, how: "git" });
+      expect(fs.existsSync(wip)).toBe(false);
+      expect(git(clone, "branch", "--list", "my/wip")).toBe("");
+
+      // Blocked: never, even with force.
+      await expect(remove(others.main, { force: true, reasons: others.main.reasons })).rejects.toMatchObject({
+        status: 409,
+        message: "Can't remove it: main is the base of #1 - a long-lived branch; It's the clone's own folder",
+      });
+      expect(git(clone, "branch", "--list", "main")).toContain("main");
+    });
+
     test("the repo's list and remove commands: the worktrees it prints that are the clone's, the dashboard's checks still applied", async () => {
       const clone = freshClone();
       const tree = tracked(clone, "mine/old");

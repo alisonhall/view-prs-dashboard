@@ -231,7 +231,7 @@ const registerViewPrsLocalBranchesRoutes = ({
 
   // ?repo= - what's safe to remove after merged and closed PRs, and what
   // isn't and why (view-prs-local-checkout.js' listCleanup): { by, items,
-  // ignored?, output? }. Only from this computer: it may run the repo's
+  // others, ignored?, output? }. Only from this computer: it may run the repo's
   // list command, and removing is from Settings, as changing the commands is.
   app.get(["/local-repos/cleanup", "/view-prs/local-repos/cleanup"], async (req, res) => {
     if (!isFromThisComputer(req)) {
@@ -256,9 +256,11 @@ const registerViewPrsLocalBranchesRoutes = ({
     }
   });
 
-  // { repo, branch?, worktreePath? } - one item of the list removed, once
-  // listed again and still safe (removeCleanup): { removed, how, output } -
-  // or { error, output }. Only from this computer.
+  // { repo, branch?, worktreePath?, force?, reasons? } - one item of the
+  // list (or the rest of the clone) removed, once listed again and still
+  // safe - or, with force, with the same reasons the user was shown
+  // (removeCleanup): { removed, how, output } - or { error, output }. Only
+  // from this computer.
   app.post(["/local-repos/cleanup/remove", "/view-prs/local-repos/cleanup/remove"], async (req, res) => {
     if (!isFromThisComputer(req)) {
       res.status(403).json({ ok: false, error: "Clean up is only on this computer" });
@@ -267,6 +269,8 @@ const registerViewPrsLocalBranchesRoutes = ({
     const repo = String(req.body?.repo || "").trim();
     const branch = String(req.body?.branch || "");
     const worktreePath = String(req.body?.worktreePath || "");
+    const force = req.body?.force === true;
+    const reasons = Array.isArray(req.body?.reasons) ? req.body.reasons.map(String) : [];
     if (!branch && !worktreePath) {
       res.status(400).json({ ok: false, error: "Nothing to remove" });
       return;
@@ -278,7 +282,7 @@ const registerViewPrsLocalBranchesRoutes = ({
         return;
       }
       const prs = listPrs({ [repo]: entry.path });
-      res.json({ ok: true, ...(await removeCleanup({ repo, cloneFolder: entry.path, settings: entry.checkout, prs, branch, worktreePath })) });
+      res.json({ ok: true, ...(await removeCleanup({ repo, cloneFolder: entry.path, settings: entry.checkout, prs, branch, worktreePath, force, reasons })) });
     } catch (error) {
       if (error?.status) {
         res.status(error.status).json({ ok: false, error: error.message, output: error.output || "" });
