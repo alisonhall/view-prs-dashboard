@@ -954,6 +954,24 @@ describe("checking out a PR into a worktree", () => {
       }
     });
 
+    test("with the list command, Remove asks it again: a worktree it no longer prints isn't removed; the branch's tracking settings are kept for Restore", async () => {
+      const clone = freshClone();
+      const tree = tracked(clone, "mine/listed");
+      const printed = path.join(root, "printed.txt");
+      fs.writeFileSync(printed, `${toPosix(tree)}\n`);
+      const settings = { cleanupList: `cat "${toPosix(printed)}"`, cleanupRemove: "git worktree remove {worktree} && git branch -D {local}" };
+      const { checkout } = setUp();
+      const [item] = (await checkout.listCleanup({ repo: "acme/app", cloneFolder: clone, settings, prs: [] })).items;
+      const remove = () => checkout.removeCleanup({ repo: "acme/app", cloneFolder: clone, settings, prs: [], branch: item.branch, worktreePath: item.worktreePath, listed: true });
+      fs.writeFileSync(printed, "");
+      await expect(remove()).rejects.toMatchObject({ status: 409, message: "It's no longer in the list - look again" });
+      expect(fs.existsSync(tree)).toBe(true);
+      fs.writeFileSync(printed, `${toPosix(tree)}\n`);
+      const removed = await remove();
+      // The command removed the branch, and its settings with it: read before it ran.
+      expect(removed.restore).toEqual({ branch: "mine/listed", oid: oids.feature, remote: "origin", merge: "refs/heads/mine/listed" });
+    });
+
     test("a remove command that leaves the worktree there says so; a list command that fails says why", async () => {
       const clone = freshClone();
       const tree = tracked(clone, "mine/kept");

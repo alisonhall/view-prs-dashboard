@@ -1075,8 +1075,13 @@ const createViewPrsLocalCheckout = ({
     const prsOf = prsByBranch(clone, prs);
     const itsPrs = branch ? prsOf.get(branch) || [] : [];
     if (byCommand) {
-      // The list command lists worktrees only.
+      // The list command lists worktrees only, and must still print this
+      // one: its own checks (merged, say) may have changed their mind.
       if (listed && !worktree) throw gone();
+      if (listed) {
+        const again = await listCleanup({ repo, cloneFolder, settings, prs });
+        if (!again.items.some((item) => (item.worktreePath || "") === worktree.path)) throw gone();
+      }
     } else if (listed !== (Boolean(branchItem) && itsPrs.some((pr) => pr.done))) {
       throw gone();
     }
@@ -1102,6 +1107,13 @@ const createViewPrsLocalCheckout = ({
       const removed = {};
       let restore = null;
       const byCommand = Boolean(item.worktreePath && settings?.cleanupRemove);
+      if (item.branch) {
+        // Its tracking settings, for Restore - read first, as the remove
+        // command may remove them with the branch.
+        const configOf = (key) => git(cloneFolder, ["config", "--get", `branch.${item.branch}.${key}`]).then((value) => value.trim(), () => "");
+        const [remote, merge] = await Promise.all([configOf("remote"), configOf("merge")]);
+        restore = { branch: item.branch, oid: item.oid, ...(remote && merge ? { remote, merge } : {}) };
+      }
       try {
         if (item.worktreePath) {
           if (byCommand) {
@@ -1136,12 +1148,6 @@ const createViewPrsLocalCheckout = ({
             await git(cloneFolder, ["worktree", "prune"]);
           }
           removed.worktreePath = item.worktreePath;
-        }
-        if (item.branch) {
-          // Its tracking settings, for Restore.
-          const configOf = (key) => git(cloneFolder, ["config", "--get", `branch.${item.branch}.${key}`]).then((value) => value.trim(), () => "");
-          const [remote, merge] = await Promise.all([configOf("remote"), configOf("merge")]);
-          restore = { branch: item.branch, oid: item.oid, ...(remote && merge ? { remote, merge } : {}) };
         }
         if (item.branch && !byCommand) {
           // Only from the commit it was listed at: one made since isn't lost.
