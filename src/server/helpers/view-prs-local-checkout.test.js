@@ -745,14 +745,35 @@ describe("checking out a PR into a worktree", () => {
       expect(fs.existsSync(tree)).toBe(true);
       fs.rmSync(path.join(tree, "late.txt"));
 
-      expect(await remove(listed["done/merged"])).toEqual({
+      const merged = await remove(listed["done/merged"]);
+      expect(merged).toEqual({
         removed: { worktreePath: listed["done/merged"].worktreePath, branch: "done/merged" },
         how: "git",
         output: "",
+        restore: { branch: "done/merged", oid: oids.feature, remote: "origin", merge: "refs/heads/done/merged" },
       });
       expect(fs.existsSync(tree)).toBe(false);
       expect(git(clone, "branch", "--list", "done/merged")).toBe("");
       expect(() => git(clone, "config", "branch.done/merged.remote")).toThrow();
+
+      // Restore: the branch back at that commit, tracking as it did - not its worktree.
+      expect(await checkout.restoreCleanup({ repo: "acme/app", cloneFolder: clone, ...merged.restore })).toEqual({
+        restored: { branch: "done/merged", oid: oids.feature },
+      });
+      expect(git(clone, "rev-parse", "refs/heads/done/merged")).toBe(oids.feature);
+      expect(git(clone, "config", "branch.done/merged.merge")).toBe("refs/heads/done/merged");
+      expect(fs.existsSync(tree)).toBe(false);
+      // Not over a branch that exists, nor a name or commit that isn't one.
+      await expect(checkout.restoreCleanup({ repo: "acme/app", cloneFolder: clone, ...merged.restore })).rejects.toMatchObject({ status: 409 });
+      await expect(checkout.restoreCleanup({ repo: "acme/app", cloneFolder: clone, branch: "-x", oid: oids.feature })).rejects.toMatchObject({
+        status: 400,
+        message: "Not a branch name: -x",
+      });
+      await expect(checkout.restoreCleanup({ repo: "acme/app", cloneFolder: clone, branch: "back", oid: "f".repeat(40) })).rejects.toMatchObject({
+        status: 409,
+        message: "git no longer has fffffff, so back can't be put back",
+      });
+      git(clone, "branch", "-D", "-q", "done/merged");
       expect(await remove(listed["done/only"])).toMatchObject({ removed: { branch: "done/only" } });
       expect(await remove(listed["done/gone"])).toMatchObject({ removed: { branch: "done/gone" } });
       expect(git(clone, "worktree", "list", "--porcelain")).not.toContain("done_gone");
@@ -787,7 +808,9 @@ describe("checking out a PR into a worktree", () => {
       expect(others["my/wip"]).toMatchObject({ safe: false, reasons: ["Uncommitted: 1 new", "1 commit not on GitHub"] });
       expect(others["my/wip"].blocked).toBeUndefined();
       expect(others.main).toMatchObject({ safe: false, blocked: true, reasons: ["main is the base of #1 - a long-lived branch", "It's the clone's own folder"] });
-      expect(others[toPosix(detached)]).toMatchObject({ safe: true });
+      expect(others[toPosix(detached)]).toMatchObject({ safe: true, subject: "base" });
+      expect(others["my/wip"]).toMatchObject({ subject: "work" });
+      expect(typeof others["my/wip"].committedAt).toBe("string");
       // A commit made there, on no branch: not safe any more.
       commit(detached, "lost if removed");
       const again = await checkout.listCleanup({ repo: "acme/app", cloneFolder: clone, settings: null, prs });
@@ -796,7 +819,7 @@ describe("checking out a PR into a worktree", () => {
       expect(result.others[result.others.length - 1].branch).toBe("main");
 
       const remove = (item, extra = {}) =>
-        checkout.removeCleanup({ repo: "acme/app", cloneFolder: clone, settings: null, prs, branch: item.branch, worktreePath: item.worktreePath, ...extra });
+        checkout.removeCleanup({ repo: "acme/app", cloneFolder: clone, settings: null, prs, branch: item.branch, worktreePath: item.worktreePath, listed: false, ...extra });
       expect(await remove(others["my/empty"])).toMatchObject({ removed: { branch: "my/empty" } });
       expect(fs.existsSync(empty)).toBe(false);
       expect(git(clone, "branch", "--list", "my/empty")).toBe("");
@@ -820,6 +843,52 @@ describe("checking out a PR into a worktree", () => {
         message: "Can't remove it: main is the base of #1 - a long-lived branch; It's the clone's own folder",
       });
       expect(git(clone, "branch", "--list", "main")).toContain("main");
+    });
+
+    test("each item's newest commit, oldest first; a branch whose remote branch is gone is marked", async () => {
+      const clone = freshClone();
+      const at = (when) => ({ ...process.env, GIT_COMMITTER_DATE: when, GIT_AUTHOR_DATE: when });
+      const commitAt = (folder, message, when) =>
+        execFileSync("git", ["-c", "user.name=T", "-c", "user.email=t@e.com", "commit", "--allow-empty", "-q", "-m", message], { cwd: folder, env: at(when) });
+      git(clone, "branch", "-q", "--no-track", "newer", "origin/main");
+      git(clone, "branch", "-q", "--no-track", "older", "origin/main");
+      for (const [name, when] of [["newer", "2026-06-01T00:00:00Z"], ["older", "2025-01-01T00:00:00Z"]]) {
+        git(clone, "checkout", "-q", name);
+        commitAt(clone, `on ${name}`, when);
+      }
+      git(clone, "checkout", "-q", "main");
+      // Pushed once, then deleted on the remote and pruned.
+      tracked(clone, "deleted/upstream", { worktree: false });
+      git(path.join(root, "seed"), "push", "-q", remote, ":refs/heads/deleted/upstream");
+      git(clone, "fetch", "-q", "--prune", "origin");
+      const { checkout } = setUp();
+      const { others } = await checkout.listCleanup({ repo: "acme/app", cloneFolder: clone, settings: null, prs: [] });
+      const names = others.map((item) => item.branch);
+      expect(names.indexOf("older")).toBeLessThan(names.indexOf("newer"));
+      expect(names[names.length - 1]).toBe("main");
+      expect(others.find((item) => item.branch === "older")).toMatchObject({ subject: "on older", committedAt: expect.stringMatching(/^2025-01-01/) });
+      expect(others.find((item) => item.branch === "deleted/upstream")).toMatchObject({ upstreamGone: true });
+      expect(others.find((item) => item.branch === "older").upstreamGone).toBeUndefined();
+    });
+
+    test("removing asks git about that one item only: one that moved, changed branch or isn't where it was listed is refused", async () => {
+      const clone = freshClone();
+      const tree = path.join(path.dirname(clone), "mine");
+      git(clone, "worktree", "add", "-q", "-b", "mine", tree, "origin/main");
+      tracked(clone, "done/x", { worktree: false });
+      const prs = [row(1, "done/x")];
+      const { checkout } = setUp();
+      const remove = (extra) => checkout.removeCleanup({ repo: "acme/app", cloneFolder: clone, settings: null, prs, ...extra });
+      const look = "It's no longer in the list - look again";
+      // From the wrong list.
+      await expect(remove({ branch: "done/x", worktreePath: "", listed: false })).rejects.toMatchObject({ status: 409, message: look });
+      await expect(remove({ branch: "mine", worktreePath: tree, listed: true })).rejects.toMatchObject({ status: 409, message: look });
+      // Its worktree on another branch now.
+      await expect(remove({ branch: "other", worktreePath: tree, listed: false })).rejects.toMatchObject({ status: 409, message: look });
+      // A branch listed on its own, checked out since.
+      await expect(remove({ branch: "mine", worktreePath: "", listed: false })).rejects.toMatchObject({ status: 409, message: look });
+      expect(await remove({ branch: "mine", worktreePath: tree, listed: false })).toMatchObject({ removed: { branch: "mine" } });
+      expect(await remove({ branch: "done/x", worktreePath: "", listed: true })).toMatchObject({ removed: { branch: "done/x" } });
     });
 
     test("the repo's list and remove commands: the worktrees it prints that are the clone's, the dashboard's checks still applied", async () => {

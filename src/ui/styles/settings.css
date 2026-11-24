@@ -591,6 +591,66 @@
   min-width: 0;
 }
 
+.local-clone-cleanup-name {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.local-clone-cleanup-select {
+  flex: none;
+  margin: 0;
+}
+
+/* Its newest commit, and "Deleted on GitHub". */
+.local-clone-cleanup-commit {
+  overflow-wrap: anywhere;
+}
+
+.local-clone-cleanup-chip {
+  display: inline-block;
+  margin-right: var(--space-2);
+  padding: 0 6px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+}
+
+/* Select all safe, Remove selected. */
+.local-clone-cleanup-bulk {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* What was removed this session, with Restore. */
+.local-clone-cleanup-removed {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.local-clone-cleanup-removed .settings-hint {
+  margin: 0;
+}
+
+.local-clone-cleanup-removed ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.local-clone-cleanup-removed li {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  overflow-wrap: anywhere;
+}
+
 .local-clone-cleanup-item code {
   font-family: var(--font-mono);
   overflow-wrap: anywhere;

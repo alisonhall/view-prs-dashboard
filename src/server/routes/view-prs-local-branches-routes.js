@@ -21,7 +21,7 @@ const registerViewPrsLocalBranchesRoutes = ({
   // Finder by it, and says what Terminal opens.
   platform = process.platform,
   // view-prs-local-checkout.js's checkOut, fetchPr, pullPr, pullBranch,
-  // fetchBranch, createBranch, checkCommands, listCleanup and removeCleanup.
+  // fetchBranch, createBranch, checkCommands, listCleanup, removeCleanup and restoreCleanup.
   checkOut,
   fetchPr,
   pullPr,
@@ -37,6 +37,7 @@ const registerViewPrsLocalBranchesRoutes = ({
   checkCommands,
   listCleanup,
   removeCleanup,
+  restoreCleanup,
   sendInternalError = ({ res, error }) => res.status(500).json({ ok: false, error: error?.message || String(error) }),
   homeDir = () => os.homedir(),
   // (req) => whether the request came from this computer, not the network
@@ -256,10 +257,10 @@ const registerViewPrsLocalBranchesRoutes = ({
     }
   });
 
-  // { repo, branch?, worktreePath?, force?, reasons? } - one item of the
+  // { repo, branch?, worktreePath?, force?, reasons?, listed? } - one item of the
   // list (or the rest of the clone) removed, once listed again and still
   // safe - or, with force, with the same reasons the user was shown
-  // (removeCleanup): { removed, how, output } - or { error, output }. Only
+  // (removeCleanup): { removed, how, output, restore? } - or { error, output }. Only
   // from this computer.
   app.post(["/local-repos/cleanup/remove", "/view-prs/local-repos/cleanup/remove"], async (req, res) => {
     if (!isFromThisComputer(req)) {
@@ -271,6 +272,8 @@ const registerViewPrsLocalBranchesRoutes = ({
     const worktreePath = String(req.body?.worktreePath || "");
     const force = req.body?.force === true;
     const reasons = Array.isArray(req.body?.reasons) ? req.body.reasons.map(String) : [];
+    // Which list it's from: the list (the default), or the rest of the clone.
+    const listed = req.body?.listed !== false;
     if (!branch && !worktreePath) {
       res.status(400).json({ ok: false, error: "Nothing to remove" });
       return;
@@ -282,7 +285,42 @@ const registerViewPrsLocalBranchesRoutes = ({
         return;
       }
       const prs = listPrs({ [repo]: entry.path });
-      res.json({ ok: true, ...(await removeCleanup({ repo, cloneFolder: entry.path, settings: entry.checkout, prs, branch, worktreePath, force, reasons })) });
+      res.json({ ok: true, ...(await removeCleanup({ repo, cloneFolder: entry.path, settings: entry.checkout, prs, branch, worktreePath, force, reasons, listed })) });
+    } catch (error) {
+      if (error?.status) {
+        res.status(error.status).json({ ok: false, error: error.message, output: error.output || "" });
+        return;
+      }
+      sendInternalError({ res, error });
+    }
+  });
+
+  // { repo, branch, oid, remote?, merge? } - a removed branch put back,
+  // as Remove's restore gave it (restoreCleanup): { restored } - or {
+  // error, output }. Only from this computer.
+  app.post(["/local-repos/cleanup/restore", "/view-prs/local-repos/cleanup/restore"], async (req, res) => {
+    if (!isFromThisComputer(req)) {
+      res.status(403).json({ ok: false, error: "Clean up is only on this computer" });
+      return;
+    }
+    const repo = String(req.body?.repo || "").trim();
+    try {
+      const entry = localReposStorage.loadLocalRepoEntries()[repo];
+      if (!entry) {
+        res.status(404).json({ ok: false, error: `No clone of ${repo} saved (Settings › Local clones)` });
+        return;
+      }
+      res.json({
+        ok: true,
+        ...(await restoreCleanup({
+          repo,
+          cloneFolder: entry.path,
+          branch: String(req.body?.branch || ""),
+          oid: String(req.body?.oid || ""),
+          remote: String(req.body?.remote || ""),
+          merge: String(req.body?.merge || ""),
+        })),
+      });
     } catch (error) {
       if (error?.status) {
         res.status(error.status).json({ ok: false, error: error.message, output: error.output || "" });

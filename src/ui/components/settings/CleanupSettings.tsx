@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { postJson } from '../../helpers/pr-http.helpers.ts';
+import { formatShortAge } from '../../helpers/pr-row-signals.helpers.ts';
+import { formatCommitAge } from '../../helpers/tracked-branches.helpers.ts';
 import { useLocalBranches } from '../../state/LocalBranchesContext';
 import { Button } from '../ui/Button';
 
@@ -15,6 +17,29 @@ export interface CleanupItem {
   notes: string[];
   // Kept whatever's asked (the clone's own folder, a locked worktree).
   blocked?: boolean;
+  // Its newest commit.
+  committedAt?: string;
+  subject?: string;
+  // Its remote branch is gone: deleted on GitHub and pruned.
+  upstreamGone?: boolean;
+}
+
+// What Remove gives back to put a removed branch back.
+interface Restorable {
+  branch: string;
+  oid: string;
+  remote?: string;
+  merge?: string;
+}
+
+// One removal this session, for Restore.
+interface Removal {
+  key: string;
+  branch?: string;
+  worktreePath?: string;
+  restore?: Restorable;
+  state?: 'restoring' | 'restored';
+  error?: string;
 }
 
 interface CleanupList {
@@ -54,26 +79,50 @@ export const describeRisk = (item: CleanupItem) => {
   return lost.length ? `This deletes ${lost.join(' and ')}, for good.` : '';
 };
 
+// Remove selected's key in confirming.
+const SELECTED = '\u0000selected';
+
+// What Remove selected asks: how many, and what's lost by those that aren't safe.
+export const describeBulkRemoval = (chosen: CleanupItem[]) => {
+  const risky = chosen.filter((item) => !item.safe);
+  const what = `Remove ${chosen.length} ${chosen.length === 1 ? 'branch or worktree' : 'branches and worktrees'}?`;
+  if (risky.length === 0) return `${what} All are safe to remove.`;
+  const lost = [...new Set(risky.map(describeRisk).filter(Boolean))];
+  return `${what} ${risky.length} ${risky.length === 1 ? "isn't" : "aren't"} safe (${risky.map((item) => item.branch || item.worktreePath).join(', ')}).${
+    lost.length ? ` ${lost.join(' ')}` : ''
+  }`;
+};
+
 /**
  * Settings › Local clones' Clean up for a repo: the local branches and
  * worktrees of its merged and closed PRs (or what its list command prints),
  * each safe to remove or not and why, then the rest of the clone's local
  * branches and worktrees, checked the same way. Remove, confirmed in the
  * row, for a safe one; Remove anyway, confirmed the same way, for one that
- * isn't (but not the clone's own folder or a locked worktree). Looked for
- * when asked: it reads every worktree's changes.
+ * isn't (but not the clone's own folder or a locked worktree), or several
+ * at once by selecting them. Each shows its newest commit (oldest first)
+ * and whether its GitHub branch is gone. A removed branch can be put back
+ * with Restore. Looked for when asked: it reads every worktree's changes.
  */
 export function CleanupSettings({ repo, hasListCommand, hasRemoveCommand }: { repo: string; hasListCommand: boolean; hasRemoveCommand: boolean }) {
   const { refresh } = useLocalBranches();
   const [list, setList] = useState<CleanupList | null>(null);
   const [looking, setLooking] = useState(false);
+  // The items being removed now (one, or a selection one at a time).
   const [removing, setRemoving] = useState('');
-  // The item whose Remove is waiting to be confirmed.
+  // The item whose Remove is waiting to be confirmed, or SELECTED for
+  // Remove selected.
   const [confirming, setConfirming] = useState('');
-  const [removeError, setRemoveError] = useState<{ key: string; message: string } | null>(null);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [removals, setRemovals] = useState<Removal[]>([]);
+  const now = Date.now();
 
   const look = async () => {
     setLooking(true);
+    setSelected(new Set());
+    setConfirming('');
+    setErrors({});
     try {
       const response = await fetch(`/view-prs/local-repos/cleanup?repo=${encodeURIComponent(repo)}`, { cache: 'no-store' });
       const result = (await response.json()) as CleanupList;
@@ -85,37 +134,95 @@ export function CleanupSettings({ repo, hasListCommand, hasRemoveCommand }: { re
     }
   };
 
-  const remove = async (item: CleanupItem) => {
+  const items = list?.ok ? list.items || [] : [];
+  const others = list?.ok ? list.others || [] : [];
+  const safeCount = items.filter((item) => item.safe).length;
+  const listedKeys = new Set(items.map(keyOf));
+  const removable = [...items, ...others].filter((item) => !item.blocked);
+  const chosen = removable.filter((item) => selected.has(keyOf(item)));
+
+  // Removes one item; true once it's gone. Its error is kept by its key.
+  const removeOne = async (item: CleanupItem) => {
     const key = keyOf(item);
-    setConfirming('');
     setRemoving(key);
-    setRemoveError(null);
+    setErrors(({ [key]: _dropped, ...rest }) => rest);
     try {
-      const { response, result } = await postJson<{ ok?: boolean; error?: string; output?: string }>('/view-prs/local-repos/cleanup/remove', {
-        repo,
-        branch: item.branch || '',
-        worktreePath: item.worktreePath || '',
-        // Remove anyway: with the reasons shown, so one that has changed
-        // since isn't removed.
-        ...(item.safe ? {} : { force: true, reasons: item.reasons }),
-      });
+      const { response, result } = await postJson<{ ok?: boolean; error?: string; output?: string; restore?: Restorable }>(
+        '/view-prs/local-repos/cleanup/remove',
+        {
+          repo,
+          branch: item.branch || '',
+          worktreePath: item.worktreePath || '',
+          listed: listedKeys.has(key),
+          // Remove anyway: with the reasons shown, so one that has changed
+          // since isn't removed.
+          ...(item.safe ? {} : { force: true, reasons: item.reasons }),
+        },
+      );
       if (!response.ok || result.ok === false) {
-        setRemoveError({ key, message: [result.error || `HTTP ${response.status}`, result.output].filter(Boolean).join('\n') });
-        return;
+        setErrors((previous) => ({ ...previous, [key]: [result.error || `HTTP ${response.status}`, result.output].filter(Boolean).join('\n') }));
+        return false;
       }
-      const without = (list?: CleanupItem[]) => (list || []).filter((other) => keyOf(other) !== key);
+      const without = (from?: CleanupItem[]) => (from || []).filter((other) => keyOf(other) !== key);
       setList((previous) => (previous ? { ...previous, items: without(previous.items), others: without(previous.others) } : previous));
-      refresh();
+      setSelected((previous) => {
+        const next = new Set(previous);
+        next.delete(key);
+        return next;
+      });
+      setRemovals((previous) => [
+        { key: `${key}\n${Date.now()}`, branch: item.branch, worktreePath: item.worktreePath, ...(result.restore ? { restore: result.restore } : {}) },
+        ...previous,
+      ]);
+      return true;
     } catch (caught) {
-      setRemoveError({ key, message: caught instanceof Error ? caught.message : String(caught) });
+      setErrors((previous) => ({ ...previous, [key]: caught instanceof Error ? caught.message : String(caught) }));
+      return false;
     } finally {
       setRemoving('');
     }
   };
 
-  const items = list?.ok ? list.items || [] : [];
-  const others = list?.ok ? list.others || [] : [];
-  const safeCount = items.filter((item) => item.safe).length;
+  const remove = async (item: CleanupItem) => {
+    setConfirming('');
+    if (await removeOne(item)) refresh();
+  };
+
+  // One at a time: the server removes one at a time per clone anyway.
+  const removeSelected = async () => {
+    setConfirming('');
+    let any = false;
+    for (const item of chosen) {
+      if (await removeOne(item)) any = true;
+    }
+    if (any) refresh();
+  };
+
+  const restore = async (removal: Removal) => {
+    if (!removal.restore) return;
+    const update = (change: Partial<Removal>) =>
+      setRemovals((previous) => previous.map((other) => (other.key === removal.key ? { ...other, ...change } : other)));
+    update({ state: 'restoring', error: undefined });
+    try {
+      const { response, result } = await postJson<{ ok?: boolean; error?: string }>('/view-prs/local-repos/cleanup/restore', { repo, ...removal.restore });
+      if (!response.ok || result.ok === false) {
+        update({ state: undefined, error: result.error || `HTTP ${response.status}` });
+        return;
+      }
+      update({ state: 'restored' });
+      refresh();
+    } catch (caught) {
+      update({ state: undefined, error: caught instanceof Error ? caught.message : String(caught) });
+    }
+  };
+
+  const toggle = (key: string) =>
+    setSelected((previous) => {
+      const next = new Set(previous);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
 
   const renderItem = (item: CleanupItem) => {
     const key = keyOf(item);
@@ -123,10 +230,21 @@ export function CleanupSettings({ repo, hasListCommand, hasRemoveCommand }: { re
     const name = item.branch || item.worktreePath;
     const isConfirming = confirming === key;
     const risk = item.safe ? '' : describeRisk(item);
+    const age = formatCommitAge(formatShortAge(item.committedAt, now));
     return (
       <li key={key} data-safe={String(item.safe)}>
         <div className="local-clone-cleanup-item">
-          <span>
+          {!item.blocked && (
+            <input
+              type="checkbox"
+              className="local-clone-cleanup-select"
+              aria-label={`Select ${name}`}
+              checked={selected.has(key)}
+              disabled={Boolean(removing)}
+              onChange={() => toggle(key)}
+            />
+          )}
+          <span className="local-clone-cleanup-name">
             {item.branch ? <code>{item.branch}</code> : <em>detached</em>}
             {prs && <span className="sources-item-meta"> {prs}</span>}
             {item.worktreePath && (
@@ -145,15 +263,18 @@ export function CleanupSettings({ repo, hasListCommand, hasRemoveCommand }: { re
               <Button
                 disabled={Boolean(removing)}
                 aria-label={`${item.safe ? 'Remove' : 'Remove anyway'} ${name}`}
-                onClick={() => {
-                  setRemoveError(null);
-                  setConfirming(key);
-                }}
+                onClick={() => setConfirming(key)}
               >
                 {removing === key ? 'Removing…' : item.safe ? 'Remove' : 'Remove anyway…'}
               </Button>
             ))}
         </div>
+        {(age || item.subject || item.upstreamGone) && (
+          <p className="settings-hint local-clone-cleanup-commit">
+            {item.upstreamGone && <span className="local-clone-cleanup-chip">Deleted on GitHub</span>}
+            {[age && `Last commit ${age}`, item.subject].filter(Boolean).join(': ')}
+          </p>
+        )}
         {item.reasons.length > 0 && <p className="settings-hint local-clone-cleanup-why">Kept: {item.reasons.join('; ')}</p>}
         {item.notes.length > 0 && <p className="settings-hint">{item.notes.join('; ')}</p>}
         {isConfirming && (
@@ -167,9 +288,9 @@ export function CleanupSettings({ repo, hasListCommand, hasRemoveCommand }: { re
             </Button>
           </div>
         )}
-        {removeError?.key === key && (
+        {errors[key] && (
           <p className="settings-error" role="alert">
-            {removeError.message}
+            {errors[key]}
           </p>
         )}
       </li>
@@ -200,6 +321,88 @@ export function CleanupSettings({ repo, hasListCommand, hasRemoveCommand }: { re
           <p className="settings-hint" role="status">
             {items.length === 0 ? 'Nothing to clean up.' : `${safeCount} of ${items.length} safe to remove.`}
           </p>
+        )}
+        {removals.length > 0 && (
+          <div className="local-clone-cleanup-removed">
+            <p className="settings-hint">
+              Removed this time. Restore puts a branch back at the commit it was at, with its tracking settings, but not a worktree&apos;s folder or
+              uncommitted changes.
+            </p>
+            <ul aria-label="Removed">
+              {removals.map((removal) => (
+                <li key={removal.key}>
+                  <span>
+                    {removal.state === 'restored' ? 'Put back ' : 'Removed '}
+                    {removal.branch && <code>{removal.branch}</code>}
+                    {removal.state === 'restored' ? (
+                      <span className="sources-item-meta"> (Look again to see it in the list)</span>
+                    ) : (
+                      <>
+                        {removal.worktreePath && (
+                          <>
+                            {removal.branch ? ' and its worktree ' : 'the worktree '}
+                            <code className="sources-item-meta">{removal.worktreePath}</code>
+                          </>
+                        )}
+                        {removal.restore && <span className="sources-item-meta"> (was at {removal.restore.oid.slice(0, 7)})</span>}
+                      </>
+                    )}
+                  </span>
+                  {removal.restore && removal.state !== 'restored' && (
+                    <Button
+                      disabled={removal.state === 'restoring'}
+                      aria-label={`Restore ${removal.restore.branch}`}
+                      onClick={() => void restore(removal)}
+                    >
+                      {removal.state === 'restoring' ? 'Restoring…' : 'Restore'}
+                    </Button>
+                  )}
+                  {removal.error && (
+                    <p className="settings-error" role="alert">
+                      {removal.error}
+                    </p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {removable.length > 0 && (
+          <div className="local-clone-cleanup-bulk" role="group" aria-label="Remove several">
+            <Button
+              disabled={Boolean(removing)}
+              onClick={() => setSelected(new Set(removable.filter((item) => item.safe).map(keyOf)))}
+            >
+              Select all safe
+            </Button>
+            {chosen.length > 0 && (
+              <>
+                <Button disabled={Boolean(removing)} onClick={() => setSelected(new Set())}>
+                  Clear
+                </Button>
+                {confirming === SELECTED ? (
+                  <Button onClick={() => setConfirming('')}>Cancel</Button>
+                ) : (
+                  <Button disabled={Boolean(removing)} onClick={() => setConfirming(SELECTED)}>
+                    {removing ? 'Removing…' : `Remove selected (${chosen.length})`}
+                  </Button>
+                )}
+              </>
+            )}
+          </div>
+        )}
+        {confirming === SELECTED && chosen.length > 0 && (
+          <div
+            className="local-clone-cleanup-confirm"
+            data-risky={String(chosen.some((item) => !item.safe))}
+            role="group"
+            aria-label="Confirm removing the selected"
+          >
+            <p className="settings-hint">{describeBulkRemoval(chosen)}</p>
+            <Button variant={chosen.some((item) => !item.safe) ? 'danger' : 'primary'} onClick={() => void removeSelected()}>
+              Yes, remove {chosen.length}
+            </Button>
+          </div>
         )}
         {items.length > 0 && (
           <ul className="local-clone-cleanup-list" aria-label={`What can be cleaned up in ${repo}'s clone`}>
