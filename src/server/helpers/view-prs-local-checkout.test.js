@@ -788,6 +788,10 @@ describe("checking out a PR into a worktree", () => {
       expect(others["my/wip"].blocked).toBeUndefined();
       expect(others.main).toMatchObject({ safe: false, blocked: true, reasons: ["main is the base of #1 - a long-lived branch", "It's the clone's own folder"] });
       expect(others[toPosix(detached)]).toMatchObject({ safe: true });
+      // A commit made there, on no branch: not safe any more.
+      commit(detached, "lost if removed");
+      const again = await checkout.listCleanup({ repo: "acme/app", cloneFolder: clone, settings: null, prs });
+      expect(again.others.find((item) => !item.branch)).toMatchObject({ safe: false, reasons: ["1 commit not on GitHub (on no branch)"] });
       // The clone's own folder last.
       expect(result.others[result.others.length - 1].branch).toBe("main");
 

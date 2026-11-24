@@ -853,6 +853,13 @@ const createViewPrsLocalCheckout = ({
         }
       }
     }
+    if (!branch && worktree?.head) {
+      // A detached worktree: commits made there are on no branch, so
+      // removing it loses any that aren't on GitHub.
+      const unpushed = await localBranches.countNotOnRemotes(clone, worktree.head);
+      if (typeof unpushed !== "number") reasons.push("Can't tell whether its commits are all on GitHub");
+      else if (unpushed > 0) reasons.push(`${unpushed} commit${unpushed === 1 ? "" : "s"} not on GitHub (on no branch)`);
+    }
     if (branch) {
       const done = prs.filter((pr) => pr.done);
       if (done.length === 0 && other) {
