@@ -4183,6 +4183,7 @@ const createViewPrsApp = ({ production = isProductionEnv } = {}) => {
     createBranch: (...args) => viewPrsLocalCheckout.createBranch(...args),
     listCleanup: (...args) => viewPrsLocalCheckout.listCleanup(...args),
     removeCleanup: (...args) => viewPrsLocalCheckout.removeCleanup(...args),
+    restoreCleanup: (...args) => viewPrsLocalCheckout.restoreCleanup(...args),
     checkCommands: (...args) => viewPrsLocalCheckout.checkCommands(...args),
     // Overridable, as a test's requests always come from this computer.
     isFromThisComputer: (req) => (module.exports.isFromThisComputer || ((r) => isLoopbackAddress(r.socket?.remoteAddress)))(req),

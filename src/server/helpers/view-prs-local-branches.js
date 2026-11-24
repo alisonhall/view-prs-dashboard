@@ -973,6 +973,7 @@ const createViewPrsLocalBranches = ({
     getBranchCommits,
     getCommitFiles,
     describeBranch,
+    countNotOnRemotes,
     isOpenableFolder,
     checkClone,
     forgetClone,

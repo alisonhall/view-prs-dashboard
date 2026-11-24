@@ -66,6 +66,9 @@ const fetchMock = jest.fn(async (url: string, init: RequestInit = {}) => {
   if (url === '/view-prs/local-repos/cleanup/remove') {
     return { ok: removeAnswer.status < 400, status: removeAnswer.status, json: async () => removeAnswer.body };
   }
+  if (url === '/view-prs/local-repos/cleanup/restore') {
+    return { ok: true, status: 200, json: async () => ({ ok: true, restored: { branch: body.branch, oid: body.oid } }) };
+  }
   if (url === '/view-prs/local-repos/open-with') {
     openWith = Object.fromEntries(Object.entries(body.openWith as Record<string, string>).filter(([, value]) => value));
     return { ok: true, status: 200, json: async () => ({ ok: true, openWith }) };
@@ -91,6 +94,11 @@ beforeEach(() => {
         { branch: 'old/done', oid: 'a1', worktreePath: 'D:/code/app-old_done', prs: [{ number: '3', done: true }], safe: true, reasons: [], notes: [] },
         { branch: 'only/branch', oid: 'b2', prs: [{ number: '4', done: true }], safe: true, reasons: [], notes: ['Its folder is gone already - git still lists it'] },
         { branch: 'wip', oid: 'c3', worktreePath: 'D:/code/app-wip', prs: [{ number: '5', done: true }], safe: false, reasons: ['Uncommitted: 2 changed', '1 commit not on GitHub'], notes: [] },
+      ],
+      others: [
+        { branch: 'my/empty', oid: 'd4', worktreePath: 'D:/code/app-my_empty', prs: [], safe: true, reasons: [], notes: ['No commits of its own: everything on it is in main'] },
+        { branch: 'my/started', oid: 'e5', prs: [], safe: false, reasons: ['2 commits not on GitHub'], notes: [] },
+        { branch: 'main', oid: 'f6', worktreePath: 'D:/code/app/main', prs: [], safe: false, blocked: true, reasons: ["It's the clone's own folder"], notes: [] },
       ],
     },
   };
@@ -353,42 +361,144 @@ describe('Settings › Local clones', () => {
     });
   });
 
-  test("Clean up: looks when asked; each safe item removable after asking, the rest kept with why; a refusal says why", async () => {
+  test("Clean up: looks when asked; each safe item removable once confirmed in the row, the rest kept with why; a refusal says why", async () => {
     saved = { 'acme/app': { path: 'D:/code/app/main', ok: true, branchCount: 3, worktreeCount: 3 } };
-    const confirm = jest.spyOn(window, 'confirm').mockReturnValue(false);
-    try {
-      const user = userEvent.setup();
-      renderSection();
-      await user.click(await screen.findByText('Clean up after merged and closed PRs'));
-      expect(requests.some((request) => request.url.startsWith('/view-prs/local-repos/cleanup'))).toBe(false);
-      await user.click(screen.getByRole('button', { name: 'Look' }));
-      expect(await screen.findByText('2 of 3 safe to remove.')).toBeInTheDocument();
-      expect(requests.find((request) => request.url.startsWith('/view-prs/local-repos/cleanup'))?.url).toBe('/view-prs/local-repos/cleanup?repo=acme%2Fapp');
-      const list = screen.getByRole('list', { name: "What can be cleaned up in acme/app's clone" });
-      expect(within(list).getByText('Kept: Uncommitted: 2 changed; 1 commit not on GitHub')).toBeInTheDocument();
-      expect(within(list).queryByRole('button', { name: 'Remove wip' })).toBeNull();
+    const user = userEvent.setup();
+    renderSection();
+    await user.click(await screen.findByText('Clean up after merged and closed PRs'));
+    expect(requests.some((request) => request.url.startsWith('/view-prs/local-repos/cleanup'))).toBe(false);
+    await user.click(screen.getByRole('button', { name: 'Look' }));
+    expect(await screen.findByText('2 of 3 safe to remove.')).toBeInTheDocument();
+    expect(requests.find((request) => request.url.startsWith('/view-prs/local-repos/cleanup'))?.url).toBe('/view-prs/local-repos/cleanup?repo=acme%2Fapp');
+    const list = screen.getByRole('list', { name: "What can be cleaned up in acme/app's clone" });
+    expect(within(list).getByText('Kept: Uncommitted: 2 changed; 1 commit not on GitHub')).toBeInTheDocument();
 
-      await user.click(within(list).getByRole('button', { name: 'Remove old/done' }));
-      expect(confirm).toHaveBeenCalledWith('Remove the worktree D:/code/app-old_done and the branch old/done?');
-      expect(requests.some((request) => request.url === '/view-prs/local-repos/cleanup/remove')).toBe(false);
+    // Remove asks in the row; Cancel takes it back.
+    await user.click(within(list).getByRole('button', { name: 'Remove old/done' }));
+    const confirmBox = within(list).getByRole('group', { name: 'Confirm removing old/done' });
+    expect(confirmBox).toHaveTextContent('Remove the worktree D:/code/app-old_done and the branch old/done?');
+    await user.click(within(list).getByRole('button', { name: 'Cancel removing old/done' }));
+    expect(within(list).queryByRole('group', { name: 'Confirm removing old/done' })).toBeNull();
+    expect(requests.some((request) => request.url === '/view-prs/local-repos/cleanup/remove')).toBe(false);
 
-      confirm.mockReturnValue(true);
-      await user.click(within(list).getByRole('button', { name: 'Remove old/done' }));
-      await waitFor(() => expect(within(list).queryByText('old/done')).toBeNull());
-      expect(requests.find((request) => request.url === '/view-prs/local-repos/cleanup/remove')?.body).toEqual({
-        repo: 'acme/app',
-        branch: 'old/done',
-        worktreePath: 'D:/code/app-old_done',
-      });
+    await user.click(within(list).getByRole('button', { name: 'Remove old/done' }));
+    await user.click(within(list).getByRole('button', { name: 'Yes, remove' }));
+    await waitFor(() => expect(within(list).queryByText('old/done')).toBeNull());
+    expect(requests.find((request) => request.url === '/view-prs/local-repos/cleanup/remove')?.body).toEqual({
+      repo: 'acme/app',
+      branch: 'old/done',
+      worktreePath: 'D:/code/app-old_done',
+      listed: true,
+    });
 
-      removeAnswer = { status: 409, body: { ok: false, error: 'Not safe to remove: Uncommitted: 1 new' } };
-      await user.click(within(list).getByRole('button', { name: 'Remove only/branch' }));
-      expect(confirm).toHaveBeenLastCalledWith('Remove the branch only/branch?\n\nIts folder is gone already - git still lists it');
-      expect(await within(list).findByRole('alert')).toHaveTextContent('Not safe to remove: Uncommitted: 1 new');
-      expect(within(list).getByText('only/branch')).toBeInTheDocument();
-    } finally {
-      confirm.mockRestore();
-    }
+    removeAnswer = { status: 409, body: { ok: false, error: 'Not safe to remove: Uncommitted: 1 new' } };
+    await user.click(within(list).getByRole('button', { name: 'Remove only/branch' }));
+    await user.click(within(list).getByRole('button', { name: 'Yes, remove' }));
+    expect(await within(list).findByRole('alert')).toHaveTextContent('Not safe to remove: Uncommitted: 1 new');
+    expect(within(list).getByText('only/branch')).toBeInTheDocument();
+  });
+
+  test('Clean up: Remove anyway for one that isn\'t safe, and the rest of the clone; it says what\'s lost and sends the reasons shown; never for the clone\'s own folder', async () => {
+    saved = { 'acme/app': { path: 'D:/code/app/main', ok: true, branchCount: 3, worktreeCount: 3 } };
+    removeAnswer = { status: 200, body: { ok: true, removed: { branch: 'wip', worktreePath: 'D:/code/app-wip' }, how: 'git', output: '' } };
+    const user = userEvent.setup();
+    renderSection();
+    await user.click(await screen.findByText('Clean up after merged and closed PRs'));
+    await user.click(screen.getByRole('button', { name: 'Look' }));
+    const list = await screen.findByRole('list', { name: "What can be cleaned up in acme/app's clone" });
+
+    await user.click(within(list).getByRole('button', { name: 'Remove anyway wip' }));
+    expect(within(list).getByRole('group', { name: 'Confirm removing wip' })).toHaveTextContent(
+      "Remove the worktree D:/code/app-wip and the branch wip? This deletes its uncommitted changes and its commits that aren't on GitHub, for good.",
+    );
+    // Yes is below, where the button isn't: the button's place is Cancel now.
+    expect(within(list).getByRole('button', { name: 'Cancel removing wip' })).toBeInTheDocument();
+    await user.click(within(list).getByRole('button', { name: 'Yes, remove anyway' }));
+    await waitFor(() => expect(within(list).queryByText('wip')).toBeNull());
+    expect(requests.find((request) => request.url === '/view-prs/local-repos/cleanup/remove')?.body).toEqual({
+      repo: 'acme/app',
+      branch: 'wip',
+      worktreePath: 'D:/code/app-wip',
+      listed: true,
+      force: true,
+      reasons: ['Uncommitted: 2 changed', '1 commit not on GitHub'],
+    });
+
+    const rest = screen.getByRole('list', { name: "Everything else in acme/app's clone" });
+    expect(screen.getByText('Everything else in the clone (3 branches and worktrees)')).toBeInTheDocument();
+    expect(within(rest).getByText('No commits of its own: everything on it is in main')).toBeInTheDocument();
+    expect(within(rest).getByRole('button', { name: 'Remove my/empty' })).toBeInTheDocument();
+    expect(within(rest).getByRole('button', { name: 'Remove anyway my/started' })).toBeInTheDocument();
+    // The clone's own folder: kept with why, no Remove at all.
+    expect(within(rest).getByText("Kept: It's the clone's own folder")).toBeInTheDocument();
+    expect(within(rest).queryByRole('button', { name: /main$/ })).toBeNull();
+
+    removeAnswer = { status: 200, body: { ok: true, removed: { branch: 'my/started' }, how: 'git', output: '' } };
+    await user.click(within(rest).getByRole('button', { name: 'Remove anyway my/started' }));
+    expect(within(rest).getByRole('group', { name: 'Confirm removing my/started' })).toHaveTextContent(
+      "Remove the branch my/started? This deletes its commits that aren't on GitHub, for good.",
+    );
+    await user.click(within(rest).getByRole('button', { name: 'Yes, remove anyway' }));
+    await waitFor(() => expect(within(rest).queryByText('my/started')).toBeNull());
+    expect(requests.filter((request) => request.url === '/view-prs/local-repos/cleanup/remove').pop()?.body).toMatchObject({
+      branch: 'my/started',
+      listed: false,
+    });
+    expect(screen.getByText('Everything else in the clone (2 branches and worktrees)')).toBeInTheDocument();
+  });
+
+  test('Clean up: each newest commit and a branch deleted on GitHub; several removed at once after one confirm; a removed branch put back with Restore', async () => {
+    saved = { 'acme/app': { path: 'D:/code/app/main', ok: true, branchCount: 3, worktreeCount: 3 } };
+    const oid = 'a'.repeat(40);
+    (cleanupAnswer.body.others as Array<Record<string, unknown>>)[1] = {
+      branch: 'my/started',
+      oid: 'e5',
+      prs: [],
+      safe: false,
+      reasons: ['2 commits not on GitHub'],
+      notes: [],
+      committedAt: new Date(Date.now() - 3 * 86400000).toISOString(),
+      subject: 'Try a thing',
+      upstreamGone: true,
+    };
+    const user = userEvent.setup();
+    renderSection();
+    await user.click(await screen.findByText('Clean up after merged and closed PRs'));
+    await user.click(screen.getByRole('button', { name: 'Look' }));
+    const rest = await screen.findByRole('list', { name: "Everything else in acme/app's clone" });
+    expect(within(rest).getByText('Last commit 3d ago: Try a thing')).toBeInTheDocument();
+    expect(within(rest).getByText('Deleted on GitHub')).toBeInTheDocument();
+    // The clone's own folder can't be selected.
+    expect(within(rest).queryByRole('checkbox', { name: 'Select main' })).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'Select all safe' }));
+    expect(screen.getByRole('checkbox', { name: 'Select old/done' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Select my/empty' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Select wip' })).not.toBeChecked();
+    await user.click(screen.getByRole('checkbox', { name: 'Select my/started' }));
+    // Unticked again.
+    await user.click(screen.getByRole('checkbox', { name: 'Select only/branch' }));
+    await user.click(screen.getByRole('button', { name: 'Remove selected (3)' }));
+    expect(screen.getByRole('group', { name: 'Confirm removing the selected' })).toHaveTextContent(
+      "Remove 3 branches and worktrees? 1 isn't safe (my/started). This deletes its commits that aren't on GitHub, for good.",
+    );
+    expect(requests.some((request) => request.url === '/view-prs/local-repos/cleanup/remove')).toBe(false);
+
+    removeAnswer = { status: 200, body: { ok: true, removed: { branch: 'x' }, how: 'git', output: '', restore: { branch: 'x', oid } } };
+    await user.click(screen.getByRole('button', { name: 'Yes, remove 3' }));
+    await waitFor(() => expect(within(rest).queryByText('my/started')).toBeNull());
+    expect(requests.filter((request) => request.url === '/view-prs/local-repos/cleanup/remove').map((request) => (request.body as { branch: string }).branch)).toEqual([
+      'old/done',
+      'my/empty',
+      'my/started',
+    ]);
+    const removed = screen.getByRole('list', { name: 'Removed' });
+    expect(within(removed).getAllByRole('listitem')).toHaveLength(3);
+    expect(within(removed).getAllByRole('listitem').at(-1) as HTMLElement).toHaveTextContent('Removed old/done and its worktree D:/code/app-old_done (was at aaaaaaa)');
+
+    await user.click(within(removed).getAllByRole('button', { name: 'Restore x' })[0] as HTMLElement);
+    expect(requests.find((request) => request.url === '/view-prs/local-repos/cleanup/restore')?.body).toEqual({ repo: 'acme/app', branch: 'x', oid });
+    expect(await within(removed).findByText('(Look again to see it in the list)')).toBeInTheDocument();
   });
 
   test("Clean up with the repo's own commands: their worktrees, lines that aren't left out, and what the command said; a failure says why", async () => {
@@ -412,8 +522,7 @@ describe('Settings › Local clones', () => {
         printed: 'D:/code/mine\n/not/one',
       },
     };
-    const confirm = jest.spyOn(window, 'confirm').mockReturnValue(false);
-    try {
+    {
       const user = userEvent.setup();
       renderSection();
       await user.click(await screen.findByText('Clean up after merged and closed PRs'));
@@ -424,15 +533,11 @@ describe('Settings › Local clones', () => {
       expect(screen.getByLabelText('What your list command printed')).toHaveTextContent('D:/code/mine /not/one');
       await user.click(screen.getByRole('button', { name: 'Remove mine' }));
       // The branch is the command's: only the worktree is named.
-      expect(confirm).toHaveBeenCalledWith(
-        "Remove the worktree D:/code/mine (by your remove command)?\n\nNo PR on the page has this branch, so what's pushed isn't checked",
-      );
+      expect(screen.getByRole('group', { name: 'Confirm removing mine' })).toHaveTextContent('Remove the worktree D:/code/mine (by your remove command)?');
 
       cleanupAnswer = { status: 502, body: { ok: false, error: 'The list command failed: no such layout' } };
       await user.click(screen.getByRole('button', { name: 'Look again' }));
       expect(await screen.findByRole('alert')).toHaveTextContent('The list command failed: no such layout');
-    } finally {
-      confirm.mockRestore();
     }
   });
 

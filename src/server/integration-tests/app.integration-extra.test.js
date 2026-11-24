@@ -947,8 +947,14 @@ describe("integration behavior", () => {
       expect(listed.body).toEqual({
         ok: true,
         by: "git",
-        items: [{ branch: "done", oid: oids.local, worktreePath: expect.any(String), prs: [{ number: "8", done: true }], safe: true, reasons: [], notes: [] }],
+        items: [{ branch: "done", oid: oids.local, worktreePath: expect.any(String), prs: [{ number: "8", done: true }], safe: true, reasons: [], notes: [], committedAt: expect.any(String), subject: expect.any(String), upstreamGone: true }],
+        others: expect.any(Array),
       });
+      // The rest of the clone: the open PR's branch, and the clone's own branch (never removable).
+      expect(listed.body.others.map((other) => [other.branch, other.safe, Boolean(other.blocked)])).toEqual([
+        ["feature", false, false],
+        ["master", false, true],
+      ]);
       const [item] = listed.body.items;
       expect(fs.realpathSync.native(item.worktreePath)).toBe(fs.realpathSync.native(doneTree));
       expect((await request.post("/view-prs/local-repos/cleanup/remove").send({ repo: "owner/repo" })).status).toBe(400);
@@ -965,12 +971,23 @@ describe("integration behavior", () => {
       expect(fs.existsSync(doneTree)).toBe(true);
 
       const removed = await request.post("/view-prs/local-repos/cleanup/remove").send({ repo: "owner/repo", branch: "done", worktreePath: item.worktreePath });
-      expect(removed.body).toEqual({ ok: true, removed: { branch: "done", worktreePath: item.worktreePath }, how: "git", output: "" });
+      expect(removed.body).toMatchObject({ ok: true, removed: { branch: "done", worktreePath: item.worktreePath }, how: "git", output: "" });
+      expect(removed.body.restore).toMatchObject({ branch: "done", oid: oids.local });
       expect(fs.existsSync(doneTree)).toBe(false);
       expect(git(clone, "branch", "--list", "done")).toBe("");
       const again = await request.post("/view-prs/local-repos/cleanup/remove").send({ repo: "owner/repo", branch: "done", worktreePath: item.worktreePath });
       expect(again.status).toBe(409);
       expect(again.body.error).toBe("It's no longer in the list - look again");
+      // Restore puts the branch back (only from this computer).
+      appModule.isFromThisComputer = () => false;
+      try {
+        expect((await request.post("/view-prs/local-repos/cleanup/restore").send({ repo: "owner/repo", ...removed.body.restore })).status).toBe(403);
+      } finally {
+        delete appModule.isFromThisComputer;
+      }
+      const restored = await request.post("/view-prs/local-repos/cleanup/restore").send({ repo: "owner/repo", ...removed.body.restore });
+      expect(restored.body).toEqual({ ok: true, restored: { branch: "done", oid: oids.local } });
+      expect(git(clone, "branch", "--list", "done")).toContain("done");
     });
 
     test("branches tracked without a PR: picked from the clone's, their status and uncommitted changes, a base and note changed, untracked", async () => {

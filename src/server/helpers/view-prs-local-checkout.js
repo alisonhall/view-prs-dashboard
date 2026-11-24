@@ -783,8 +783,10 @@ const createViewPrsLocalCheckout = ({
   //
   // prs: the repo's rows (the routes' listPrs). => { by: "git" |
   // "command", items: [{ branch?, oid?, worktreePath?, prs: [{ number,
-  // done }], safe, reasons, notes }], ignored?, output?, printed? } - or
-  // throws. printed: the list command's stdout (by command only).
+  // done }], safe, reasons, notes, blocked? }], others, ignored?, output?,
+  // printed? } - or throws. printed: the list command's stdout (by command
+  // only). others: the rest of the clone's local branches and worktrees,
+  // as items, for Remove anyway.
   const statusOf = async (folder) =>
     parseStatus(await git(folder, ["--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=normal"]));
 
@@ -800,29 +802,45 @@ const createViewPrsLocalCheckout = ({
       .map(([count, what]) => `${count} ${what}`)
       .join(", ");
 
-  const assessCleanup = async (clone, { branch, worktree, prs, allPrs, byCommand }) => {
+  // other: an item of the rest of the clone (not one Clean up lists), whose
+  // branch no merged or closed PR has - checked for what isn't on GitHub
+  // by git itself. blocked: kept whatever's asked (the clone's own folder,
+  // or a locked worktree), so Remove anyway isn't offered.
+  const assessCleanup = async (clone, { branch, worktree, prs, allPrs, byCommand, other = false }) => {
     const reasons = [];
     const notes = [];
+    let blocked = false;
     const open = prs.filter((pr) => !pr.done);
     if (open.length > 0) reasons.push(`${open.map((pr) => `#${pr.number}`).join(", ")} ${open.length === 1 ? "is" : "are"} still open`);
     // A long-lived branch (develop, a release branch) a PR came from once
     // merged: kept when it's a PR's base, or more than one PR has come from
     // it.
     if (branch) {
-      const remoteName = branch.remote && clone.repoRemotes.includes(branch.remote) && branch.remoteRef.startsWith("refs/heads/")
+      let remoteName = branch.remote && clone.repoRemotes.includes(branch.remote) && branch.remoteRef.startsWith("refs/heads/")
         ? branch.remoteRef.slice("refs/heads/".length)
         : "";
+      // A branch made from the default branch (git worktree add -b x path
+      // origin/main) tracks it, but isn't it.
+      if (remoteName && remoteName !== branch.name && remoteName === clone.defaultBranch) remoteName = "";
       const bases = allPrs.filter((pr) => pr.targetBranch && (pr.targetBranch === remoteName || pr.targetBranch === branch.name));
       if (bases.length > 0) {
         const numbers = bases.slice(0, 3).map((pr) => `#${pr.number}`).join(", ");
         reasons.push(`${branch.name} is the base of ${numbers}${bases.length > 3 ? ` and ${bases.length - 3} more` : ""} - a long-lived branch`);
       } else if (prs.length > 1 && open.length === 0) {
         reasons.push(`${prs.length} PRs have come from ${branch.name} - a long-lived branch?`);
+      } else if (branch.name === clone.defaultBranch) {
+        reasons.push(`${branch.name} is the repo's default branch`);
       }
     }
     if (worktree) {
-      if (worktree.main || localBranches.isCloneFolder(clone, worktree.path)) reasons.push("It's the clone's own folder");
-      if (worktree.locked) reasons.push("Its worktree is locked (git worktree unlock it first)");
+      if (worktree.main || localBranches.isCloneFolder(clone, worktree.path)) {
+        reasons.push("It's the clone's own folder");
+        blocked = true;
+      }
+      if (worktree.locked) {
+        reasons.push("Its worktree is locked (git worktree unlock it first)");
+        blocked = true;
+      }
       if (worktree.rebasing) reasons.push("A rebase is in progress there");
       if (!fs.existsSync(worktree.path)) {
         notes.push("Its folder is gone already - git still lists it");
@@ -835,9 +853,28 @@ const createViewPrsLocalCheckout = ({
         }
       }
     }
+    if (!branch && worktree?.head) {
+      // A detached worktree: commits made there are on no branch, so
+      // removing it loses any that aren't on GitHub.
+      const unpushed = await localBranches.countNotOnRemotes(clone, worktree.head);
+      if (typeof unpushed !== "number") reasons.push("Can't tell whether its commits are all on GitHub");
+      else if (unpushed > 0) reasons.push(`${unpushed} commit${unpushed === 1 ? "" : "s"} not on GitHub (on no branch)`);
+    }
     if (branch) {
       const done = prs.filter((pr) => pr.done);
-      if (done.length === 0) {
+      if (done.length === 0 && other) {
+        // Its commits against the repo's remote branches, as Not pushed
+        // counts them, and against the default branch.
+        const described = await localBranches.describeBranch(clone, { branch: branch.name });
+        if (typeof described.unpushed !== "number") {
+          reasons.push("Can't tell whether its commits are all on GitHub");
+        } else if (described.unpushed > 0) {
+          reasons.push(`${described.unpushed} commit${described.unpushed === 1 ? "" : "s"} not on GitHub`);
+        }
+        if (described.baseAhead === 0 && branch.name !== described.base) {
+          notes.push(`No commits of its own: everything on it is in ${described.base}`);
+        }
+      } else if (done.length === 0) {
         if (byCommand) notes.push("No PR on the page has this branch, so what's pushed isn't checked");
       } else if (!branch.remote) {
         reasons.push(`${branch.name} tracks nothing - found by its name alone, so it may not be the PR's`);
@@ -854,7 +891,7 @@ const createViewPrsLocalCheckout = ({
         }
       }
     }
-    return { safe: reasons.length === 0, reasons, notes };
+    return { safe: reasons.length === 0, reasons, notes, ...(blocked ? { blocked: true } : {}) };
   };
 
   // At most a few git statuses at once.
@@ -872,16 +909,62 @@ const createViewPrsLocalCheckout = ({
     return results;
   };
 
-  const listCleanup = async ({ repo, cloneFolder, settings, prs }) => {
-    const clone = await localBranches.readCloneFresh(repo, cloneFolder);
-    if (!clone.ok) throw checkoutError(clone.error);
-    // Each local branch's PRs, as the rows find them.
+  // Each local branch's PRs, as the rows find them.
+  const prsByBranch = (clone, prs) => {
     const prsOf = new Map();
     (prs || []).forEach((pr) => {
       const branch = localBranches.findPrBranch(clone, pr);
       if (!branch) return;
       prsOf.set(branch.name, [...(prsOf.get(branch.name) || []), pr]);
     });
+    return prsOf;
+  };
+
+  // A branch whose remote branch the clone no longer has: deleted on
+  // GitHub (usually once its PR merged) and pruned by a fetch.
+  const isUpstreamGone = (clone, branch) =>
+    Boolean(branch.remote) &&
+    clone.repoRemotes.includes(branch.remote) &&
+    branch.remoteRef.startsWith("refs/heads/") &&
+    !clone.remoteRefs.has(`refs/remotes/${branch.remote}/${branch.remoteRef.slice("refs/heads/".length)}`);
+
+  // A detached worktree's newest commit: { committedAt?, subject? }.
+  const lastCommitOf = async (folder, oid) => {
+    try {
+      const [committedAt, ...subject] = (await git(folder, ["log", "-1", "--format=%cI%x1f%s", oid])).trim().split("\x1f");
+      return { ...(committedAt ? { committedAt } : {}), ...(subject.join("\x1f") ? { subject: subject.join("\x1f") } : {}) };
+    } catch {
+      return {};
+    }
+  };
+
+  // One item of the list (or the rest of the clone), as Settings shows it.
+  const describeCleanupItem = async (clone, { branch, worktree, itsPrs, prs, byCommand, other }) => {
+    const assessed = await assessCleanup(clone, { branch, worktree, prs: itsPrs, allPrs: prs || [], byCommand, other });
+    const commit = branch
+      ? { ...(branch.committedAt ? { committedAt: branch.committedAt } : {}), ...(branch.subject ? { subject: branch.subject } : {}) }
+      : worktree?.head
+        ? await lastCommitOf(clone.folder, worktree.head)
+        : {};
+    return {
+      ...(branch ? { branch: branch.name, oid: branch.oid } : {}),
+      ...(worktree ? { worktreePath: worktree.path } : {}),
+      prs: itsPrs.map((pr) => ({ number: pr.number, done: Boolean(pr.done) })),
+      ...commit,
+      ...(branch && isUpstreamGone(clone, branch) ? { upstreamGone: true } : {}),
+      ...assessed,
+    };
+  };
+
+  // Oldest newest-commit first; those git can't date last.
+  const byAge = (a, b) =>
+    (a.committedAt ? Date.parse(a.committedAt) : Infinity) - (b.committedAt ? Date.parse(b.committedAt) : Infinity) ||
+    String(a.branch || a.worktreePath).localeCompare(String(b.branch || b.worktreePath));
+
+  const listCleanup = async ({ repo, cloneFolder, settings, prs }) => {
+    const clone = await localBranches.readCloneFresh(repo, cloneFolder);
+    if (!clone.ok) throw checkoutError(clone.error);
+    const prsOf = prsByBranch(clone, prs);
     const worktreeOfBranch = (name) => clone.worktrees.find((worktree) => worktree.branch === name) || null;
     const byCommand = Boolean(settings?.cleanupList);
     let candidates;
@@ -925,20 +1008,31 @@ const createViewPrsLocalCheckout = ({
         .filter((branch) => (prsOf.get(branch.name) || []).some((pr) => pr.done))
         .map((branch) => ({ branch, worktree: worktreeOfBranch(branch.name) }));
     }
-    const items = await mapFew(candidates, async ({ branch, worktree }) => {
-      const itsPrs = branch ? prsOf.get(branch.name) || [] : [];
-      const assessed = await assessCleanup(clone, { branch, worktree, prs: itsPrs, allPrs: prs || [], byCommand });
-      return {
-        ...(branch ? { branch: branch.name, oid: branch.oid } : {}),
-        ...(worktree ? { worktreePath: worktree.path } : {}),
-        prs: itsPrs.map((pr) => ({ number: pr.number, done: Boolean(pr.done) })),
-        ...assessed,
-      };
-    });
-    items.sort((a, b) => Number(b.safe) - Number(a.safe) || String(a.branch || a.worktreePath).localeCompare(String(b.branch || b.worktreePath)));
+    // The rest of the clone: every other local branch (with its worktree)
+    // and every other worktree (detached, or on a branch git can't list).
+    const listedBranches = new Set(candidates.map(({ branch }) => branch?.name).filter(Boolean));
+    const listedWorktrees = new Set(candidates.map(({ worktree }) => worktree?.path).filter(Boolean));
+    const rest = clone.branches
+      .filter((branch) => !listedBranches.has(branch.name))
+      .map((branch) => {
+        const worktree = worktreeOfBranch(branch.name);
+        return { branch, worktree: worktree && !listedWorktrees.has(worktree.path) ? worktree : null };
+      });
+    const inRest = new Set(rest.map(({ worktree }) => worktree?.path).filter(Boolean));
+    clone.worktrees
+      .filter((worktree) => !listedWorktrees.has(worktree.path) && !inRest.has(worktree.path))
+      .filter((worktree) => !worktree.branch || !clone.branches.some((branch) => branch.name === worktree.branch))
+      .forEach((worktree) => rest.push({ branch: null, worktree }));
+    const describe = (other) => ({ branch, worktree }) =>
+      describeCleanupItem(clone, { branch, worktree, itsPrs: branch ? prsOf.get(branch.name) || [] : [], prs, byCommand, other });
+    // The safe ones first, then the oldest.
+    const items = (await mapFew(candidates, describe(false))).sort((a, b) => Number(b.safe) - Number(a.safe) || byAge(a, b));
+    // The oldest first, the blocked ones (the clone's own folder) last.
+    const others = (await mapFew(rest, describe(true))).sort((a, b) => Number(Boolean(a.blocked)) - Number(Boolean(b.blocked)) || byAge(a, b));
     return {
       by: byCommand ? "command" : "git",
       items,
+      others,
       ...(ignored.length ? { ignored } : {}),
       ...(output ? { output } : {}),
       ...(byCommand ? { printed } : {}),
@@ -954,17 +1048,72 @@ const createViewPrsLocalCheckout = ({
   // settings with it. With the remove command, the branch is its to remove.
   // One at a time per clone, with Check out, Fetch and Pull. => { removed:
   // { worktreePath?, branch? }, how: "git" | "command", output } - or throws.
-  const removeCleanup = async ({ repo, cloneFolder, settings, prs, branch, worktreePath }) => {
+  //
+  // force (Remove anyway): one that isn't safe is removed too, when its
+  // reasons are still the ones the user was shown (reasons) - not one that
+  // has changed since - and it isn't blocked (the clone's own folder, a
+  // locked worktree). Its worktree is removed with git worktree remove
+  // --force (uncommitted changes and all), or the remove command is given
+  // VIEW_PRS_FORCE=1; the branch is removed whatever isn't on GitHub.
+  // The one item asked about - { branch?, worktreePath? } as listed, from
+  // the list (listed) or the rest of the clone - assessed again as it is
+  // now, without listing the whole clone (or running the list command).
+  // Throws when it isn't as listed any more: the branch gone, its worktree
+  // gone or on another branch, or (by git) moved between the two lists.
+  const assessCleanupItem = async ({ repo, cloneFolder, settings, prs, branch, worktreePath, listed }) => {
+    const clone = await localBranches.readCloneFresh(repo, cloneFolder);
+    if (!clone.ok) throw checkoutError(clone.error);
+    const gone = () => checkoutError("It's no longer in the list - look again", { status: 409 });
+    const branchItem = branch ? clone.branches.find((item) => item.name === branch) : null;
+    if (branch && !branchItem) throw gone();
+    const worktree = worktreePath ? localBranches.worktreeAt(clone, worktreePath) : null;
+    if (worktreePath && !worktree) throw gone();
+    if (worktree && (worktree.branch || "") !== (branch || "")) throw gone();
+    // A branch listed on its own, checked out since.
+    if (!worktree && branch && clone.worktrees.some((item) => item.branch === branch)) throw gone();
+    const byCommand = Boolean(settings?.cleanupList);
+    const prsOf = prsByBranch(clone, prs);
+    const itsPrs = branch ? prsOf.get(branch) || [] : [];
+    if (byCommand) {
+      // The list command lists worktrees only, and must still print this
+      // one: its own checks (merged, say) may have changed their mind.
+      if (listed && !worktree) throw gone();
+      if (listed) {
+        const again = await listCleanup({ repo, cloneFolder, settings, prs });
+        if (!again.items.some((item) => (item.worktreePath || "") === worktree.path)) throw gone();
+      }
+    } else if (listed !== (Boolean(branchItem) && itsPrs.some((pr) => pr.done))) {
+      throw gone();
+    }
+    return describeCleanupItem(clone, { branch: branchItem, worktree, itsPrs, prs, byCommand, other: !listed });
+  };
+
+  // { listed }: which list it's from (the list, else the rest of the
+  // clone). => { removed, how, output, restore? } - restore: { branch,
+  // oid, remote?, merge? }, what restoreCleanup takes to put the branch
+  // back, when it's gone.
+  const removeCleanup = async ({ repo, cloneFolder, settings, prs, branch, worktreePath, force = false, reasons = [], listed = true }) => {
     if (busy.has(repo)) throw checkoutError(busyMessage(repo), { status: 409 });
     busy.add(repo);
     try {
-      const listed = await listCleanup({ repo, cloneFolder, settings, prs });
-      const item = listed.items.find((candidate) => (candidate.branch || "") === (branch || "") && (candidate.worktreePath || "") === (worktreePath || ""));
-      if (!item) throw checkoutError("It's no longer in the list - look again", { status: 409 });
-      if (!item.safe) throw checkoutError(`Not safe to remove: ${item.reasons.join("; ")}`, { status: 409 });
+      const item = await assessCleanupItem({ repo, cloneFolder, settings, prs, branch, worktreePath, listed });
+      if (item.blocked) throw checkoutError(`Can't remove it: ${item.reasons.join("; ")}`, { status: 409 });
+      if (!item.safe && !force) throw checkoutError(`Not safe to remove: ${item.reasons.join("; ")}`, { status: 409 });
+      if (!item.safe && JSON.stringify(item.reasons) !== JSON.stringify(reasons || [])) {
+        throw checkoutError(`It has changed since you looked - look again. Now: ${item.reasons.join("; ")}`, { status: 409 });
+      }
+      const forced = !item.safe;
       const outputs = [];
       const removed = {};
+      let restore = null;
       const byCommand = Boolean(item.worktreePath && settings?.cleanupRemove);
+      if (item.branch) {
+        // Its tracking settings, for Restore - read first, as the remove
+        // command may remove them with the branch.
+        const configOf = (key) => git(cloneFolder, ["config", "--get", `branch.${item.branch}.${key}`]).then((value) => value.trim(), () => "");
+        const [remote, merge] = await Promise.all([configOf("remote"), configOf("merge")]);
+        restore = { branch: item.branch, oid: item.oid, ...(remote && merge ? { remote, merge } : {}) };
+      }
       try {
         if (item.worktreePath) {
           if (byCommand) {
@@ -975,6 +1124,7 @@ const createViewPrsLocalCheckout = ({
                 VIEW_PRS_REPO: repo,
                 VIEW_PRS_WORKTREE: toPosix(item.worktreePath),
                 VIEW_PRS_LOCAL_BRANCH: item.branch || "",
+                ...(forced ? { VIEW_PRS_FORCE: "1" } : {}),
               });
               const text = outputOf(result);
               if (text) outputs.push(text);
@@ -993,7 +1143,7 @@ const createViewPrsLocalCheckout = ({
               });
             }
           } else if (fs.existsSync(item.worktreePath)) {
-            await git(cloneFolder, ["worktree", "remove", item.worktreePath]);
+            await git(cloneFolder, ["worktree", "remove", ...(forced ? ["--force"] : []), item.worktreePath]);
           } else {
             await git(cloneFolder, ["worktree", "prune"]);
           }
@@ -1016,14 +1166,56 @@ const createViewPrsLocalCheckout = ({
       } finally {
         localBranches.forgetClone(repo);
       }
-      return { removed, how: byCommand ? "command" : "git", output: outputs.join("\n") };
+      // By the remove command, only when it removed the branch too.
+      if (restore && byCommand) {
+        const exists = await git(cloneFolder, ["rev-parse", "--verify", "--quiet", `refs/heads/${restore.branch}`]).then(
+          () => true,
+          () => false,
+        );
+        if (exists) restore = null;
+      }
+      return { removed, how: byCommand ? "command" : "git", output: outputs.join("\n"), ...(restore ? { restore } : {}) };
     } finally {
       busy.delete(repo);
     }
   };
 
+  // Puts a removed branch back - { branch, oid, remote?, merge? } as Remove
+  // returned it - at that commit, with its tracking settings. Only a branch
+  // that doesn't exist now, and only while git still has the commit (it
+  // keeps unreachable ones for a while, usually two weeks or more). Not its
+  // worktree: the folder and any uncommitted changes are gone. => {
+  // restored: { branch, oid } } - or throws.
+  const restoreCleanup = async ({ repo, cloneFolder, branch, oid, remote = "", merge = "" }) => {
+    if (busy.has(repo)) throw checkoutError(busyMessage(repo), { status: 409 });
+    busy.add(repo);
+    try {
+      if (!/^[0-9a-f]{40,64}$/.test(String(oid || ""))) throw checkoutError("Not a commit", { status: 400 });
+      const name = String(branch || "");
+      const valid = name && !name.startsWith("-") && (await git(cloneFolder, ["check-ref-format", "--branch", name]).then(() => true, () => false));
+      if (!valid) throw checkoutError(`Not a branch name: ${name}`, { status: 400 });
+      const hasCommit = await git(cloneFolder, ["cat-file", "-e", `${oid}^{commit}`]).then(() => true, () => false);
+      if (!hasCommit) throw checkoutError(`git no longer has ${oid.slice(0, 7)}, so ${name} can't be put back`, { status: 409 });
+      try {
+        // "" as the old value: only when there's no such branch now.
+        await git(cloneFolder, ["update-ref", `refs/heads/${name}`, oid, ""]);
+      } catch (failure) {
+        throw checkoutError(`git couldn't put ${name} back: ${reasonOf(failure)}`, { status: 409, output: outputOf(failure) });
+      }
+      const clone = await localBranches.readCloneFresh(repo, cloneFolder);
+      if (remote && merge && merge.startsWith("refs/") && clone.ok && clone.remotes.some((item) => item.name === remote)) {
+        await git(cloneFolder, ["config", `branch.${name}.remote`, remote]).catch(() => "");
+        await git(cloneFolder, ["config", `branch.${name}.merge`, merge]).catch(() => "");
+      }
+      return { restored: { branch: name, oid } };
+    } finally {
+      localBranches.forgetClone(repo);
+      busy.delete(repo);
+    }
+  };
+
   // userShell: for Open in editor and Terminal's own commands, run the same way.
-  return { checkOut, fetchPr, pullPr, pullBranch, fetchBranch, createBranch, checkCommands, listCleanup, removeCleanup, userShell };
+  return { checkOut, fetchPr, pullPr, pullBranch, fetchBranch, createBranch, checkCommands, listCleanup, removeCleanup, restoreCleanup, userShell };
 };
 
 module.exports = {
